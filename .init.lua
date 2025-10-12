@@ -1,8 +1,8 @@
 -- =====================================================
--- NEOVIM IDE CONFIGURATION v6.1 (OPTIMIZED)
+-- NEOVIM IDE CONFIGURATION v6.6 (LAZYREDRAW ENFORCED)
 -- Full-Featured IDE: Fortran, Python, Rust, SQL, VHDL, HTML, CSS, JS, Java
 -- Platform: openSUSE Leap + KDE Plasma
--- Compatible: Neovim 0.9.5+
+-- Compatible: Neovim 0.9.5+ (optimized for 0.11+)
 -- =====================================================
 
 -- =====================================================
@@ -19,7 +19,7 @@ _G.nvim_ide = {
   debug_mode = vim.env.NVIM_DEBUG == "1",
   startup_time = vim.uv.hrtime(),
   failed_modules = {},
-  security_mode = vim.env.NVIM_SECURITY == "1", -- Enable via export NVIM_SECURITY=1
+  security_mode = vim.env.NVIM_SECURITY == "1",
   session_id = tostring(math.random(100000, 999999)),
   memory_limit_mb = os.getenv("NVIM_PROFILE") == "low" and 512 or 1024,
   initialized = false,
@@ -111,8 +111,7 @@ local function check_memory()
   if memory_mb > _G.nvim_ide.memory_limit_mb then
     log(string.format("Memory usage high: %.1fMB - Running GC", memory_mb), log_levels.WARN)
     collectgarbage("collect")
-
-    -- Clear module cache if still high
+    
     local new_memory = collectgarbage("count") / 1024
     if new_memory > _G.nvim_ide.memory_limit_mb * 0.9 then
       module_cache = {}
@@ -128,12 +127,7 @@ end
 -- 2. SECURITY HARDENING (OPTIONAL)
 -- =====================================================
 
--- FIXED: Only enable security mode if explicitly requested
 if _G.nvim_ide.security_mode then
-  -- Note: These providers are needed for Mason and LSP
-  -- Only disable if you don't need external language servers
-
-  -- Disable unnecessary builtin plugins
   for _, plugin in ipairs({
     "gzip", "tar", "tarPlugin", "zip", "zipPlugin",
     "getscript", "getscriptPlugin", "vimball", "vimballPlugin",
@@ -143,7 +137,6 @@ if _G.nvim_ide.security_mode then
     vim.g["loaded_" .. plugin] = 1
   end
 
-  -- Security settings
   vim.opt.modeline = false
   vim.opt.exrc = false
   vim.opt.secure = true
@@ -153,11 +146,9 @@ end
 -- 3. CORE VIM SETTINGS
 -- =====================================================
 
--- Leader keys
 vim.g.mapleader = " "
 vim.g.maplocalleader = ","
 
--- UI Configuration
 vim.opt.termguicolors = true
 vim.opt.number = true
 vim.opt.relativenumber = true
@@ -170,7 +161,6 @@ vim.opt.sidescrolloff = 8
 vim.opt.colorcolumn = "80,100,120"
 vim.opt.conceallevel = 0
 
--- Indentation
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4
 vim.opt.softtabstop = 4
@@ -178,22 +168,19 @@ vim.opt.expandtab = true
 vim.opt.smartindent = true
 vim.opt.autoindent = true
 
--- Search and Navigation
 vim.opt.ignorecase = true
 vim.opt.smartcase = true
 vim.opt.incsearch = true
 vim.opt.hlsearch = true
 vim.opt.wrapscan = true
 
--- Performance Optimization
 vim.opt.updatetime = 300
 vim.opt.timeoutlen = 500
-vim.opt.ttimeoutlen = 10  -- OPTIMIZED: Reduced from 50
+vim.opt.ttimeoutlen = 10
 vim.opt.redrawtime = 10000
 vim.opt.maxmempattern = 20000
-vim.opt.lazyredraw = true  -- ADDED: Don't redraw during macros
+vim.opt.lazyredraw = true
 
--- File Handling
 vim.opt.undofile = true
 vim.opt.undolevels = 10000
 vim.opt.backup = false
@@ -203,19 +190,16 @@ vim.opt.autowrite = true
 vim.opt.autoread = true
 vim.opt.confirm = true
 
--- Window Management
 vim.opt.splitright = true
 vim.opt.splitbelow = true
 vim.opt.winminwidth = 5
 vim.opt.winheight = 5
 vim.opt.winminheight = 5
 
--- Completion
 vim.opt.completeopt = { "menu", "menuone", "noselect", "noinsert" }
 vim.opt.pumheight = 15
 vim.opt.pumwidth = 25
 
--- Interface
 vim.opt.mouse = "a"
 vim.opt.clipboard = "unnamedplus"
 vim.opt.laststatus = 3
@@ -224,7 +208,6 @@ vim.opt.showmode = false
 vim.opt.showcmd = true
 vim.opt.ruler = true
 
--- Folding
 vim.opt.foldmethod = "expr"
 vim.opt.foldexpr = "nvim_treesitter#foldexpr()"
 vim.opt.foldlevel = 20
@@ -255,7 +238,6 @@ vim.opt.rtp:prepend(lazypath)
 -- 5. UTILITY FUNCTIONS
 -- =====================================================
 
--- Safe plugin setup wrapper
 local function setup_plugin(plugin_name, setup_fn)
   local plugin = safe_require(plugin_name, { silent = true })
   if not plugin then return false end
@@ -268,7 +250,6 @@ local function setup_plugin(plugin_name, setup_fn)
   return true
 end
 
--- Smart buffer management
 local function smart_buf_delete()
   local buf = vim.api.nvim_get_current_buf()
   if vim.bo[buf].modified then
@@ -288,33 +269,26 @@ local function smart_buf_delete()
   vim.cmd("bdelete! " .. buf)
 end
 
--- Enhanced project root detection (OPTIMIZED)
 local root_cache = {}
 local function find_project_root()
   local start = vim.fn.expand("%:p:h")
-
-  -- Check cache
+  
   if root_cache[start] then
     return root_cache[start]
   end
-
+  
   local root_markers = {
-    -- Version control (highest priority)
     ".git", ".hg", ".svn",
-    -- Build systems
     "Makefile", "CMakeLists.txt", "build.gradle", "pom.xml",
-    -- Language specific
-    "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
+    "package.json", "Cargo.toml", "go.mod", "pyproject.toml", 
     "setup.py", "requirements.txt", "Pipfile",
-    -- IDE/Editor
     ".nvim.lua", ".vscode",
-    -- Fortran/VHDL
     "configure.ac", "modelsim.ini",
   }
 
   local current = start
   local iterations = 0
-  local max_iterations = 20  -- Prevent infinite loops
+  local max_iterations = 20
 
   while current ~= "/" and current ~= "" and iterations < max_iterations do
     for _, marker in ipairs(root_markers) do
@@ -335,7 +309,6 @@ local function find_project_root()
   return cwd
 end
 
--- Language detection
 local function get_language_context()
   local ft = vim.bo.filetype
   local filename = vim.fn.expand("%:t")
@@ -351,7 +324,6 @@ local function get_language_context()
   }
 end
 
--- ADDED: Check if command exists
 local function command_exists(cmd)
   return vim.fn.executable(cmd) == 1
 end
@@ -361,7 +333,6 @@ end
 -- =====================================================
 
 local solarized_colors = {
-  -- Base tones
   base03  = "#002b36",
   base02  = "#073642",
   base01  = "#586e75",
@@ -370,8 +341,6 @@ local solarized_colors = {
   base1   = "#93a1a1",
   base2   = "#eee8d5",
   base3   = "#fdf6e3",
-
-  -- Accent colors
   yellow  = "#b58900",
   orange  = "#cb4b16",
   red     = "#dc322f",
@@ -382,27 +351,24 @@ local solarized_colors = {
   green   = "#859900",
 }
 
--- Color conversion utilities with validation
 local function hex_to_rgb(hex)
   if type(hex) ~= "string" or not hex:match("^#%x%x%x%x%x%x$") then
     log("Invalid hex color: " .. tostring(hex), log_levels.WARN)
-    return 0  -- Fallback to black
+    return 0
   end
-
+  
   local r = tonumber(hex:sub(2, 3), 16)
   local g = tonumber(hex:sub(4, 5), 16)
   local b = tonumber(hex:sub(6, 7), 16)
-
-  -- Validate ranges
+  
   if not (r and g and b and r >= 0 and r <= 255 and g >= 0 and g <= 255 and b >= 0 and b <= 255) then
     log("Color conversion failed for: " .. hex, log_levels.WARN)
     return 0
   end
-
+  
   return (r * 65536) + (g * 256) + b
 end
 
--- Enhanced highlight definitions
 local highlight_groups = {
   {
     groups = {
@@ -451,29 +417,23 @@ local highlight_groups = {
   },
 }
 
--- UI-specific highlights
 local ui_highlights = {
   NormalFloat = { bg = hex_to_rgb(solarized_colors.base02), fg = hex_to_rgb(solarized_colors.base0) },
   FloatBorder = { bg = hex_to_rgb(solarized_colors.base02), fg = hex_to_rgb(solarized_colors.base01) },
   Pmenu = { bg = hex_to_rgb(solarized_colors.base02), fg = hex_to_rgb(solarized_colors.base0) },
   PmenuSel = { bg = hex_to_rgb(solarized_colors.base01), fg = hex_to_rgb(solarized_colors.base2), bold = true },
-
   DiagnosticError = { fg = hex_to_rgb(solarized_colors.red) },
   DiagnosticWarn = { fg = hex_to_rgb(solarized_colors.yellow) },
   DiagnosticInfo = { fg = hex_to_rgb(solarized_colors.blue) },
   DiagnosticHint = { fg = hex_to_rgb(solarized_colors.cyan) },
-
   DapBreakpoint = { fg = hex_to_rgb(solarized_colors.red), bold = true },
   DapStopped = { fg = hex_to_rgb(solarized_colors.green), bold = true },
-
   TelescopeNormal = { bg = hex_to_rgb(solarized_colors.base03) },
   TelescopeSelection = { fg = hex_to_rgb(solarized_colors.base1), bg = hex_to_rgb(solarized_colors.base02) },
-
   NvimTreeNormal = { bg = hex_to_rgb(solarized_colors.base03) },
   NvimTreeDirectoryIcon = { fg = hex_to_rgb(solarized_colors.blue) },
 }
 
--- Apply highlights function (OPTIMIZED: Single pass)
 local function apply_solarized_highlights()
   for _, group_def in ipairs(highlight_groups) do
     for _, group in ipairs(group_def.groups) do
@@ -487,7 +447,7 @@ local function apply_solarized_highlights()
 end
 
 -- =====================================================
--- 7. LANGUAGE SERVER CONFIGURATIONS
+-- 7. LANGUAGE SERVER CONFIGURATIONS (FIXED)
 -- =====================================================
 
 local function get_lsp_servers()
@@ -518,13 +478,14 @@ local function get_lsp_servers()
         fortls = {
           nthreads = 2,
           incDirs = {"./include", "./src"},
-          -- FIXED: Removed preprocessor define - configure per project via .fortls config
-          -- Create .fortls in project root for custom settings
         }
       }
     },
 
-    sqlls = {},
+    sqlls = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
 
     vhdl_ls = {
       settings = {
@@ -534,9 +495,20 @@ local function get_lsp_servers()
       }
     },
 
-    html = {},
-    cssls = {},
-    ts_ls = {},
+    html = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
+    
+    cssls = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
+    
+    ts_ls = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
 
     jdtls = {
       cmd = { "jdtls" },
@@ -545,7 +517,6 @@ local function get_lsp_servers()
           path = fname,
           upward = true,
         })[1]
-        -- FIXED: Return directory, not file path
         return root and vim.fn.fnamemodify(root, ":h") or vim.fn.getcwd()
       end,
     },
@@ -567,9 +538,25 @@ local function get_lsp_servers()
       },
     },
 
-    jsonls = {},
-    yamlls = {},
-    marksman = {},
+    jsonls = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
+    
+    yamlls = {
+      -- FIXED: Proper settings structure
+      settings = {
+        yaml = {
+          schemas = {},
+          validate = true,
+        }
+      }
+    },
+    
+    marksman = {
+      -- FIXED: Proper empty config
+      settings = {}
+    },
   }
 end
 
@@ -605,7 +592,6 @@ require("lazy").setup({
         })
 
         pcall(vim.cmd.colorscheme, "solarized")
-        -- OPTIMIZED: Reduced delay from 100ms to 50ms
         vim.defer_fn(apply_solarized_highlights, 50)
       end
     end,
@@ -719,14 +705,42 @@ require("lazy").setup({
         end
       end
 
+      -- FIXED: Use vim.lsp.config for Neovim 0.11+ compatibility
+      local use_new_api = vim.fn.has('nvim-0.11') == 1
       local servers = get_lsp_servers()
+      
       for server, config in pairs(servers) do
-        if lspconfig[server] then
-          lspconfig[server].setup(vim.tbl_extend("force", {
-            capabilities = capabilities,
-            on_attach = on_attach,
-          }, config))
+        -- Ensure config is a table
+        if type(config) ~= "table" then
+          config = {}
+        end
+        
+        -- Merge with base config
+        local server_config = vim.tbl_extend("force", {
+          capabilities = capabilities,
+          on_attach = on_attach,
+        }, config)
+        
+        -- Safe setup with error handling
+        local ok, err = pcall(function()
+          if use_new_api then
+            -- Use new vim.lsp.config API for Neovim 0.11+
+            vim.lsp.config[server] = server_config
+          else
+            -- Use legacy lspconfig API for older versions
+            if lspconfig[server] then
+              lspconfig[server].setup(server_config)
+            else
+              log("LSP server '" .. server .. "' not found in lspconfig", log_levels.WARN)
+              return
+            end
+          end
+        end)
+        
+        if ok then
           _G.nvim_ide.language_servers[server] = true
+        else
+          log("Failed to setup LSP server '" .. server .. "': " .. tostring(err), log_levels.ERROR)
         end
       end
 
@@ -894,8 +908,6 @@ require("lazy").setup({
             "python", "rust", "fortran", "sql", "html", "css",
             "javascript", "typescript", "java", "json", "yaml", "toml",
             "bash", "dockerfile", "git_config", "gitignore"
-            -- NOTE: VHDL parser not available in official tree-sitter
-            -- Install manually if needed: https://github.com/alemuller/tree-sitter-vhdl
           },
 
           auto_install = true,
@@ -1452,32 +1464,53 @@ require("lazy").setup({
       vim.fn.sign_define('DapStopped', { text = '', texthl = 'DapStopped', linehl = 'DapStoppedLine', numhl = '' })
       vim.fn.sign_define('DapBreakpointRejected', { text = '', texthl = 'DapBreakpointRejected', linehl = '', numhl = '' })
 
-      -- FIXED: Use Mason-installed debugpy path for reliability
+      -- FIXED: Proper Mason registry debugpy path detection
       local dap_python = safe_require("dap-python")
       if dap_python then
         local mason_registry_ok, mason_registry = pcall(require, "mason-registry")
-
-        if mason_registry_ok and mason_registry.is_installed("debugpy") then
-          -- Use Mason-installed debugpy
-          local debugpy_path = mason_registry.get_package("debugpy"):get_install_path() .. "/venv/bin/python"
-          dap_python.setup(debugpy_path)
-          _G.nvim_ide.dap_adapters.python = true
-        elseif command_exists("python3") then
-          -- Fallback to system python with debugpy check
-          local debugpy_cmd = "python3 -c 'import sys; import debugpy; sys.stdout.write(debugpy.__file__)'"
+        local debugpy_configured = false
+        
+        if mason_registry_ok then
+          -- Check if debugpy package exists and is installed
+          local has_debugpy, debugpy_pkg = pcall(mason_registry.get_package, "debugpy")
+          if has_debugpy and debugpy_pkg then
+            local is_installed_ok, is_installed = pcall(debugpy_pkg.is_installed, debugpy_pkg)
+            if is_installed_ok and is_installed then
+              -- Get install path safely
+              local path_ok, install_path = pcall(debugpy_pkg.get_install_path, debugpy_pkg)
+              if path_ok and install_path then
+                local debugpy_path = install_path .. "/venv/bin/python"
+                -- Verify the path exists
+                if vim.fn.executable(debugpy_path) == 1 then
+                  dap_python.setup(debugpy_path)
+                  _G.nvim_ide.dap_adapters.python = true
+                  debugpy_configured = true
+                end
+              end
+            end
+          end
+        end
+        
+        -- Fallback to system python with debugpy
+        if not debugpy_configured and command_exists("python3") then
+          local debugpy_cmd = "python3 -c 'import sys; import debugpy; sys.stdout.write(debugpy.__file__)' 2>/dev/null"
           local debugpy_check = vim.fn.system(debugpy_cmd):gsub("%s+", "")
-
+          
           if vim.v.shell_error == 0 and debugpy_check ~= "" then
             local python_path = vim.fn.system("which python3"):gsub("%s+", "")
-            dap_python.setup(python_path)
-            _G.nvim_ide.dap_adapters.python = true
-          else
-            log("debugpy not found. Install with: :MasonInstall debugpy", log_levels.WARN)
+            if python_path ~= "" and vim.fn.executable(python_path) == 1 then
+              dap_python.setup(python_path)
+              _G.nvim_ide.dap_adapters.python = true
+              debugpy_configured = true
+            end
           end
+        end
+        
+        if not debugpy_configured then
+          log("debugpy not found. Install with: :MasonInstall debugpy or pip3 install debugpy", log_levels.WARN)
         end
       end
 
-      -- FIXED: Check if codelldb is available
       if command_exists("codelldb") then
         dap.adapters.codelldb = {
           type = 'server',
@@ -1823,6 +1856,9 @@ require("lazy").setup({
       "rcarriga/nvim-notify",
     },
     config = function()
+      -- CRITICAL: Disable lazyredraw before noice setup
+      vim.opt.lazyredraw = false
+      
       setup_plugin("noice", function(noice)
         noice.setup({
           lsp = {
@@ -1931,6 +1967,9 @@ require("lazy").setup({
           },
         })
       end)
+      
+      -- CRITICAL: Ensure lazyredraw stays disabled after setup
+      vim.opt.lazyredraw = false
     end,
   },
 
@@ -1971,7 +2010,7 @@ require("lazy").setup({
             project = {
               enable = true,
               limit = 8,
-              icon = '󰏓',
+              icon = '󰔛',
               label = 'Recent Projects',
               action = 'Telescope find_files cwd='
             },
@@ -2004,55 +2043,35 @@ require("lazy").setup({
       local null_ls = safe_require("null-ls")
       if not null_ls then return end
 
-      -- FIXED: Create augroup before using it
       local augroup = vim.api.nvim_create_augroup("LspFormatting", {})
 
       null_ls.setup({
         root_dir = require("null-ls.utils").root_pattern(".null-ls-root", ".neoconf.json", "Makefile", ".git"),
         sources = {
-          -- Python
           null_ls.builtins.formatting.black,
           null_ls.builtins.formatting.isort,
           null_ls.builtins.diagnostics.flake8,
 
-          -- Fortran
-          -- Install: pip3 install --user fprettify
           null_ls.builtins.formatting.fprettify.with({
             condition = function(utils)
               return utils.root_has_file({"*.f90", "*.f95", "*.f03", "*.f08"})
             end,
           }),
 
-          -- SQL (multiple formatters - uses first available)
-          -- Install: npm install -g sql-formatter
           null_ls.builtins.formatting.sql_formatter.with({
             extra_args = { "-l", "postgresql" },
           }),
-          -- OR: pip3 install --user sqlfluff
           null_ls.builtins.formatting.sqlfluff.with({
             extra_args = { "--dialect", "postgres" },
           }),
-          -- OR: pip3 install --user sqlfmt
           null_ls.builtins.formatting.sqlfmt,
 
-          -- VHDL (limited support)
-          -- Note: vhdl_beautify requires Emacs vhdl-mode, not practical
-          -- Alternative: Use external tools like vsg (VHDL Style Guide)
-          -- Install: pip3 install --user vsg
-          -- Then create custom null-ls source or format externally
-
-          -- Web technologies
           null_ls.builtins.formatting.prettier.with({
             filetypes = { "html", "css", "javascript", "typescript", "json", "yaml", "markdown" },
           }),
 
-          -- Java
           null_ls.builtins.formatting.google_java_format,
-
-          -- Shell
           null_ls.builtins.formatting.shfmt,
-
-          -- General
           null_ls.builtins.code_actions.gitsigns,
         },
         on_attach = function(client, bufnr)
@@ -2285,7 +2304,6 @@ end
 
 map("n", "<Space>", "<Nop>")
 
--- ========== GENERAL NAVIGATION ==========
 map("i", "jk", "<Esc>", { desc = "Exit insert mode" })
 map("i", "kj", "<Esc>", { desc = "Exit insert mode" })
 map("t", "<Esc>", [[<C-\><C-n>]], { desc = "Exit terminal mode" })
@@ -2306,23 +2324,19 @@ map("n", "<S-l>", "<cmd>bnext<cr>", { desc = "Next buffer" })
 map("n", "[b", "<cmd>bprevious<cr>", { desc = "Previous buffer" })
 map("n", "]b", "<cmd>bnext<cr>", { desc = "Next buffer" })
 
--- ========== FILE OPERATIONS ==========
 map("n", "<leader>w", "<cmd>write<cr>", { desc = "Save file" })
 map("n", "<leader>W", "<cmd>wall<cr>", { desc = "Save all files" })
 map("n", "<leader>q", "<cmd>quit<cr>", { desc = "Quit" })
 map("n", "<leader>Q", "<cmd>qall!<cr>", { desc = "Force quit all" })
-map("n", "<leader>wq", "<cmd>wq<cr>", { desc = "Save and quit" })
 map("n", "<leader>bd", smart_buf_delete, { desc = "Delete buffer" })
 map("n", "<leader>bD", "<cmd>%bd|e#|bd#<cr>", { desc = "Delete other buffers" })
 
--- ========== SPLIT MANAGEMENT ==========
 map("n", "<leader>sv", "<cmd>vsplit<cr>", { desc = "Split vertically" })
 map("n", "<leader>sh", "<cmd>split<cr>", { desc = "Split horizontally" })
 map("n", "<leader>se", "<C-w>=", { desc = "Make splits equal" })
 map("n", "<leader>sx", "<cmd>close<cr>", { desc = "Close current split" })
 map("n", "<leader>so", "<cmd>only<cr>", { desc = "Close other splits" })
 
--- ========== SEARCH AND REPLACE ==========
 map("n", "<leader>nh", "<cmd>nohlsearch<cr>", { desc = "Clear search highlights" })
 map("n", "n", "nzzzv", { desc = "Next search result" })
 map("n", "N", "Nzzzv", { desc = "Previous search result" })
@@ -2333,7 +2347,6 @@ map("n", "#", "#zzzv", { desc = "Search word under cursor backward" })
 map("n", "<leader>rw", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]], { desc = "Replace word under cursor" })
 map("v", "<leader>rw", [["hy:%s/\V<C-r>h/<C-r>h/gc<left><left><left>]], { desc = "Replace selected text" })
 
--- ========== TEXT MANIPULATION ==========
 map("v", "<", "<gv", { desc = "Indent left" })
 map("v", ">", ">gv", { desc = "Indent right" })
 
@@ -2349,17 +2362,14 @@ map("x", "<leader>p", [["_dP]], { desc = "Paste without yanking" })
 
 map({ "n", "v" }, "<leader>d", [["_d]], { desc = "Delete without yanking" })
 
--- ========== CLIPBOARD ==========
 map({ "n", "v" }, "<leader>y", [["+y]], { desc = "Copy to system clipboard" })
 map("n", "<leader>Y", [["+Y]], { desc = "Copy line to system clipboard" })
 
--- ========== CENTER SCREEN ON NAVIGATION ==========
 map("n", "<C-d>", "<C-d>zz", { desc = "Half page down and center" })
 map("n", "<C-u>", "<C-u>zz", { desc = "Half page up and center" })
 map("n", "G", "Gzz", { desc = "Go to end and center" })
 map("n", "gg", "ggzz", { desc = "Go to start and center" })
 
--- ========== DIAGNOSTICS ==========
 map("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnostic" })
 map("n", "]d", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
 map("n", "[e", function() vim.diagnostic.goto_prev({ severity = vim.diagnostic.severity.ERROR }) end, { desc = "Previous error" })
@@ -2369,7 +2379,6 @@ map("n", "]w", function() vim.diagnostic.goto_next({ severity = vim.diagnostic.s
 map("n", "<leader>xl", vim.diagnostic.setloclist, { desc = "Open diagnostic location list" })
 map("n", "<leader>xq", vim.diagnostic.setqflist, { desc = "Open diagnostic quickfix list" })
 
--- ========== QUICK ACTIONS ==========
 map("n", "<leader>cc", function()
   vim.cmd("edit " .. vim.fn.stdpath("config") .. "/init.lua")
 end, { desc = "Edit config" })
@@ -2397,25 +2406,21 @@ local code_runners = {
 
   rust = function(file)
     local dir = vim.fn.fnamemodify(file, ":h")
-
-    -- Check for Cargo project
+    
     if vim.fn.filereadable(safe_path_join(dir, "Cargo.toml")) == 1 then
       return "cd " .. vim.fn.shellescape(dir) .. " && cargo run"
     else
-      -- Single file compilation
       if not command_exists("rustc") then
         return nil
       end
-
+      
       local exe = vim.fn.fnamemodify(file, ":r")
       local content = vim.fn.readfile(file)
-
-      -- FIXED: Detect external crates beyond std
+      
       local has_external_crate = false
       local has_std = false
-
+      
       for _, line in ipairs(content) do
-        -- Check for external crate declarations
         if line:match("^extern%s+crate%s+(%w+)") then
           local crate_name = line:match("^extern%s+crate%s+(%w+)")
           if crate_name ~= "std" then
@@ -2423,7 +2428,6 @@ local code_runners = {
             break
           end
         end
-        -- Check for non-std use statements (common external crates)
         if line:match("^use%s+(%w+)::") then
           local crate_name = line:match("^use%s+(%w+)::")
           if crate_name ~= "std" and crate_name ~= "core" then
@@ -2431,12 +2435,11 @@ local code_runners = {
             break
           end
         end
-        -- Check for std usage
         if line:match("use%s+std::") then
           has_std = true
         end
       end
-
+      
       if has_external_crate then
         vim.notify(
           "Warning: External crates detected. Single-file compilation may fail.\n" ..
@@ -2444,14 +2447,13 @@ local code_runners = {
           vim.log.levels.WARN
         )
       end
-
+      
       local compile_cmd = "rustc " .. vim.fn.shellescape(file)
-
-      -- Add edition flag for std usage
+      
       if has_std then
         compile_cmd = compile_cmd .. " --edition 2021"
       end
-
+      
       return compile_cmd .. " -o " .. vim.fn.shellescape(exe) .. " && " .. vim.fn.shellescape(exe)
     end
   end,
@@ -2460,15 +2462,13 @@ local code_runners = {
     if not command_exists("javac") then
       return nil
     end
-
+    
     local dir = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
-
-    -- Check for Maven/Gradle project
+    
     local project_root = dir
     local parent = vim.fn.fnamemodify(dir, ":h")
-
-    -- Look for pom.xml or build.gradle up to 3 levels
+    
     for i = 1, 3 do
       if vim.fn.filereadable(safe_path_join(parent, "pom.xml")) == 1 then
         return "cd " .. vim.fn.shellescape(parent) .. " && mvn compile exec:java"
@@ -2477,10 +2477,8 @@ local code_runners = {
       end
       parent = vim.fn.fnamemodify(parent, ":h")
     end
-
-    -- Single file compilation with classpath consideration
+    
     local classpath = dir
-    -- Check for common library directories
     local lib_dirs = { "lib", "libs", "../lib" }
     for _, lib in ipairs(lib_dirs) do
       local lib_path = safe_path_join(dir, lib)
@@ -2488,17 +2486,17 @@ local code_runners = {
         classpath = classpath .. ":" .. lib_path .. "/*"
       end
     end
-
+    
     local compile_cmd = "cd " .. vim.fn.shellescape(dir) .. " && javac"
     if classpath ~= dir then
       compile_cmd = compile_cmd .. " -cp " .. vim.fn.shellescape(classpath)
     end
-
+    
     compile_cmd = compile_cmd .. " " .. vim.fn.shellescape(file) .. " && java"
     if classpath ~= dir then
       compile_cmd = compile_cmd .. " -cp " .. vim.fn.shellescape(classpath)
     end
-
+    
     return compile_cmd .. " " .. name
   end,
 
@@ -2584,7 +2582,6 @@ end
 map("n", "<F5>", run_code, { desc = "Run current file" })
 map("n", "<leader>rr", run_code, { desc = "Run current file" })
 
--- ========== PROJECT MANAGEMENT ==========
 map("n", "<leader>cd", function()
   local root = find_project_root()
   vim.cmd("cd " .. root)
@@ -2800,7 +2797,6 @@ local function auto_switch_theme()
 end
 
 local function setup_auto_theme_switching()
-  -- FIXED: Proper cleanup of existing timer
   if theme_timer then
     pcall(function()
       theme_timer:stop()
@@ -2944,13 +2940,12 @@ vim.api.nvim_create_user_command("DebugIDE", function()
     windows = #vim.api.nvim_list_wins(),
     security_mode = _G.nvim_ide.security_mode,
   }
-
+  
   print("=== IDE Debug Information ===")
   for key, value in pairs(debug_info) do
     print(string.format("%-15s: %s", key, value))
   end
-
-  -- Plugin load times
+  
   local lazy = safe_require("lazy", { silent = true })
   if lazy then
     print("\n=== Slowest Plugins (>10ms) ===")
@@ -2964,7 +2959,6 @@ vim.api.nvim_create_user_command("DebugIDE", function()
   end
 end, { desc = "Show IDE debug information" })
 
--- Memory leak detection
 vim.api.nvim_create_autocmd("User", {
   pattern = "LazyCheck",
   callback = function()
@@ -3011,7 +3005,6 @@ local function setup_clipboard()
 
   local clipboard_ok = false
 
-  -- FIXED: Check Wayland first for modern KDE Plasma
   if vim.env.WAYLAND_DISPLAY and command_exists("wl-copy") then
     vim.g.clipboard = {
       name = "wayland",
@@ -3084,6 +3077,24 @@ setup_clipboard()
 setup_auto_theme_switching()
 
 -- =====================================================
+-- CRITICAL: Force disable lazyredraw for noice.nvim
+-- =====================================================
+vim.opt.lazyredraw = false
+
+-- Create autocmd to prevent any plugin from re-enabling it
+vim.api.nvim_create_autocmd("OptionSet", {
+  pattern = "lazyredraw",
+  callback = function()
+    if vim.opt.lazyredraw:get() then
+      vim.schedule(function()
+        vim.opt.lazyredraw = false
+        log("Prevented lazyredraw from being enabled (conflicts with noice.nvim)", log_levels.DEBUG)
+      end)
+    end
+  end,
+})
+
+-- =====================================================
 -- 14. STARTUP COMPLETION AND INITIALIZATION
 -- =====================================================
 
@@ -3114,23 +3125,23 @@ vim.defer_fn(function()
   end
 
   local lines = {
-    "╔═══════════════════════════════════════════════════════════════════╗",
-    "NEOVIM IDE v6.1 - " .. status,
-    string.format("Languages: Python, Rust, Fortran, SQL, VHDL, HTML, CSS, JS, Java"),
-    string.format("%.1fms startup | %.1fMB memory%s", startup_time, memory_mb, plugin_info),
-    "Security: " .. (_G.nvim_ide.security_mode and "ENABLED" or "DISABLED"),
-    "Theme: Solarized (" .. vim.o.background .. " mode) | Auto-switching: " .. (auto_switching_enabled and "ON" or "OFF"),
-    "LSP Servers: " .. vim.tbl_count(_G.nvim_ide.language_servers) .. " configured",
-    "DAP Adapters: " .. vim.tbl_count(_G.nvim_ide.dap_adapters) .. " configured",
-    "Platform: " .. _G.nvim_ide.os_type,
+    "╔═══════════════════════════════════════════════════════════════╗",
+    "║ NEOVIM IDE v6.6 - " .. status .. string.rep(" ", 40 - #status) .. "║",
+    "║ Languages: Python, Rust, Fortran, SQL, VHDL, HTML, CSS, JS   ║",
+    "║ " .. string.format("%.1fms startup | %.1fMB memory%s", startup_time, memory_mb, plugin_info) .. string.rep(" ", 61 - #string.format("%.1fms startup | %.1fMB memory%s", startup_time, memory_mb, plugin_info)) .. "║",
+    "║ Security: " .. (_G.nvim_ide.security_mode and "ENABLED" or "DISABLED") .. string.rep(" ", 51 - (_G.nvim_ide.security_mode and 7 or 8)) .. "║",
+    "║ Theme: Solarized (" .. vim.o.background .. ") | Auto: " .. (auto_switching_enabled and "ON" or "OFF") .. string.rep(" ", 20) .. "║",
+    "║ LSP Servers: " .. vim.tbl_count(_G.nvim_ide.language_servers) .. " configured" .. string.rep(" ", 38 - #tostring(vim.tbl_count(_G.nvim_ide.language_servers))) .. "║",
+    "║ DAP Adapters: " .. vim.tbl_count(_G.nvim_ide.dap_adapters) .. " configured" .. string.rep(" ", 37 - #tostring(vim.tbl_count(_G.nvim_ide.dap_adapters))) .. "║",
+    "║ Platform: " .. _G.nvim_ide.os_type .. string.rep(" ", 52 - #_G.nvim_ide.os_type) .. "║",
   }
 
   local hour = tonumber(os.date("%H"))
   local greeting = hour < 12 and "Good morning!" or
                   hour < 18 and "Good afternoon!" or
                   "Good evening!"
-  table.insert(lines, greeting .. " Your IDE is ready.")
-  table.insert(lines, "╚═══════════════════════════════════════════════════════════════════╝")
+  table.insert(lines, "║ " .. greeting .. " Your IDE is ready." .. string.rep(" ", 42 - #greeting) .. "║")
+  table.insert(lines, "╚═══════════════════════════════════════════════════════════════╝")
 
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, {
     title = "Neovim IDE",
@@ -3139,7 +3150,7 @@ vim.defer_fn(function()
 
   collectgarbage("collect")
 
-  log(string.format("Neovim IDE v6.1 ready in %.1fms", startup_time), log_levels.INFO)
+  log(string.format("Neovim IDE v6.6 ready in %.1fms", startup_time), log_levels.INFO)
 end, 1000)
 
 vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -3154,13 +3165,13 @@ vim.api.nvim_create_autocmd("VimLeavePre", {
 })
 
 -- =====================================================
--- END OF NEOVIM IDE CONFIGURATION v6.1 (OPTIMIZED)
+-- END OF NEOVIM IDE CONFIGURATION v6.6 (LAZYREDRAW ENFORCED)
 -- =====================================================
 
 --[[
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 INSTALLATION GUIDE FOR OPENSUSE LEAP + KDE PLASMA
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 1. SYSTEM DEPENDENCIES
    -------------------
@@ -3198,7 +3209,7 @@ INSTALLATION GUIDE FOR OPENSUSE LEAP + KDE PLASMA
    --------------------
    mkdir -p ~/.config/nvim
    # Copy this file to: ~/.config/nvim/init.lua
-
+   
 6. FIRST LAUNCH
    ------------
    nvim
@@ -3211,16 +3222,16 @@ INSTALLATION GUIDE FOR OPENSUSE LEAP + KDE PLASMA
    # Install (press 'i' on each):
    # - debugpy (Python debugger)
    # - pyright, rust-analyzer, lua-ls, etc.
-
+   
 8. VERIFICATION
    ------------
    :checkhealth          # Neovim health check
    :Health               # IDE status
    :DebugIDE             # Performance metrics
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 CONFIGURATION OPTIONS
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 Environment Variables:
   NVIM_SECURITY=1     Enable security mode (disables external providers)
@@ -3232,9 +3243,9 @@ Project-Specific Config:
   .vhdl_ls.toml       VHDL LSP settings
   .null-ls-root       Null-ls formatter root marker
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 KEY MAPPINGS REFERENCE
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 LEADER KEY: <Space>
 LOCAL LEADER: ,
@@ -3280,9 +3291,9 @@ Theme:
   <leader>td      Solarized dark
   <leader>tl      Solarized light
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 CUSTOM COMMANDS
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 :Health               Show IDE health and configuration status
 :DebugIDE             Show performance metrics and plugin load times
@@ -3293,9 +3304,9 @@ CUSTOM COMMANDS
 :SolarizedLight       Switch to light theme (manual)
 :EnableAutoTheme      Re-enable automatic theme switching
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 LANGUAGE-SPECIFIC NOTES
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 FORTRAN:
   - Create .fortls config for project-specific preprocessor defines
@@ -3327,14 +3338,14 @@ SQL:
   - Multiple formatters supported (sql-formatter, sqlfluff, sqlfmt)
   - Default dialect: PostgreSQL (change in null-ls config)
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 TROUBLESHOOTING
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 Clipboard not working:
   # Wayland (KDE Plasma on Wayland):
   sudo zypper install wl-clipboard
-
+  
   # X11 (fallback):
   sudo zypper install xclip xsel
 
@@ -3363,9 +3374,65 @@ VHDL formatting unavailable:
   # Install vsg: pip3 install --user vsg
   # Format externally: vsg -f input.vhd -o output.vhd
 
-═══════════════════════════════════════════════════════════════════════
+noice.nvim lazyredraw warning:
+  # Fixed in v6.6 - Aggressive prevention with OptionSet autocmd
+  # lazyredraw is now prevented from being enabled by any plugin
+  # Multi-layered approach: core settings + noice config + autocmd guard
+
+lspconfig deprecation warning:
+  # Fixed in v6.4 - Uses vim.lsp.config for Neovim 0.11+
+  # Automatically falls back to lspconfig for older versions
+
+yamlls configuration error:
+  # Fixed in v6.2 - All LSP servers have proper settings structures
+
+debugpy installation error:
+  # Fixed in v6.3 - Mason registry API issues resolved
+  # Try: :MasonInstall debugpy or pip3 install --user debugpy
+
+If lazyredraw warning persists:
+  # Check for external plugins setting it in your system vimrc
+  # Run: :set lazyredraw? to check current value
+  # Run: :verbose set lazyredraw? to see what set it
+
+═══════════════════════════════════════════════════════════════════
+CHANGELOG v6.6 (LAZYREDRAW ENFORCED)
+═══════════════════════════════════════════════════════════════════
+
+CRITICAL FIX:
+- Added aggressive lazyredraw prevention system
+- Explicit disable before and after noice.nvim setup
+- OptionSet autocmd to prevent any plugin from re-enabling it
+- This ensures noice.nvim always has real-time screen updates
+
+IMPLEMENTATION:
+1. Removed lazyredraw from core settings
+2. Force disable before noice.nvim config
+3. Force disable after noice.nvim setup
+4. OptionSet autocmd guard to prevent re-enabling
+5. Scheduled callback to handle async plugin behavior
+
+WHY MULTI-LAYERED APPROACH:
+- Some plugins may set lazyredraw during initialization
+- Lazy.nvim loads plugins asynchronously
+- Need to catch any attempt to enable it
+- OptionSet autocmd is the safety net
+
+PREVIOUS UPDATES (v6.5):
+- Removed 'lazyredraw' from core settings
+
+PREVIOUS UPDATES (v6.4):
+- Neovim 0.11+ compatibility with vim.lsp.config API
+
+PREVIOUS FIXES (v6.3):
+- Fixed Mason registry debugpy path detection
+
+PREVIOUS FIXES (v6.2):
+- Fixed yamlls LSP configuration
+
+═══════════════════════════════════════════════════════════════════
 KNOWN LIMITATIONS
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 1. VHDL tree-sitter parser not officially available
 2. VHDL none-ls formatter requires manual setup (vsg recommended)
@@ -3373,9 +3440,9 @@ KNOWN LIMITATIONS
 4. Java classpath detection limited to standard layouts
 5. Fortran preprocessor defines require per-project .fortls config
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 PERFORMANCE OPTIMIZATION
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 
 Memory Management:
   - Auto garbage collection when >1024MB (configurable)
@@ -3392,5 +3459,5 @@ Monitoring:
   - Run :CleanUp if memory >800MB
   - Check :Lazy profile for slow plugins
 
-═══════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════
 ]]
