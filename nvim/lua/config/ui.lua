@@ -1,48 +1,51 @@
 -- ~/.config/nvim/lua/config/ui.lua
--- UI plugin configurations
 
 local helpers = require("utils.helpers")
 local theme = require("core.theme")
 
 -- Lualine
 helpers.setup_plugin("lualine", function(lualine)
-  local colors = theme.colors
+  local c = theme.colors
   
   lualine.setup({
     options = {
       theme = {
         normal = {
-          a = { fg = colors.base03, bg = colors.blue, gui = 'bold' },
-          b = { fg = colors.base0, bg = colors.base02 },
-          c = { fg = colors.base1, bg = colors.base03 },
+          a = { fg = c.base03, bg = c.blue, gui = 'bold' },
+          b = { fg = c.base0, bg = c.base02 },
+          c = { fg = c.base1, bg = c.base03 },
         },
-        insert = { a = { fg = colors.base03, bg = colors.green, gui = 'bold' } },
-        visual = { a = { fg = colors.base03, bg = colors.magenta, gui = 'bold' } },
-        replace = { a = { fg = colors.base03, bg = colors.red, gui = 'bold' } },
+        insert = { a = { fg = c.base03, bg = c.green, gui = 'bold' } },
+        visual = { a = { fg = c.base03, bg = c.magenta, gui = 'bold' } },
+        replace = { a = { fg = c.base03, bg = c.red, gui = 'bold' } },
       },
       globalstatus = true,
       section_separators = { left = '', right = '' },
       component_separators = { left = '', right = '' },
     },
     sections = {
-      lualine_a = { { 'mode', fmt = function(str) return str:sub(1,1) end } },
-      lualine_b = { 'branch', 'diff', 'diagnostics' },
-      lualine_c = { { 'filename', path = 1 } },
+      lualine_a = { { 'mode', fmt = function(s) return s:sub(1,1) end } },
+      lualine_b = { 'branch', 'diff' },
+      lualine_c = {
+        { 'filename', path = 1, symbols = { modified = '●', readonly = '' } }
+      },
       lualine_x = {
+        {
+          'diagnostics',
+          sources = { 'nvim_diagnostic' },
+          symbols = { error = ' ', warn = ' ', info = ' ', hint = '󰌵 ' },
+        },
         {
           function()
             local clients = vim.lsp.get_clients({ bufnr = 0 })
-            if next(clients) == nil then return 'No LSP' end
+            if #clients == 0 then return '' end
             local names = {}
-            for _, client in pairs(clients) do
-              table.insert(names, client.name)
-            end
-            return ' ' .. table.concat(names, ', ')
+            for _, c in pairs(clients) do table.insert(names, c.name) end
+            return ' ' .. table.concat(names, ',')
           end,
+          color = { fg = c.green },
         },
-        'encoding',
-        'fileformat',
-        'filetype'
+        'filetype',
       },
       lualine_y = { 'progress' },
       lualine_z = { 'location' }
@@ -56,11 +59,13 @@ helpers.setup_plugin("bufferline", function(bufferline)
     options = {
       mode = "buffers",
       numbers = "ordinal",
-      close_command = function(n) helpers.smart_buf_delete() end,
-      indicator = { icon = '▎', style = 'icon' },
+      close_command = "bd %d",
+      indicator = { style = 'underline' },
       buffer_close_icon = '',
       modified_icon = '●',
       close_icon = '',
+      left_trunc_marker = '',
+      right_trunc_marker = '',
       diagnostics = "nvim_lsp",
       diagnostics_indicator = function(count, level)
         local icon = level:match("error") and " " or " "
@@ -69,13 +74,13 @@ helpers.setup_plugin("bufferline", function(bufferline)
       offsets = {
         {
           filetype = "NvimTree",
-          text = " File Explorer",
-          text_align = "left",
+          text = "Explorer",
+          text_align = "center",
           separator = true
         }
       },
       separator_style = "thin",
-      always_show_bufferline = true,
+      always_show_bufferline = false,
     },
   })
 end)
@@ -83,27 +88,51 @@ end)
 -- Dashboard
 helpers.setup_plugin("dashboard", function(dashboard)
   dashboard.setup({
-    theme = 'hyper',
+    theme = 'doom',
     config = {
-      week_header = { enable = true },
-      shortcut = {
-        { desc = ' Update', group = '@property', action = 'Lazy update', key = 'u' },
-        { desc = ' Files', group = 'Label', action = 'Telescope find_files', key = 'f' },
+      header = {
+        '',
+        '███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗',
+        '████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║',
+        '██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║',
+        '██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║',
+        '██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║',
+        '╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝',
+        '',
       },
-      packages = { enable = true },
-      project = { enable = true, limit = 8 },
-      mru = { limit = 10 },
+      center = {
+        { icon = ' ', desc = 'Find File', key = 'f', action = 'Telescope find_files' },
+        { icon = ' ', desc = 'Recent Files', key = 'r', action = 'Telescope oldfiles' },
+        { icon = ' ', desc = 'Find Text', key = 'g', action = 'Telescope live_grep' },
+        { icon = ' ', desc = 'Config', key = 'c', action = 'edit ~/.config/nvim/init.lua' },
+        { icon = ' ', desc = 'Lazy', key = 'l', action = 'Lazy' },
+        { icon = ' ', desc = 'Quit', key = 'q', action = 'quit' },
+      },
       footer = function()
-        local lazy_ok, lazy = pcall(require, "lazy")
-        if lazy_ok then
-          local stats = lazy.stats()
-          return {
-            "⚡ " .. stats.loaded .. "/" .. stats.count .. " plugins loaded",
-            os.date("%Y-%m-%d %H:%M:%S")
-          }
-        end
-        return {}
+        local stats = require("lazy").stats()
+        return { '', '⚡ ' .. stats.loaded .. '/' .. stats.count .. ' plugins loaded' }
       end,
+    },
+  })
+end)
+
+-- Indent blankline
+helpers.setup_plugin("ibl", function(ibl)
+  ibl.setup({
+    indent = {
+      char = "│",
+      tab_char = "│",
+    },
+    scope = {
+      enabled = true,
+      show_start = false,
+      show_end = false,
+    },
+    exclude = {
+      filetypes = {
+        "help", "dashboard", "lazy", "mason",
+        "NvimTree", "Trouble", "notify"
+      },
     },
   })
 end)

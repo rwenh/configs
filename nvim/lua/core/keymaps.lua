@@ -1,171 +1,112 @@
 -- ~/.config/nvim/lua/core/keymaps.lua
--- All keybindings
 
-local helpers = require("utils.helpers")
+local map = vim.keymap.set
+local opts = { silent = true }
 
-local function map(mode, lhs, rhs, opts)
-  opts = vim.tbl_extend("force", { silent = true, noremap = true }, opts or {})
-  vim.keymap.set(mode, lhs, rhs, opts)
-end
-
--- Clear space in normal mode
-map("n", "<Space>", "<Nop>")
-
--- Insert mode escapes
-map("i", "jk", "<Esc>", { desc = "Exit insert mode" })
-map("i", "kj", "<Esc>", { desc = "Exit insert mode" })
-map("t", "<Esc>", [[<C-\><C-n>]], { desc = "Exit terminal mode" })
-map("t", "jk", [[<C-\><C-n>]], { desc = "Exit terminal mode" })
+-- Better escape
+map("i", "jk", "<Esc>", opts)
+map("i", "kj", "<Esc>", opts)
 
 -- Window navigation
-map("n", "<C-h>", "<C-w>h", { desc = "Left window" })
-map("n", "<C-j>", "<C-w>j", { desc = "Lower window" })
-map("n", "<C-k>", "<C-w>k", { desc = "Upper window" })
-map("n", "<C-l>", "<C-w>l", { desc = "Right window" })
+map("n", "<C-h>", "<C-w>h", opts)
+map("n", "<C-j>", "<C-w>j", opts)
+map("n", "<C-k>", "<C-w>k", opts)
+map("n", "<C-l>", "<C-w>l", opts)
 
--- Window resize
-map("n", "<C-Up>", "<cmd>resize +2<cr>", { desc = "Increase height" })
-map("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease height" })
-map("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease width" })
-map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase width" })
+-- Resize windows
+map("n", "<C-Up>", "<cmd>resize +2<cr>", opts)
+map("n", "<C-Down>", "<cmd>resize -2<cr>", opts)
+map("n", "<C-Left>", "<cmd>vertical resize -2<cr>", opts)
+map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", opts)
 
 -- Buffer navigation
-map("n", "<S-h>", "<cmd>bprevious<cr>", { desc = "Previous buffer" })
-map("n", "<S-l>", "<cmd>bnext<cr>", { desc = "Next buffer" })
-map("n", "[b", "<cmd>bprevious<cr>", { desc = "Previous buffer" })
-map("n", "]b", "<cmd>bnext<cr>", { desc = "Next buffer" })
+map("n", "<S-h>", "<cmd>bprev<cr>", opts)
+map("n", "<S-l>", "<cmd>bnext<cr>", opts)
+map("n", "<leader>bd", "<cmd>bd<cr>", opts)
 
 -- File operations
-map("n", "<leader>w", "<cmd>write<cr>", { desc = "Save file" })
-map("n", "<leader>W", "<cmd>wall<cr>", { desc = "Save all files" })
-map("n", "<leader>q", "<cmd>quit<cr>", { desc = "Quit" })
-map("n", "<leader>Q", "<cmd>qall!<cr>", { desc = "Force quit all" })
-map("n", "<leader>bd", helpers.smart_buf_delete, { desc = "Delete buffer" })
-map("n", "<leader>bD", "<cmd>%bd|e#|bd#<cr>", { desc = "Delete other buffers" })
+map("n", "<leader>w", "<cmd>w<cr>", opts)
+map("n", "<leader>q", "<cmd>q<cr>", opts)
 
--- Splits
-map("n", "<leader>sv", "<cmd>vsplit<cr>", { desc = "Split vertically" })
-map("n", "<leader>sh", "<cmd>split<cr>", { desc = "Split horizontally" })
-map("n", "<leader>se", "<C-w>=", { desc = "Make splits equal" })
-map("n", "<leader>sx", "<cmd>close<cr>", { desc = "Close current split" })
-map("n", "<leader>so", "<cmd>only<cr>", { desc = "Close other splits" })
-
--- Search
-map("n", "<leader>nh", "<cmd>nohlsearch<cr>", { desc = "Clear search highlights" })
-map("n", "n", "nzzzv", { desc = "Next search result" })
-map("n", "N", "Nzzzv", { desc = "Previous search result" })
-map("n", "*", "*zzzv", { desc = "Search word forward" })
-map("n", "#", "#zzzv", { desc = "Search word backward" })
-
--- Replace
-map("n", "<leader>rw", [[:%s/\<<C-r><C-w>\>/<C-r><C-w>/gI<Left><Left><Left>]], { desc = "Replace word" })
-map("v", "<leader>rw", [["hy:%s/\V<C-r>h/<C-r>h/gc<left><left><left>]], { desc = "Replace selection" })
-
--- Visual mode
-map("v", "<", "<gv", { desc = "Indent left" })
-map("v", ">", ">gv", { desc = "Indent right" })
-map("v", "p", '"_dP', { desc = "Paste without yanking" })
-map("x", "<leader>p", [["_dP]], { desc = "Paste without yanking" })
+-- Better indenting
+map("v", "<", "<gv", opts)
+map("v", ">", ">gv", opts)
 
 -- Move lines
-map("n", "<A-j>", "<cmd>move .+1<cr>==", { desc = "Move line down" })
-map("n", "<A-k>", "<cmd>move .-2<cr>==", { desc = "Move line up" })
-map("i", "<A-j>", "<Esc><cmd>move .+1<cr>==gi", { desc = "Move line down" })
-map("i", "<A-k>", "<Esc><cmd>move .-2<cr>==gi", { desc = "Move line up" })
-map("v", "<A-j>", ":move '>+1<cr>gv=gv", { desc = "Move selection down" })
-map("v", "<A-k>", ":move '<-2<cr>gv=gv", { desc = "Move selection up" })
+map("n", "<A-j>", "<cmd>m .+1<cr>==", opts)
+map("n", "<A-k>", "<cmd>m .-2<cr>==", opts)
+map("v", "<A-j>", ":m '>+1<cr>gv=gv", opts)
+map("v", "<A-k>", ":m '<-2<cr>gv=gv", opts)
 
--- Clipboard
-map({ "n", "v" }, "<leader>y", [["+y]], { desc = "Copy to system clipboard" })
-map("n", "<leader>Y", [["+Y]], { desc = "Copy line to clipboard" })
-map({ "n", "v" }, "<leader>d", [["_d]], { desc = "Delete without yanking" })
+-- Better paste
+map("v", "p", '"_dP', opts)
 
 -- Center movements
-map("n", "<C-d>", "<C-d>zz", { desc = "Half page down and center" })
-map("n", "<C-u>", "<C-u>zz", { desc = "Half page up and center" })
-map("n", "G", "Gzz", { desc = "Go to end and center" })
-map("n", "gg", "ggzz", { desc = "Go to start and center" })
+map("n", "<C-d>", "<C-d>zz", opts)
+map("n", "<C-u>", "<C-u>zz", opts)
+map("n", "n", "nzzzv", opts)
+map("n", "N", "Nzzzv", opts)
+
+-- Clear search
+map("n", "<Esc>", "<cmd>noh<cr>", opts)
 
 -- Diagnostics
-map("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnostic" })
-map("n", "]d", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
-map("n", "[e", function() vim.diagnostic.goto_prev({ severity = vim.diagnostic.severity.ERROR }) end, { desc = "Previous error" })
-map("n", "]e", function() vim.diagnostic.goto_next({ severity = vim.diagnostic.severity.ERROR }) end, { desc = "Next error" })
-map("n", "<leader>e", vim.diagnostic.open_float, { desc = "Show diagnostics" })
-map("n", "<leader>xl", vim.diagnostic.setloclist, { desc = "Diagnostic loclist" })
+map("n", "[d", vim.diagnostic.goto_prev, opts)
+map("n", "]d", vim.diagnostic.goto_next, opts)
+map("n", "<leader>e", vim.diagnostic.open_float, opts)
 
 -- Telescope
-map("n", "<leader>ff", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
-map("n", "<leader>fg", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
-map("n", "<leader>fb", "<cmd>Telescope buffers<cr>", { desc = "Find buffers" })
-map("n", "<leader>fh", "<cmd>Telescope help_tags<cr>", { desc = "Help tags" })
-map("n", "<C-p>", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
-map("n", "<C-f>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
+map("n", "<leader>ff", "<cmd>Telescope find_files<cr>", opts)
+map("n", "<leader>fg", "<cmd>Telescope live_grep<cr>", opts)
+map("n", "<leader>fb", "<cmd>Telescope buffers<cr>", opts)
+map("n", "<leader>fh", "<cmd>Telescope help_tags<cr>", opts)
+map("n", "<leader>fr", "<cmd>Telescope oldfiles<cr>", opts)
+map("n", "<leader>fw", "<cmd>Telescope grep_string<cr>", opts)
+
+-- Quick access
+map("n", "<C-p>", "<cmd>Telescope find_files<cr>", opts)
+map("n", "<C-f>", "<cmd>Telescope live_grep<cr>", opts)
 
 -- File explorer
-map("n", "<leader>e", "<cmd>NvimTreeToggle<cr>", { desc = "Toggle file explorer" })
-map("n", "<leader>E", "<cmd>NvimTreeFindFile<cr>", { desc = "Find current file" })
+map("n", "<leader>e", "<cmd>NvimTreeToggle<cr>", opts)
+map("n", "<leader>o", "<cmd>NvimTreeFindFile<cr>", opts)
 
 -- Terminal
-map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", { desc = "Toggle terminal" })
-map("n", "<leader>tf", "<cmd>ToggleTerm direction=float<cr>", { desc = "Float terminal" })
-map("n", "<leader>th", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
+map("t", "<Esc>", [[<C-\><C-n>]], opts)
+map("t", "jk", [[<C-\><C-n>]], opts)
+map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
+map("t", "<C-\\>", [[<C-\><C-n><cmd>ToggleTerm<cr>]], opts)
 
 -- Git
-map("n", "<leader>gs", "<cmd>Git<cr>", { desc = "Git status" })
-map("n", "<leader>gc", "<cmd>Git commit<cr>", { desc = "Git commit" })
-map("n", "<leader>gp", "<cmd>Git push<cr>", { desc = "Git push" })
-
--- Lazygit
 map("n", "<leader>gg", function()
-  local Terminal = require("toggleterm.terminal").Terminal
-  local lazygit = Terminal:new({ cmd = "lazygit", direction = "float", hidden = true })
+  local term = require("toggleterm.terminal").Terminal
+  local lazygit = term:new({ cmd = "lazygit", direction = "float", hidden = true })
   lazygit:toggle()
-end, { desc = "Lazygit" })
+end, opts)
 
 -- Code execution
-map("n", "<F5>", function() require("utils.runner").run_file() end, { desc = "Run current file" })
-map("n", "<leader>rr", function() require("utils.runner").run_file() end, { desc = "Run current file" })
-map("n", "<leader>rb", function() require("utils.runner").build_project() end, { desc = "Build project" })
+map("n", "<F5>", function() require("utils.runner").run_file() end, opts)
+map("n", "<leader>rr", function() require("utils.runner").run_file() end, opts)
 
--- Project root
-map("n", "<leader>cd", function()
-  local root = helpers.find_project_root()
-  vim.cmd("cd " .. root)
-  vim.notify("Changed to: " .. root)
-end, { desc = "Change to project root" })
+-- Split management
+map("n", "<leader>sv", "<cmd>vsplit<cr>", opts)
+map("n", "<leader>sh", "<cmd>split<cr>", opts)
+map("n", "<leader>sx", "<cmd>close<cr>", opts)
 
--- Theme toggles
+-- Theme toggle
 map("n", "<leader>tt", function()
-  local theme = require("core.theme")
-  local current_bg = vim.o.background
-  local new_bg = current_bg == "dark" and "light" or "dark"
-  vim.o.background = new_bg
-  pcall(vim.cmd.colorscheme, "solarized")
-  vim.schedule(function()
-    theme.apply_highlights()
-  end)
-  vim.notify("Switched to Solarized " .. new_bg, vim.log.levels.INFO)
-  theme.auto_switching_enabled = false
-end, { desc = "Toggle theme" })
-
-map("n", "<leader>td", function()
-  vim.o.background = "dark"
-  pcall(vim.cmd.colorscheme, "solarized")
+  vim.o.background = vim.o.background == "dark" and "light" or "dark"
   require("core.theme").apply_highlights()
-end, { desc = "Solarized dark" })
+end, opts)
 
-map("n", "<leader>tl", function()
-  vim.o.background = "light"
-  pcall(vim.cmd.colorscheme, "solarized")
-  require("core.theme").apply_highlights()
-end, { desc = "Solarized light" })
+-- Leap mappings (replaces deprecated add_default_mappings)
+local leap_ok, leap = pcall(require, "leap")
+if leap_ok then
+  map({'n', 'x', 'o'}, 's', '<Plug>(leap-forward)', opts)
+  map({'n', 'x', 'o'}, 'S', '<Plug>(leap-backward)', opts)
+  map({'n', 'x', 'o'}, 'gs', '<Plug>(leap-from-window)', opts)
+end
 
--- Misc
-map("n", "<leader>cc", function()
-  vim.cmd("edit " .. vim.fn.stdpath("config") .. "/init.lua")
-end, { desc = "Edit config" })
-
-map("n", "<leader>rn", function()
-  vim.opt.relativenumber = not vim.opt.relativenumber:get()
-end, { desc = "Toggle relative numbers" })
+-- LSP (set in lsp.lua on_attach)
+-- DAP (set in dap.lua)
+-- Testing (set in testing.lua)

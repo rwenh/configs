@@ -1,20 +1,19 @@
 -- ~/.config/nvim/lua/core/autocmds.lua
--- Autocommands
 
-local autocmd = vim.api.nvim_create_autocmd
-local augroup = vim.api.nvim_create_augroup
+local au = vim.api.nvim_create_autocmd
+local ag = vim.api.nvim_create_augroup
 
 -- Highlight on yank
-autocmd("TextYankPost", {
-  group = augroup("HighlightYank", { clear = true }),
+au("TextYankPost", {
+  group = ag("YankHighlight", { clear = true }),
   callback = function()
-    vim.highlight.on_yank({ timeout = 200 })
+    vim.highlight.on_yank({ timeout = 150 })
   end,
 })
 
 -- Restore cursor position
-autocmd("BufReadPost", {
-  group = augroup("RestoreCursor", { clear = true }),
+au("BufReadPost", {
+  group = ag("RestoreCursor", { clear = true }),
   callback = function(args)
     local mark = vim.api.nvim_buf_get_mark(args.buf, '"')
     local lcount = vim.api.nvim_buf_line_count(args.buf)
@@ -25,71 +24,54 @@ autocmd("BufReadPost", {
 })
 
 -- Resize windows on vim resize
-autocmd("VimResized", {
-  group = augroup("ResizeWindows", { clear = true }),
+au("VimResized", {
+  group = ag("ResizeWindows", { clear = true }),
   callback = function()
-    local current_tab = vim.fn.tabpagenr()
     vim.cmd("tabdo wincmd =")
-    vim.cmd("tabnext " .. current_tab)
   end,
 })
 
--- Close with q
-autocmd("FileType", {
-  group = augroup("CloseWithQ", { clear = true }),
-  pattern = { "help", "man", "qf", "lspinfo", "checkhealth", "notify" },
-  callback = function(event)
-    vim.bo[event.buf].buflisted = false
-    vim.keymap.set("n", "q", "<cmd>close<cr>", {
-      buffer = event.buf,
-      silent = true,
-      desc = "Close window"
-    })
+-- Close certain filetypes with q
+au("FileType", {
+  group = ag("CloseWithQ", { clear = true }),
+  pattern = { "help", "man", "qf", "lspinfo", "checkhealth", "notify", "Trouble" },
+  callback = function(e)
+    vim.bo[e.buf].buflisted = false
+    vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = e.buf, silent = true })
   end,
 })
 
--- Trim whitespace
-autocmd("BufWritePre", {
-  group = augroup("TrimWhitespace", { clear = true }),
+-- Trim trailing whitespace
+au("BufWritePre", {
+  group = ag("TrimWhitespace", { clear = true }),
   callback = function()
-    local exclude_ft = { "markdown", "diff", "gitcommit" }
-    if vim.tbl_contains(exclude_ft, vim.bo.filetype) then return end
-    
-    local save_cursor = vim.fn.getpos(".")
+    if vim.tbl_contains({ "markdown", "diff" }, vim.bo.filetype) then return end
+    local pos = vim.fn.getpos(".")
     pcall(function() vim.cmd([[%s/\s\+$//e]]) end)
-    vim.fn.setpos(".", save_cursor)
+    vim.fn.setpos(".", pos)
   end,
 })
 
 -- Language-specific settings
-autocmd("FileType", {
-  group = augroup("LanguageSettings", { clear = true }),
+au("FileType", {
+  group = ag("WebSettings", { clear = true }),
   pattern = { "html", "css", "javascript", "typescript", "json", "yaml" },
   callback = function()
     vim.opt_local.shiftwidth = 2
     vim.opt_local.tabstop = 2
-    vim.opt_local.softtabstop = 2
   end,
 })
 
-autocmd("FileType", {
-  group = augroup("PythonSettings", { clear = true }),
+au("FileType", {
+  group = ag("PythonSettings", { clear = true }),
   pattern = "python",
   callback = function()
-    vim.opt_local.colorcolumn = "88,120"
+    vim.opt_local.colorcolumn = "88"
   end,
 })
 
-autocmd("FileType", {
-  group = augroup("FortranSettings", { clear = true }),
-  pattern = "fortran",
-  callback = function()
-    vim.opt_local.colorcolumn = "72,132"
-  end,
-})
-
-autocmd("FileType", {
-  group = augroup("MarkdownSettings", { clear = true }),
+au("FileType", {
+  group = ag("MarkdownSettings", { clear = true }),
   pattern = "markdown",
   callback = function()
     vim.opt_local.wrap = true
@@ -99,21 +81,24 @@ autocmd("FileType", {
 })
 
 -- Large file handling
-autocmd("BufReadPre", {
-  group = augroup("LargeFile", { clear = true }),
+au("BufReadPre", {
+  group = ag("LargeFile", { clear = true }),
   callback = function(args)
     local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(args.buf))
     if ok and stats and stats.size > 1024 * 1024 then
       vim.b[args.buf].large_file = true
       vim.opt_local.foldmethod = "manual"
       vim.opt_local.undolevels = -1
+      vim.schedule(function()
+        vim.bo[args.buf].syntax = ""
+      end)
     end
   end,
 })
 
 -- Terminal settings
-autocmd("TermOpen", {
-  group = augroup("TerminalSettings", { clear = true }),
+au("TermOpen", {
+  group = ag("TermSettings", { clear = true }),
   callback = function()
     vim.opt_local.number = false
     vim.opt_local.relativenumber = false
@@ -122,8 +107,8 @@ autocmd("TermOpen", {
 })
 
 -- Auto reload files
-autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
-  group = augroup("AutoReload", { clear = true }),
+au({ "FocusGained", "BufEnter" }, {
+  group = ag("AutoReload", { clear = true }),
   callback = function()
     if vim.fn.mode() ~= 'c' then
       vim.cmd("checktime")
@@ -131,14 +116,12 @@ autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
   end,
 })
 
--- Prevent lazyredraw from being enabled (critical for noice.nvim)
-autocmd("OptionSet", {
-  pattern = "lazyredraw",
+-- Check if buffer changed outside vim
+au({ "CursorHold", "CursorHoldI" }, {
+  group = ag("AutoRead", { clear = true }),
   callback = function()
-    if vim.opt.lazyredraw:get() then
-      vim.schedule(function()
-        vim.opt.lazyredraw = false
-      end)
+    if vim.fn.getcmdwintype() == '' then
+      vim.cmd("checktime")
     end
   end,
 })

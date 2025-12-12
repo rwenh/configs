@@ -1,5 +1,4 @@
 -- ~/.config/nvim/lua/plugins/ui.lua
--- UI enhancement plugins
 
 return {
   {
@@ -8,20 +7,19 @@ return {
     priority = 1000,
     config = function()
       vim.o.termguicolors = true
-      vim.o.background = "dark"
       
       require("solarized").setup({
         transparent = { enabled = false },
         palette = "solarized",
         styles = { comments = { italic = true } },
-        plugins = { treesitter = true, lspconfig = true, cmp = true },
+        plugins = { all = true },
       })
       
-      pcall(vim.cmd.colorscheme, "solarized")
+      vim.o.background = "dark"
+      vim.cmd.colorscheme("solarized")
       
-      -- Apply custom highlights
       local theme = require("core.theme")
-      vim.defer_fn(theme.apply_highlights, 50)
+      vim.defer_fn(theme.apply_highlights, 10)
       theme.init()
     end,
   },
@@ -30,7 +28,6 @@ return {
     "nvim-lualine/lualine.nvim",
     event = "VeryLazy",
     dependencies = { "nvim-tree/nvim-web-devicons" },
-    -- Configuration is in config/ui.lua
   },
 
   {
@@ -38,7 +35,6 @@ return {
     version = "*",
     event = "VeryLazy",
     dependencies = "nvim-tree/nvim-web-devicons",
-    -- Configuration is in config/ui.lua
   },
 
   {
@@ -48,9 +44,11 @@ return {
       local notify = require("notify")
       notify.setup({
         background_colour = "#002b36",
-        fps = 30,
-        render = "wrapped-compact",
-        timeout = 3000,
+        fps = 60,
+        render = "compact",
+        timeout = 2000,
+        top_down = false,
+        stages = "fade",
       })
       vim.notify = notify
     end,
@@ -61,7 +59,6 @@ return {
     event = "VeryLazy",
     dependencies = { "MunifTanjim/nui.nvim", "rcarriga/nvim-notify" },
     config = function()
-      vim.opt.lazyredraw = false
       require("noice").setup({
         lsp = {
           override = {
@@ -69,14 +66,21 @@ return {
             ["vim.lsp.util.stylize_markdown"] = true,
             ["cmp.entry.get_documentation"] = true,
           },
+          signature = { enabled = false },
         },
         presets = {
           bottom_search = true,
           command_palette = true,
           long_message_to_split = true,
+          lsp_doc_border = true,
+        },
+        views = {
+          cmdline_popup = {
+            position = { row = "50%", col = "50%" },
+            size = { width = 60, height = "auto" },
+          },
         },
       })
-      vim.opt.lazyredraw = false
     end,
   },
 
@@ -84,10 +88,21 @@ return {
     "folke/which-key.nvim",
     event = "VeryLazy",
     config = function()
-      require("which-key").setup({ 
-        preset = "modern", 
-        delay = 200,
-        icons = { mappings = false }  -- Added: disable icons to prevent errors
+      require("which-key").setup({
+        preset = "modern",
+        delay = 300,
+        icons = { mappings = false },
+        spec = {
+          { "<leader>f", group = "Find" },
+          { "<leader>g", group = "Git" },
+          { "<leader>r", group = "Run" },
+          { "<leader>d", group = "Debug" },
+          { "<leader>t", group = "Test/Terminal" },
+          { "<leader>b", group = "Buffer" },
+          { "<leader>c", group = "Code" },
+          { "<leader>s", group = "Split" },
+          { "<leader>x", group = "Trouble" },
+        },
       })
     end,
   },
@@ -97,10 +112,14 @@ return {
     cmd = "Trouble",
     keys = {
       { "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", desc = "Diagnostics" },
-      { "<leader>xX", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "Buffer Diagnostics" },
+      { "<leader>xd", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "Buffer Diagnostics" },
+      { "<leader>xs", "<cmd>Trouble symbols toggle<cr>", desc = "Symbols" },
+      { "<leader>xq", "<cmd>Trouble qflist toggle<cr>", desc = "Quickfix" },
     },
     config = function()
-      require("trouble").setup()
+      require("trouble").setup({
+        use_diagnostic_signs = true,
+      })
     end,
   },
 
@@ -108,20 +127,21 @@ return {
     "nvimdev/dashboard-nvim",
     event = "VimEnter",
     dependencies = { "nvim-tree/nvim-web-devicons" },
-    -- Configuration is in config/ui.lua
   },
 
   {
     "akinsho/toggleterm.nvim",
     version = "*",
     keys = {
-      { "<C-\\>", "<cmd>ToggleTerm<cr>", desc = "Toggle terminal" },
-      { "<leader>tf", "<cmd>ToggleTerm direction=float<cr>", desc = "Float terminal" },
+      { "<C-\\>", "<cmd>ToggleTerm<cr>", desc = "Terminal" },
+      { "<leader>tf", "<cmd>ToggleTerm direction=float<cr>", desc = "Float Terminal" },
+      { "<leader>th", "<cmd>ToggleTerm direction=horizontal<cr>", desc = "Horizontal Terminal" },
     },
     config = function()
       require("toggleterm").setup({
         direction = "float",
         float_opts = { border = "curved" },
+        shade_terminals = true,
       })
     end,
   },
@@ -136,5 +156,33 @@ return {
       { "<leader>qs", function() require("persistence").load() end, desc = "Restore Session" },
       { "<leader>ql", function() require("persistence").load({ last = true }) end, desc = "Last Session" },
     },
+  },
+
+  {
+    "lukas-reineke/indent-blankline.nvim",
+    event = { "BufReadPost", "BufNewFile" },
+    main = "ibl",
+  },
+
+  {
+    "stevearc/dressing.nvim",
+    event = "VeryLazy",
+    config = function()
+      require("dressing").setup({
+        input = { relative = "editor" },
+        select = { backend = { "telescope", "builtin" } },
+      })
+    end,
+  },
+
+  {
+    "lewis6991/satellite.nvim",
+    event = "VeryLazy",
+    config = function()
+      require("satellite").setup({
+        current_only = false,
+        winblend = 50,
+      })
+    end,
   },
 }
