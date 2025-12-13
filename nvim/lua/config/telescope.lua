@@ -8,6 +8,7 @@ telescope.setup({
     prompt_prefix = "  ",
     selection_caret = " ",
     entry_prefix = "  ",
+    multi_icon = " ",
     initial_mode = "insert",
     selection_strategy = "reset",
     sorting_strategy = "ascending",
@@ -34,6 +35,27 @@ telescope.setup({
       "__pycache__/",
       "%.lock",
       "package-lock.json",
+      "yarn.lock",
+      "Cargo.lock",
+      ".cache",
+      "%.o",
+      "%.a",
+      "%.out",
+      "%.class",
+      "%.pdf",
+      "%.mkv",
+      "%.mp4",
+      "%.zip",
+    },
+    vimgrep_arguments = {
+      "rg",
+      "--color=never",
+      "--no-heading",
+      "--with-filename",
+      "--line-number",
+      "--column",
+      "--smart-case",
+      "--trim",  -- Trim indentation
     },
     winblend = 0,
     border = {},
@@ -41,6 +63,9 @@ telescope.setup({
     color_devicons = true,
     set_env = { ["COLORTERM"] = "truecolor" },
     path_display = { "truncate" },
+    file_previewer = require("telescope.previewers").vim_buffer_cat.new,
+    grep_previewer = require("telescope.previewers").vim_buffer_vimgrep.new,
+    qflist_previewer = require("telescope.previewers").vim_buffer_qflist.new,
     mappings = {
       i = {
         ["<C-j>"] = actions.move_selection_next,
@@ -49,10 +74,16 @@ telescope.setup({
         ["<C-p>"] = actions.cycle_history_prev,
         ["<C-c>"] = actions.close,
         ["<Esc>"] = actions.close,
+        ["<C-u>"] = actions.preview_scrolling_up,
+        ["<C-d>"] = actions.preview_scrolling_down,
+        ["<C-q>"] = actions.send_to_qflist + actions.open_qflist,
+        ["<M-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
       },
       n = {
         ["q"] = actions.close,
         ["<Esc>"] = actions.close,
+        ["<C-q>"] = actions.send_to_qflist + actions.open_qflist,
+        ["<M-q>"] = actions.send_selected_to_qflist + actions.open_qflist,
       },
     },
   },
@@ -61,19 +92,40 @@ telescope.setup({
       theme = "dropdown",
       previewer = false,
       hidden = true,
+      find_command = { "rg", "--files", "--hidden", "--glob", "!.git/*" },
     },
     buffers = {
       theme = "dropdown",
       previewer = false,
       initial_mode = "normal",
+      mappings = {
+        i = {
+          ["<C-d>"] = actions.delete_buffer,
+        },
+        n = {
+          ["dd"] = actions.delete_buffer,
+        },
+      },
     },
     git_files = {
       theme = "dropdown",
       previewer = false,
+      show_untracked = true,
     },
     oldfiles = {
       theme = "dropdown",
       previewer = false,
+      only_cwd = true,
+    },
+    live_grep = {
+      additional_args = function()
+        return { "--hidden" }
+      end,
+    },
+    grep_string = {
+      additional_args = function()
+        return { "--hidden" }
+      end,
     },
   },
   extensions = {
@@ -82,6 +134,9 @@ telescope.setup({
       override_generic_sorter = true,
       override_file_sorter = true,
       case_mode = "smart_case",
+    },
+    ["ui-select"] = {
+      require("telescope.themes").get_dropdown({}),
     },
   },
 })

@@ -1,5 +1,4 @@
 -- ~/.config/nvim/lua/plugins/lsp.lua
--- LSP plugin specifications
 
 return {
   {
@@ -26,12 +25,29 @@ return {
     dependencies = { "mason.nvim" },
     event = { "BufReadPre", "BufNewFile" },
     config = function()
+      local ensure_installed = {
+        "lua_ls", "pyright", "rust_analyzer", "fortls",
+        "sqlls", "html", "cssls", "ts_ls",
+        "jsonls", "yamlls", "marksman", "clangd"
+      }
+
+      -- RECALIBRATED: Only add gopls if Go 1.25+ is available
+      local helpers = require("utils.helpers")
+      if helpers.command_exists("go") then
+        local go_version_output = vim.fn.system("go version")
+        local major, minor = go_version_output:match("go(%d+)%.(%d+)")
+
+        if major and minor then
+          major, minor = tonumber(major), tonumber(minor)
+
+          if (major > 1) or (major == 1 and minor >= 25) then
+            table.insert(ensure_installed, "gopls")
+          end
+        end
+      end
+
       require("mason-lspconfig").setup({
-        ensure_installed = {
-          "lua_ls", "pyright", "rust_analyzer", "fortls",
-          "sqlls", "vhdl_ls", "html", "cssls", "ts_ls",
-          "jdtls", "jsonls", "yamlls", "marksman", "clangd"
-        },
+        ensure_installed = ensure_installed,
         automatic_installation = true,
       })
     end,
@@ -39,8 +55,11 @@ return {
 
   {
     "neovim/nvim-lspconfig",
-    dependencies = { "mason-lspconfig.nvim", "hrsh7th/cmp-nvim-lsp" },
+    dependencies = {
+      "mason-lspconfig.nvim",
+      "hrsh7th/cmp-nvim-lsp",
+      "b0o/schemastore.nvim",
+    },
     event = { "BufReadPre", "BufNewFile" },
-    -- Configuration is in config/lsp.lua
   },
 }

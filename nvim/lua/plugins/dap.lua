@@ -1,5 +1,4 @@
 -- ~/.config/nvim/lua/plugins/dap.lua
--- Debugging adapter protocol plugins
 
 return {
   {
@@ -16,9 +15,24 @@ return {
       { "<F11>", function() require("dap").step_into() end, desc = "Debug: Step Into" },
       { "<F12>", function() require("dap").step_out() end, desc = "Debug: Step Out" },
       { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "Toggle Breakpoint" },
+      { "<leader>dB", function() require("dap").set_breakpoint(vim.fn.input('Breakpoint condition: ')) end, desc = "Conditional Breakpoint" },
       { "<leader>dr", function() require("dap").repl.open() end, desc = "Open REPL" },
+      { "<leader>dl", function() require("dap").run_last() end, desc = "Run Last" },
       { "<leader>dt", function() require("dapui").toggle() end, desc = "Toggle DAP UI" },
+      { "<leader>dx", function() require("dap").terminate() end, desc = "Terminate" },
     },
-    -- Configuration is in config/dap.lua
+  },
+
+  {
+    "jay-babu/mason-nvim-dap.nvim",
+    dependencies = { "mason.nvim", "nvim-dap" },
+    event = "VeryLazy",
+    config = function()
+      require("mason-nvim-dap").setup({
+        ensure_installed = {},
+        automatic_installation = false,
+        handlers = {},
+      })
+    end,
   },
 }

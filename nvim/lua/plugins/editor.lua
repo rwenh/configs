@@ -154,13 +154,21 @@ return {
     end,
   },
 
+  -- FIXED: Leap keymaps now in config
   {
     "ggandor/leap.nvim",
     event = "VeryLazy",
     dependencies = { "ggandor/leap-spooky.nvim" },
     config = function()
-      -- Leap mappings are now in core/keymaps.lua
-      -- No need to call add_default_mappings() anymore
+      local leap = require("leap")
+
+      -- Set up keymaps after leap loads
+      vim.keymap.set({'n', 'x', 'o'}, 's', '<Plug>(leap-forward)', { desc = "Leap forward" })
+      vim.keymap.set({'n', 'x', 'o'}, 'S', '<Plug>(leap-backward)', { desc = "Leap backward" })
+      vim.keymap.set({'n', 'x', 'o'}, 'gs', '<Plug>(leap-from-window)', { desc = "Leap from window" })
+
+      -- Optional: customize leap
+      leap.opts.safe_labels = {}
     end,
   },
 }
