@@ -1,187 +1,103 @@
--- ~/.config/nvim/lua/core/autocmds.lua
+-- lua/core/autocmds.lua - Autocommands
 
-local au = vim.api.nvim_create_autocmd
-local ag = vim.api.nvim_create_augroup
+local au, ag = vim.api.nvim_create_autocmd, vim.api.nvim_create_augroup
 
 -- Highlight on yank
 au("TextYankPost", {
-  group = ag("YankHighlight", { clear = true }),
+  group = ag("HighlightYank", { clear = true }),
   callback = function()
-    vim.highlight.on_yank({ timeout = 150 })
+    vim. hl.on_yank({ timeout = 200 })
   end,
 })
 
 -- Restore cursor position
 au("BufReadPost", {
   group = ag("RestoreCursor", { clear = true }),
-  callback = function(args)
-    local mark = vim.api.nvim_buf_get_mark(args.buf, '"')
-    local lcount = vim.api.nvim_buf_line_count(args.buf)
+  callback = function(e)
+    local mark = vim.api.nvim_buf_get_mark(e.buf, '"')
+    local lcount = vim.api.nvim_buf_line_count(e.buf)
     if mark[1] > 0 and mark[1] <= lcount then
       pcall(vim.api.nvim_win_set_cursor, 0, mark)
     end
   end,
 })
 
--- Resize windows on vim resize
+-- Resize splits on window resize
 au("VimResized", {
-  group = ag("ResizeWindows", { clear = true }),
+  group = ag("ResizeSplits", { clear = true }),
   callback = function()
+    local current_tab = vim.fn.tabpagenr()
     vim.cmd("tabdo wincmd =")
+    vim.cmd("tabnext " .. current_tab)
   end,
 })
 
--- Close certain filetypes with q
+-- Close certain windows with q
 au("FileType", {
   group = ag("CloseWithQ", { clear = true }),
-  pattern = {
-    "help", "man", "qf", "lspinfo", "checkhealth",
-    "notify", "Trouble", "startuptime", "tsplayground"
-  },
+  pattern = { "help", "man", "qf", "lspinfo", "checkhealth", "notify", "startuptime" },
   callback = function(e)
     vim.bo[e.buf].buflisted = false
-    vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = e.buf, silent = true })
+    vim. keymap.set("n", "q", "<cmd>close<cr>", { buffer = e.buf, silent = true })
   end,
 })
 
--- Trim trailing whitespace
+-- Remove trailing whitespace
 au("BufWritePre", {
   group = ag("TrimWhitespace", { clear = true }),
   callback = function()
-    if vim.tbl_contains({ "markdown", "diff" }, vim.bo.filetype) then
-      return
-    end
-    local pos = vim.fn.getpos(".")
+    if vim.tbl_contains({ "markdown", "diff" }, vim.bo.filetype) then return end
+    local save = vim.fn. winsaveview()
     pcall(function() vim.cmd([[%s/\s\+$//e]]) end)
-    vim.fn.setpos(".", pos)
+    vim.fn.winrestview(save)
+  end,
+})
+
+-- Check for file changes
+au({ "FocusGained", "TermClose", "TermLeave" }, {
+  group = ag("Checktime", { clear = true }),
+  callback = function()
+    if vim.o.buftype ~= "nofile" then vim.cmd("checktime") end
   end,
 })
 
 -- Language-specific settings
 au("FileType", {
-  group = ag("WebSettings", { clear = true }),
+  group = ag("WebDev", { clear = true }),
   pattern = { "html", "css", "javascript", "typescript", "json", "yaml" },
   callback = function()
     vim.opt_local.shiftwidth = 2
-    vim.opt_local.tabstop = 2
-    vim.opt_local.softtabstop = 2
+    vim.opt_local. tabstop = 2
   end,
 })
 
 au("FileType", {
-  group = ag("PythonSettings", { clear = true }),
-  pattern = "python",
-  callback = function()
-    vim.opt_local.colorcolumn = "88"
-    vim.opt_local.shiftwidth = 4
-    vim.opt_local.tabstop = 4
-    vim.opt_local.softtabstop = 4
-  end,
-})
-
-au("FileType", {
-  group = ag("GoSettings", { clear = true }),
-  pattern = "go",
-  callback = function()
-    vim.opt_local.shiftwidth = 4
-    vim.opt_local.tabstop = 4
-    vim.opt_local.expandtab = false
-    vim.opt_local.colorcolumn = "120"
-  end,
-})
-
-au("FileType", {
-  group = ag("MarkdownSettings", { clear = true }),
+  group = ag("Markdown", { clear = true }),
   pattern = "markdown",
   callback = function()
-    vim.opt_local.wrap = true
+    vim.opt_local. wrap = true
     vim.opt_local.spell = true
-    vim.opt_local.linebreak = true
-    vim.opt_local.conceallevel = 2
-  end,
-})
-
-au("FileType", {
-  group = ag("RustSettings", { clear = true }),
-  pattern = "rust",
-  callback = function()
-    vim.opt_local.colorcolumn = "100"
-  end,
-})
-
--- Large file handling
-au("BufReadPre", {
-  group = ag("LargeFile", { clear = true }),
-  callback = function(args)
-    local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(args.buf))
-    local max_filesize = 1024 * 1024
-
-    if ok and stats and stats.size > max_filesize then
-      vim.b[args.buf].large_file = true
-      vim.opt_local.foldmethod = "manual"
-      vim.opt_local.undolevels = -1
-      vim.opt_local.swapfile = false
-      vim.opt_local.loadplugins = false
-
-      vim.schedule(function()
-        vim.bo[args.buf].syntax = ""
-        vim.notify("Large file detected, features disabled", vim.log.levels.WARN)
-      end)
-    end
   end,
 })
 
 -- Terminal settings
 au("TermOpen", {
-  group = ag("TermSettings", { clear = true }),
+  group = ag("Terminal", { clear = true }),
   callback = function()
     vim.opt_local.number = false
     vim.opt_local.relativenumber = false
     vim.opt_local.signcolumn = "no"
-    vim.cmd("startinsert")
   end,
 })
 
--- Auto reload files
-au({ "FocusGained", "BufEnter" }, {
-  group = ag("AutoReload", { clear = true }),
-  callback = function()
-    if vim.fn.mode() ~= 'c' then
-      vim.cmd("checktime")
-    end
-  end,
-})
-
--- Check if buffer changed outside vim
-au({ "CursorHold", "CursorHoldI" }, {
-  group = ag("AutoRead", { clear = true }),
-  callback = function()
-    if vim.fn.getcmdwintype() == '' then
-      vim.cmd("checktime")
-    end
-  end,
-})
-
--- Auto create directories on save
+-- Auto format on save (conditional)
 au("BufWritePre", {
-  group = ag("AutoCreateDir", { clear = true }),
-  callback = function(args)
-    if args.match:match("^%w%w+://") then
-      return
+  group = ag("AutoFormat", { clear = true }),
+  callback = function(e)
+    if vim.b[e.buf]. disable_autoformat or vim.g.disable_autoformat then return end
+    local clients = vim.lsp.get_clients({ bufnr = e.buf })
+    if #clients > 0 then
+      vim.lsp.buf.format({ timeout_ms = 2000 })
     end
-    local file = vim.uv.fs_realpath(args.match) or args.match
-    vim.fn.mkdir(vim.fn.fnamemodify(file, ":p:h"), "p")
-  end,
-})
-
--- Clear command line after some time
-au("CmdlineLeave", {
-  group = ag("ClearCmdline", { clear = true }),
-  callback = function()
-    vim.defer_fn(function()
-      if vim.fn.mode() == 'n' then
-        vim.cmd('echo ""')
-      end
-    end, 5000)
   end,
 })
