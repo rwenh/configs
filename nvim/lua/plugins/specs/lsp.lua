@@ -17,7 +17,7 @@ return {
       ensure_installed = {
         "lua_ls", "pyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
-        "clangd",
+        "clangd", "gopls",
       },
       automatic_installation = true,
     },
@@ -50,23 +50,44 @@ return {
         end,
       })
 
-      -- Setup each server using vim.lsp.config (new API)
+      local lspconfig = require("lspconfig")
       local servers = {
-        lua_ls = {},
+        lua_ls = {
+          settings = {
+            Lua = {
+              diagnostics = { globals = { "vim" } },
+              workspace = { checkThirdParty = false },
+              telemetry = { enable = false },
+            },
+          },
+        },
         pyright = {},
-        rust_analyzer = {},
+        rust_analyzer = {
+          settings = {
+            ["rust-analyzer"] = {
+              checkOnSave = { command = "clippy" },
+            },
+          },
+        },
         ts_ls = {},
         html = {},
         cssls = {},
         jsonls = {},
         yamlls = {},
         clangd = {},
+        gopls = {
+          settings = {
+            gopls = {
+              analyses = { unusedparams = true },
+              staticcheck = true,
+            },
+          },
+        },
       }
 
       for server, config in pairs(servers) do
         config.capabilities = capabilities
-        vim.lsp.config(server, config)
-        vim.lsp.enable(server)
+        lspconfig[server].setup(config)
       end
 
       vim.diagnostic.config({
@@ -76,7 +97,30 @@ return {
         severity_sort = true,
         float = { border = "rounded" },
       })
+
+      local signs = { Error = " ", Warn = " ", Hint = " ", Info = " " }
+      for type, icon in pairs(signs) do
+        local hl = "DiagnosticSign" .. type
+        vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
+      end
     end,
+  },
+
+  -- LSP signature
+  {
+    "ray-x/lsp_signature.nvim",
+    event = "LspAttach",
+    opts = {
+      bind = true,
+      handler_opts = { border = "rounded" },
+    },
+  },
+
+  -- LSP progress
+  {
+    "j-hui/fidget.nvim",
+    event = "LspAttach",
+    opts = {},
   },
 
   -- Formatting
@@ -92,6 +136,7 @@ return {
         json = { "prettier" },
         yaml = { "prettier" },
         sh = { "shfmt" },
+        go = { "goimports", "gofumpt" },
       },
       format_on_save = { timeout_ms = 500, lsp_format = "fallback" },
     },

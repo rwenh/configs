@@ -9,6 +9,7 @@ return {
       "hrsh7th/cmp-buffer",
       "hrsh7th/cmp-path",
       "hrsh7th/cmp-cmdline",
+      "hrsh7th/cmp-emoji",
       "saadparwaiz1/cmp_luasnip",
       {
         "L3MON4D3/LuaSnip",
@@ -63,11 +64,16 @@ return {
           { name = "nvim_lsp", priority = 1000 },
           { name = "luasnip", priority = 750 },
           { name = "path", priority = 500 },
+          { name = "emoji", priority = 300 },
         }, {
           { name = "buffer", keyword_length = 3, priority = 250 },
         }),
         formatting = {
-          format = lspkind.cmp_format({ mode = "symbol_text", maxwidth = 50 }),
+          format = lspkind.cmp_format({ 
+            mode = "symbol_text", 
+            maxwidth = 50,
+            ellipsis_char = "...",
+          }),
         },
       }
     end,

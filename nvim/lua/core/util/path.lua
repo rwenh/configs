@@ -3,21 +3,21 @@
 local M = {}
 
 local root_markers = {
-  ". git", ".hg", ".svn",
+  ".git", ".git/config", ".hg", ".svn",
   "Cargo.toml", "package.json", "go.mod", "pyproject.toml",
-  "Makefile", "CMakeLists.txt", ". nvim. lua",
+  "Makefile", "CMakeLists.txt", ".nvim.lua",
 }
 
 local cache = {}
 local cache_timeout = 300
 
 function M.find_root(start_path)
-  start_path = start_path or vim.fn.expand("%:p: h")
+  start_path = start_path or vim.fn.expand("%:p:h")
 
   if cache[start_path] then
-    local age = os.time() - cache[start_path]. time
+    local age = os.time() - cache[start_path].time
     if age < cache_timeout then
-      return cache[start_path]. root
+      return cache[start_path].root
     end
   end
 
@@ -25,7 +25,7 @@ function M.find_root(start_path)
   for _ = 1, 20 do
     for _, marker in ipairs(root_markers) do
       local path = current .. "/" .. marker
-      if vim.fn. isdirectory(path) == 1 or vim.fn.filereadable(path) == 1 then
+      if vim.fn.isdirectory(path) == 1 or vim.fn.filereadable(path) == 1 then
         cache[start_path] = { root = current, time = os.time() }
         return current
       end

@@ -20,7 +20,7 @@ return {
       options = {
         theme = "auto",
         globalstatus = true,
-        component_separators = { left = "", right = "" },
+        component_separators = { left = "|", right = "|" },
         section_separators = { left = "", right = "" },
       },
       sections = {
@@ -99,6 +99,7 @@ return {
         { "<leader>r", group = "run" },
         { "<leader>s", group = "search" },
         { "<leader>t", group = "test" },
+        { "<leader>u", group = "ui" },
         { "<leader>x", group = "trouble" },
       },
     },
@@ -114,6 +115,35 @@ return {
       hide_numbers = true,
       direction = "float",
       float_opts = { border = "curved" },
+    },
+  },
+
+  -- Dashboard
+  {
+    "nvimdev/dashboard-nvim",
+    event = "VimEnter",
+    opts = {
+      theme = "doom",
+      config = {
+        header = {
+          "",
+          " ███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗",
+          " ████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║",
+          " ██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║",
+          " ██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║",
+          " ██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║",
+          " ╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝",
+          "",
+        },
+        center = {
+          { icon = " ", desc = "Find File", action = "Telescope find_files" },
+          { icon = " ", desc = "Recent Files", action = "Telescope oldfiles" },
+          { icon = " ", desc = "Find Text", action = "Telescope live_grep" },
+          { icon = " ", desc = "Config", action = "edit $MYVIMRC" },
+          { icon = " ", desc = "Lazy", action = "Lazy" },
+          { icon = " ", desc = "Quit", action = "qa" },
+        },
+      },
     },
   },
 }

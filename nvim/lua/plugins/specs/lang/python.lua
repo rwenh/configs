@@ -7,29 +7,49 @@ return {
     ft = "python",
     cmd = "VenvSelect",
     opts = {
-      name = { "venv", ". venv", "env", ". env" },
+      name = { "venv", ".venv", "env", ".env" },
+      auto_refresh = true,
     },
     keys = {
       { "<leader>vs", "<cmd>VenvSelect<cr>", desc = "Select VirtualEnv", ft = "python" },
     },
   },
 
-  -- Python-specific DAP configuration
+  -- Python debugpy installation helper
   {
     "mfussenegger/nvim-dap-python",
     ft = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      local dap_python = require("dap-python")
-      -- Try to find python in common locations
+      -- Ensure debugpy is available
       local python_path = vim.fn.exepath("python3") or vim.fn.exepath("python")
-      if python_path ~= "" then
-        dap_python. setup(python_path)
-      end
       
-      -- Add keymaps
-      vim.keymap.set("n", "<leader>dpr", function() dap_python.test_method() end, { desc = "Debug Python Method" })
-      vim.keymap.set("n", "<leader>dpc", function() dap_python.test_class() end, { desc = "Debug Python Class" })
+      if python_path ~= "" then
+        -- Check if debugpy is installed
+        local handle = io.popen(python_path .. " -c 'import debugpy' 2>&1")
+        local result = handle:read("*a")
+        handle:close()
+        
+        if result:match("ModuleNotFoundError") or result:match("No module named") then
+          vim.notify(
+            "debugpy not found. Install with: pip install debugpy",
+            vim.log.levels.WARN
+          )
+        end
+      end
+
+      -- Additional Python-specific debug keymaps
+      vim.keymap.set("n", "<leader>dpm", function()
+        require("dap-python").test_method()
+      end, { desc = "Debug Python Test Method" })
+      
+      vim.keymap.set("n", "<leader>dpc", function()
+        require("dap-python").test_class()
+      end, { desc = "Debug Python Test Class" })
+      
+      vim.keymap.set("n", "<leader>dps", function()
+        require("dap-python").debug_selection()
+      end, { desc = "Debug Selection", mode = { "n", "v" } })
     end,
   },
 
@@ -48,7 +68,7 @@ return {
       },
     },
     keys = {
-      { "<leader>nf", function() require("neogen"). generate() end, desc = "Generate Docstring", ft = "python" },
+      { "<leader>nf", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "python" },
     },
   },
 
@@ -64,7 +84,7 @@ return {
           repl_definition = {
             python = {
               command = { "ipython", "--no-autoindent" },
-              format = require("iron.fts.common"). bracketed_paste,
+              format = require("iron.fts.common").bracketed_paste,
             },
           },
           repl_open_cmd = require("iron.view").bottom(20),

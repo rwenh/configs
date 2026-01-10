@@ -4,7 +4,7 @@
 if vim.loader then vim.loader.enable() end
 
 _G.claude_ide = {
-  version = "claude-1.0",
+  version = "claude-1.1",
   root = vim.fn.stdpath("config"),
   data = vim.fn.stdpath("data"),
   cache = vim.fn.stdpath("cache"),
@@ -26,8 +26,6 @@ end
 safe_load("core.options")
 safe_load("core.bootstrap")
 safe_load("core.theme")
-
--- Load plugins after bootstrap
 safe_load("plugins")
 
 -- Deferred loading
@@ -42,8 +40,6 @@ vim.defer_fn(function()
   local lazy_ok, lazy = pcall(require, "lazy")
   if lazy_ok then
     local stats = lazy.stats()
-    vim.notify(string.format("⚡ %d/%d plugins loaded", stats.loaded, stats.count), vim.log.levels.INFO)
-  else
-    vim.notify("Lazy not loaded yet", vim.log.levels.WARN)
+    vim.notify(string.format("⚡ %d/%d plugins loaded in %.2fms", stats.loaded, stats.count, stats.startuptime), vim.log.levels.INFO)
   end
 end, 100)
