@@ -1,4 +1,4 @@
--- lua/plugins/specs/dap.lua - Debug Adapter Protocol (Complete)
+-- lua/plugins/specs/dap.lua - Debug Adapter Protocol (updated with Ruby/Elixir)
 
 return {
   {
@@ -244,6 +244,59 @@ return {
         },
       }
 
+      -- Ruby Adapter (rdbg)
+      dap.adapters.ruby = function(callback, config)
+        callback({
+          type = "server",
+          host = "127.0.0.1",
+          port = "${port}",
+          executable = {
+            command = "bundle",
+            args = { "exec", "rdbg", "-n", "--open", "--port", "${port}", "-c", "--", "ruby", config.program },
+          },
+        })
+      end
+
+      dap.configurations.ruby = {
+        {
+          type = "ruby",
+          name = "Debug current file",
+          request = "attach",
+          localfs = true,
+          program = "${file}",
+        },
+      }
+
+      -- Elixir Adapter (ElixirLS)
+      dap.adapters.mix_task = {
+        type = "executable",
+        command = vim.fn.exepath("elixir-ls-debugger") or vim.fn.expand("~/.local/share/nvim/mason/bin/elixir-ls-debugger"),
+        args = {},
+      }
+
+      dap.configurations.elixir = {
+        {
+          type = "mix_task",
+          name = "mix test",
+          task = "test",
+          taskArgs = { "--trace" },
+          request = "launch",
+          startApps = true,
+          projectDir = "${workspaceFolder}",
+          requireFiles = {
+            "test/**/test_helper.exs",
+            "test/**/*_test.exs",
+          },
+        },
+        {
+          type = "mix_task",
+          name = "mix phx.server",
+          task = "phx.server",
+          request = "launch",
+          projectDir = "${workspaceFolder}",
+        },
+      }
+
       -- Persistent breakpoints
       local breakpoints_file = vim.fn.stdpath("data") .. "/dap-breakpoints.json"
 
@@ -312,6 +365,7 @@ return {
         "codelldb", 
         "delve",
         "js-debug-adapter",
+        -- Ruby and Elixir debuggers are installed via gem/mix, not mason
       },
       automatic_installation = true,
       handlers = {},

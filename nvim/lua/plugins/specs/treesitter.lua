@@ -1,4 +1,4 @@
--- lua/plugins/specs/treesitter.lua - Treesitter
+-- lua/plugins/specs/treesitter.lua - Treesitter (updated with Ruby, Elixir, Kotlin, Zig, COBOL)
 
 return {
   {
@@ -11,6 +11,12 @@ return {
         "bash", "c", "cpp", "css", "go", "html", "javascript",
         "json", "lua", "markdown", "python", "rust", "typescript", "yaml",
         "fortran", "julia", "zig",
+        -- New languages
+        "ruby",
+        "elixir", "heex", "eex",
+        "kotlin",
+        "vhdl",
+        -- COBOL doesn't have stable treesitter parser yet
       },
       auto_install = true,
       highlight = { enable = true },

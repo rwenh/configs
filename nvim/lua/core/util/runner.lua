@@ -1,4 +1,4 @@
--- lua/core/util/runner.lua - Code execution engine
+-- lua/core/util/runner.lua - Code execution engine (updated with Ruby, Elixir, Kotlin, Zig, COBOL)
 
 local M = {}
 
@@ -71,6 +71,51 @@ local runners = {
       return "nim c -r " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe)
     end
   end,
+  -- New language runners
+  ruby = function(file)
+    if vim.fn.executable("ruby") == 1 then
+      return "ruby " .. vim.fn.shellescape(file)
+    end
+  end,
+  elixir = function(file)
+    if vim.fn.executable("elixir") == 1 then
+      return "elixir " .. vim.fn.shellescape(file)
+    end
+  end,
+  kotlin = function(file)
+    local dir = vim.fn.fnamemodify(file, ":h")
+    local name = vim.fn.fnamemodify(file, ":t:r")
+    if vim.fn.executable("kotlinc") == 1 then
+      return "cd " .. vim.fn.shellescape(dir) .. " && kotlinc " .. vim.fn.shellescape(file) .. " -include-runtime -d " .. name .. ".jar && java -jar " .. name .. ".jar"
+    end
+  end,
+  cobol = function(file)
+    if vim.fn.executable("cobc") == 1 then
+      local exe = vim.fn.fnamemodify(file, ":r")
+      return "cobc -x -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe)
+    end
+  end,
+  vhdl = function(file)
+    if vim.fn.executable("ghdl") == 1 then
+      -- Extract entity name (basic heuristic - look for "entity X is")
+      local entity = nil
+      local f = io.open(file, "r")
+      if f then
+        for line in f:lines() do
+          entity = line:match("entity%s+(%w+)%s+is")
+          if entity then break end
+        end
+        f:close()
+      end
+      
+      if entity then
+        return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s", 
+          vim.fn.shellescape(file), entity, entity)
+      else
+        return "ghdl -s " .. vim.fn.shellescape(file)
+      end
+    end
+  end,
 }
 
 function M.run_file()
@@ -123,6 +168,8 @@ function M.run_selection()
     python = "python3",
     lua = "lua",
     javascript = "node",
+    ruby = "ruby",
+    elixir = "elixir",
   }
 
   local interpreter = interpreters[ft]
@@ -143,6 +190,8 @@ function M.run_tests()
     go = "go test ./...",
     javascript = "npm test",
     typescript = "npm test",
+    ruby = "bundle exec rspec",
+    elixir = "mix test",
   }
 
   local cmd = test_commands[ft]

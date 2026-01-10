@@ -122,3 +122,21 @@ au("BufEnter", {
     end
   end,
 })
+
+-- COBOL file type detection
+au({ "BufRead", "BufNewFile" }, {
+  group = ag("CobolFileType", { clear = true }),
+  pattern = { "*.cob", "*.cbl", "*.cpy", "*.CBL", "*.COB" },
+  callback = function()
+    vim.bo.filetype = "cobol"
+  end,
+})
+
+-- VHDL file type detection
+au({ "BufRead", "BufNewFile" }, {
+  group = ag("VhdlFileType", { clear = true }),
+  pattern = { "*.vhd", "*.vhdl", "*.vho" },
+  callback = function()
+    vim.bo.filetype = "vhdl"
+  end,
+})

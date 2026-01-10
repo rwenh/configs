@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua - LSP configuration
+-- lua/plugins/specs/lsp.lua - LSP configuration (updated with Ruby, Elixir, Kotlin, Zig, COBOL)
 
 return {
   -- Mason
@@ -18,6 +18,12 @@ return {
         "lua_ls", "pyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
         "clangd", "gopls",
+        -- New languages
+        "solargraph",           -- Ruby
+        "elixirls",             -- Elixir
+        "kotlin_language_server", -- Kotlin
+        "zls",                  -- Zig
+        "vhdl_ls",              -- VHDL
       },
       automatic_installation = true,
     },
@@ -83,6 +89,23 @@ return {
             },
           },
         },
+        -- New languages
+        solargraph = {
+          settings = {
+            solargraph = {
+              diagnostics = true,
+              completion = true,
+            },
+          },
+        },
+        elixirls = {
+          cmd = { vim.fn.expand("~/.local/share/nvim/mason/bin/elixir-ls") },
+        },
+        kotlin_language_server = {},
+        zls = {},
+        vhdl_ls = {
+          filetypes = { "vhdl", "vhd" },
+        },
       }
 
       for server, config in pairs(servers) do
@@ -137,6 +160,10 @@ return {
         yaml = { "prettier" },
         sh = { "shfmt" },
         go = { "goimports", "gofumpt" },
+        ruby = { "rubocop" },
+        kotlin = { "ktlint" },
+        elixir = { "mix" },
+        vhdl = { "vhdl-style-guide" },
       },
       format_on_save = { timeout_ms = 500, lsp_format = "fallback" },
     },
@@ -151,6 +178,7 @@ return {
         python = { "ruff" },
         javascript = { "eslint_d" },
         sh = { "shellcheck" },
+        ruby = { "rubocop" },
       }
       vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
         callback = function() require("lint").try_lint() end,

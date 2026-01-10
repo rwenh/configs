@@ -1,4 +1,4 @@
--- lua/plugins/specs/init.lua - Load all plugin specs
+-- lua/plugins/specs/init.lua - Load all plugin specs (updated with new languages)
 
 return {
   -- UI
@@ -29,4 +29,12 @@ return {
   { import = "plugins.specs.lang.markdown" },
   { import = "plugins.specs.lang.database" },
   { import = "plugins.specs.lang.rest" },
+  
+  -- New languages
+  { import = "plugins.specs.lang.ruby" },
+  { import = "plugins.specs.lang.elixir" },
+  { import = "plugins.specs.lang.kotlin" },
+  { import = "plugins.specs.lang.zig" },
+  { import = "plugins.specs.lang.cobol" },
+  { import = "plugins.specs.lang.vhdl" },
 }
