@@ -1,4 +1,4 @@
--- lua/plugins/specs/lang/rust.lua - Ruby development
+-- lua/plugins/specs/lang/ruby.lua - Ruby development
 
 return {
   -- Ruby LSP and formatting

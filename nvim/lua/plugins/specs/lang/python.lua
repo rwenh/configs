@@ -47,9 +47,9 @@ return {
         require("dap-python").test_class()
       end, { desc = "Debug Python Test Class" })
       
-      vim.keymap.set("n", "<leader>dps", function()
+      vim.keymap.set({ "n", "v" }, "<leader>dps", function()
         require("dap-python").debug_selection()
-      end, { desc = "Debug Selection", mode = { "n", "v" } })
+      end, { desc = "Debug Selection" })
     end,
   },
 

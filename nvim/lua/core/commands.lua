@@ -111,7 +111,6 @@ cmd("MasonInstallAll", function()
     "elixir-ls",
     "kotlin-language-server",
     "zls",
-    -- vhdl-ls must be installed via: cargo install vhdl_ls
     -- DAP
     "debugpy",
     "codelldb",
@@ -124,7 +123,7 @@ cmd("MasonInstallAll", function()
   }
   
   local installed = 0
-  local total = #pkgs
+  local failed = {}
   
   for _, pkg_name in ipairs(pkgs) do
     local ok, pkg = pcall(registry.get_package, pkg_name)
@@ -132,14 +131,28 @@ cmd("MasonInstallAll", function()
       if not pkg:is_installed() then
         vim.notify("Installing " .. pkg_name .. "...", vim.log.levels.INFO)
         pkg:install():once("closed", function()
-          installed = installed + 1
-          if installed == total then
-            vim.notify("All packages installed!", vim.log.levels.INFO)
+          if pkg:is_installed() then
+            installed = installed + 1
+            vim.notify(pkg_name .. " installed successfully", vim.log.levels.INFO)
+          else
+            table.insert(failed, pkg_name)
+            vim.notify(pkg_name .. " failed to install", vim.log.levels.ERROR)
+          end
+          
+          if installed + #failed == #pkgs then
+            if #failed > 0 then
+              vim.notify("Installation complete. Failed: " .. table.concat(failed, ", "), vim.log.levels.WARN)
+            else
+              vim.notify("All packages installed successfully!", vim.log.levels.INFO)
+            end
           end
         end)
+      else
+        vim.notify(pkg_name .. " already installed", vim.log.levels.INFO)
       end
     else
       vim.notify("Package not found: " .. pkg_name, vim.log.levels.WARN)
+      table.insert(failed, pkg_name)
     end
   end
 end, { desc = "Install all Mason packages" })

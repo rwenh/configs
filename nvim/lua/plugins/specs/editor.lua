@@ -15,7 +15,6 @@ return {
     },
     config = function(_, opts)
       require("nvim-tree").setup(opts)
-      vim.api.nvim_create_augroup("FileExplorer", { clear = true })
     end,
   },
 
@@ -137,10 +136,13 @@ return {
     "rmagatti/auto-session",
     lazy = false,
     opts = {
-      auto_session_suppress_dirs = { "~/", "~/Downloads", "/" },
-      auto_save_enabled = true,
-      auto_restore_enabled = true,
+      suppressed_dirs = { "~/", "~/Downloads", "/" },
+      auto_save = true,
+      auto_restore = true,
     },
+    init = function()
+      vim.o.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
+    end,
   },
 
   -- Zen mode

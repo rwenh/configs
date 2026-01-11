@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua - LSP configuration (updated with Ruby, Elixir, Kotlin, Zig, COBOL)
+-- lua/plugins/specs/lsp.lua - LSP configuration (Updated for Nvim 0.11+)
 
 return {
   -- Mason
@@ -18,12 +18,10 @@ return {
         "lua_ls", "basedpyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
         "clangd",
-        -- New languages
-        "solargraph",           -- Ruby
-        "elixirls",             -- Elixir
-        "kotlin_language_server", -- Kotlin
-        "zls",                  -- Zig
-        -- vhdl_ls not in Mason, install via: cargo install vhdl_ls
+        "solargraph",
+        "elixirls",
+        "kotlin_language_server",
+        "zls",
       },
       automatic_installation = true,
     },
@@ -56,7 +54,6 @@ return {
         end,
       })
 
-      local lspconfig = require("lspconfig")
       local servers = {
         lua_ls = {
           settings = {
@@ -96,15 +93,6 @@ return {
             },
           },
         },
-        gopls = {
-          settings = {
-            gopls = {
-              analyses = { unusedparams = true },
-              staticcheck = true,
-            },
-          },
-        },
-        -- New languages
         solargraph = {
           settings = {
             solargraph = {
@@ -118,29 +106,31 @@ return {
         },
         kotlin_language_server = {},
         zls = {},
-        vhdl_ls = {
-          filetypes = { "vhdl", "vhd" },
-        },
       }
 
       for server, config in pairs(servers) do
         config.capabilities = capabilities
-        lspconfig[server].setup(config)
+        vim.lsp.enable(server)
+      end
+      
+      -- VHDL LSP setup (optional - only if vhdl_ls is installed manually)
+      if vim.fn.executable("vhdl_ls") == 1 then
+        vim.lsp.config('vhdl_ls', {
+          capabilities = capabilities,
+          filetypes = { "vhdl", "vhd" },
+        })
+        vim.lsp.enable('vhdl_ls')
       end
 
+      local signs = { Error = " ", Warn = " ", Hint = " ", Info = " " }
+      
       vim.diagnostic.config({
         virtual_text = { prefix = "●" },
-        signs = true,
+        signs = { text = signs },
         underline = true,
         severity_sort = true,
         float = { border = "rounded" },
       })
-
-      local signs = { Error = " ", Warn = " ", Hint = " ", Info = " " }
-      for type, icon in pairs(signs) do
-        local hl = "DiagnosticSign" .. type
-        vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-      end
     end,
   },
 
@@ -178,7 +168,6 @@ return {
         ruby = { "rubocop" },
         kotlin = { "ktlint" },
         elixir = { "mix" },
-        vhdl = { "vhdl-style-guide" },
       },
       format_on_save = { timeout_ms = 500, lsp_format = "fallback" },
     },

@@ -11,10 +11,10 @@ return {
       "nvim-neotest/neotest-go",
     },
     keys = {
-      { "<leader>tn", function() require("neotest").run. run() end, desc = "Run nearest" },
+      { "<leader>tn", function() require("neotest").run.run() end, desc = "Run nearest" },
       { "<leader>tf", function() require("neotest").run.run(vim.fn.expand("%")) end, desc = "Run file" },
       { "<leader>ta", function() require("neotest").run.run(vim.uv.cwd()) end, desc = "Run all" },
-      { "<leader>ts", function() require("neotest").summary. toggle() end, desc = "Summary" },
+      { "<leader>ts", function() require("neotest").summary.toggle() end, desc = "Summary" },
     },
     opts = function()
       return {
