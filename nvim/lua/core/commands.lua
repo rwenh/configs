@@ -95,15 +95,51 @@ end, { desc = "Resume last telescope picker" })
 
 -- Install all mason packages
 cmd("MasonInstallAll", function()
+  local registry = require("mason-registry")
   local pkgs = {
     -- LSP
-    "lua-language-server", "pyright", "rust-analyzer",
-    "typescript-language-server", "html-lsp", "css-lsp",
-    "json-lsp", "yaml-language-server", "clangd", "gopls",
+    "lua-language-server",
+    "basedpyright",
+    "rust-analyzer",
+    "typescript-language-server",
+    "html-lsp",
+    "css-lsp",
+    "json-lsp",
+    "yaml-language-server",
+    "clangd",
+    "solargraph",
+    "elixir-ls",
+    "kotlin-language-server",
+    "zls",
+    -- vhdl-ls must be installed via: cargo install vhdl_ls
     -- DAP
-    "debugpy", "codelldb", "delve",
+    "debugpy",
+    "codelldb",
+    "delve",
+    "js-debug-adapter",
     -- Formatters
-    "black", "stylua", "prettier", "shfmt",
+    "stylua",
+    "prettier",
+    "shfmt",
   }
-  vim.cmd("MasonInstall " .. table.concat(pkgs, " "))
+  
+  local installed = 0
+  local total = #pkgs
+  
+  for _, pkg_name in ipairs(pkgs) do
+    local ok, pkg = pcall(registry.get_package, pkg_name)
+    if ok then
+      if not pkg:is_installed() then
+        vim.notify("Installing " .. pkg_name .. "...", vim.log.levels.INFO)
+        pkg:install():once("closed", function()
+          installed = installed + 1
+          if installed == total then
+            vim.notify("All packages installed!", vim.log.levels.INFO)
+          end
+        end)
+      end
+    else
+      vim.notify("Package not found: " .. pkg_name, vim.log.levels.WARN)
+    end
+  end
 end, { desc = "Install all Mason packages" })

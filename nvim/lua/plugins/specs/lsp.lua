@@ -15,15 +15,15 @@ return {
     dependencies = "mason.nvim",
     opts = {
       ensure_installed = {
-        "lua_ls", "pyright", "rust_analyzer",
+        "lua_ls", "basedpyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
-        "clangd", "gopls",
+        "clangd",
         -- New languages
         "solargraph",           -- Ruby
         "elixirls",             -- Elixir
         "kotlin_language_server", -- Kotlin
         "zls",                  -- Zig
-        "vhdl_ls",              -- VHDL
+        -- vhdl_ls not in Mason, install via: cargo install vhdl_ls
       },
       automatic_installation = true,
     },
@@ -67,7 +67,15 @@ return {
             },
           },
         },
-        pyright = {},
+        basedpyright = {
+          settings = {
+            basedpyright = {
+              analysis = {
+                typeCheckingMode = "basic",
+              },
+            },
+          },
+        },
         rust_analyzer = {
           settings = {
             ["rust-analyzer"] = {
@@ -80,7 +88,14 @@ return {
         cssls = {},
         jsonls = {},
         yamlls = {},
-        clangd = {},
+        gopls = {
+          settings = {
+            gopls = {
+              analyses = { unusedparams = true },
+              staticcheck = true,
+            },
+          },
+        },
         gopls = {
           settings = {
             gopls = {
