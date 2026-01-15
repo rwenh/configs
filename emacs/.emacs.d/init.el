@@ -1,166 +1,90 @@
-;;; init.el --- Enhanced Modular Emacs IDE Configuration -*- lexical-binding: t -*-
+;;; init.el --- Hyper-Optimized Emacs IDE Core -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; A comprehensive, modular IDE configuration supporting 50+ languages
-;;; with LSP, Tree-sitter, debugging, advanced code intelligence, and professional IDE features.
-;;;
+;;; Professional-grade IDE with sub-second startup and maximum performance
 ;;; Code:
 
 ;; ============================================================================
-;; EARLY PERFORMANCE OPTIMIZATION
+;; STARTUP PERFORMANCE TRACKING
 ;; ============================================================================
-(add-hook 'emacs-startup-hook
-          (lambda ()
-            (setq gc-cons-threshold (* 16 1024 1024)
-                  gc-cons-percentage 0.1)
-            (garbage-collect)
-            (message "Emacs loaded in %.2fs with %d packages"
-                     (float-time after-init-time)
-                     (length package-activated-list))))
+(defvar emacs-ide--startup-time-start (current-time))
 
-;; Suppress warnings
-(setq byte-compile-warnings '(not obsolete docstrings constants)
-      warning-suppress-types '((bytecomp) (emacs))
-      warning-suppress-log-types '((bytecomp) (emacs))
-      warning-minimum-level :error)
+;; ============================================================================
+;; EARLY OPTIMIZATION
+;; ============================================================================
+(setq byte-compile-warnings nil
+      warning-suppress-types '((comp) (bytecomp) (emacs))
+      warning-suppress-log-types '((comp) (bytecomp) (emacs))
+      warning-minimum-level :emergency)
 
-;; Native compilation settings
+;; ============================================================================
+;; NATIVE COMPILATION
+;; ============================================================================
 (when (and (fboundp 'native-comp-available-p)
            (native-comp-available-p))
-  (setq native-comp-async-report-warnings-errors 'silent
+  (setq native-comp-async-report-warnings-errors nil
         native-comp-deferred-compilation t
-        native-comp-speed 2))
-
-;; Modern Emacs features
-(when (fboundp 'global-so-long-mode)
-  (global-so-long-mode 1))
-(when (fboundp 'global-subword-mode)
-  (global-subword-mode 1))
+        native-comp-speed 3))
 
 ;; ============================================================================
-;; PACKAGE SYSTEM
+;; MODERN EMACS FEATURES
+;; ============================================================================
+(when (fboundp 'global-so-long-mode) (global-so-long-mode 1))
+(when (fboundp 'global-subword-mode) (global-subword-mode 1))
+
+;; ============================================================================
+;; PACKAGE SYSTEM - OPTIMIZED
 ;; ============================================================================
 (require 'package)
-(setq package-enable-at-startup nil)
-(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
-(add-to-list 'package-archives '("gnu" . "https://elpa.gnu.org/packages/") t)
+(setq package-enable-at-startup nil
+      package-archives '(("melpa" . "https://melpa.org/packages/")
+                        ("gnu" . "https://elpa.gnu.org/packages/")
+                        ("nongnu" . "https://elpa.nongnu.org/nongnu/"))
+      package-archive-priorities '(("melpa" . 10)
+                                  ("gnu" . 5)
+                                  ("nongnu" . 3)))
 (package-initialize)
 
-;; Bootstrap use-package
-(unless (package-installed-p 'use-package)
-  (package-refresh-contents)
-  (package-install 'use-package))
+;; Bootstrap straight.el for better performance
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+      (bootstrap-version 6))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
 
-(eval-when-compile
-  (require 'use-package))
-
-(setq use-package-always-ensure t
+;; Use-package with straight
+(straight-use-package 'use-package)
+(setq straight-use-package-by-default t
       use-package-always-defer t
       use-package-expand-minimally t
       use-package-enable-imenu-support t
-      use-package-compute-statistics t)
+      use-package-compute-statistics nil)
 
 ;; ============================================================================
-;; ESSENTIAL PACKAGES - ENHANCED
+;; ESSENTIAL PACKAGES - MINIMAL LOAD
 ;; ============================================================================
 (defvar emacs-ide-essential-packages
-  '(;; UI & Themes
-    modus-themes which-key breadcrumb dashboard all-the-icons
-    
-    ;; Completion & Editing
-    company company-quickhelp yasnippet yasnippet-snippets
-    multiple-cursors expand-region smartparens avy
-    
-    ;; Development Tools - Core
-    flycheck lsp-mode lsp-ui eglot
-    dap-mode projectile magit format-all vterm
-    
-    ;; Tree-sitter Support
-    treesit-auto tree-sitter tree-sitter-langs
-    
-    ;; Window Management & Navigation
-    ace-window undo-tree neotree
-    
-    ;; Code Intelligence
-    dumb-jump xref consult
-    
-    ;; Language Support - Core
-    lsp-pyright lsp-java lsp-haskell ccls
-    rust-mode cargo go-mode
-    
-    ;; Language Support - Web
-    web-mode js2-mode typescript-mode json-mode
-    php-mode markdown-mode yaml-mode csv-mode
-    
-    ;; Language Support - Systems
-    ada-mode haskell-mode cmake-mode
-    
-    ;; Language Support - Modern
-    nim-mode zig-mode kotlin-mode scala-mode swift-mode
-    elixir-mode erlang tuareg
-    
-    ;; Language Support - Hardware
-    verilog-mode nasm-mode
-    
-    ;; Language Support - Scientific
-    f90-interface-browser julia-mode
-    
-    ;; Language Support - Scripting
-    lua-mode perl-mode
-    
-    ;; Language Support - Data
-    protobuf-mode graphql-mode
-    
-    ;; Docker & Kubernetes
-    dockerfile-mode docker-compose-mode kubernetes
-    
-    ;; Version Control Enhanced
-    git-gutter git-timemachine diff-hl
-    
-    ;; Visual Enhancements
-    rainbow-delimiters highlight-numbers hl-todo
-    beacon dimmer highlight-indent-guides
-    
-    ;; Documentation & Help
-    helpful eldoc-box
-    
-    ;; Performance Monitoring
-    esup)
-  "Essential packages for a complete IDE experience.")
-
-;; Smart package installation with error handling
-(defun emacs-ide-ensure-packages ()
-  "Install missing essential packages with error handling."
-  (let ((missing (seq-remove #'package-installed-p emacs-ide-essential-packages))
-        (failed '()))
-    (when missing
-      (message "Installing %d missing packages..." (length missing))
-      (condition-case err
-          (package-refresh-contents)
-        (error (message "Warning: Failed to refresh packages: %s" err)))
-      
-      (dolist (pkg missing)
-        (condition-case err
-            (progn
-              (package-install pkg)
-              (message "✓ Installed: %s" pkg))
-          (error
-           (push pkg failed)
-           (message "✗ Failed: %s - %s" pkg err)))))
-    
-    (when failed
-      (display-warning 'packages
-                      (format "Failed to install: %s" failed)
-                      :warning))))
-
-;; Install packages on first run
-(unless (seq-every-p #'package-installed-p emacs-ide-essential-packages)
-  (emacs-ide-ensure-packages))
+  '(modus-themes which-key breadcrumb dashboard all-the-icons
+    company company-box yasnippet yasnippet-snippets
+    multiple-cursors expand-region smartparens avy undo-tree
+    flycheck lsp-mode lsp-ui dap-mode
+    projectile magit git-gutter git-timemachine diff-hl
+    format-all vterm neotree
+    treesit-auto consult vertico orderless marginalia embark embark-consult
+    helpful eldoc-box rainbow-delimiters highlight-numbers hl-todo
+    beacon dimmer highlight-indent-guides ace-window))
 
 ;; ============================================================================
-;; PATH AND ENVIRONMENT
+;; PATH & ENVIRONMENT
 ;; ============================================================================
 (defun emacs-ide-setup-exec-path ()
-  "Setup exec-path from shell environment."
+  "Setup PATH from shell."
   (let ((path-from-shell
          (replace-regexp-in-string
           "[ \t\n]*$" ""
@@ -168,34 +92,29 @@
     (setenv "PATH" path-from-shell)
     (setq exec-path (split-string path-from-shell path-separator))))
 
-;; Load PATH from shell on Linux/macOS
 (when (memq window-system '(mac ns x pgtk))
   (emacs-ide-setup-exec-path))
 
 ;; ============================================================================
-;; WAYLAND DETECTION & SETTINGS
+;; WAYLAND DETECTION
 ;; ============================================================================
-(defvar emacs-ide-wayland-p (getenv "WAYLAND_DISPLAY")
-  "Non-nil if running under Wayland.")
-
+(defvar emacs-ide-wayland-p (getenv "WAYLAND_DISPLAY"))
 (defvar emacs-ide-display-server
   (cond (emacs-ide-wayland-p "Wayland")
         ((getenv "DISPLAY") "X11")
-        (t "TTY"))
-  "Current display server type.")
+        (t "TTY")))
 
-;; Wayland-specific optimizations
 (when emacs-ide-wayland-p
   (setq select-enable-clipboard t
         select-enable-primary t
-        save-interprogram-paste-before-kill t))
+        save-interprogram-paste-before-kill t
+        x-select-enable-clipboard-manager t))
 
 ;; ============================================================================
-;; MODULE DIRECTORY SETUP
+;; MODULE DIRECTORY
 ;; ============================================================================
 (defvar emacs-ide-modules-dir
-  (expand-file-name "modules" user-emacs-directory)
-  "Directory containing configuration modules.")
+  (expand-file-name "modules" user-emacs-directory))
 
 (unless (file-directory-p emacs-ide-modules-dir)
   (make-directory emacs-ide-modules-dir t))
@@ -203,29 +122,24 @@
 (add-to-list 'load-path emacs-ide-modules-dir)
 
 ;; ============================================================================
-;; MODULE LOADER WITH ERROR HANDLING
+;; MODULE LOADER - OPTIMIZED
 ;; ============================================================================
 (defun emacs-ide-load-module (module-name)
-  "Load configuration MODULE-NAME from modules directory."
+  "Load MODULE-NAME with error handling."
   (let ((module-file (expand-file-name
                      (concat module-name ".el")
                      emacs-ide-modules-dir)))
     (if (file-exists-p module-file)
         (condition-case err
-            (progn
-              (load module-file)
-              (message "✓ Loaded: %s" module-name))
+            (load module-file nil 'nomessage)
           (error
-           (display-warning 'init
-                           (format "Failed to load %s: %s" module-name err)
-                           :error)))
-      (message "⚠ Module not found: %s (skipping)" module-name))))
+           (message "Failed to load %s: %s" module-name err)))
+      (message "Module not found: %s" module-name))))
 
 ;; ============================================================================
-;; CORE SETTINGS
+;; CORE SETTINGS - OPTIMIZED
 ;; ============================================================================
 (setq-default
- ;; UTF-8 everywhere
  buffer-file-coding-system 'utf-8-unix
  default-buffer-file-coding-system 'utf-8-unix
  default-file-name-coding-system 'utf-8-unix
@@ -234,75 +148,65 @@
  default-sendmail-coding-system 'utf-8-unix
  default-terminal-coding-system 'utf-8-unix
  
- ;; Sane defaults
  indent-tabs-mode nil
  tab-width 4
- fill-column 88
+ fill-column 100
  require-final-newline t
  truncate-lines nil
  word-wrap t
  
- ;; No backups/autosave
  auto-save-default nil
  make-backup-files nil
- create-lockfiles nil)
+ create-lockfiles nil
+ 
+ scroll-conservatively 101
+ scroll-margin 5
+ scroll-preserve-screen-position t
+ auto-window-vscroll nil
+ 
+ fast-but-imprecise-scrolling t
+ redisplay-skip-fontification-on-input t)
 
-;; Answer y/n instead of yes/no
 (fset 'yes-or-no-p 'y-or-n-p)
 
-;; Disable startup screen
 (setq inhibit-startup-screen t
       inhibit-startup-message t
-      initial-scratch-message nil)
-
-;; Better scrolling
-(setq scroll-conservatively 101
-      scroll-margin 3
-      scroll-preserve-screen-position t
-      auto-window-vscroll nil)
+      initial-scratch-message nil
+      initial-major-mode 'fundamental-mode)
 
 ;; ============================================================================
-;; TREE-SITTER AUTO-SETUP
+;; LOAD MODULES
 ;; ============================================================================
-(use-package treesit-auto
-  :ensure t
-  :demand t
-  :custom
-  (treesit-auto-install 'prompt)
-  :config
-  (global-treesit-auto-mode))
+(emacs-ide-load-module "ui-config")
+(emacs-ide-load-module "completion-config")
+(emacs-ide-load-module "editing-config")
+(emacs-ide-load-module "tools-config")
+(emacs-ide-load-module "lang-config")
+(emacs-ide-load-module "debug-config")
+(emacs-ide-load-module "keybindings")
 
 ;; ============================================================================
-;; LOAD ALL MODULES
+;; POST-INIT OPTIMIZATION
 ;; ============================================================================
-(message "Loading Enhanced Emacs IDE modules...")
-
-(emacs-ide-load-module "ui-config")          
-(emacs-ide-load-module "completion-config")  
-(emacs-ide-load-module "editing-config")     
-(emacs-ide-load-module "tools-config")       
-(emacs-ide-load-module "lang-config")        
-(emacs-ide-load-module "debug-config")       ; NEW: Debugging support
-(emacs-ide-load-module "keybindings")        
-
-;; ============================================================================
-;; STARTUP MESSAGE
-;; ============================================================================
-(defun emacs-ide-startup-message ()
-  "Display startup information."
-  (message "Enhanced Emacs IDE ready! %d packages | %.2fs | %s | C-c ? for help"
-           (length package-activated-list)
-           (float-time after-init-time)
-           emacs-ide-display-server))
-
-(add-hook 'emacs-startup-hook #'emacs-ide-startup-message)
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (setq gc-cons-threshold (* 16 1024 1024)
+                  gc-cons-percentage 0.1)
+            (garbage-collect)
+            (let ((elapsed (float-time (time-subtract (current-time)
+                                                      emacs-ide--startup-time-start))))
+              (message "🚀 Emacs IDE ready in %.2fs | %d packages | %s"
+                       elapsed
+                       (length package-activated-list)
+                       emacs-ide-display-server)))
+          100)
 
 ;; ============================================================================
 ;; CUSTOM FILE
 ;; ============================================================================
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-exists-p custom-file)
-  (load custom-file))
+  (load custom-file nil 'nomessage))
 
 (provide 'init)
 ;;; init.el ends here

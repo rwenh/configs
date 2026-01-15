@@ -1,12 +1,10 @@
-;;; ui-config.el --- Enhanced Visual and UI Configuration -*- lexical-binding: t -*-
+;;; ui-config.el --- Professional Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Theme, mode-line, fonts, visual settings, and modern UI enhancements
-;;; Save as: ~/.emacs.d/modules/ui-config.el
-;;;
+;;; Elite UI/UX with modern design and maximum efficiency
 ;;; Code:
 
 ;; ============================================================================
-;; BASIC UI CLEANUP
+;; UI CLEANUP
 ;; ============================================================================
 (when (fboundp 'menu-bar-mode) (menu-bar-mode -1))
 (when (fboundp 'tool-bar-mode) (tool-bar-mode -1))
@@ -15,159 +13,149 @@
 (when (fboundp 'tooltip-mode) (tooltip-mode -1))
 (when (fboundp 'blink-cursor-mode) (blink-cursor-mode -1))
 
-;; Disable bell
 (setq ring-bell-function 'ignore
-      visible-bell nil)
-
-;; No dialog boxes
-(setq use-dialog-box nil
-      use-file-dialog nil)
-
-;; Fast echo keystrokes
-(setq echo-keystrokes 0.02)
+      visible-bell nil
+      use-dialog-box nil
+      use-file-dialog nil
+      echo-keystrokes 0.01
+      inhibit-splash-screen t
+      inhibit-startup-echo-area-message t)
 
 ;; ============================================================================
-;; THEME DETECTION AND LOADING
-;; ============================================================================
-(defun emacs-ide-detect-system-theme ()
-  "Detect theme preference from Sway config or environment."
-  (let ((sway-config (expand-file-name "~/.config/sway/config")))
-    (cond
-     ((and (file-symlink-p sway-config)
-           (string-match "latte" (file-symlink-p sway-config)))
-      'light)
-     ((string= (getenv "EMACS_THEME") "light")
-      'light)
-     ((getenv "WAYLAND_DISPLAY")
-      'dark)
-     (t 'dark))))
-
-;; ============================================================================
-;; MODUS THEMES - ENHANCED
+;; THEME - CATPPUCCIN/MODUS
 ;; ============================================================================
 (use-package modus-themes
-  :ensure t
   :demand t
-  :config
+  :init
   (setq modus-themes-bold-constructs t
         modus-themes-italic-constructs t
         modus-themes-mixed-fonts t
-        modus-themes-subtle-line-numbers t
-        modus-themes-success-deuteranopia t
-        modus-themes-fringes 'subtle
+        modus-themes-variable-pitch-ui t
+        modus-themes-custom-auto-reload t
+        modus-themes-disable-other-themes t
+        modus-themes-prompts '(bold intense)
+        modus-themes-completions '((matches . (extrabold))
+                                  (selection . (semibold accented))
+                                  (popup . (accented intense)))
         modus-themes-org-blocks 'gray-background
-        modus-themes-headings '((1 . (rainbow overline background 1.4))
-                                (2 . (rainbow background 1.3))
-                                (3 . (rainbow bold 1.2))
-                                (t . (semilight 1.1)))
-        modus-themes-scale-headings t)
-  
-  (let ((theme-variant (emacs-ide-detect-system-theme)))
-    (if (eq theme-variant 'light)
-        (load-theme 'modus-operandi t)
-      (load-theme 'modus-vivendi t)))
-  
-  (message "✓ Theme loaded: %s"
-           (if (eq (emacs-ide-detect-system-theme) 'light)
-               "Modus Operandi (Light)"
-             "Modus Vivendi (Dark)")))
+        modus-themes-headings '((1 . (rainbow overline background 1.5))
+                               (2 . (rainbow background 1.3))
+                               (3 . (rainbow bold 1.2))
+                               (t . (semilight 1.1)))
+        modus-themes-scale-headings t
+        modus-themes-syntax '(alt-syntax green-strings yellow-comments)
+        modus-themes-hl-line '(intense)
+        modus-themes-paren-match '(bold intense)
+        modus-themes-region '(bg-only no-extend))
+  :config
+  (load-theme 'modus-vivendi t))
 
-;; Theme toggling
 (defun emacs-ide-toggle-theme ()
   "Toggle between light and dark theme."
   (interactive)
   (if (custom-theme-enabled-p 'modus-vivendi)
-      (progn
-        (disable-theme 'modus-vivendi)
-        (load-theme 'modus-operandi t)
-        (message "Switched to Modus Operandi (Light)"))
+      (progn (disable-theme 'modus-vivendi)
+             (load-theme 'modus-operandi t)
+             (message "☀️ Light theme"))
     (disable-theme 'modus-operandi)
     (load-theme 'modus-vivendi t)
-    (message "Switched to Modus Vivendi (Dark)")))
+    (message "🌙 Dark theme")))
 
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 
 ;; ============================================================================
-;; DASHBOARD (Startup Screen) - NEW
+;; DASHBOARD
 ;; ============================================================================
 (use-package dashboard
-  :ensure t
   :demand t
-  :custom
-  (dashboard-startup-banner 'logo)
-  (dashboard-center-content t)
-  (dashboard-set-heading-icons t)
-  (dashboard-set-file-icons t)
-  (dashboard-items '((recents  . 10)
-                     (projects . 5)
-                     (bookmarks . 5)))
-  (dashboard-set-navigator t)
-  (dashboard-set-init-info t)
+  :init
+  (setq dashboard-startup-banner 'logo
+        dashboard-center-content t
+        dashboard-set-heading-icons t
+        dashboard-set-file-icons t
+        dashboard-items '((recents  . 15)
+                         (projects . 10)
+                         (bookmarks . 10)
+                         (agenda . 5))
+        dashboard-set-navigator t
+        dashboard-set-init-info t
+        dashboard-banner-logo-title "EMACS IDE - Professional Development Environment"
+        dashboard-footer-messages '("Ready to code")
+        dashboard-footer-icon (all-the-icons-octicon "dashboard"
+                                                      :height 1.1
+                                                      :v-adjust -0.05
+                                                      :face 'font-lock-keyword-face))
   :config
   (dashboard-setup-startup-hook)
-  (setq initial-buffer-choice (lambda () (get-buffer "*dashboard*"))))
+  (setq initial-buffer-choice (lambda () (get-buffer-create "*dashboard*"))))
 
 (use-package all-the-icons
-  :ensure t
-  :if (display-graphic-p))
+  :if (display-graphic-p)
+  :demand t)
+
+(use-package all-the-icons-dired
+  :if (display-graphic-p)
+  :hook (dired-mode . all-the-icons-dired-mode))
 
 ;; ============================================================================
-;; FONTS - ENHANCED
+;; FONTS - LIGATURES ENABLED
 ;; ============================================================================
 (when (display-graphic-p)
   (setq frame-resize-pixelwise t
         window-resize-pixelwise t)
   
-  (defun emacs-ide-set-font (font-name size)
-    "Set font FONT-NAME at SIZE if available."
+  (defun emacs-ide-set-font (font-name size &optional weight)
+    "Set FONT-NAME at SIZE with optional WEIGHT."
     (when (member font-name (font-family-list))
       (set-face-attribute 'default nil
                           :font font-name
                           :height (* size 10)
-                          :weight 'normal)))
+                          :weight (or weight 'normal))
+      t))
   
-  ;; Monospace fonts (try in order)
-  (cond
-   ((member "JetBrains Mono" (font-family-list))
-    (emacs-ide-set-font "JetBrains Mono" 11))
-   ((member "Fira Code" (font-family-list))
-    (emacs-ide-set-font "Fira Code" 11))
-   ((member "Cascadia Code" (font-family-list))
-    (emacs-ide-set-font "Cascadia Code" 11))
-   ((member "Source Code Pro" (font-family-list))
-    (emacs-ide-set-font "Source Code Pro" 11))
-   (t
-    (set-face-attribute 'default nil :height 110)))
+  (or (emacs-ide-set-font "JetBrains Mono" 11 'medium)
+      (emacs-ide-set-font "Fira Code" 11)
+      (emacs-ide-set-font "Cascadia Code" 11)
+      (emacs-ide-set-font "Iosevka" 11)
+      (emacs-ide-set-font "Source Code Pro" 11))
   
-  ;; Variable pitch font
-  (cond
-   ((member "Inter" (font-family-list))
-    (set-face-attribute 'variable-pitch nil :font "Inter-11"))
-   ((member "Cantarell" (font-family-list))
-    (set-face-attribute 'variable-pitch nil :font "Cantarell-11"))
-   ((member "DejaVu Sans" (font-family-list))
-    (set-face-attribute 'variable-pitch nil :font "DejaVu Sans-11")))
+  (or (set-face-attribute 'variable-pitch nil :font "Inter-11")
+      (set-face-attribute 'variable-pitch nil :font "Cantarell-11")
+      (set-face-attribute 'variable-pitch nil :font "DejaVu Sans-11"))
   
-  ;; Wayland smooth scrolling
-  (when (and (getenv "WAYLAND_DISPLAY")
-             (fboundp 'pixel-scroll-precision-mode))
-    (pixel-scroll-precision-mode 1)))
+  ;; Ligature support
+  (when (fboundp 'mac-auto-operator-composition-mode)
+    (mac-auto-operator-composition-mode))
+  
+  ;; Emoji support
+  (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))
+
+;; Wayland smooth scrolling
+(when (and (getenv "WAYLAND_DISPLAY")
+           (fboundp 'pixel-scroll-precision-mode))
+  (pixel-scroll-precision-mode 1)
+  (setq pixel-scroll-precision-use-momentum t
+        pixel-scroll-precision-large-scroll-height 40.0
+        pixel-scroll-precision-interpolation-factor 1.0))
 
 ;; ============================================================================
-;; LINE NUMBERS & VISUAL ELEMENTS - ENHANCED
+;; LINE NUMBERS - OPTIMIZED
 ;; ============================================================================
 (global-display-line-numbers-mode 1)
-(setq display-line-numbers-type t
+(setq display-line-numbers-type 'relative
       display-line-numbers-width 3
-      display-line-numbers-grow-only t)
+      display-line-numbers-grow-only t
+      display-line-numbers-width-start t)
 
-;; Disable line numbers in certain modes
 (dolist (mode '(org-mode-hook
                 term-mode-hook
                 shell-mode-hook
                 eshell-mode-hook
                 vterm-mode-hook
-                dashboard-mode-hook))
+                dashboard-mode-hook
+                neotree-mode-hook
+                image-mode-hook
+                pdf-view-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 
 (column-number-mode 1)
@@ -177,33 +165,53 @@
 
 (setq show-paren-delay 0
       show-paren-style 'mixed
-      show-paren-when-point-inside-paren t)
+      show-paren-when-point-inside-paren t
+      show-paren-when-point-in-periphery t)
 
 ;; ============================================================================
-;; MODE-LINE - ENHANCED
+;; MODE-LINE - PROFESSIONAL
 ;; ============================================================================
-(setq-default mode-line-format
-              '("%e" 
-                mode-line-front-space
-                mode-line-mule-info
-                mode-line-client
-                mode-line-modified
-                mode-line-remote
-                mode-line-frame-identification
-                mode-line-buffer-identification
-                "   "
-                mode-line-position
-                (vc-mode vc-mode)
-                "  "
-                mode-line-modes
-                mode-line-misc-info
-                mode-line-end-spaces))
+(use-package doom-modeline
+  :demand t
+  :init
+  (setq doom-modeline-height 30
+        doom-modeline-bar-width 4
+        doom-modeline-icon t
+        doom-modeline-major-mode-icon t
+        doom-modeline-major-mode-color-icon t
+        doom-modeline-buffer-file-name-style 'truncate-upto-project
+        doom-modeline-buffer-state-icon t
+        doom-modeline-buffer-modification-icon t
+        doom-modeline-minor-modes nil
+        doom-modeline-enable-word-count t
+        doom-modeline-buffer-encoding nil
+        doom-modeline-indent-info nil
+        doom-modeline-checker-simple-format t
+        doom-modeline-number-limit 99
+        doom-modeline-vcs-max-length 20
+        doom-modeline-workspace-name t
+        doom-modeline-persp-name t
+        doom-modeline-lsp t
+        doom-modeline-github t
+        doom-modeline-github-interval (* 30 60)
+        doom-modeline-modal-icon t
+        doom-modeline-mu4e t
+        doom-modeline-gnus t
+        doom-modeline-irc t
+        doom-modeline-env-version t
+        doom-modeline-env-enable-python t
+        doom-modeline-env-enable-ruby t
+        doom-modeline-env-enable-perl t
+        doom-modeline-env-enable-go t
+        doom-modeline-env-enable-elixir t
+        doom-modeline-env-enable-rust t)
+  :config
+  (doom-modeline-mode 1))
 
 ;; ============================================================================
-;; BREADCRUMB (Show current function/class)
+;; BREADCRUMB
 ;; ============================================================================
 (use-package breadcrumb
-  :ensure t
   :demand t
   :config
   (breadcrumb-mode 1))
@@ -212,111 +220,140 @@
 ;; FRAME TITLE
 ;; ============================================================================
 (setq frame-title-format
-      '(:eval (concat "Emacs IDE: "
-                      (if (buffer-file-name)
-                          (abbreviate-file-name (buffer-file-name))
-                        (buffer-name))
-                      (when (buffer-modified-p) " •")
-                      (when emacs-ide-wayland-p " [Wayland]"))))
+      '(:eval (concat
+               (if (buffer-file-name)
+                   (abbreviate-file-name (buffer-file-name))
+                 "%b")
+               (when (buffer-modified-p) " •")
+               " - Emacs IDE"
+               (when emacs-ide-wayland-p " [Wayland]"))))
 
 ;; ============================================================================
-;; VISUAL ENHANCEMENTS - EXPANDED
+;; VISUAL ENHANCEMENTS
 ;; ============================================================================
 (use-package rainbow-delimiters
-  :ensure t
   :hook (prog-mode . rainbow-delimiters-mode))
 
+(use-package rainbow-mode
+  :hook (prog-mode . rainbow-mode))
+
 (use-package highlight-numbers
-  :ensure t
   :hook (prog-mode . highlight-numbers-mode))
 
 (use-package hl-todo
-  :ensure t
   :hook (prog-mode . hl-todo-mode)
-  :custom
-  (hl-todo-keyword-faces
-   '(("TODO" . "#ff6c6b")
-     ("FIXME" . "#ff6c6b")
-     ("HACK" . "#c678dd")
-     ("NOTE" . "#98be65")
-     ("DEPRECATED" . "#ECBE7B")
-     ("XXX" . "#ff6c6b")
-     ("BUG" . "#ff6c6b")
-     ("OPTIMIZE" . "#51afef"))))
+  :init
+  (setq hl-todo-keyword-faces
+        '(("TODO" . "#ff6c6b")
+          ("FIXME" . "#ff6c6b")
+          ("HACK" . "#c678dd")
+          ("NOTE" . "#98be65")
+          ("DEPRECATED" . "#ECBE7B")
+          ("XXX" . "#ff6c6b")
+          ("BUG" . "#ff6c6b")
+          ("OPTIMIZE" . "#51afef")
+          ("PERF" . "#51afef")
+          ("REVIEW" . "#c678dd"))))
 
-;; Beacon - highlight cursor on scroll
 (use-package beacon
-  :ensure t
   :demand t
-  :custom
-  (beacon-blink-when-focused t)
-  (beacon-blink-when-window-scrolls t)
+  :init
+  (setq beacon-blink-when-focused t
+        beacon-blink-when-window-scrolls t
+        beacon-blink-when-point-moves-vertically 10
+        beacon-size 40)
   :config
   (beacon-mode 1))
 
-;; Dimmer - dim inactive windows
 (use-package dimmer
-  :ensure t
   :demand t
-  :custom
-  (dimmer-fraction 0.3)
+  :init
+  (setq dimmer-fraction 0.4
+        dimmer-adjustment-mode :foreground
+        dimmer-use-colorspace :rgb
+        dimmer-watch-frame-focus-events nil)
   :config
   (dimmer-mode 1))
 
-;; Highlight indent guides
 (use-package highlight-indent-guides
-  :ensure t
   :hook (prog-mode . highlight-indent-guides-mode)
-  :custom
-  (highlight-indent-guides-method 'character)
-  (highlight-indent-guides-responsive 'top)
-  (highlight-indent-guides-delay 0))
+  :init
+  (setq highlight-indent-guides-method 'character
+        highlight-indent-guides-responsive 'top
+        highlight-indent-guides-delay 0
+        highlight-indent-guides-auto-enabled t
+        highlight-indent-guides-auto-character-face-perc 20
+        highlight-indent-guides-auto-top-character-face-perc 40))
+
+(use-package pulsar
+  :demand t
+  :init
+  (setq pulsar-pulse t
+        pulsar-delay 0.055
+        pulsar-iterations 10
+        pulsar-face 'pulsar-magenta
+        pulsar-highlight-face 'pulsar-yellow)
+  :config
+  (pulsar-global-mode 1))
 
 ;; ============================================================================
-;; WHICH-KEY (Show available keybindings) - ENHANCED
+;; WHICH-KEY
 ;; ============================================================================
 (use-package which-key
-  :ensure t
   :demand t
-  :custom
-  (which-key-idle-delay 0.5)
-  (which-key-idle-secondary-delay 0.05)
-  (which-key-separator " → ")
-  (which-key-prefix-prefix "+")
-  (which-key-sort-order 'which-key-key-order-alpha)
-  (which-key-max-display-columns 3)
-  (which-key-add-column-padding 1)
+  :init
+  (setq which-key-idle-delay 0.3
+        which-key-idle-secondary-delay 0.05
+        which-key-separator " → "
+        which-key-prefix-prefix "+"
+        which-key-sort-order 'which-key-key-order-alpha
+        which-key-max-display-columns 4
+        which-key-min-display-lines 6
+        which-key-add-column-padding 1
+        which-key-max-description-length 32
+        which-key-allow-imprecise-window-fit nil
+        which-key-show-prefix 'echo)
   :config
   (which-key-mode 1))
 
 ;; ============================================================================
-;; WINDOW MANAGEMENT - ENHANCED
+;; WINDOW MANAGEMENT
 ;; ============================================================================
 (use-package ace-window
-  :ensure t
-  :bind (("M-o" . ace-window))
-  :custom
-  (aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
-  (aw-scope 'frame)
-  (aw-background t)
-  (aw-dispatch-always t))
+  :bind ("M-o" . ace-window)
+  :init
+  (setq aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
+        aw-scope 'frame
+        aw-background t
+        aw-dispatch-always t
+        aw-minibuffer-flag t
+        aw-ignore-current nil))
 
-;; Winner mode
 (winner-mode 1)
 
+(use-package transpose-frame
+  :bind (("C-c w t" . transpose-frame)
+         ("C-c w f" . flip-frame)
+         ("C-c w r" . rotate-frame-clockwise)))
+
 ;; ============================================================================
-;; NEOTREE (File Tree Sidebar) - NEW
+;; NEOTREE
 ;; ============================================================================
 (use-package neotree
-  :ensure t
   :bind (("<f8>" . neotree-toggle)
          ("C-c n" . neotree-projectile-action))
-  :custom
-  (neo-smart-open t)
-  (neo-theme (if (display-graphic-p) 'icons 'arrow))
+  :init
+  (setq neo-smart-open t
+        neo-theme (if (display-graphic-p) 'icons 'arrow)
+        neo-window-width 30
+        neo-create-file-auto-open t
+        neo-auto-indent-point t
+        neo-modern-sidebar t
+        neo-show-updir-line nil
+        neo-vc-integration '(face))
   :config
   (defun neotree-projectile-action ()
-    "Open NeoTree using the project root, or pwd if not in a project."
+    "Open NeoTree at project root."
     (interactive)
     (let ((project-root (projectile-project-root)))
       (neotree-toggle)
@@ -329,90 +366,87 @@
 ;; ============================================================================
 (use-package dired
   :ensure nil
-  :custom
-  (dired-listing-switches "-alh --group-directories-first")
-  (dired-dwim-target t)
-  (dired-recursive-copies 'always)
-  (dired-recursive-deletes 'always)
-  (dired-kill-when-opening-new-dired-buffer t)
+  :init
+  (setq dired-listing-switches "-alGh --group-directories-first"
+        dired-dwim-target t
+        dired-recursive-copies 'always
+        dired-recursive-deletes 'always
+        dired-kill-when-opening-new-dired-buffer t
+        dired-auto-revert-buffer t
+        dired-hide-details-hide-symlink-targets nil)
   :bind (:map dired-mode-map
               ("h" . dired-up-directory)
-              ("l" . dired-find-alternate-file)))
+              ("l" . dired-find-alternate-file)
+              ("C-c C-p" . wdired-change-to-wdired-mode)))
 
-;; All the icons for dired
-(use-package all-the-icons-dired
-  :ensure t
-  :if (display-graphic-p)
-  :hook (dired-mode . all-the-icons-dired-mode))
+(use-package diredfl
+  :hook (dired-mode . diredfl-mode))
 
 ;; ============================================================================
-;; ANSI COLOR IN COMPILATION BUFFERS
+;; ANSI COLOR
 ;; ============================================================================
 (use-package ansi-color
   :ensure nil
   :config
   (defun emacs-ide-colorize-compilation-buffer ()
-    "Colorize compilation buffer output."
+    "Colorize compilation output."
     (let ((inhibit-read-only t))
       (ansi-color-apply-on-region compilation-filter-start (point))))
-  
   (add-hook 'compilation-filter-hook 'emacs-ide-colorize-compilation-buffer))
 
 ;; ============================================================================
-;; DIFF MODE COLORS
+;; TRANSPARENCY
 ;; ============================================================================
-(use-package diff-mode
-  :ensure nil
-  :config
-  (set-face-attribute 'diff-added nil :foreground "#98be65" :background nil)
-  (set-face-attribute 'diff-removed nil :foreground "#ff6c6b" :background nil)
-  (set-face-attribute 'diff-changed nil :foreground "#ECBE7B" :background nil))
+(defun emacs-ide-set-transparency (alpha-background alpha-foreground)
+  "Set frame transparency."
+  (interactive "nBackground (0-100): \nForeground (0-100): ")
+  (set-frame-parameter nil 'alpha-background alpha-background)
+  (set-frame-parameter nil 'alpha alpha-foreground))
 
 ;; ============================================================================
-;; TRANSPARENCY (Optional)
-;; ============================================================================
-(defun emacs-ide-set-transparency (value)
-  "Set frame transparency to VALUE (0-100)."
-  (interactive "nTransparency (0-100): ")
-  (set-frame-parameter (selected-frame) 'alpha value))
-
-;; ============================================================================
-;; VISUAL FILL COLUMN (Center text)
+;; VISUAL FILL COLUMN
 ;; ============================================================================
 (use-package visual-fill-column
-  :ensure t
-  :custom
-  (visual-fill-column-width 100)
-  (visual-fill-column-center-text t)
-  :hook (org-mode . visual-fill-column-mode))
+  :init
+  (setq visual-fill-column-width 120
+        visual-fill-column-center-text nil
+        visual-fill-column-enable-sensible-window-split t)
+  :hook ((org-mode markdown-mode) . visual-fill-column-mode))
 
 ;; ============================================================================
-;; MINIMAP (Code overview sidebar) - Optional
+;; TAB BAR MODE
 ;; ============================================================================
-(use-package minimap
-  :ensure t
-  :commands (minimap-mode)
-  :custom
-  (minimap-window-location 'right)
-  (minimap-width-fraction 0.1))
+(use-package tab-bar
+  :ensure nil
+  :init
+  (setq tab-bar-show 1
+        tab-bar-close-button-show nil
+        tab-bar-new-button-show nil
+        tab-bar-tab-hints t
+        tab-bar-separator " "
+        tab-bar-tab-name-function 'tab-bar-tab-name-current-with-count
+        tab-bar-format '(tab-bar-format-tabs tab-bar-separator tab-bar-format-align-right tab-bar-format-global))
+  :config
+  (tab-bar-mode 1))
 
 ;; ============================================================================
 ;; PRESENTATION MODE
 ;; ============================================================================
-(defvar emacs-ide-presentation-mode nil
-  "Non-nil if in presentation mode.")
+(defvar emacs-ide-presentation-mode nil)
 
 (defun emacs-ide-presentation-mode ()
-  "Toggle presentation mode with larger fonts."
+  "Toggle presentation mode."
   (interactive)
   (if emacs-ide-presentation-mode
       (progn
         (set-face-attribute 'default nil :height 110)
         (setq emacs-ide-presentation-mode nil)
         (message "Presentation mode OFF"))
-    (set-face-attribute 'default nil :height 180)
+    (set-face-attribute 'default nil :height 200)
     (setq emacs-ide-presentation-mode t)
     (message "Presentation mode ON")))
+
+(global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
 
 (provide 'ui-config)
 ;;; ui-config.el ends here

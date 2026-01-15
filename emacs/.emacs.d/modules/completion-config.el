@@ -1,138 +1,237 @@
-;;; completion-config.el --- Enhanced Completion Configuration -*- lexical-binding: t -*-
+;;; completion-config.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; IDO, Company, Yasnippet, and advanced completion framework
-;;; Save as: ~/.emacs.d/modules/completion-config.el
-;;;
+;;; Vertico + Consult + Company + Corfu - Maximum efficiency
 ;;; Code:
 
 ;; ============================================================================
-;; IDO MODE (Classic Emacs Completion) - ENHANCED
+;; VERTICO - VERTICAL COMPLETION
 ;; ============================================================================
-(ido-mode 1)
-(ido-everywhere 1)
+(use-package vertico
+  :demand t
+  :init
+  (setq vertico-scroll-margin 0
+        vertico-count 20
+        vertico-resize t
+        vertico-cycle t)
+  :config
+  (vertico-mode 1)
+  (vertico-multiform-mode 1)
+  (setq vertico-multiform-categories
+        '((file grid)
+          (consult-grep buffer)
+          (imenu buffer)
+          (buffer flat))))
 
-(setq ido-enable-flex-matching t
-      ido-use-filename-at-point 'guess
-      ido-create-new-buffer 'always
-      ido-use-virtual-buffers t
-      ido-max-prospects 10
-      ido-auto-merge-work-directories-length -1
-      ido-ignore-extensions t
-      ido-decorations '("\n→ " "" "\n   " "\n   ..." "[" "]" 
-                        " [No match]" " [Matched]" " [Not readable]" 
-                        " [Too big]" " [Confirm]")
-      ido-file-extensions-order '(".org" ".txt" ".py" ".c" ".cpp" ".rs" 
-                                  ".el" ".java" ".go" ".js" ".ts"))
+(use-package vertico-directory
+  :after vertico
+  :ensure nil
+  :bind (:map vertico-map
+              ("RET" . vertico-directory-enter)
+              ("DEL" . vertico-directory-delete-char)
+              ("M-DEL" . vertico-directory-delete-word))
+  :hook (rfn-eshadow-update-overlay . vertico-directory-tidy))
 
 ;; ============================================================================
-;; IMENU (Code Navigation) - ENHANCED
+;; ORDERLESS - FLEXIBLE MATCHING
 ;; ============================================================================
-(setq imenu-auto-rescan t
-      imenu-max-item-length 100
-      imenu-use-popup-menu nil
-      imenu-sort-function 'imenu--sort-by-name)
+(use-package orderless
+  :demand t
+  :init
+  (setq completion-styles '(orderless basic)
+        completion-category-defaults nil
+        completion-category-overrides '((file (styles basic partial-completion)))
+        orderless-component-separator #'orderless-escapable-split-on-space
+        orderless-matching-styles '(orderless-literal orderless-regexp orderless-flex)))
 
-(global-set-key (kbd "M-i") 'imenu)
+;; ============================================================================
+;; MARGINALIA - RICH ANNOTATIONS
+;; ============================================================================
+(use-package marginalia
+  :demand t
+  :bind (:map minibuffer-local-map
+              ("M-A" . marginalia-cycle))
+  :init
+  (setq marginalia-align 'right
+        marginalia-align-offset 0
+        marginalia-annotators '(marginalia-annotators-heavy marginalia-annotators-light nil))
+  :config
+  (marginalia-mode 1))
 
-;; Enhanced imenu with consult (if available)
+;; ============================================================================
+;; CONSULT - ENHANCED SEARCH
+;; ============================================================================
 (use-package consult
-  :ensure t
-  :bind (("M-g i" . consult-imenu)
+  :bind (("C-x b" . consult-buffer)
+         ("C-x 4 b" . consult-buffer-other-window)
+         ("C-x 5 b" . consult-buffer-other-frame)
+         ("C-x r b" . consult-bookmark)
+         ("M-y" . consult-yank-pop)
+         ("M-g g" . consult-goto-line)
+         ("M-g M-g" . consult-goto-line)
+         ("M-g o" . consult-outline)
+         ("M-g m" . consult-mark)
+         ("M-g k" . consult-global-mark)
+         ("M-g i" . consult-imenu)
          ("M-g I" . consult-imenu-multi)
          ("M-s l" . consult-line)
          ("M-s L" . consult-line-multi)
+         ("M-s k" . consult-keep-lines)
+         ("M-s u" . consult-focus-lines)
          ("M-s r" . consult-ripgrep)
          ("M-s g" . consult-grep)
-         ("C-x b" . consult-buffer))
-  :custom
-  (consult-preview-key 'any))
+         ("M-s G" . consult-git-grep)
+         ("M-s f" . consult-find)
+         ("M-s F" . consult-locate)
+         ("C-c f" . consult-recent-file)
+         :map isearch-mode-map
+         ("M-s l" . consult-line)
+         ("M-s L" . consult-line-multi))
+  :init
+  (setq consult-narrow-key "<"
+        consult-line-numbers-widen t
+        consult-async-min-input 2
+        consult-async-refresh-delay  0.15
+        consult-async-input-throttle 0.2
+        consult-async-input-debounce 0.1
+        consult-project-function #'projectile-project-root
+        consult-preview-key 'any)
+  :config
+  (consult-customize
+   consult-ripgrep consult-git-grep consult-grep
+   consult-bookmark consult-recent-file consult-xref
+   consult--source-bookmark consult--source-file-register
+   consult--source-recent-file consult--source-project-recent-file
+   :preview-key '(:debounce 0.4 any)))
 
 ;; ============================================================================
-;; COMPANY MODE (Code Completion) - ENHANCED
+;; EMBARK - CONTEXTUAL ACTIONS
+;; ============================================================================
+(use-package embark
+  :bind (("C-." . embark-act)
+         ("C-;" . embark-dwim)
+         ("C-h B" . embark-bindings))
+  :init
+  (setq prefix-help-command #'embark-prefix-help-command
+        embark-indicators '(embark-minimal-indicator
+                           embark-highlight-indicator
+                           embark-isearch-highlight-indicator)
+        embark-quit-after-action '((kill-buffer . nil)
+                                  (t . t))))
+
+(use-package embark-consult
+  :after (embark consult)
+  :hook (embark-collect-mode . consult-preview-at-point-mode))
+
+;; ============================================================================
+;; COMPANY - CODE COMPLETION
 ;; ============================================================================
 (use-package company
-  :ensure t
-  :hook ((prog-mode . company-mode)
-         (text-mode . company-mode)
-         (org-mode . company-mode))
+  :hook ((prog-mode text-mode org-mode) . company-mode)
   :bind (:map company-active-map
               ("C-n" . company-select-next)
               ("C-p" . company-select-previous)
-              ("<tab>" . company-complete-selection)
               ("C-j" . company-select-next)
               ("C-k" . company-select-previous)
+              ("<tab>" . company-complete-selection)
+              ("TAB" . company-complete-selection)
               ("C-h" . company-show-doc-buffer)
               ("C-w" . nil)
-              ("RET" . nil))
-  :custom
-  (company-minimum-prefix-length 1)
-  (company-idle-delay 0.1)
-  (company-tooltip-limit 14)
-  (company-tooltip-align-annotations t)
-  (company-require-match nil)
-  (company-selection-wrap-around t)
-  (company-dabbrev-downcase nil)
-  (company-dabbrev-ignore-case nil)
-  (company-show-numbers t)
-  (company-tooltip-flip-when-above t)
-  (company-backends '((company-capf company-yasnippet company-files)
-                      (company-dabbrev-code company-keywords)
-                      company-dabbrev))
-  :config
-  ;; Enhanced company face
-  (set-face-attribute 'company-tooltip nil :background "#2a2a2a")
-  (set-face-attribute 'company-tooltip-selection nil :background "#4a4a4a")
-  (set-face-attribute 'company-tooltip-common nil :foreground "#98be65")
-  (set-face-attribute 'company-tooltip-annotation nil :foreground "#c678dd"))
+              ("RET" . nil)
+              ("<return>" . nil))
+  :init
+  (setq company-minimum-prefix-length 1
+        company-idle-delay 0.0
+        company-tooltip-limit 20
+        company-tooltip-align-annotations t
+        company-require-match nil
+        company-selection-wrap-around t
+        company-dabbrev-downcase nil
+        company-dabbrev-ignore-case nil
+        company-show-numbers t
+        company-tooltip-flip-when-above t
+        company-tooltip-offset-display 'lines
+        company-transformers '(company-sort-by-occurrence)
+        company-backends '((company-capf :with company-yasnippet)
+                          (company-dabbrev-code company-keywords company-files)
+                          company-dabbrev)))
 
-;; Company quickhelp
-(use-package company-quickhelp
-  :ensure t
-  :after company
-  :custom
-  (company-quickhelp-delay 0.3)
-  (company-quickhelp-max-lines 10)
-  :config
-  (company-quickhelp-mode 1))
-
-;; Company box (popup with icons)
 (use-package company-box
-  :ensure t
   :if (display-graphic-p)
   :hook (company-mode . company-box-mode)
-  :custom
-  (company-box-max-candidates 50)
-  (company-box-icons-alist 'company-box-icons-all-the-icons))
+  :init
+  (setq company-box-max-candidates 50
+        company-box-icons-alist 'company-box-icons-all-the-icons
+        company-box-backends-colors nil
+        company-box-show-single-candidate t
+        company-box-frame-behavior 'point
+        company-box-doc-enable t
+        company-box-doc-delay 0.3))
 
 ;; ============================================================================
-;; YASNIPPET (Code Snippets) - ENHANCED
+;; CORFU - INLINE COMPLETION
+;; ============================================================================
+(use-package corfu
+  :demand t
+  :init
+  (setq corfu-auto t
+        corfu-auto-delay 0.0
+        corfu-auto-prefix 1
+        corfu-cycle t
+        corfu-quit-at-boundary 'separator
+        corfu-quit-no-match 'separator
+        corfu-preview-current 'insert
+        corfu-preselect 'prompt
+        corfu-on-exact-match nil
+        corfu-scroll-margin 5
+        corfu-count 20
+        corfu-max-width 100
+        corfu-min-width 20)
+  :bind (:map corfu-map
+              ("TAB" . corfu-next)
+              ([tab] . corfu-next)
+              ("S-TAB" . corfu-previous)
+              ([backtab] . corfu-previous)
+              ("RET" . corfu-insert)
+              ([return] . corfu-insert))
+  :config
+  (global-corfu-mode 1)
+  (corfu-popupinfo-mode 1)
+  (corfu-history-mode 1))
+
+(use-package cape
+  :init
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
+  (add-to-list 'completion-at-point-functions #'cape-file)
+  (add-to-list 'completion-at-point-functions #'cape-elisp-block)
+  (add-to-list 'completion-at-point-functions #'cape-keyword))
+
+;; ============================================================================
+;; YASNIPPET
 ;; ============================================================================
 (use-package yasnippet
-  :ensure t
-  :hook ((prog-mode . yas-minor-mode)
-         (text-mode . yas-minor-mode))
+  :hook ((prog-mode text-mode) . yas-minor-mode)
   :bind (("C-c y e" . yas-expand)
          ("C-c y n" . yas-new-snippet)
          ("C-c y v" . yas-visit-snippet-file)
          ("C-c y i" . yas-insert-snippet))
-  :custom
-  (yas-verbosity 1)
-  (yas-snippet-dirs (list (expand-file-name "snippets" user-emacs-directory)))
+  :init
+  (setq yas-verbosity 1
+        yas-snippet-dirs (list (expand-file-name "snippets" user-emacs-directory))
+        yas-triggers-in-field t
+        yas-wrap-around-region t)
   :config
   (yas-reload-all))
 
 (use-package yasnippet-snippets
-  :ensure t
   :after yasnippet)
 
-;; Auto-snippet for common patterns
-(use-package auto-yasnippet
-  :ensure t
-  :bind (("C-c y w" . aya-create)
-         ("C-c y y" . aya-expand)))
+(use-package yasnippet-capf
+  :after (yasnippet cape)
+  :config
+  (add-to-list 'completion-at-point-functions #'yasnippet-capf))
 
 ;; ============================================================================
-;; HIPPIE EXPAND (Enhanced Completion) - ENHANCED
+;; HIPPIE EXPAND
 ;; ============================================================================
 (setq hippie-expand-try-functions-list
       '(try-expand-dabbrev
@@ -144,52 +243,46 @@
         try-expand-list
         try-expand-line
         try-complete-lisp-symbol-partially
-        try-complete-lisp-symbol))
+        try-complete-lisp-symbol
+        yas-hippie-try-expand))
 
 (global-set-key (kbd "M-/") 'hippie-expand)
 
 ;; ============================================================================
-;; RECENTF (Recent Files) - ENHANCED
+;; RECENTF
 ;; ============================================================================
 (recentf-mode 1)
-(setq recentf-max-saved-items 200
-      recentf-max-menu-items 30
+(setq recentf-max-saved-items 500
+      recentf-max-menu-items 50
       recentf-auto-cleanup 'never
-      recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$" 
+      recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$"
                         "\\.revive$" "/TAGS$" "^/var/folders\\.*"
-                        "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"))
+                        "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"
+                        "\\.emacs\\.d/.*" "\\.cache/.*"))
 
-;; Save recentf list periodically
 (run-at-time nil (* 5 60) 'recentf-save-list)
 
-(defun emacs-ide-recentf-ido-find-file ()
-  "Find recent file using ido."
-  (interactive)
-  (let ((file (ido-completing-read "Recent file: " recentf-list nil t)))
-    (when file
-      (find-file file))))
-
-(global-set-key (kbd "C-c r") 'emacs-ide-recentf-ido-find-file)
-
 ;; ============================================================================
-;; SAVEHIST (Save Minibuffer History) - ENHANCED
+;; SAVEHIST
 ;; ============================================================================
 (savehist-mode 1)
-(setq savehist-additional-variables '(search-ring regexp-search-ring 
-                                      kill-ring compile-history)
-      history-length 1000
+(setq savehist-additional-variables '(search-ring regexp-search-ring
+                                      kill-ring compile-history
+                                      command-history register-alist)
+      history-length 10000
       history-delete-duplicates t
-      savehist-autosave-interval 60)
+      savehist-autosave-interval 60
+      savehist-save-minibuffer-history t)
 
 ;; ============================================================================
-;; SAVE PLACE (Remember Position in Files) - ENHANCED
+;; SAVE PLACE
 ;; ============================================================================
 (save-place-mode 1)
 (setq save-place-forget-unreadable-files nil
       save-place-file (expand-file-name "places" user-emacs-directory))
 
 ;; ============================================================================
-;; ABBREV MODE (Text Expansion) - ENHANCED
+;; ABBREV MODE
 ;; ============================================================================
 (setq-default abbrev-mode t)
 (setq save-abbrevs 'silently
@@ -199,86 +292,14 @@
   (quietly-read-abbrev-file))
 
 ;; ============================================================================
-;; BOOKMARKS - ENHANCED
+;; BOOKMARKS
 ;; ============================================================================
 (setq bookmark-save-flag 1
-      bookmark-default-file (expand-file-name "bookmarks" user-emacs-directory))
-
-(global-set-key (kbd "C-c b s") 'bookmark-set)
-(global-set-key (kbd "C-c b j") 'bookmark-jump)
-(global-set-key (kbd "C-c b l") 'bookmark-bmenu-list)
+      bookmark-default-file (expand-file-name "bookmarks" user-emacs-directory)
+      bookmark-version-control t)
 
 ;; ============================================================================
-;; COMPLETION STYLES
-;; ============================================================================
-(setq completion-styles '(basic partial-completion emacs22 flex))
-(setq completion-category-overrides '((file (styles basic partial-completion))))
-
-;; ============================================================================
-;; CORFU (Alternative to Company - Optional)
-;; ============================================================================
-;; Uncomment if you prefer Corfu over Company
-;; (use-package corfu
-;;   :ensure t
-;;   :custom
-;;   (corfu-auto t)
-;;   (corfu-auto-delay 0.1)
-;;   (corfu-auto-prefix 1)
-;;   (corfu-cycle t)
-;;   :init
-;;   (global-corfu-mode))
-
-;; ============================================================================
-;; VERTICO (Alternative to IDO - Optional)
-;; ============================================================================
-;; Uncomment if you prefer Vertico over IDO
-;; (use-package vertico
-;;   :ensure t
-;;   :init
-;;   (vertico-mode)
-;;   :custom
-;;   (vertico-cycle t))
-
-;; ============================================================================
-;; ORDERLESS (Flexible completion style - Optional)
-;; ============================================================================
-;; (use-package orderless
-;;   :ensure t
-;;   :custom
-;;   (completion-styles '(orderless basic))
-;;   (completion-category-overrides '((file (styles basic partial-completion)))))
-
-;; ============================================================================
-;; MARGINALIA (Rich annotations in minibuffer)
-;; ============================================================================
-(use-package marginalia
-  :ensure t
-  :bind (:map minibuffer-local-map
-              ("M-A" . marginalia-cycle))
-  :custom
-  (marginalia-annotators '(marginalia-annotators-heavy 
-                           marginalia-annotators-light 
-                           nil))
-  :init
-  (marginalia-mode))
-
-;; ============================================================================
-;; EMBARK (Contextual actions)
-;; ============================================================================
-(use-package embark
-  :ensure t
-  :bind (("C-." . embark-act)
-         ("C-;" . embark-dwim)
-         ("C-h B" . embark-bindings))
-  :custom
-  (prefix-help-command #'embark-prefix-help-command))
-
-(use-package embark-consult
-  :ensure t
-  :after (embark consult))
-
-;; ============================================================================
-;; AUTO-COMPLETE PAIRS - ENHANCED
+;; AUTO-COMPLETE PAIRS
 ;; ============================================================================
 (electric-pair-mode 1)
 (setq electric-pair-pairs
@@ -286,14 +307,39 @@
         (?\' . ?\')
         (?\{ . ?\})
         (?\[ . ?\])
-        (?\( . ?\))))
+        (?\( . ?\))
+        (?` . ?`)))
 
 ;; ============================================================================
-;; COMPLETION AT POINT
+;; COMPLETION STYLES
+;; ============================================================================
+(setq completion-cycle-threshold 3
+      completion-auto-help 'always
+      completion-auto-select 'second-tab
+      completion-show-help nil
+      completions-detailed t
+      completions-format 'one-column
+      completion-ignore-case t
+      read-file-name-completion-ignore-case t
+      read-buffer-completion-ignore-case t)
+
+;; ============================================================================
+;; TAB COMPLETION
 ;; ============================================================================
 (setq tab-always-indent 'complete
-      completion-cycle-threshold 3
-      completion-auto-help 'always)
+      tab-first-completion 'word-or-paren-or-punct)
+
+;; ============================================================================
+;; MINIBUFFER SETTINGS
+;; ============================================================================
+(setq enable-recursive-minibuffers t
+      minibuffer-depth-indicate-mode t
+      minibuffer-eldef-shorten-default t
+      resize-mini-windows t
+      max-mini-window-height 0.33)
+
+(minibuffer-depth-indicate-mode 1)
+(minibuffer-electric-default-mode 1)
 
 ;; ============================================================================
 ;; FILE NAME COMPLETION
@@ -302,26 +348,25 @@
       read-buffer-completion-ignore-case t)
 
 ;; ============================================================================
+;; ICOMPLETE (fallback)
+;; ============================================================================
+(fido-vertical-mode -1)
+(icomplete-mode -1)
+
+;; ============================================================================
 ;; CUSTOM COMPLETION FUNCTIONS
 ;; ============================================================================
-(defun emacs-ide-company-complete-or-indent ()
-  "Complete or indent depending on context."
+(defun emacs-ide-complete-or-indent ()
+  "Complete or indent."
   (interactive)
-  (if (company-manual-begin)
-      (company-complete-common)
-    (indent-according-to-mode)))
+  (if (minibufferp)
+      (minibuffer-complete)
+    (if (and (fboundp 'company-manual-begin)
+             (company-manual-begin))
+        (company-complete-common)
+      (indent-for-tab-command))))
 
-(global-set-key (kbd "TAB") 'emacs-ide-company-complete-or-indent)
-
-;; ============================================================================
-;; COMPLETION STATISTICS
-;; ============================================================================
-(defun emacs-ide-show-completion-stats ()
-  "Display completion usage statistics."
-  (interactive)
-  (message "Company completions: %d | Snippets: %d"
-           (or (bound-and-true-p company-statistics--scores-table) 0)
-           (length yas--tables)))
+(global-set-key (kbd "TAB") 'emacs-ide-complete-or-indent)
 
 (provide 'completion-config)
 ;;; completion-config.el ends here
