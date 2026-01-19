@@ -67,18 +67,41 @@
       use-package-compute-statistics nil)
 
 ;; ============================================================================
-;; ESSENTIAL PACKAGES - MINIMAL LOAD
+;; ESSENTIAL PACKAGES - COMPLETE LIST
 ;; ============================================================================
 (defvar emacs-ide-essential-packages
-  '(modus-themes which-key breadcrumb dashboard all-the-icons
-    company company-box yasnippet yasnippet-snippets
+  '(;; UI & Appearance
+    modus-themes doom-modeline which-key breadcrumb dashboard all-the-icons
+    all-the-icons-dired beacon dimmer pulsar rainbow-delimiters rainbow-mode
+    highlight-numbers hl-todo highlight-indent-guides ace-window
+    transpose-frame diredfl visual-fill-column
+    
+    ;; Completion Framework
+    company company-box corfu cape yasnippet yasnippet-snippets yasnippet-capf
+    vertico orderless marginalia consult embark embark-consult
+    
+    ;; Editing
     multiple-cursors expand-region smartparens avy undo-tree
-    flycheck lsp-mode lsp-ui dap-mode
+    move-text visual-regexp string-inflection aggressive-indent
+    
+    ;; Development Tools
+    flycheck flycheck-pos-tip lsp-mode lsp-ui lsp-treemacs dap-mode
+    lsp-pyright lsp-java lsp-haskell ccls
+    
+    ;; Project & Version Control
     projectile magit git-gutter git-timemachine diff-hl
-    format-all vterm neotree
-    treesit-auto consult vertico orderless marginalia embark embark-consult
-    helpful eldoc-box rainbow-delimiters highlight-numbers hl-todo
-    beacon dimmer highlight-indent-guides ace-window))
+    
+    ;; Language Support
+    treesit-auto rust-mode cargo go-mode js2-mode typescript-mode
+    web-mode emmet-mode php-mode csharp-mode ruby-mode haskell-mode
+    scala-mode kotlin-mode swift-mode elixir-mode erlang lua-mode
+    cuda-mode nim-mode zig-mode julia-mode tuareg verilog-mode
+    nasm-mode json-mode yaml-mode csv-mode protobuf-mode graphql-mode
+    toml-mode markdown-mode cmake-mode dockerfile-mode docker-compose-mode
+    
+    ;; Utilities
+    format-all vterm multi-vterm neotree helpful eldoc-box
+    docker kubernetes hydra realgud dumb-jump esup))
 
 ;; ============================================================================
 ;; PATH & ENVIRONMENT
