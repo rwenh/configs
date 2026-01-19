@@ -71,6 +71,10 @@
         undo-strong-limit 12000000
         undo-outer-limit 120000000)
   :config
+  ;; Ensure undo-tree history directory exists
+  (let ((undo-dir (expand-file-name "undo-tree-hist/" user-emacs-directory)))
+    (unless (file-directory-p undo-dir)
+      (make-directory undo-dir t)))
   (global-undo-tree-mode 1)
   :bind (("C-/" . undo-tree-undo)
          ("C-?" . undo-tree-redo)

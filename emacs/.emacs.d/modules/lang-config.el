@@ -4,7 +4,7 @@
 ;;; Code:
 
 ;; ============================================================================
-;; TREE-SITTER AUTO
+;; TREE-SITTER AUTO WITH GRAMMAR INSTALLER
 ;; ============================================================================
 (use-package treesit-auto
   :demand t
@@ -13,6 +13,27 @@
         treesit-font-lock-level 4)
   :config
   (global-treesit-auto-mode))
+
+;; Tree-sitter grammar installer helper
+(defun emacs-ide-install-treesit-grammars ()
+  "Install all tree-sitter grammars."
+  (interactive)
+  (when (and (fboundp 'treesit-available-p)
+             (treesit-available-p))
+    (let ((langs '(c cpp python rust go java javascript typescript
+                   tsx json yaml toml css html bash)))
+      (dolist (lang langs)
+        (unless (treesit-language-available-p lang)
+          (message "Installing tree-sitter grammar: %s" lang)
+          (condition-case err
+              (treesit-install-language-grammar lang)
+            (error (message "Failed to install %s: %s" lang err))))))))
+
+;; Auto-install on first run if Python grammar is missing
+(when (and (fboundp 'treesit-available-p)
+           (treesit-available-p)
+           (not (treesit-language-available-p 'python)))
+  (run-with-idle-timer 5 nil #'emacs-ide-install-treesit-grammars))
 
 ;; ============================================================================
 ;; C/C++/CUDA

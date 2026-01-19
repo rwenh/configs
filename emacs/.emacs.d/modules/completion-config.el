@@ -1,6 +1,6 @@
 ;;; completion-config.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Vertico + Consult + Company + Corfu - Maximum efficiency
+;;; Vertico + Consult + Corfu - Maximum efficiency (Company disabled to avoid conflicts)
 ;;; Code:
 
 ;; ============================================================================
@@ -123,59 +123,14 @@
   :hook (embark-collect-mode . consult-preview-at-point-mode))
 
 ;; ============================================================================
-;; COMPANY - CODE COMPLETION
-;; ============================================================================
-(use-package company
-  :hook ((prog-mode text-mode org-mode) . company-mode)
-  :bind (:map company-active-map
-              ("C-n" . company-select-next)
-              ("C-p" . company-select-previous)
-              ("C-j" . company-select-next)
-              ("C-k" . company-select-previous)
-              ("<tab>" . company-complete-selection)
-              ("TAB" . company-complete-selection)
-              ("C-h" . company-show-doc-buffer)
-              ("C-w" . nil)
-              ("RET" . nil)
-              ("<return>" . nil))
-  :init
-  (setq company-minimum-prefix-length 1
-        company-idle-delay 0.0
-        company-tooltip-limit 20
-        company-tooltip-align-annotations t
-        company-require-match nil
-        company-selection-wrap-around t
-        company-dabbrev-downcase nil
-        company-dabbrev-ignore-case nil
-        company-show-numbers t
-        company-tooltip-flip-when-above t
-        company-tooltip-offset-display 'lines
-        company-transformers '(company-sort-by-occurrence)
-        company-backends '((company-capf :with company-yasnippet)
-                          (company-dabbrev-code company-keywords company-files)
-                          company-dabbrev)))
-
-(use-package company-box
-  :if (display-graphic-p)
-  :hook (company-mode . company-box-mode)
-  :init
-  (setq company-box-max-candidates 50
-        company-box-icons-alist 'company-box-icons-all-the-icons
-        company-box-backends-colors nil
-        company-box-show-single-candidate t
-        company-box-frame-behavior 'point
-        company-box-doc-enable t
-        company-box-doc-delay 0.3))
-
-;; ============================================================================
-;; CORFU - INLINE COMPLETION
+;; CORFU - INLINE COMPLETION (MAIN COMPLETION SYSTEM)
 ;; ============================================================================
 (use-package corfu
   :demand t
   :init
   (setq corfu-auto t
-        corfu-auto-delay 0.0
-        corfu-auto-prefix 1
+        corfu-auto-delay 0.1
+        corfu-auto-prefix 2
         corfu-cycle t
         corfu-quit-at-boundary 'separator
         corfu-quit-no-match 'separator
@@ -348,7 +303,7 @@
       read-buffer-completion-ignore-case t)
 
 ;; ============================================================================
-;; ICOMPLETE (fallback)
+;; ICOMPLETE (fallback) - DISABLED
 ;; ============================================================================
 (fido-vertical-mode -1)
 (icomplete-mode -1)
@@ -357,13 +312,12 @@
 ;; CUSTOM COMPLETION FUNCTIONS
 ;; ============================================================================
 (defun emacs-ide-complete-or-indent ()
-  "Complete or indent."
+  "Complete or indent intelligently."
   (interactive)
   (if (minibufferp)
       (minibuffer-complete)
-    (if (and (fboundp 'company-manual-begin)
-             (company-manual-begin))
-        (company-complete-common)
+    (if (looking-at "\\>")
+        (completion-at-point)
       (indent-for-tab-command))))
 
 (global-set-key (kbd "TAB") 'emacs-ide-complete-or-indent)

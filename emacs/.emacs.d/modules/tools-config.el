@@ -35,24 +35,63 @@
   (flycheck-pos-tip-mode 1))
 
 ;; ============================================================================
+;; LSP OPTIMIZATION FOR LARGE FILES
+;; ============================================================================
+(defun emacs-ide-lsp-optimize-large-files ()
+  "Optimize LSP for large files before activation."
+  (when (> (buffer-size) 100000)
+    (setq-local lsp-enable-symbol-highlighting nil
+                lsp-enable-on-type-formatting nil
+                lsp-enable-folding nil
+                lsp-lens-enable nil
+                lsp-semantic-tokens-enable nil
+                lsp-enable-indentation nil)))
+
+;; ============================================================================
 ;; LSP-MODE - PROFESSIONAL
 ;; ============================================================================
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
-  :hook ((c-mode c++-mode objc-mode cuda-mode) . lsp-deferred)
-         ((python-mode python-ts-mode) . lsp-deferred)
-         ((rust-mode rust-ts-mode) . lsp-deferred)
-         ((go-mode go-ts-mode) . lsp-deferred)
-         ((java-mode java-ts-mode) . lsp-deferred)
-         ((js-mode js-ts-mode js2-mode) . lsp-deferred)
-         ((typescript-mode typescript-ts-mode tsx-ts-mode) . lsp-deferred)
-         ((web-mode html-mode css-mode) . lsp-deferred)
-         ((php-mode ruby-mode elixir-mode) . lsp-deferred)
-         ((kotlin-mode scala-mode swift-mode) . lsp-deferred)
-         ((csharp-mode csharp-ts-mode) . lsp-deferred)
-         ((zig-mode nim-mode lua-mode) . lsp-deferred)
-         ((yaml-mode dockerfile-mode terraform-mode) . lsp-deferred)
-         (lsp-mode . lsp-enable-which-key-integration)
+  :hook ((c-mode c++-mode objc-mode cuda-mode) . (lambda ()
+                                                    (emacs-ide-lsp-optimize-large-files)
+                                                    (lsp-deferred)))
+         ((python-mode python-ts-mode) . (lambda ()
+                                           (emacs-ide-lsp-optimize-large-files)
+                                           (lsp-deferred)))
+         ((rust-mode rust-ts-mode) . (lambda ()
+                                       (emacs-ide-lsp-optimize-large-files)
+                                       (lsp-deferred)))
+         ((go-mode go-ts-mode) . (lambda ()
+                                   (emacs-ide-lsp-optimize-large-files)
+                                   (lsp-deferred)))
+         ((java-mode java-ts-mode) . (lambda ()
+                                       (emacs-ide-lsp-optimize-large-files)
+                                       (lsp-deferred)))
+         ((js-mode js-ts-mode js2-mode) . (lambda ()
+                                            (emacs-ide-lsp-optimize-large-files)
+                                            (lsp-deferred)))
+         ((typescript-mode typescript-ts-mode tsx-ts-mode) . (lambda ()
+                                                               (emacs-ide-lsp-optimize-large-files)
+                                                               (lsp-deferred)))
+         ((web-mode html-mode css-mode) . (lambda ()
+                                            (emacs-ide-lsp-optimize-large-files)
+                                            (lsp-deferred)))
+         ((php-mode ruby-mode elixir-mode) . (lambda ()
+                                               (emacs-ide-lsp-optimize-large-files)
+                                               (lsp-deferred)))
+         ((kotlin-mode scala-mode swift-mode) . (lambda ()
+                                                  (emacs-ide-lsp-optimize-large-files)
+                                                  (lsp-deferred)))
+         ((csharp-mode csharp-ts-mode) . (lambda ()
+                                           (emacs-ide-lsp-optimize-large-files)
+                                           (lsp-deferred)))
+         ((zig-mode nim-mode lua-mode) . (lambda ()
+                                           (emacs-ide-lsp-optimize-large-files)
+                                           (lsp-deferred)))
+         ((yaml-mode dockerfile-mode terraform-mode) . (lambda ()
+                                                         (emacs-ide-lsp-optimize-large-files)
+                                                         (lsp-deferred)))
+         (lsp-mode . lsp-enable-which-key-integration))
   :bind (:map lsp-mode-map
               ("C-c l r" . lsp-rename)
               ("C-c l f" . lsp-format-buffer)
@@ -77,7 +116,7 @@
         lsp-idle-delay 0.3
         lsp-log-io nil
         lsp-enable-file-watchers t
-        lsp-file-watch-threshold 10000
+        lsp-file-watch-threshold 2000
         lsp-enable-folding t
         lsp-enable-links t
         lsp-enable-snippet t
@@ -103,16 +142,38 @@
         lsp-use-plists t
         lsp-warn-no-matched-clients nil
         lsp-diagnostics-provider :flycheck
-        lsp-auto-configure t)
-  :config
-  (defun emacs-ide-lsp-optimize ()
-    "Optimize LSP for large files."
-    (when (> (buffer-size) 500000)
-      (setq-local lsp-enable-symbol-highlighting nil
-                  lsp-enable-on-type-formatting nil
-                  lsp-enable-folding nil
-                  lsp-lens-enable nil)))
-  (add-hook 'lsp-mode-hook #'emacs-ide-lsp-optimize))
+        lsp-auto-configure t
+        ;; Optimize file watchers
+        lsp-watch-file-ignore-regexps
+        '("[/\\\\]\\.git$"
+          "[/\\\\]\\.hg$"
+          "[/\\\\]\\.bzr$"
+          "[/\\\\]_darcs$"
+          "[/\\\\]\\.svn$"
+          "[/\\\\]_FOSSIL_$"
+          "[/\\\\]\\.idea$"
+          "[/\\\\]\\.ensime_cache$"
+          "[/\\\\]\\.eunit$"
+          "[/\\\\]node_modules$"
+          "[/\\\\]\\.fslckout$"
+          "[/\\\\]\\.tox$"
+          "[/\\\\]dist$"
+          "[/\\\\]dist-newstyle$"
+          "[/\\\\]\\.stack-work$"
+          "[/\\\\]\\.bloop$"
+          "[/\\\\]\\.metals$"
+          "[/\\\\]target$"
+          "[/\\\\]\\.ccls-cache$"
+          "[/\\\\]\\.vscode$"
+          "[/\\\\]\\.deps$"
+          "[/\\\\]build-aux$"
+          "[/\\\\]autom4te.cache$"
+          "[/\\\\]\\.reference$"
+          "[/\\\\]\\.pytest_cache$"
+          "[/\\\\]\\.mypy_cache$"
+          "[/\\\\]__pycache__$"
+          "[/\\\\]\\.venv$"
+          "[/\\\\]venv$")))
 
 (use-package lsp-ui
   :after lsp-mode
