@@ -96,7 +96,6 @@
 ;; ============================================================================
 ;; FORMATTING
 ;; ============================================================================
-(global-set-key (kbd "C-c f") 'format-all-buffer)
 (global-set-key (kbd "C-c F") 'format-all-region-or-buffer)
 (global-set-key (kbd "C-c C-f") 'emacs-ide-indent-buffer)
 (global-set-key (kbd "C-c M-f") 'emacs-ide-cleanup-buffer)
@@ -143,9 +142,18 @@
 (global-set-key (kbd "M-?") 'xref-find-references)
 
 ;; ============================================================================
-;; PROJECT (Projectile)
+;; PROJECT (Projectile) - Set up after projectile loads
 ;; ============================================================================
-(global-set-key (kbd "C-c p") projectile-command-map)
+(with-eval-after-load 'projectile
+  (define-key projectile-mode-map (kbd "C-c p") 'projectile-command-map))
+
+;; Alternative bindings that work before projectile loads
+(global-set-key (kbd "C-c p f") 'projectile-find-file)
+(global-set-key (kbd "C-c p p") 'projectile-switch-project)
+(global-set-key (kbd "C-c p s r") 'projectile-ripgrep)
+(global-set-key (kbd "C-c p b") 'projectile-switch-to-buffer)
+(global-set-key (kbd "C-c p c") 'projectile-compile-project)
+(global-set-key (kbd "C-c p t") 'projectile-test-project)
 
 ;; ============================================================================
 ;; GIT (Magit)

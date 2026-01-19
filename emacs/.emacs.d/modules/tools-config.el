@@ -8,15 +8,6 @@
 ;; ============================================================================
 (use-package flycheck
   :hook (prog-mode . flycheck-mode)
-  :bind (:map flycheck-mode-map
-              ("C-c ! n" . flycheck-next-error)
-              ("C-c ! p" . flycheck-previous-error)
-              ("C-c ! l" . flycheck-list-errors)
-              ("C-c ! v" . flycheck-verify-setup)
-              ("C-c ! c" . flycheck-clear)
-              ("C-c ! C" . flycheck-compile)
-              ("C-c ! s" . flycheck-select-checker)
-              ("C-c ! h" . flycheck-display-error-at-point))
   :init
   (setq flycheck-check-syntax-automatically '(save idle-change mode-enabled new-line)
         flycheck-indication-mode 'left-margin
@@ -26,7 +17,15 @@
         flycheck-emacs-lisp-load-path 'inherit
         flycheck-disabled-checkers '(emacs-lisp-checkdoc)
         flycheck-temp-prefix ".flycheck"
-        flycheck-global-modes '(not org-mode)))
+        flycheck-global-modes '(not org-mode))
+  :bind (("C-c ! n" . flycheck-next-error)
+         ("C-c ! p" . flycheck-previous-error)
+         ("C-c ! l" . flycheck-list-errors)
+         ("C-c ! v" . flycheck-verify-setup)
+         ("C-c ! c" . flycheck-clear)
+         ("C-c ! C" . flycheck-compile)
+         ("C-c ! s" . flycheck-select-checker)
+         ("C-c ! h" . flycheck-display-error-at-point)))
 
 (use-package flycheck-pos-tip
   :after flycheck
@@ -92,24 +91,6 @@
                                                          (emacs-ide-lsp-optimize-large-files)
                                                          (lsp-deferred)))
          (lsp-mode . lsp-enable-which-key-integration))
-  :bind (:map lsp-mode-map
-              ("C-c l r" . lsp-rename)
-              ("C-c l f" . lsp-format-buffer)
-              ("C-c l F" . lsp-format-region)
-              ("C-c l a" . lsp-execute-code-action)
-              ("C-c l d" . lsp-describe-thing-at-point)
-              ("C-c l g" . lsp-find-definition)
-              ("C-c l G" . lsp-find-declaration)
-              ("C-c l R" . lsp-find-references)
-              ("C-c l i" . lsp-find-implementation)
-              ("C-c l t" . lsp-find-type-definition)
-              ("C-c l o" . lsp-organize-imports)
-              ("C-c l s" . lsp-signature-activate)
-              ("C-c l h" . lsp-document-highlight)
-              ("C-c l I" . lsp-ui-imenu)
-              ("C-c l e" . lsp-treemacs-errors-list)
-              ("C-c l w" . lsp-restart-workspace)
-              ("C-c l W" . lsp-shutdown-workspace))
   :init
   (setq lsp-keymap-prefix "C-c l"
         lsp-completion-provider :none
@@ -143,7 +124,6 @@
         lsp-warn-no-matched-clients nil
         lsp-diagnostics-provider :flycheck
         lsp-auto-configure t
-        ;; Optimize file watchers
         lsp-watch-file-ignore-regexps
         '("[/\\\\]\\.git$"
           "[/\\\\]\\.hg$"
@@ -173,16 +153,27 @@
           "[/\\\\]\\.mypy_cache$"
           "[/\\\\]__pycache__$"
           "[/\\\\]\\.venv$"
-          "[/\\\\]venv$")))
+          "[/\\\\]venv$"))
+  :bind (("C-c l r" . lsp-rename)
+         ("C-c l f" . lsp-format-buffer)
+         ("C-c l F" . lsp-format-region)
+         ("C-c l a" . lsp-execute-code-action)
+         ("C-c l d" . lsp-describe-thing-at-point)
+         ("C-c l g" . lsp-find-definition)
+         ("C-c l G" . lsp-find-declaration)
+         ("C-c l R" . lsp-find-references)
+         ("C-c l i" . lsp-find-implementation)
+         ("C-c l t" . lsp-find-type-definition)
+         ("C-c l o" . lsp-organize-imports)
+         ("C-c l s" . lsp-signature-activate)
+         ("C-c l h" . lsp-document-highlight)
+         ("C-c l I" . lsp-ui-imenu)
+         ("C-c l e" . lsp-treemacs-errors-list)
+         ("C-c l w" . lsp-restart-workspace)
+         ("C-c l W" . lsp-shutdown-workspace)))
 
 (use-package lsp-ui
   :after lsp-mode
-  :bind (:map lsp-ui-mode-map
-              ("M-." . lsp-ui-peek-find-definitions)
-              ("M-?" . lsp-ui-peek-find-references)
-              ("C-c l ." . lsp-ui-peek-find-workspace-symbol)
-              ("C-c l p" . lsp-ui-peek-jump-backward)
-              ("C-c l n" . lsp-ui-peek-jump-forward))
   :init
   (setq lsp-ui-doc-enable t
         lsp-ui-doc-show-with-cursor t
@@ -202,7 +193,12 @@
         lsp-ui-peek-list-width 60
         lsp-ui-peek-peek-height 20
         lsp-ui-imenu-enable t
-        lsp-ui-imenu-kind-position 'left))
+        lsp-ui-imenu-kind-position 'left)
+  :bind (("M-." . lsp-ui-peek-find-definitions)
+         ("M-?" . lsp-ui-peek-find-references)
+         ("C-c l ." . lsp-ui-peek-find-workspace-symbol)
+         ("C-c l p" . lsp-ui-peek-jump-backward)
+         ("C-c l n" . lsp-ui-peek-jump-forward)))
 
 (use-package lsp-treemacs
   :after (lsp-mode treemacs)
@@ -279,19 +275,6 @@
 ;; ============================================================================
 (use-package projectile
   :demand t
-  :bind-keymap ("C-c p" . projectile-command-map)
-  :bind (:map projectile-mode-map
-              ("C-c p f" . projectile-find-file)
-              ("C-c p d" . projectile-find-dir)
-              ("C-c p s r" . projectile-ripgrep)
-              ("C-c p s g" . projectile-grep)
-              ("C-c p b" . projectile-switch-to-buffer)
-              ("C-c p p" . projectile-switch-project)
-              ("C-c p c" . projectile-compile-project)
-              ("C-c p t" . projectile-test-project)
-              ("C-c p r" . projectile-run-project)
-              ("C-c p k" . projectile-kill-buffers)
-              ("C-c p D" . projectile-dired))
   :init
   (setq projectile-completion-system 'default
         projectile-enable-caching t
@@ -315,7 +298,19 @@
         projectile-require-project-root nil
         projectile-track-known-projects-automatically t)
   :config
-  (projectile-mode +1))
+  (projectile-mode +1)
+  :bind-keymap ("C-c p" . projectile-command-map)
+  :bind (("C-c p f" . projectile-find-file)
+         ("C-c p d" . projectile-find-dir)
+         ("C-c p s r" . projectile-ripgrep)
+         ("C-c p s g" . projectile-grep)
+         ("C-c p b" . projectile-switch-to-buffer)
+         ("C-c p p" . projectile-switch-project)
+         ("C-c p c" . projectile-compile-project)
+         ("C-c p t" . projectile-test-project)
+         ("C-c p r" . projectile-run-project)
+         ("C-c p k" . projectile-kill-buffers)
+         ("C-c p D" . projectile-dired)))
 
 ;; ============================================================================
 ;; MAGIT - PROFESSIONAL

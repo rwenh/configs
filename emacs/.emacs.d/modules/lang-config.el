@@ -21,7 +21,7 @@
   (when (and (fboundp 'treesit-available-p)
              (treesit-available-p))
     (let ((langs '(c cpp python rust go java javascript typescript
-                   tsx json yaml toml css html bash)))
+                   tsx json yaml toml css html)))
       (dolist (lang langs)
         (unless (treesit-language-available-p lang)
           (message "Installing tree-sitter grammar: %s" lang)
@@ -68,8 +68,8 @@
     (compile (format "g++ -Wall -Wextra -O2 -std=c++20 -g -o /tmp/a.out %s && /tmp/a.out"
                      (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map c-mode-map ("C-c C-c" . emacs-ide-c-compile-run))
-  :bind (:map c++-mode-map ("C-c C-c" . emacs-ide-cpp-compile-run)))
+  (define-key c-mode-map (kbd "C-c C-c") 'emacs-ide-c-compile-run)
+  (define-key c++-mode-map (kbd "C-c C-c") 'emacs-ide-cpp-compile-run))
 
 (use-package cuda-mode
   :mode "\\.cu\\'"
@@ -79,7 +79,7 @@
     (interactive)
     (compile (format "nvcc -o /tmp/cuda.out %s && /tmp/cuda.out"
                      (shell-quote-argument (buffer-file-name)))))
-  :bind (:map cuda-mode-map ("C-c C-c" . emacs-ide-cuda-compile)))
+  (define-key cuda-mode-map (kbd "C-c C-c") 'emacs-ide-cuda-compile))
 
 ;; ============================================================================
 ;; PYTHON
@@ -112,10 +112,9 @@
                      (shell-quote-argument (buffer-file-name))
                      (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map python-mode-map
-              ("C-c C-c" . emacs-ide-python-run)
-              ("C-c C-t" . emacs-ide-python-pytest)
-              ("C-c C-v" . emacs-ide-python-check)))
+  (define-key python-mode-map (kbd "C-c C-c") 'emacs-ide-python-run)
+  (define-key python-mode-map (kbd "C-c C-t") 'emacs-ide-python-pytest)
+  (define-key python-mode-map (kbd "C-c C-v") 'emacs-ide-python-check))
 
 ;; ============================================================================
 ;; RUST
@@ -125,21 +124,21 @@
   :init
   (setq rust-format-on-save t
         rust-rustfmt-bin (or (executable-find "rustfmt") "rustfmt"))
-  :bind (:map rust-mode-map
-              ("C-c C-c" . rust-compile)
-              ("C-c C-r" . rust-run)
-              ("C-c C-t" . rust-test)
-              ("C-c C-k" . rust-check)))
+  :config
+  (define-key rust-mode-map (kbd "C-c C-c") 'rust-compile)
+  (define-key rust-mode-map (kbd "C-c C-r") 'rust-run)
+  (define-key rust-mode-map (kbd "C-c C-t") 'rust-test)
+  (define-key rust-mode-map (kbd "C-c C-k") 'rust-check))
 
 (use-package cargo
   :after rust-mode
   :hook (rust-mode . cargo-minor-mode)
-  :bind (:map cargo-minor-mode-map
-              ("C-c C-b" . cargo-process-build)
-              ("C-c C-r" . cargo-process-run)
-              ("C-c C-t" . cargo-process-test)
-              ("C-c C-l" . cargo-process-clippy)
-              ("C-c C-d" . cargo-process-doc)))
+  :config
+  (define-key cargo-minor-mode-map (kbd "C-c C-b") 'cargo-process-build)
+  (define-key cargo-minor-mode-map (kbd "C-c C-r") 'cargo-process-run)
+  (define-key cargo-minor-mode-map (kbd "C-c C-t") 'cargo-process-test)
+  (define-key cargo-minor-mode-map (kbd "C-c C-l") 'cargo-process-clippy)
+  (define-key cargo-minor-mode-map (kbd "C-c C-d") 'cargo-process-doc))
 
 ;; ============================================================================
 ;; GO
@@ -164,27 +163,27 @@
     (interactive)
     (compile "go test -v ./..."))
   
-  :hook (before-save . gofmt-before-save)
-  :bind (:map go-mode-map
-              ("C-c C-c" . emacs-ide-go-run)
-              ("C-c C-b" . emacs-ide-go-build)
-              ("C-c C-t" . emacs-ide-go-test)))
+  (add-hook 'before-save-hook 'gofmt-before-save nil t)
+  
+  (define-key go-mode-map (kbd "C-c C-c") 'emacs-ide-go-run)
+  (define-key go-mode-map (kbd "C-c C-b") 'emacs-ide-go-build)
+  (define-key go-mode-map (kbd "C-c C-t") 'emacs-ide-go-test))
 
 ;; ============================================================================
-;; JAVA
+;; JAVA (Built-in)
 ;; ============================================================================
-(use-package java-mode
-  :ensure nil
-  :mode "\\.java\\'"
-  :config
-  (defun emacs-ide-java-compile-run ()
-    "Compile and run Java."
-    (interactive)
-    (let* ((file (buffer-file-name))
-           (class (file-name-sans-extension (file-name-nondirectory file))))
-      (compile (format "javac %s && java %s" (shell-quote-argument file) class))))
-  
-  :bind (:map java-mode-map ("C-c C-c" . emacs-ide-java-compile-run)))
+(add-to-list 'auto-mode-alist '("\\.java\\'" . java-mode))
+
+(defun emacs-ide-java-compile-run ()
+  "Compile and run Java."
+  (interactive)
+  (let* ((file (buffer-file-name))
+         (class (file-name-sans-extension (file-name-nondirectory file))))
+    (compile (format "javac %s && java %s" (shell-quote-argument file) class))))
+
+(add-hook 'java-mode-hook
+          (lambda ()
+            (define-key java-mode-map (kbd "C-c C-c") 'emacs-ide-java-compile-run)))
 
 ;; ============================================================================
 ;; JAVASCRIPT/TYPESCRIPT
@@ -201,7 +200,7 @@
     (interactive)
     (compile (format "node %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map js2-mode-map ("C-c C-c" . emacs-ide-node-run)))
+  (define-key js2-mode-map (kbd "C-c C-c") 'emacs-ide-node-run))
 
 (use-package typescript-mode
   :mode ("\\.ts\\'" "\\.tsx\\'")
@@ -213,7 +212,7 @@
     (interactive)
     (compile (format "ts-node %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map typescript-mode-map ("C-c C-c" . emacs-ide-typescript-run)))
+  (define-key typescript-mode-map (kbd "C-c C-c") 'emacs-ide-typescript-run))
 
 ;; ============================================================================
 ;; WEB DEVELOPMENT
@@ -241,7 +240,7 @@
     (interactive)
     (compile (format "php %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map php-mode-map ("C-c C-c" . emacs-ide-php-run)))
+  (define-key php-mode-map (kbd "C-c C-c") 'emacs-ide-php-run))
 
 ;; ============================================================================
 ;; C# / .NET
@@ -254,7 +253,7 @@
     (interactive)
     (compile "dotnet run"))
   
-  :bind (:map csharp-mode-map ("C-c C-c" . emacs-ide-csharp-run)))
+  (define-key csharp-mode-map (kbd "C-c C-c") 'emacs-ide-csharp-run))
 
 ;; ============================================================================
 ;; RUBY
@@ -269,7 +268,7 @@
     (interactive)
     (compile (format "ruby %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map ruby-mode-map ("C-c C-c" . emacs-ide-ruby-run)))
+  (define-key ruby-mode-map (kbd "C-c C-c") 'emacs-ide-ruby-run))
 
 ;; ============================================================================
 ;; HASKELL
@@ -284,7 +283,7 @@
     (interactive)
     (compile (format "runhaskell %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map haskell-mode-map ("C-c C-c" . emacs-ide-haskell-run)))
+  (define-key haskell-mode-map (kbd "C-c C-c") 'emacs-ide-haskell-run))
 
 ;; ============================================================================
 ;; SCALA
@@ -297,7 +296,7 @@
     (interactive)
     (compile (format "scala %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map scala-mode-map ("C-c C-c" . emacs-ide-scala-run)))
+  (define-key scala-mode-map (kbd "C-c C-c") 'emacs-ide-scala-run))
 
 ;; ============================================================================
 ;; KOTLIN
@@ -311,7 +310,7 @@
     (compile (format "kotlinc %s -include-runtime -d /tmp/app.jar && java -jar /tmp/app.jar"
                      (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map kotlin-mode-map ("C-c C-c" . emacs-ide-kotlin-run)))
+  (define-key kotlin-mode-map (kbd "C-c C-c") 'emacs-ide-kotlin-run))
 
 ;; ============================================================================
 ;; SWIFT
@@ -324,7 +323,7 @@
     (interactive)
     (compile (format "swift %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map swift-mode-map ("C-c C-c" . emacs-ide-swift-run)))
+  (define-key swift-mode-map (kbd "C-c C-c") 'emacs-ide-swift-run))
 
 ;; ============================================================================
 ;; ELIXIR
@@ -337,7 +336,7 @@
     (interactive)
     (compile (format "elixir %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map elixir-mode-map ("C-c C-c" . emacs-ide-elixir-run)))
+  (define-key elixir-mode-map (kbd "C-c C-c") 'emacs-ide-elixir-run))
 
 ;; ============================================================================
 ;; ERLANG
@@ -350,7 +349,7 @@
     (interactive)
     (compile (format "escript %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map erlang-mode-map ("C-c C-c" . emacs-ide-erlang-run)))
+  (define-key erlang-mode-map (kbd "C-c C-c") 'emacs-ide-erlang-run))
 
 ;; ============================================================================
 ;; LUA
@@ -363,29 +362,15 @@
     (interactive)
     (compile (format "lua %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map lua-mode-map ("C-c C-c" . emacs-ide-lua-run)))
-
-;; ============================================================================
-;; PERL
-;; ============================================================================
-(use-package perl-mode
-  :ensure nil
-  :mode "\\.pl\\'"
-  :config
-  (defun emacs-ide-perl-run ()
-    "Run Perl."
-    (interactive)
-    (compile (format "perl %s" (shell-quote-argument (buffer-file-name)))))
-  
-  :bind (:map perl-mode-map ("C-c C-c" . emacs-ide-perl-run)))
+  (define-key lua-mode-map (kbd "C-c C-c") 'emacs-ide-lua-run))
 
 ;; ============================================================================
 ;; SHELL SCRIPT
 ;; ============================================================================
 (use-package sh-script
   :ensure nil
-  :mode (("\\.sh\\'" . bash-mode)
-         ("\\.bash\\'" . bash-mode)
+  :mode (("\\.sh\\'" . sh-mode)
+         ("\\.bash\\'" . sh-mode)
          ("\\.zsh\\'" . sh-mode))
   :config
   (defun emacs-ide-shell-run ()
@@ -393,7 +378,7 @@
     (interactive)
     (compile (format "bash %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map sh-mode-map ("C-c C-c" . emacs-ide-shell-run)))
+  (define-key sh-mode-map (kbd "C-c C-c") 'emacs-ide-shell-run))
 
 ;; ============================================================================
 ;; NIM
@@ -406,7 +391,7 @@
     (interactive)
     (compile (format "nim c -r %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map nim-mode-map ("C-c C-c" . emacs-ide-nim-run)))
+  (define-key nim-mode-map (kbd "C-c C-c") 'emacs-ide-nim-run))
 
 ;; ============================================================================
 ;; ZIG
@@ -419,7 +404,7 @@
     (interactive)
     (compile (format "zig run %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map zig-mode-map ("C-c C-c" . emacs-ide-zig-run)))
+  (define-key zig-mode-map (kbd "C-c C-c") 'emacs-ide-zig-run))
 
 ;; ============================================================================
 ;; JULIA
@@ -432,7 +417,7 @@
     (interactive)
     (compile (format "julia %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map julia-mode-map ("C-c C-c" . emacs-ide-julia-run)))
+  (define-key julia-mode-map (kbd "C-c C-c") 'emacs-ide-julia-run))
 
 ;; ============================================================================
 ;; FORTRAN
@@ -452,7 +437,7 @@
     (compile (format "gfortran -Wall -O2 -o /tmp/fortran.out %s && /tmp/fortran.out"
                      (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map f90-mode-map ("C-c C-c" . emacs-ide-fortran-run)))
+  (define-key f90-mode-map (kbd "C-c C-c") 'emacs-ide-fortran-run))
 
 ;; ============================================================================
 ;; OCAML
@@ -465,7 +450,7 @@
     (interactive)
     (compile (format "ocaml %s" (shell-quote-argument (buffer-file-name)))))
   
-  :bind (:map tuareg-mode-map ("C-c C-c" . emacs-ide-ocaml-run)))
+  (define-key tuareg-mode-map (kbd "C-c C-c") 'emacs-ide-ocaml-run))
 
 ;; ============================================================================
 ;; VERILOG/VHDL
@@ -487,7 +472,7 @@
                        (shell-quote-argument file)
                        (shell-quote-argument vvp)))))
   
-  :bind (:map verilog-mode-map ("C-c C-c" . emacs-ide-verilog-compile)))
+  (define-key verilog-mode-map (kbd "C-c C-c") 'emacs-ide-verilog-compile))
 
 (use-package vhdl-mode
   :ensure nil
@@ -513,7 +498,7 @@
                        (shell-quote-argument obj)
                        (shell-quote-argument exe)))))
   
-  :bind (:map nasm-mode-map ("C-c C-c" . emacs-ide-asm-compile)))
+  (define-key nasm-mode-map (kbd "C-c C-c") 'emacs-ide-asm-compile))
 
 ;; ============================================================================
 ;; SQL
