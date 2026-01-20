@@ -1,4 +1,4 @@
-;;; lang-config.el --- Professional Language Support -*- lexical-binding: t -*-
+;;; lang-core.el --- Professional Language Support -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; 50+ languages with LSP, Tree-sitter, compile-and-run, debugging
 ;;; Code:
@@ -20,8 +20,7 @@
   (interactive)
   (when (and (fboundp 'treesit-available-p)
              (treesit-available-p))
-    (let ((langs '(c cpp python rust go java javascript typescript
-                   tsx json yaml toml css html)))
+    (let ((langs '(c cpp python rust go java javascript typescript tsx json yaml toml css)))
       (dolist (lang langs)
         (unless (treesit-language-available-p lang)
           (message "Installing tree-sitter grammar: %s" lang)
@@ -61,13 +60,13 @@
     (interactive)
     (compile (format "gcc -Wall -Wextra -O2 -std=c17 -g -o /tmp/a.out %s && /tmp/a.out"
                      (shell-quote-argument (buffer-file-name)))))
-  
+
   (defun emacs-ide-cpp-compile-run ()
     "Compile and run C++ with optimization."
     (interactive)
     (compile (format "g++ -Wall -Wextra -O2 -std=c++20 -g -o /tmp/a.out %s && /tmp/a.out"
                      (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key c-mode-map (kbd "C-c C-c") 'emacs-ide-c-compile-run)
   (define-key c++-mode-map (kbd "C-c C-c") 'emacs-ide-cpp-compile-run))
 
@@ -98,12 +97,12 @@
     "Run Python file."
     (interactive)
     (compile (format "python3 %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (defun emacs-ide-python-pytest ()
     "Run pytest."
     (interactive)
     (compile (format "pytest -vv %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (defun emacs-ide-python-check ()
     "Check with flake8, mypy, black."
     (interactive)
@@ -111,7 +110,7 @@
                      (shell-quote-argument (buffer-file-name))
                      (shell-quote-argument (buffer-file-name))
                      (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key python-mode-map (kbd "C-c C-c") 'emacs-ide-python-run)
   (define-key python-mode-map (kbd "C-c C-t") 'emacs-ide-python-pytest)
   (define-key python-mode-map (kbd "C-c C-v") 'emacs-ide-python-check))
@@ -152,19 +151,19 @@
     "Run Go file."
     (interactive)
     (compile (format "go run %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (defun emacs-ide-go-build ()
     "Build Go binary."
     (interactive)
     (compile "go build -v"))
-  
+
   (defun emacs-ide-go-test ()
     "Run Go tests."
     (interactive)
     (compile "go test -v ./..."))
-  
+
   (add-hook 'before-save-hook 'gofmt-before-save nil t)
-  
+
   (define-key go-mode-map (kbd "C-c C-c") 'emacs-ide-go-run)
   (define-key go-mode-map (kbd "C-c C-b") 'emacs-ide-go-build)
   (define-key go-mode-map (kbd "C-c C-t") 'emacs-ide-go-test))
@@ -199,7 +198,7 @@
     "Run with Node."
     (interactive)
     (compile (format "node %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key js2-mode-map (kbd "C-c C-c") 'emacs-ide-node-run))
 
 (use-package typescript-mode
@@ -211,7 +210,7 @@
     "Run with ts-node."
     (interactive)
     (compile (format "ts-node %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key typescript-mode-map (kbd "C-c C-c") 'emacs-ide-typescript-run))
 
 ;; ============================================================================
@@ -239,7 +238,7 @@
     "Run PHP."
     (interactive)
     (compile (format "php %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key php-mode-map (kbd "C-c C-c") 'emacs-ide-php-run))
 
 ;; ============================================================================
@@ -252,7 +251,7 @@
     "Run .NET project."
     (interactive)
     (compile "dotnet run"))
-  
+
   (define-key csharp-mode-map (kbd "C-c C-c") 'emacs-ide-csharp-run))
 
 ;; ============================================================================
@@ -267,7 +266,7 @@
     "Run Ruby."
     (interactive)
     (compile (format "ruby %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key ruby-mode-map (kbd "C-c C-c") 'emacs-ide-ruby-run))
 
 ;; ============================================================================
@@ -282,7 +281,7 @@
     "Run Haskell."
     (interactive)
     (compile (format "runhaskell %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key haskell-mode-map (kbd "C-c C-c") 'emacs-ide-haskell-run))
 
 ;; ============================================================================
@@ -295,7 +294,7 @@
     "Run Scala."
     (interactive)
     (compile (format "scala %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key scala-mode-map (kbd "C-c C-c") 'emacs-ide-scala-run))
 
 ;; ============================================================================
@@ -309,7 +308,7 @@
     (interactive)
     (compile (format "kotlinc %s -include-runtime -d /tmp/app.jar && java -jar /tmp/app.jar"
                      (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key kotlin-mode-map (kbd "C-c C-c") 'emacs-ide-kotlin-run))
 
 ;; ============================================================================
@@ -322,7 +321,7 @@
     "Run Swift."
     (interactive)
     (compile (format "swift %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key swift-mode-map (kbd "C-c C-c") 'emacs-ide-swift-run))
 
 ;; ============================================================================
@@ -335,7 +334,7 @@
     "Run Elixir."
     (interactive)
     (compile (format "elixir %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key elixir-mode-map (kbd "C-c C-c") 'emacs-ide-elixir-run))
 
 ;; ============================================================================
@@ -348,7 +347,7 @@
     "Run Erlang."
     (interactive)
     (compile (format "escript %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key erlang-mode-map (kbd "C-c C-c") 'emacs-ide-erlang-run))
 
 ;; ============================================================================
@@ -361,7 +360,7 @@
     "Run Lua."
     (interactive)
     (compile (format "lua %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key lua-mode-map (kbd "C-c C-c") 'emacs-ide-lua-run))
 
 ;; ============================================================================
@@ -377,7 +376,7 @@
     "Run shell script."
     (interactive)
     (compile (format "bash %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key sh-mode-map (kbd "C-c C-c") 'emacs-ide-shell-run))
 
 ;; ============================================================================
@@ -390,7 +389,7 @@
     "Run Nim."
     (interactive)
     (compile (format "nim c -r %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key nim-mode-map (kbd "C-c C-c") 'emacs-ide-nim-run))
 
 ;; ============================================================================
@@ -403,7 +402,7 @@
     "Run Zig."
     (interactive)
     (compile (format "zig run %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key zig-mode-map (kbd "C-c C-c") 'emacs-ide-zig-run))
 
 ;; ============================================================================
@@ -416,7 +415,7 @@
     "Run Julia."
     (interactive)
     (compile (format "julia %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key julia-mode-map (kbd "C-c C-c") 'emacs-ide-julia-run))
 
 ;; ============================================================================
@@ -436,7 +435,7 @@
     (interactive)
     (compile (format "gfortran -Wall -O2 -o /tmp/fortran.out %s && /tmp/fortran.out"
                      (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key f90-mode-map (kbd "C-c C-c") 'emacs-ide-fortran-run))
 
 ;; ============================================================================
@@ -449,7 +448,7 @@
     "Run OCaml."
     (interactive)
     (compile (format "ocaml %s" (shell-quote-argument (buffer-file-name)))))
-  
+
   (define-key tuareg-mode-map (kbd "C-c C-c") 'emacs-ide-ocaml-run))
 
 ;; ============================================================================
@@ -471,7 +470,7 @@
                        (shell-quote-argument vvp)
                        (shell-quote-argument file)
                        (shell-quote-argument vvp)))))
-  
+
   (define-key verilog-mode-map (kbd "C-c C-c") 'emacs-ide-verilog-compile))
 
 (use-package vhdl-mode
@@ -497,7 +496,7 @@
                        (shell-quote-argument exe)
                        (shell-quote-argument obj)
                        (shell-quote-argument exe)))))
-  
+
   (define-key nasm-mode-map (kbd "C-c C-c") 'emacs-ide-asm-compile))
 
 ;; ============================================================================
@@ -564,5 +563,5 @@
         org-agenda-files '("~/org/")
         org-log-done 'time))
 
-(provide 'lang-config)
-;;; lang-config.el ends here
+(provide 'lang-core)
+;;; lang-core.el ends here

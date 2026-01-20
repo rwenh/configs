@@ -160,10 +160,19 @@
 ;; ============================================================================
 (global-set-key (kbd "C-x g") 'magit-status)
 (global-set-key (kbd "C-x M-g") 'magit-dispatch)
-(global-set-key (kbd "C-c g") 'magit-file-dispatch)
-(global-set-key (kbd "C-c g s") 'magit-status)
-(global-set-key (kbd "C-c g b") 'magit-blame)
-(global-set-key (kbd "C-c g l") 'magit-log-buffer-file)
+
+;; Git prefix - C-c g
+(define-prefix-command 'emacs-ide-git-map)
+(global-set-key (kbd "C-c g") 'emacs-ide-git-map)
+(define-key emacs-ide-git-map (kbd "g") 'magit-status)
+(define-key emacs-ide-git-map (kbd "s") 'magit-status)
+(define-key emacs-ide-git-map (kbd "b") 'magit-blame)
+(define-key emacs-ide-git-map (kbd "l") 'magit-log-buffer-file)
+(define-key emacs-ide-git-map (kbd "c") 'magit-clone)
+(define-key emacs-ide-git-map (kbd "i") 'magit-init)
+(define-key emacs-ide-git-map (kbd "d") 'magit-dispatch)
+(define-key emacs-ide-git-map (kbd "f") 'magit-file-dispatch)
+
 (global-set-key (kbd "C-x v t") 'git-timemachine)
 
 ;; ============================================================================
@@ -208,6 +217,17 @@
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 (global-set-key (kbd "M-SPC") 'set-mark-command)
 (global-set-key (kbd "C-z") 'repeat)
+
+;; Undo-tree additional bindings
+(with-eval-after-load 'undo-tree
+  ;; C-_ is the traditional Emacs undo binding
+  (global-set-key (kbd "C-_") 'undo-tree-undo)
+  ;; Also make sure these work
+  (global-set-key (kbd "C-/") 'undo-tree-undo)
+  (global-set-key (kbd "C-?") 'undo-tree-redo)
+  (global-set-key (kbd "M-_") 'undo-tree-redo)
+  (global-set-key (kbd "C-x u") 'undo-tree-visualize)
+  (global-set-key (kbd "C-c u") 'undo-tree-visualize))
 
 ;; ============================================================================
 ;; WAYLAND-SPECIFIC

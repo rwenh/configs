@@ -1,56 +1,122 @@
-;;; init.el --- Hyper-Optimized Emacs IDE Core -*- lexical-binding: t -*-
+;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Professional-grade IDE with sub-second startup and maximum performance
+;;; Production-grade initialization with health checks and recovery
+;;; Author: Enterprise Emacs Team
+;;; Version: 2.0.0
 ;;; Code:
 
 ;; ============================================================================
-;; STARTUP PERFORMANCE TRACKING
+;; ENTERPRISE METADATA
 ;; ============================================================================
-(defvar emacs-ide--startup-time-start (current-time))
+(defconst emacs-ide-version "2.0.0"
+  "Enterprise Emacs IDE version.")
+
+(defconst emacs-ide-minimum-emacs-version "29.1"
+  "Minimum required Emacs version.")
+
+(defconst emacs-ide-build-date "2025-01-20"
+  "Build date.")
+
+;; ============================================================================
+;; VERSION CHECK - FAIL FAST
+;; ============================================================================
+(when (version< emacs-version emacs-ide-minimum-emacs-version)
+  (error (concat "Emacs IDE requires Emacs %s or higher. "
+                 "You are running %s. Please upgrade.")
+         emacs-ide-minimum-emacs-version emacs-version))
+
+;; ============================================================================
+;; STARTUP TRACKING
+;; ============================================================================
+(defvar emacs-ide--init-start-time (current-time))
 (defvar emacs-ide--gc-count-start gcs-done)
+(defvar emacs-ide--startup-phases nil
+  "Track initialization phases with timestamps.")
+
+(defun emacs-ide--track-phase (phase-name)
+  "Track PHASE-NAME completion time."
+  (push (cons phase-name (float-time (time-subtract (current-time)
+                                                     emacs-ide--init-start-time)))
+        emacs-ide--startup-phases))
 
 ;; ============================================================================
-;; EARLY OPTIMIZATION
+;; DIRECTORY STRUCTURE - ENTERPRISE ORGANIZATION
 ;; ============================================================================
-(setq byte-compile-warnings nil
-      warning-suppress-types '((comp) (bytecomp))
-      warning-suppress-log-types '((comp) (bytecomp))
-      warning-minimum-level :error)
+(defvar emacs-ide-root-dir user-emacs-directory
+  "Root directory of Emacs IDE.")
+
+(defvar emacs-ide-core-dir
+  (expand-file-name "core/" emacs-ide-root-dir)
+  "Core system directory.")
+
+(defvar emacs-ide-modules-dir
+  (expand-file-name "modules/" emacs-ide-root-dir)
+  "Feature modules directory.")
+
+(defvar emacs-ide-lib-dir
+  (expand-file-name "lib/" emacs-ide-root-dir)
+  "Utility libraries directory.")
+
+(defvar emacs-ide-var-dir
+  (expand-file-name "var/" emacs-ide-root-dir)
+  "Runtime data directory.")
+
+(defvar emacs-ide-cache-dir
+  (expand-file-name "cache/" emacs-ide-var-dir)
+  "Cache directory.")
+
+(defvar emacs-ide-backup-dir
+  (expand-file-name "backups/" emacs-ide-var-dir)
+  "Backup files directory.")
+
+(defvar emacs-ide-snippets-dir
+  (expand-file-name "snippets/" emacs-ide-root-dir)
+  "YASnippet snippets directory.")
+
+;; Create directories
+(dolist (dir (list emacs-ide-core-dir
+                   emacs-ide-modules-dir
+                   emacs-ide-lib-dir
+                   emacs-ide-var-dir
+                   emacs-ide-cache-dir
+                   emacs-ide-backup-dir
+                   emacs-ide-snippets-dir))
+  (unless (file-directory-p dir)
+    (make-directory dir t)))
+
+;; Add to load path
+(add-to-list 'load-path emacs-ide-core-dir)
+(add-to-list 'load-path emacs-ide-lib-dir)
+(add-to-list 'load-path emacs-ide-modules-dir)
+
+(emacs-ide--track-phase "directory-setup")
 
 ;; ============================================================================
-;; NATIVE COMPILATION
+;; SAFE MODE CHECK
 ;; ============================================================================
-(when (and (fboundp 'native-comp-available-p)
-           (native-comp-available-p))
-  (setq native-comp-async-report-warnings-errors nil
-        native-comp-deferred-compilation t
-        native-comp-speed 3))
+(when emacs-ide-safe-mode
+  (message "⚠️  SAFE MODE: Skipping most configuration")
+  (setq-default inhibit-startup-screen t
+                initial-scratch-message nil)
+  ;; Load only essential recovery tools
+  (load (expand-file-name "core/emacs-ide-recovery.el" emacs-ide-root-dir) nil t)
+  (emacs-ide-recovery-mode)
+  ;; Stop here in safe mode
+  (provide 'init))
 
 ;; ============================================================================
-;; MODERN EMACS FEATURES
+;; PACKAGE MANAGEMENT - STRAIGHT.EL BOOTSTRAP
 ;; ============================================================================
-(when (fboundp 'global-so-long-mode) (global-so-long-mode 1))
-(when (fboundp 'global-subword-mode) (global-subword-mode 1))
+(defvar emacs-ide-package-system 'straight
+  "Package system to use: 'straight or 'package.")
 
-;; ============================================================================
-;; PACKAGE SYSTEM - OPTIMIZED
-;; ============================================================================
-(require 'package)
-(setq package-enable-at-startup nil
-      package-archives '(("melpa" . "https://melpa.org/packages/")
-                        ("gnu" . "https://elpa.gnu.org/packages/")
-                        ("nongnu" . "https://elpa.nongnu.org/nongnu/"))
-      package-archive-priorities '(("melpa" . 10)
-                                  ("gnu" . 5)
-                                  ("nongnu" . 3)))
-(package-initialize)
-
-;; Bootstrap straight.el for better performance
 (defvar bootstrap-version)
 (let ((bootstrap-file
-       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+       (expand-file-name "straight/repos/straight.el/bootstrap.el"
+                         emacs-ide-root-dir))
       (bootstrap-version 6))
   (unless (file-exists-p bootstrap-file)
+    (message "📦 Bootstrapping straight.el...")
     (with-current-buffer
         (url-retrieve-synchronously
          "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
@@ -59,79 +125,83 @@
       (eval-print-last-sexp)))
   (load bootstrap-file nil 'nomessage))
 
-;; Use-package with straight
-(straight-use-package 'use-package)
+;; Configure straight
 (setq straight-use-package-by-default t
-      use-package-always-defer t
+      straight-check-for-modifications '(check-on-save find-when-checking)
+      straight-cache-autoloads t
+      straight-vc-git-default-clone-depth 1
+      straight-profiles
+      '((nil . "default.el")
+        (pinned . "versions.lock")))
+
+(emacs-ide--track-phase "package-bootstrap")
+
+;; ============================================================================
+;; USE-PACKAGE CONFIGURATION
+;; ============================================================================
+(straight-use-package 'use-package)
+
+(setq use-package-always-defer t
       use-package-expand-minimally t
       use-package-enable-imenu-support t
-      use-package-compute-statistics nil)
+      use-package-compute-statistics nil
+      use-package-verbose nil)
 
-;; Version locking for reproducible builds
-(setq straight-profiles
-      '((nil . "default.el")
-        (pinned . "pinned.el")))
+;; Enterprise: Always measure package load time
+(setq use-package-verbose init-file-debug
+      use-package-minimum-reported-time 0.1)
 
-(defun emacs-ide-freeze-packages ()
-  "Freeze package versions for reproducibility."
-  (interactive)
-  (straight-freeze-versions)
-  (message "Package versions frozen"))
-
-(defun emacs-ide-update-packages ()
-  "Update all straight packages."
-  (interactive)
-  (message "Updating packages...")
-  (straight-pull-all)
-  (message "All packages updated. Restart Emacs to compile."))
+(emacs-ide--track-phase "use-package-setup")
 
 ;; ============================================================================
-;; ESSENTIAL PACKAGES - COMPLETE LIST
+;; CORE SYSTEM MODULES - LOAD IN ORDER
 ;; ============================================================================
-(defvar emacs-ide-essential-packages
-  '(;; UI & Appearance
-    modus-themes doom-modeline which-key breadcrumb dashboard all-the-icons
-    all-the-icons-dired beacon dimmer pulsar rainbow-delimiters rainbow-mode
-    highlight-numbers hl-todo highlight-indent-guides ace-window
-    transpose-frame diredfl visual-fill-column
-    
-    ;; Completion Framework - Using Corfu (modern choice)
-    corfu cape vertico orderless marginalia consult embark embark-consult
-    yasnippet yasnippet-snippets yasnippet-capf
-    
-    ;; Editing
-    multiple-cursors expand-region smartparens avy undo-tree
-    move-text visual-regexp string-inflection aggressive-indent
-    
-    ;; Development Tools
-    flycheck flycheck-pos-tip lsp-mode lsp-ui lsp-treemacs dap-mode
-    lsp-pyright lsp-java lsp-haskell ccls
-    
-    ;; Project & Version Control
-    projectile magit git-gutter git-timemachine diff-hl
-    
-    ;; Language Support
-    treesit-auto rust-mode cargo go-mode js2-mode typescript-mode
-    web-mode emmet-mode php-mode csharp-mode ruby-mode haskell-mode
-    scala-mode kotlin-mode swift-mode elixir-mode erlang lua-mode
-    cuda-mode nim-mode zig-mode julia-mode tuareg verilog-mode
-    nasm-mode json-mode yaml-mode csv-mode protobuf-mode graphql-mode
-    toml-mode markdown-mode cmake-mode dockerfile-mode docker-compose-mode
-    
-    ;; Utilities
-    format-all vterm multi-vterm neotree helpful eldoc-box
-    docker kubernetes hydra realgud dumb-jump esup))
+(defvar emacs-ide-core-modules
+  '("emacs-ide-config"      ; Configuration management
+    "emacs-ide-health"      ; Health check system
+    "emacs-ide-package"     ; Package management utilities
+    "emacs-ide-profiler"    ; Performance profiling
+    "emacs-ide-security"    ; Security hardening
+    "emacs-ide-telemetry"   ; Usage tracking
+    "emacs-ide-recovery")   ; Error recovery
+  "Core system modules to load.")
 
-;; Install all essential packages
-(message "Installing essential packages...")
-(dolist (package emacs-ide-essential-packages)
-  (straight-use-package package))
+(defun emacs-ide-load-core-module (module-name)
+  "Load core MODULE-NAME with error handling."
+  (let ((module-file (expand-file-name (concat module-name ".el")
+                                       emacs-ide-core-dir)))
+    (condition-case err
+        (progn
+          (load module-file nil 'nomessage)
+          (message "✓ Core: %s" module-name)
+          t)
+      (error
+       (warn "✗ Failed to load core module %s: %s" module-name err)
+       ;; In production, this should trigger recovery
+       (when (string= module-name "emacs-ide-recovery")
+         (error "Critical: Recovery module failed to load!"))
+       nil))))
+
+;; Load core modules
+(message "🔧 Loading core system...")
+(dolist (module emacs-ide-core-modules)
+  (emacs-ide-load-core-module module))
+
+(emacs-ide--track-phase "core-modules")
+
+;; ============================================================================
+;; CONFIGURATION LOADING
+;; ============================================================================
+(when (fboundp 'emacs-ide-config-load)
+  (emacs-ide-config-load))
+
+(emacs-ide--track-phase "config-load")
 
 ;; ============================================================================
 ;; PATH & ENVIRONMENT
 ;; ============================================================================
 (defun emacs-ide-setup-exec-path ()
-  "Setup PATH from shell."
+  "Setup PATH from shell environment."
   (let ((path-from-shell
          (replace-regexp-in-string
           "[ \t\n]*$" ""
@@ -142,61 +212,13 @@
 (when (memq window-system '(mac ns x pgtk))
   (emacs-ide-setup-exec-path))
 
-;; ============================================================================
-;; WAYLAND DETECTION
-;; ============================================================================
-(defvar emacs-ide-wayland-p (getenv "WAYLAND_DISPLAY"))
-(defvar emacs-ide-display-server
-  (cond (emacs-ide-wayland-p "Wayland")
-        ((getenv "DISPLAY") "X11")
-        (t "TTY")))
-
-(when emacs-ide-wayland-p
-  (setq select-enable-clipboard t
-        select-enable-primary t
-        save-interprogram-paste-before-kill t
-        x-select-enable-clipboard-manager t))
+(emacs-ide--track-phase "environment-setup")
 
 ;; ============================================================================
-;; MODULE DIRECTORY
-;; ============================================================================
-(defvar emacs-ide-modules-dir
-  (expand-file-name "modules" user-emacs-directory))
-
-(unless (file-directory-p emacs-ide-modules-dir)
-  (make-directory emacs-ide-modules-dir t))
-
-(add-to-list 'load-path emacs-ide-modules-dir)
-
-;; ============================================================================
-;; MODULE LOADER - ENHANCED ERROR HANDLING
-;; ============================================================================
-(defun emacs-ide-load-module (module-name)
-  "Load MODULE-NAME with enhanced error handling."
-  (let ((module-file (expand-file-name
-                     (concat module-name ".el")
-                     emacs-ide-modules-dir)))
-    (if (file-exists-p module-file)
-        (condition-case err
-            (progn
-              (load module-file nil 'nomessage)
-              (message "✓ Loaded module: %s" module-name))
-          (error
-           (message "✗ Failed to load %s: %s" module-name (error-message-string err))
-           (display-warning 'emacs-ide
-                           (format "Module load error in %s:\n%s"
-                                   module-name
-                                   (error-message-string err))
-                           :error)))
-      (message "✗ Module not found: %s" module-name)
-      (display-warning 'emacs-ide
-                      (format "Module file not found: %s" module-file)
-                      :warning))))
-
-;; ============================================================================
-;; CORE SETTINGS - OPTIMIZED
+;; CORE SETTINGS - PRODUCTION DEFAULTS
 ;; ============================================================================
 (setq-default
+ ;; Encoding
  buffer-file-coding-system 'utf-8-unix
  default-buffer-file-coding-system 'utf-8-unix
  default-file-name-coding-system 'utf-8-unix
@@ -204,96 +226,182 @@
  default-process-coding-system '(utf-8-unix . utf-8-unix)
  default-sendmail-coding-system 'utf-8-unix
  default-terminal-coding-system 'utf-8-unix
- 
+
+ ;; Indentation
  indent-tabs-mode nil
  tab-width 4
  fill-column 100
  require-final-newline t
  truncate-lines nil
  word-wrap t
- 
+
+ ;; Files
  auto-save-default nil
- make-backup-files nil
+ make-backup-files t
+ backup-directory-alist `(("." . ,emacs-ide-backup-dir))
  create-lockfiles nil
- 
+
+ ;; Scrolling
  scroll-conservatively 101
  scroll-margin 5
  scroll-preserve-screen-position t
  auto-window-vscroll nil
- 
  fast-but-imprecise-scrolling t
  redisplay-skip-fontification-on-input t)
 
+;; Yes/No to y/n
 (fset 'yes-or-no-p 'y-or-n-p)
 
+;; Startup
 (setq inhibit-startup-screen t
       inhibit-startup-message t
       initial-scratch-message nil
       initial-major-mode 'fundamental-mode)
 
-;; ============================================================================
-;; LOAD MODULES
-;; ============================================================================
-(emacs-ide-load-module "ui-config")
-(emacs-ide-load-module "completion-config")
-(emacs-ide-load-module "editing-config")
-(emacs-ide-load-module "tools-config")
-(emacs-ide-load-module "lang-config")
-(emacs-ide-load-module "debug-config")
-(emacs-ide-load-module "keybindings")
+(emacs-ide--track-phase "core-settings")
 
 ;; ============================================================================
-;; POST-INIT OPTIMIZATION & LAZY LOADING
+;; FEATURE MODULES - LOAD ORDER MATTERS
 ;; ============================================================================
-;; Defer loading of heavy packages
-(run-with-idle-timer 2 nil
-  (lambda ()
-    (require 'magit nil t)
-    (require 'projectile nil t)))
+(defvar emacs-ide-feature-modules
+  '("ui/ui-core"              ; Core UI
+    "ui/ui-theme"             ; Theme system
+    "ui/ui-modeline"          ; Modeline
+    "ui/ui-dashboard"         ; Dashboard
+    "completion/completion-core"  ; Completion framework
+    "completion/completion-snippets"  ; Snippets
+    "editing/editing-core"    ; Core editing
+    "editing/editing-nav"     ; Navigation
+    "tools/tools-lsp"         ; LSP
+    "tools/tools-project"     ; Project management
+    "tools/tools-git"         ; Git integration
+    "tools/tools-terminal"    ; Terminal
+    "languages/lang-core"     ; Language support
+    "debug/debug-core"        ; Debugging
+    "keybindings")            ; Keybindings (load last)
+  "Feature modules to load in order.")
 
+(defun emacs-ide-load-feature-module (module-name)
+  "Load feature MODULE-NAME with fallback."
+  (let ((module-file (expand-file-name (concat module-name ".el")
+                                       emacs-ide-modules-dir)))
+    (condition-case err
+        (progn
+          (load module-file nil 'nomessage)
+          (message "✓ Feature: %s" module-name)
+          t)
+      (error
+       (warn "✗ Failed to load feature module %s: %s" module-name err)
+       ;; Try to continue without this module
+       (when (fboundp 'emacs-ide-recovery-log-error)
+         (emacs-ide-recovery-log-error module-name err))
+       nil))))
+
+;; Load feature modules
+(message "🎨 Loading feature modules...")
+(dolist (module emacs-ide-feature-modules)
+  (emacs-ide-load-feature-module module))
+
+(emacs-ide--track-phase "feature-modules")
+
+;; ============================================================================
+;; HEALTH CHECK ON STARTUP
+;; ============================================================================
+(when (and (fboundp 'emacs-ide-health-check-startup)
+           (not noninteractive))
+  (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
+
+;; ============================================================================
+;; POST-INIT OPTIMIZATION
+;; ============================================================================
 (add-hook 'emacs-startup-hook
           (lambda ()
-            (setq gc-cons-threshold (* 16 1024 1024)
-                  gc-cons-percentage 0.1)
-            (garbage-collect)
+            (emacs-ide--track-phase "startup-complete")
+
+            ;; Calculate statistics
             (let* ((elapsed (float-time (time-subtract (current-time)
-                                                      emacs-ide--startup-time-start)))
-                   (pkg-count (hash-table-count straight--recipe-cache))
-                   (gc-count (- gcs-done emacs-ide--gc-count-start)))
-              (message "🚀 Emacs IDE ready in %.2fs | %d packages | %d GCs | %s"
+                                                       emacs-ide--init-start-time)))
+                   (gc-count (- gcs-done emacs-ide--gc-count-start))
+                   (pkg-count (if (fboundp 'straight--recipe-cache)
+                                  (hash-table-count straight--recipe-cache)
+                                0)))
+
+              ;; Display startup message
+              (message (concat "🚀 Emacs IDE v%s ready in %.2fs "
+                              "| %d packages | %d GCs | %s")
+                       emacs-ide-version
                        elapsed
                        pkg-count
                        gc-count
-                       emacs-ide-display-server)))
+                       emacs-ide-display-server)
+
+              ;; Performance check
+              (when (> elapsed 3.0)
+                (warn (concat "⚠️  Startup took %.2fs (target: <2.0s). "
+                             "Run M-x emacs-ide-profile-startup for details.")
+                      elapsed))
+
+              ;; Log to telemetry
+              (when (fboundp 'emacs-ide-telemetry-log-startup)
+                (emacs-ide-telemetry-log-startup elapsed gc-count pkg-count))))
           100)
 
 ;; ============================================================================
 ;; CUSTOM FILE
 ;; ============================================================================
-(setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-exists-p custom-file)
   (load custom-file nil 'nomessage))
 
 ;; ============================================================================
-;; UTILITY FUNCTIONS
+;; ENTERPRISE UTILITY COMMANDS
 ;; ============================================================================
-(defun emacs-ide-show-startup-time ()
-  "Display detailed startup information."
+(defun emacs-ide-show-version ()
+  "Display Emacs IDE version and system info."
   (interactive)
-  (message "Startup time: %.2fs | Packages: %d | GCs: %d"
-           (float-time (time-subtract after-init-time before-init-time))
-           (hash-table-count straight--recipe-cache)
-           gcs-done))
-
-(defun emacs-ide-show-system-info ()
-  "Display comprehensive system information."
-  (interactive)
-  (message "Emacs %s | %s | %s | GC: %d times | Uptime: %s"
+  (message (concat "Emacs IDE v%s | Emacs %s | %s | Build: %s")
+           emacs-ide-version
            emacs-version
-           system-type
            emacs-ide-display-server
-           gcs-done
-           (emacs-uptime "%h hours %m minutes")))
+           emacs-ide-build-date))
+
+(defun emacs-ide-startup-report ()
+  "Display detailed startup report."
+  (interactive)
+  (with-output-to-temp-buffer "*Startup Report*"
+    (princ (format "=== EMACS IDE STARTUP REPORT ===\n\n"))
+    (princ (format "Version: %s\n" emacs-ide-version))
+    (princ (format "Emacs Version: %s\n" emacs-version))
+    (princ (format "Display Server: %s\n" emacs-ide-display-server))
+    (princ (format "CPUs: %d\n\n" emacs-ide-processor-count))
+    (princ "Startup Phases:\n")
+    (dolist (phase (reverse emacs-ide--startup-phases))
+      (princ (format "  %-30s %.3fs\n" (car phase) (cdr phase))))
+    (princ "\n")
+    (princ (format "Total Startup Time: %.3fs\n"
+                   (cdr (car emacs-ide--startup-phases))))
+    (princ (format "Garbage Collections: %d\n"
+                   (- gcs-done emacs-ide--gc-count-start)))))
+
+(defun emacs-ide-reload ()
+  "Reload Emacs IDE configuration."
+  (interactive)
+  (when (y-or-n-p "Reload entire configuration? ")
+    (load-file user-init-file)
+    (message "✓ Configuration reloaded")))
+
+(defun emacs-ide-update ()
+  "Update all packages and Emacs IDE."
+  (interactive)
+  (when (y-or-n-p "Update all packages? This may take several minutes. ")
+    (message "📦 Updating packages...")
+    (straight-pull-all)
+    (message "✓ Update complete. Restart Emacs to apply changes.")))
+
+(defun emacs-ide-freeze-versions ()
+  "Freeze current package versions for reproducibility."
+  (interactive)
+  (straight-freeze-versions)
+  (message "✓ Package versions frozen to versions.lock"))
 
 (provide 'init)
 ;;; init.el ends here

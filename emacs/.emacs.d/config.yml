@@ -1,0 +1,362 @@
+# ============================================================================
+# Enterprise Emacs IDE Configuration
+# Version: 2.0.0
+# ============================================================================
+# Edit this file to customize your Emacs IDE setup
+# Changes take effect after: M-x emacs-ide-config-reload
+
+# ============================================================================
+# GENERAL SETTINGS
+# ============================================================================
+general:
+  # Theme selection
+  theme: modus-vivendi          # Options: modus-vivendi, modus-operandi
+  
+  # Font configuration
+  font: JetBrains Mono          # Primary font
+  font_size: 11                 # Font size in points
+  variable_pitch_font: Inter    # For variable-pitch modes
+  
+  # Safety
+  safe_mode: false              # Set to true to boot in minimal config
+  
+  # Startup
+  show_dashboard: true          # Show dashboard on startup
+  restore_session: false        # Restore previous session
+
+# ============================================================================
+# COMPLETION FRAMEWORK
+# ============================================================================
+completion:
+  # Backend selection
+  backend: corfu                # Options: corfu, company
+  
+  # Timing
+  delay: 0.1                    # Delay before showing completions (seconds)
+  auto: true                    # Auto-trigger completion
+  
+  # Features
+  snippet_expansion: true       # Enable YASnippet
+  fuzzy_matching: true          # Fuzzy completion matching
+  
+  # UI
+  popup_height: 20              # Max items in completion popup
+  preview: true                 # Preview completions
+
+# ============================================================================
+# LSP (LANGUAGE SERVER PROTOCOL)
+# ============================================================================
+lsp:
+  # Enable/disable
+  enable: true                  # Master LSP switch
+  
+  # Performance
+  large_file_threshold: 100000  # Disable some features for files > this size
+  idle_delay: 0.3               # Delay before LSP actions (seconds)
+  
+  # Features
+  inlay_hints: true             # Show type hints inline
+  semantic_tokens: true         # Semantic highlighting
+  symbol_highlighting: true     # Highlight symbol under cursor
+  lens: true                    # Show code lenses
+  headerline_breadcrumb: true   # Show breadcrumb in header
+  
+  # UI
+  sideline: true                # Show info in sideline
+  signature_help: true          # Show function signatures
+  hover_docs: true              # Show documentation on hover
+  
+  # Diagnostics
+  diagnostics_provider: flycheck  # Options: flycheck, flymake
+  
+  # Formatting
+  format_on_save: false         # Auto-format on save
+  organize_imports: true        # Auto-organize imports
+
+# ============================================================================
+# PERFORMANCE
+# ============================================================================
+performance:
+  # Garbage collection
+  gc_threshold: 16777216        # 16MB - GC threshold (bytes)
+  gc_percentage: 0.1            # GC percentage of heap
+  
+  # Startup
+  startup_time_target: 2.0      # Target startup time (seconds)
+  defer_heavy_packages: true    # Defer loading of heavy packages
+  
+  # Native compilation
+  native_comp_jobs: 4           # Number of parallel compilation jobs
+  native_comp_deferred: true    # Defer native compilation
+  
+  # File handling
+  large_file_threshold: 10000000  # 10MB - Special handling for large files
+  
+  # Process I/O
+  read_process_output_max: 4194304  # 4MB - Max process output buffer
+
+# ============================================================================
+# UI FEATURES
+# ============================================================================
+features:
+  # Essential
+  dashboard: true               # Startup dashboard
+  which_key: true               # Show available keybindings
+  
+  # Visual enhancements
+  beacon: true                  # Highlight cursor on scroll
+  rainbow_delimiters: true      # Color-code parentheses
+  rainbow_mode: true            # Show colors in color codes
+  highlight_indent_guides: true # Show indentation guides
+  dimmer: true                  # Dim inactive windows
+  pulsar: true                  # Pulse line on certain actions
+  
+  # UI elements
+  line_numbers: true            # Show line numbers
+  relative_line_numbers: true   # Relative line numbers
+  column_number: true           # Show column number
+  file_size: true               # Show file size
+  
+  # Modeline
+  modeline: doom-modeline       # Options: doom-modeline, powerline, default
+  modeline_height: 30           # Modeline height in pixels
+
+# ============================================================================
+# PROJECT MANAGEMENT
+# ============================================================================
+project:
+  # Projectile
+  enable: true                  # Enable Projectile
+  caching: true                 # Cache project files
+  indexing: hybrid              # Options: native, hybrid, alien
+  
+  # Search
+  default_search: ripgrep       # Options: ripgrep, grep, git-grep
+  
+  # Paths
+  search_paths:                 # Project search paths
+    - ~/projects
+    - ~/work
+    - ~/code
+  
+  # Ignored
+  globally_ignored_directories:
+    - .git
+    - node_modules
+    - __pycache__
+    - target
+    - build
+    - dist
+    - .venv
+
+# ============================================================================
+# VERSION CONTROL (GIT)
+# ============================================================================
+git:
+  # Magit
+  enable: true                  # Enable Magit
+  auto_revert: true             # Auto-revert buffers on git changes
+  
+  # Visual indicators
+  gutter: true                  # Show git changes in gutter
+  gutter_update_interval: 0.3   # Update interval (seconds)
+  
+  # Features
+  blame: true                   # Enable git blame
+  time_machine: true            # Enable git time machine
+  
+  # Commit
+  fill_column: 72               # Commit message fill column
+  summary_max_length: 50        # Max first line length
+
+# ============================================================================
+# TERMINAL
+# ============================================================================
+terminal:
+  # VTerm
+  enable: true                  # Enable VTerm
+  shell: /bin/bash              # Shell to use (or leave empty for $SHELL)
+  
+  # Performance
+  max_scrollback: 100000        # Max scrollback buffer
+  timer_delay: 0.01             # Timer delay for updates
+  
+  # Features
+  kill_buffer_on_exit: true     # Kill buffer when terminal exits
+  multi_term: true              # Enable multi-terminal support
+
+# ============================================================================
+# DEBUGGING (DAP)
+# ============================================================================
+debug:
+  # Enable/disable
+  enable: true                  # Master DAP switch
+  
+  # UI
+  auto_configure_features: true # Auto-configure debug UI
+  auto_show_output: true        # Show output on debug start
+  
+  # Supported debuggers
+  python: true                  # Python (debugpy)
+  node: true                    # Node.js
+  go: true                      # Go (Delve)
+  rust: true                    # Rust (LLDB)
+  cpp: true                     # C/C++ (LLDB/GDB)
+  java: true                    # Java
+
+# ============================================================================
+# LANGUAGES
+# ============================================================================
+languages:
+  # Tree-sitter
+  treesit_enable: true          # Enable tree-sitter
+  treesit_auto_install: true    # Auto-install grammars
+  
+  # Language-specific
+  python:
+    lsp_server: pyright         # Options: pyright, pylsp
+    formatter: black            # Options: black, autopep8
+    linter: flake8              # Options: flake8, pylint
+  
+  rust:
+    lsp_server: rust-analyzer
+    format_on_save: true
+  
+  go:
+    lsp_server: gopls
+    format_on_save: true
+    imports_on_save: true
+  
+  javascript:
+    lsp_server: typescript-language-server
+    formatter: prettier
+  
+  typescript:
+    lsp_server: typescript-language-server
+    formatter: prettier
+
+# ============================================================================
+# SECURITY
+# ============================================================================
+security:
+  # TLS
+  tls_verify: true              # Verify TLS certificates
+  tls_min_prime_bits: 3072      # Minimum TLS prime bits
+  
+  # Packages
+  package_signatures: allow-unsigned  # Options: t, allow-unsigned, nil
+  
+  # Auth
+  auth_sources:                 # Auth source files
+    - ~/.authinfo.gpg
+    - ~/.netrc
+  
+  # Network
+  network_security_level: high  # Options: high, medium, low
+
+# ============================================================================
+# TELEMETRY (LOCAL ONLY)
+# ============================================================================
+telemetry:
+  # Enable/disable
+  enabled: true                 # Enable local telemetry
+  
+  # What to track
+  usage_stats: true             # Track command usage
+  startup_times: true           # Log startup times
+  crash_reports: true           # Track crashes
+  
+  # Privacy
+  anonymous: true               # Keep data anonymous
+  local_only: true              # Never send data externally
+  
+  # Storage
+  max_log_size: 10485760        # 10MB - Max log file size
+
+# ============================================================================
+# ENVIRONMENT-SPECIFIC SETTINGS
+# ============================================================================
+# These override above settings based on hostname or EMACS_ENVIRONMENT var
+
+environments:
+  # Work environment
+  work:
+    # Org mode
+    org_directory: ~/work/org
+    org_agenda_files:
+      - ~/work/org/work.org
+      - ~/work/org/meetings.org
+    
+    # Projects
+    project_search_paths:
+      - ~/work/projects
+      - ~/work/repos
+    
+    # Git
+    git_user_name: Your Name
+    git_user_email: you@company.com
+    
+    # Theme (might prefer light theme at office)
+    theme: modus-operandi
+  
+  # Home environment
+  home:
+    # Org mode
+    org_directory: ~/personal/org
+    org_agenda_files:
+      - ~/personal/org/personal.org
+      - ~/personal/org/projects.org
+    
+    # Projects
+    project_search_paths:
+      - ~/code
+      - ~/projects
+      - ~/github
+    
+    # Git
+    git_user_name: Your Name
+    git_user_email: you@personal.com
+    
+    # Theme
+    theme: modus-vivendi
+
+# ============================================================================
+# CUSTOM KEYBINDINGS (OPTIONAL)
+# ============================================================================
+# Override default keybindings here
+keybindings:
+  # Example custom bindings
+  # custom_save: C-x C-s
+  # custom_find_file: C-x C-f
+
+# ============================================================================
+# ADVANCED SETTINGS
+# ============================================================================
+advanced:
+  # Warnings
+  warning_minimum_level: error  # Options: error, warning, debug
+  
+  # Custom load path
+  custom_load_path: []          # Additional directories to add to load-path
+  
+  # Custom requires
+  custom_requires: []           # Additional features to require on startup
+  
+  # Experimental features
+  experimental:
+    use_tree_sitter_everywhere: false
+    aggressive_indent: false
+    auto_save_on_idle: false
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# - Boolean values: true, false
+# - Numbers: integers or floats
+# - Strings: quoted or unquoted (prefer unquoted for paths)
+# - Lists: use YAML list syntax with dashes
+# - Comments: lines starting with #
+#
+# Reload configuration: M-x emacs-ide-config-reload
+# Edit this file: M-x emacs-ide-config-edit
+# View current config: M-x emacs-ide-config-show
