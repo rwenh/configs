@@ -19,15 +19,23 @@ return {
     },
   },
 
-  -- Better escape
+  -- Better escape (FIXED for v2.0+)
   {
     "max397574/better-escape.nvim",
     event = "InsertEnter",
     opts = {
-      mapping = { "jk", "kj" },
       timeout = 200,
-      clear_empty_lines = false,
-      keys = "<Esc>",
+      default_mappings = false,
+      mappings = {
+        i = {
+          j = {
+            k = "<Esc>",
+          },
+          k = {
+            j = "<Esc>",
+          },
+        },
+      },
     },
   },
 
