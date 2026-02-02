@@ -1,37 +1,17 @@
--- lua/plugins/specs/lang/ruby.lua - Ruby development
+-- lua/plugins/specs/lang/ruby.lua - Ruby development (SAFE KEYMAPS)
+-- Note: LSP (solargraph) is configured in lsp.lua, no need to duplicate here
 
 return {
-  -- Ruby LSP and formatting
-  {
-    "neovim/nvim-lspconfig",
-    ft = "ruby",
-    config = function()
-      local lspconfig = require("lspconfig")
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
-      
-      lspconfig.solargraph.setup({
-        capabilities = capabilities,
-        settings = {
-          solargraph = {
-            diagnostics = true,
-            completion = true,
-            hover = true,
-            formatting = true,
-          },
-        },
-      })
-    end,
-  },
-
-  -- Ruby testing with RSpec/Minitest
+  -- Ruby testing with RSpec/Minitest (using 'rb' prefix for Ruby)
   {
     "vim-test/vim-test",
     ft = "ruby",
     keys = {
-      { "<leader>tn", "<cmd>TestNearest<cr>", desc = "Test Nearest", ft = "ruby" },
-      { "<leader>tf", "<cmd>TestFile<cr>", desc = "Test File", ft = "ruby" },
-      { "<leader>ts", "<cmd>TestSuite<cr>", desc = "Test Suite", ft = "ruby" },
-      { "<leader>tl", "<cmd>TestLast<cr>", desc = "Test Last", ft = "ruby" },
+      { "<leader>rbn", "<cmd>TestNearest<cr>", desc = "Ruby Test Nearest", ft = "ruby" },
+      { "<leader>rbf", "<cmd>TestFile<cr>", desc = "Ruby Test File", ft = "ruby" },
+      { "<leader>rbs", "<cmd>TestSuite<cr>", desc = "Ruby Test Suite", ft = "ruby" },
+      { "<leader>rbl", "<cmd>TestLast<cr>", desc = "Ruby Test Last", ft = "ruby" },
+      { "<leader>rbv", "<cmd>TestVisit<cr>", desc = "Ruby Test Visit", ft = "ruby" },
     },
   },
 

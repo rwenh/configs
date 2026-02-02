@@ -1,4 +1,4 @@
--- lua/plugins/specs/init.lua - Load all plugin specs (updated with new languages)
+-- lua/plugins/specs/init.lua - Load all plugin specs (Fixed with c.lua import)
 
 return {
   -- UI
@@ -16,7 +16,7 @@ return {
   { import = "plugins.specs.lang.rust" },
   { import = "plugins.specs.lang.python" },
   { import = "plugins.specs.lang.go" },
-  { import = "plugins.specs.lang.c" },
+  { import = "plugins.specs.lang.c" },        -- FIXED: Added missing c.lua
   { import = "plugins.specs.lang.cpp" },
   { import = "plugins.specs.lang.fortran" },
   { import = "plugins.specs.lang.html" },

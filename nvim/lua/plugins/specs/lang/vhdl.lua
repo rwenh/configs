@@ -1,27 +1,7 @@
 -- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
+-- Note: LSP (vhdl_ls) is configured in lsp.lua, no need to duplicate here
 
 return {
-  -- VHDL LSP
-  {
-    "neovim/nvim-lspconfig",
-    ft = { "vhdl", "vhd" },
-    config = function()
-      local lspconfig = require("lspconfig")
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
-      
-      -- VHDL-LS (Rust-based LSP server)
-      lspconfig.vhdl_ls.setup({
-        capabilities = capabilities,
-        filetypes = { "vhdl", "vhd" },
-        settings = {
-          vhdl_ls = {
-            -- Configuration for vhdl_ls
-          },
-        },
-      })
-    end,
-  },
-
   -- VHDL syntax and utilities
   {
     "saadparwaiz1/cmp_luasnip",

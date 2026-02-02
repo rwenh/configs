@@ -1,4 +1,4 @@
--- lua/plugins/specs/lang/python.lua - Python development
+-- lua/plugins/specs/lang/python.lua - Python development (SAFE KEYMAPS)
 
 return {
   -- Virtual environment selector
@@ -11,7 +11,7 @@ return {
       auto_refresh = true,
     },
     keys = {
-      { "<leader>vs", "<cmd>VenvSelect<cr>", desc = "Select VirtualEnv", ft = "python" },
+      { "<leader>pyv", "<cmd>VenvSelect<cr>", desc = "Select VirtualEnv", ft = "python" },
     },
   },
 
@@ -21,11 +21,9 @@ return {
     ft = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      -- Ensure debugpy is available
       local python_path = vim.fn.exepath("python3") or vim.fn.exepath("python")
       
       if python_path ~= "" then
-        -- Check if debugpy is installed
         local handle = io.popen(python_path .. " -c 'import debugpy' 2>&1")
         local result = handle:read("*a")
         handle:close()
@@ -38,16 +36,16 @@ return {
         end
       end
 
-      -- Additional Python-specific debug keymaps
-      vim.keymap.set("n", "<leader>dpm", function()
+      -- Python-specific debug keymaps (using ;py prefix)
+      vim.keymap.set("n", "<leader>;pm", function()
         require("dap-python").test_method()
       end, { desc = "Debug Python Test Method" })
       
-      vim.keymap.set("n", "<leader>dpc", function()
+      vim.keymap.set("n", "<leader>;pc", function()
         require("dap-python").test_class()
       end, { desc = "Debug Python Test Class" })
       
-      vim.keymap.set({ "n", "v" }, "<leader>dps", function()
+      vim.keymap.set({ "n", "v" }, "<leader>;ps", function()
         require("dap-python").debug_selection()
       end, { desc = "Debug Selection" })
     end,
@@ -68,11 +66,11 @@ return {
       },
     },
     keys = {
-      { "<leader>nf", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "python" },
+      { "<leader>pyd", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "python" },
     },
   },
 
-  -- Python REPL
+  -- Python REPL (using \py for REPL operations - backslash is safe)
   {
     "Vigemus/iron.nvim",
     ft = "python",
@@ -90,19 +88,19 @@ return {
           repl_open_cmd = require("iron.view").bottom(20),
         },
         keymaps = {
-          send_motion = "<space>rc",
-          visual_send = "<space>rc",
-          send_line = "<space>rl",
-          cr = "<space>r<cr>",
-          interrupt = "<space>r<space>",
-          exit = "<space>rq",
-          clear = "<space>rx",
+          send_motion = "<leader>\\pc",
+          visual_send = "<leader>\\pc",
+          send_line = "<leader>\\pl",
+          cr = "<leader>\\p<cr>",
+          interrupt = "<leader>\\pi",
+          exit = "<leader>\\pq",
+          clear = "<leader>\\px",
         },
       })
     end,
     keys = {
-      { "<leader>rs", "<cmd>IronRepl<cr>", desc = "Toggle REPL", ft = "python" },
-      { "<leader>rr", "<cmd>IronRestart<cr>", desc = "Restart REPL", ft = "python" },
+      { "<leader>\\ps", "<cmd>IronRepl<cr>", desc = "Python REPL Start", ft = "python" },
+      { "<leader>\\pr", "<cmd>IronRestart<cr>", desc = "Python REPL Restart", ft = "python" },
     },
   },
 

@@ -1,4 +1,4 @@
--- lua/plugins/specs/lang/go.lua - Go development
+-- lua/plugins/specs/lang/go.lua - Go development (SAFE KEYMAPS)
 
 return {
   {
@@ -19,9 +19,14 @@ return {
       })
     end,
     keys = {
-      { "<leader>gt", "<cmd>GoTest<cr>", desc = "Go Test", ft = "go" },
-      { "<leader>gf", "<cmd>GoTestFunc<cr>", desc = "Go Test Function", ft = "go" },
-      { "<leader>gc", "<cmd>GoCoverage<cr>", desc = "Go Coverage", ft = "go" },
+      { "<leader>got", "<cmd>GoTest<cr>", desc = "Go Test", ft = "go" },
+      { "<leader>gof", "<cmd>GoTestFunc<cr>", desc = "Go Test Function", ft = "go" },
+      { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go Coverage", ft = "go" },
+      { "<leader>gor", "<cmd>GoRun<cr>", desc = "Go Run", ft = "go" },
+      { "<leader>gob", "<cmd>GoBuild<cr>", desc = "Go Build", ft = "go" },
+      { "<leader>goi", "<cmd>GoImpl<cr>", desc = "Go Impl", ft = "go" },
+      { "<leader>goa", "<cmd>GoAddTag<cr>", desc = "Go Add Tag", ft = "go" },
+      { "<leader>gom", "<cmd>GoMod<cr>", desc = "Go Mod", ft = "go" },
     },
   },
 }

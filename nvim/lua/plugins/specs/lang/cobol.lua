@@ -1,27 +1,7 @@
 -- lua/plugins/specs/lang/cobol.lua - COBOL development
+-- Note: LSP (cobol_ls) is configured in lsp.lua, no need to duplicate here
 
 return {
-  -- COBOL LSP
-  {
-    "neovim/nvim-lspconfig",
-    ft = "cobol",
-    config = function()
-      local lspconfig = require("lspconfig")
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
-      
-      -- Using IBM's COBOL Language Support
-      lspconfig.cobol_ls.setup({
-        capabilities = capabilities,
-        filetypes = { "cobol" },
-        settings = {
-          cobol = {
-            dialects = { "gnucobol", "ibm" },
-          },
-        },
-      })
-    end,
-  },
-
   -- COBOL compilation helper
   {
     "akinsho/toggleterm.nvim",

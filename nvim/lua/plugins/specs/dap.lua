@@ -1,4 +1,4 @@
--- lua/plugins/specs/dap.lua - Debug Adapter Protocol (updated with Ruby/Elixir)
+-- lua/plugins/specs/dap.lua - Debug Adapter Protocol (updated with Ruby/Elixir/Java)
 
 return {
   {
@@ -136,6 +136,23 @@ return {
             local port = tonumber(vim.fn.input("Port [5678]: ")) or 5678
             return { host = host, port = port }
           end,
+        },
+      }
+
+      -- Java Adapter (fallback - nvim-jdtls will override this)
+      dap.configurations.java = {
+        {
+          type = "java",
+          request = "attach",
+          name = "Debug (Attach) - Remote",
+          hostName = "127.0.0.1",
+          port = 5005,
+        },
+        {
+          type = "java",
+          request = "launch",
+          name = "Debug (Launch) - Current File",
+          mainClass = "${file}",
         },
       }
 
@@ -366,6 +383,7 @@ return {
         "delve",
         "js-debug-adapter",
         -- Ruby and Elixir debuggers are installed via gem/mix, not mason
+        -- Java debug is handled by nvim-jdtls with java-debug-adapter
       },
       automatic_installation = true,
       handlers = {},

@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua - LSP configuration (Updated for Nvim 0.11+)
+-- lua/plugins/specs/lsp.lua - LSP configuration (Fixed for Nvim 0.11+)
 
 return {
   -- Mason
@@ -17,7 +17,7 @@ return {
       ensure_installed = {
         "lua_ls", "basedpyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
-        "clangd",
+        "clangd", "gopls",
         "solargraph",
         "elixirls",
         "kotlin_language_server",
@@ -93,6 +93,7 @@ return {
             },
           },
         },
+        clangd = {},
         solargraph = {
           settings = {
             solargraph = {
@@ -108,9 +109,11 @@ return {
         zls = {},
       }
 
+      -- CRITICAL FIX: Register config THEN enable
       for server, config in pairs(servers) do
         config.capabilities = capabilities
-        vim.lsp.enable(server)
+        vim.lsp.config(server, config)  -- Register the config
+        vim.lsp.enable(server)          -- Then enable the server
       end
       
       -- VHDL LSP setup (optional - only if vhdl_ls is installed manually)
@@ -120,6 +123,36 @@ return {
           filetypes = { "vhdl", "vhd" },
         })
         vim.lsp.enable('vhdl_ls')
+      end
+
+      -- Fortran LSP (optional - only if fortls is installed)
+      if vim.fn.executable("fortls") == 1 then
+        vim.lsp.config('fortls', {
+          capabilities = capabilities,
+        })
+        vim.lsp.enable('fortls')
+      end
+
+      -- COBOL LSP (optional - only if cobol_ls is installed)
+      if vim.fn.executable("cobol-language-server") == 1 then
+        vim.lsp.config('cobol_ls', {
+          capabilities = capabilities,
+          filetypes = { "cobol" },
+          settings = {
+            cobol = {
+              dialects = { "gnucobol", "ibm" },
+            },
+          },
+        })
+        vim.lsp.enable('cobol_ls')
+      end
+
+      -- SQL LSP (optional - only if sqls is installed)
+      if vim.fn.executable("sqls") == 1 then
+        vim.lsp.config('sqls', {
+          capabilities = capabilities,
+        })
+        vim.lsp.enable('sqls')
       end
 
       local signs = { Error = " ", Warn = " ", Hint = " ", Info = " " }
@@ -154,7 +187,7 @@ return {
   -- Formatting
   {
     "stevearc/conform.nvim",
-    event = "BufWritePre",
+    event = "BufReadPre", -- Changed from BufWritePre for better performance
     opts = {
       formatters_by_ft = {
         lua = { "stylua" },

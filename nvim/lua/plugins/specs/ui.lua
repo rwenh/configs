@@ -1,4 +1,4 @@
--- lua/plugins/specs/ui.lua - UI plugins
+-- lua/plugins/specs/ui.lua - UI plugins (Optimized)
 
 return {
   -- Colorscheme
@@ -118,10 +118,11 @@ return {
     },
   },
 
-  -- Dashboard
+  -- Dashboard (OPTIMIZED: lazy=false with defer to avoid VimEnter slowdown)
   {
     "nvimdev/dashboard-nvim",
-    event = "VimEnter",
+    lazy = false,
+    priority = 100, -- Load after colorscheme but early
     opts = {
       theme = "doom",
       config = {
@@ -145,5 +146,11 @@ return {
         },
       },
     },
+    config = function(_, opts)
+      -- Defer dashboard setup to avoid blocking startup
+      vim.defer_fn(function()
+        require("dashboard").setup(opts)
+      end, 0)
+    end,
   },
 }

@@ -1,15 +1,7 @@
--- lua/plugins/specs/lang/fortran. lua - Fortran development
+-- lua/plugins/specs/lang/fortran.lua - Fortran development
+-- Note: LSP is configured in lsp.lua, no need to duplicate here
 
 return {
-  {
-    "neovim/nvim-lspconfig",
-    ft = "fortran",
-    config = function()
-      local lspconfig = require("lspconfig")
-      local capabilities = require("cmp_nvim_lsp"). default_capabilities()
-      lspconfig.fortls.setup({
-        capabilities = capabilities,
-      })
-    end,
-  },
+  -- Fortran-specific plugins can go here if needed
+  -- LSP (fortls) is handled by the main lsp.lua config
 }

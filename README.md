@@ -335,6 +335,7 @@ nvim
 :MasonInstall solargraph elixir-ls kotlin-language-server zls vhdl-ls
 :MasonInstall debugpy codelldb delve js-debug-adapter
 :MasonInstall black stylua prettier shfmt rubocop ktlint
+:MasonInstall java-debug-adapter java-test
 
 # 4. Check health
 :checkhealth

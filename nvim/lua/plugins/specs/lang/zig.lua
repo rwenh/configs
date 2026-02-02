@@ -1,27 +1,7 @@
 -- lua/plugins/specs/lang/zig.lua - Zig development
+-- Note: LSP (zls) is configured in lsp.lua, no need to duplicate here
 
 return {
-  -- Zig LSP and tools
-  {
-    "neovim/nvim-lspconfig",
-    ft = "zig",
-    config = function()
-      local lspconfig = require("lspconfig")
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
-      
-      lspconfig.zls.setup({
-        capabilities = capabilities,
-        settings = {
-          zls = {
-            enable_autofix = true,
-            enable_snippets = true,
-            warn_style = true,
-          },
-        },
-      })
-    end,
-  },
-
   -- Zig.vim for syntax and utilities
   {
     "ziglang/zig.vim",

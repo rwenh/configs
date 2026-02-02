@@ -1,4 +1,4 @@
--- lua/plugins/specs/lang/elixir.lua - Elixir development
+-- lua/plugins/specs/lang/elixir.lua - Elixir development (SAFE KEYMAPS)
 
 return {
   -- Elixir LSP and tools
@@ -38,39 +38,16 @@ return {
     end,
   },
 
-  -- Elixir debug adapter
-  {
-    "mfussenegger/nvim-dap",
-    optional = true,
-    opts = function()
-      local dap = require("dap")
-      dap.adapters.mix_task = {
-        type = "executable",
-        command = vim.fn.exepath("elixir-ls-debugger"),
-        args = {},
-      }
-      dap.configurations.elixir = {
-        {
-          type = "mix_task",
-          name = "mix test",
-          task = "test",
-          taskArgs = { "--trace" },
-          request = "launch",
-          startApps = true,
-          projectDir = "${workspaceFolder}",
-          requireFiles = {
-            "test/**/test_helper.exs",
-            "test/**/*_test.exs",
-          },
-        },
-      }
-    end,
-  },
-
-  -- Testing
+  -- Testing (using 'ex' prefix for Elixir)
   {
     "jfpedroza/neotest-elixir",
     ft = "elixir",
     dependencies = "nvim-neotest/neotest",
+    keys = {
+      { "<leader>exn", function() require("neotest").run.run() end, desc = "Elixir Test Nearest", ft = "elixir" },
+      { "<leader>exf", function() require("neotest").run.run(vim.fn.expand("%")) end, desc = "Elixir Test File", ft = "elixir" },
+      { "<leader>exa", function() require("neotest").run.run(vim.uv.cwd()) end, desc = "Elixir Test All", ft = "elixir" },
+      { "<leader>exs", function() require("neotest").summary.toggle() end, desc = "Elixir Test Summary", ft = "elixir" },
+    },
   },
 }
