@@ -209,7 +209,7 @@
 ;; GDB INTEGRATION
 ;; ============================================================================
 (use-package gdb-mi
-  :ensure nil
+  :straight nil
   :init
   (setq gdb-many-windows t
         gdb-show-main t
@@ -235,7 +235,7 @@
 ;; EDEBUG - EMACS LISP DEBUGGER
 ;; ============================================================================
 (use-package edebug
-  :ensure nil
+  :straight nil
   :init
   (setq edebug-trace t
         edebug-print-length 50
@@ -357,7 +357,7 @@ _q_: quit                            _d_: down frame    _R_: repl
   (esup))
 
 (use-package profiler
-  :ensure nil
+  :straight nil
   :bind (("C-c D s" . profiler-start)
          ("C-c D r" . profiler-report)
          ("C-c D q" . profiler-stop)))

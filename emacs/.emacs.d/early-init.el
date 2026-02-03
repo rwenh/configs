@@ -257,9 +257,10 @@
 
 (defvar emacs-ide-processor-count
   (string-to-number
-   (or (getenv "NUMBER_OF_PROCESSORS")
-       (shell-command-to-string
-        "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4")))
+   (string-trim
+    (or (getenv "NUMBER_OF_PROCESSORS")
+        (shell-command-to-string
+         "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4"))))
   "Number of CPU cores.")
 
 ;; ============================================================================

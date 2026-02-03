@@ -113,7 +113,7 @@
 ;; GIT COMMIT MESSAGE HELPER
 ;; ============================================================================
 (use-package git-commit
-  :ensure nil
+  :straight nil
   :after magit
   :init
   (setq git-commit-summary-max-length 50

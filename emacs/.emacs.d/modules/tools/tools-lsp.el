@@ -3,6 +3,9 @@
 ;;; Language Server Protocol configuration with performance optimizations
 ;;; Code:
 
+;; Check if LSP is enabled in config before loading
+(when (bound-and-true-p emacs-ide-lsp-enable)
+
 ;; ============================================================================
 ;; LSP OPTIMIZATION FOR LARGE FILES
 ;; ============================================================================
@@ -278,7 +281,7 @@
 ;; ELDOC - DOCUMENTATION
 ;; ============================================================================
 (use-package eldoc
-  :ensure nil
+  :straight nil
   :init
   (setq eldoc-idle-delay 0.1
         eldoc-echo-area-use-multiline-p nil
@@ -357,6 +360,8 @@
   (when (bound-and-true-p lsp-mode)
     (lsp-restart-workspace)
     (message "LSP workspace restarted")))
+
+) ;; End of (when emacs-ide-lsp-enable ...)
 
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

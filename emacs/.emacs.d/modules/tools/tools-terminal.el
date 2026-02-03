@@ -96,7 +96,7 @@
 ;; ESHELL - EMACS SHELL
 ;; ============================================================================
 (use-package eshell
-  :ensure nil
+  :straight nil
   :bind (("C-c e" . emacs-ide-eshell-here)
          ("C-c E" . eshell))
   :init
@@ -157,7 +157,7 @@
 ;; SHELL - TERM MODE
 ;; ============================================================================
 (use-package shell
-  :ensure nil
+  :straight nil
   :bind ("C-c s" . shell)
   :init
   (setq shell-file-name (or (getenv "SHELL") "/bin/bash")))
@@ -166,7 +166,7 @@
 ;; TERM MODE IMPROVEMENTS
 ;; ============================================================================
 (use-package term
-  :ensure nil
+  :straight nil
   :config
   ;; Better keybindings in term-mode
   (defun emacs-ide-term-mode-hook ()
@@ -180,7 +180,7 @@
 ;; COMPILATION BUFFER IMPROVEMENTS
 ;; ============================================================================
 (use-package compile
-  :ensure nil
+  :straight nil
   :init
   (setq compilation-scroll-output 'first-error
         compilation-window-height 20
@@ -201,7 +201,7 @@
 ;; COMINT MODE (SHELL BUFFERS)
 ;; ============================================================================
 (use-package comint
-  :ensure nil
+  :straight nil
   :init
   (setq comint-prompt-read-only t
         comint-scroll-to-bottom-on-input t

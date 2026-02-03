@@ -99,7 +99,7 @@
   (setq-default inhibit-startup-screen t
                 initial-scratch-message nil)
   ;; Load only essential recovery tools
-  (load (expand-file-name "core/emacs-ide-recovery.el" emacs-ide-root-dir) nil t)
+  (load (expand-file-name "emacs-ide-recovery.el" emacs-ide-core-dir) nil t)
   (emacs-ide-recovery-mode)
   ;; Stop here in safe mode
   (provide 'init))
@@ -264,21 +264,21 @@
 ;; FEATURE MODULES - LOAD ORDER MATTERS
 ;; ============================================================================
 (defvar emacs-ide-feature-modules
-  '("ui/ui-core"              ; Core UI
-    "ui/ui-theme"             ; Theme system
-    "ui/ui-modeline"          ; Modeline
-    "ui/ui-dashboard"         ; Dashboard
-    "completion/completion-core"  ; Completion framework
-    "completion/completion-snippets"  ; Snippets
-    "editing/editing-core"    ; Core editing
-    "editing/editing-nav"     ; Navigation
-    "tools/tools-lsp"         ; LSP
-    "tools/tools-project"     ; Project management
-    "tools/tools-git"         ; Git integration
-    "tools/tools-terminal"    ; Terminal
-    "languages/lang-core"     ; Language support
-    "debug/debug-core"        ; Debugging
-    "keybindings")            ; Keybindings (load last)
+  '("ui-core"              ; Core UI
+    "ui-theme"             ; Theme system
+    "ui-modeline"          ; Modeline
+    "ui-dashboard"         ; Dashboard
+    "completion-core"      ; Completion framework
+    "completion-snippets"  ; Snippets
+    "editing-core"         ; Core editing
+    "editing-nav"          ; Navigation
+    "tools-lsp"            ; LSP
+    "tools-project"        ; Project management
+    "tools-git"            ; Git integration
+    "tools-terminal"       ; Terminal
+    "lang-core"            ; Language support
+    "debug-core"           ; Debugging
+    "keybindings")         ; Keybindings (load last)
   "Feature modules to load in order.")
 
 (defun emacs-ide-load-feature-module (module-name)

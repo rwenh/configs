@@ -66,7 +66,7 @@
 ;; C/C++/CUDA
 ;; ============================================================================
 (use-package cc-mode
-  :ensure nil
+  :straight nil
   :mode (("\\.c\\'" . c-mode)
          ("\\.h\\'" . c-mode)
          ("\\.cpp\\'" . c++-mode)
@@ -112,7 +112,7 @@
 ;; PYTHON
 ;; ============================================================================
 (use-package python
-  :ensure nil
+  :straight nil
   :mode ("\\.py\\'" . python-mode)
   :interpreter ("python" "python3")
   :init
@@ -395,7 +395,7 @@
 ;; SHELL SCRIPT
 ;; ============================================================================
 (use-package sh-script
-  :ensure nil
+  :straight nil
   :mode (("\\.sh\\'" . sh-mode)
          ("\\.bash\\'" . sh-mode)
          ("\\.zsh\\'" . sh-mode))
@@ -450,7 +450,7 @@
 ;; FORTRAN
 ;; ============================================================================
 (use-package f90
-  :ensure nil
+  :straight nil
   :mode ("\\.f90\\'" "\\.f95\\'" "\\.f03\\'" "\\.f08\\'")
   :init
   (setq f90-do-indent 2
@@ -502,7 +502,7 @@
   (define-key verilog-mode-map (kbd "C-c C-c") 'emacs-ide-verilog-compile))
 
 (use-package vhdl-mode
-  :ensure nil
+  :straight nil
   :mode ("\\.vhd\\'" "\\.vhdl\\'")
   :init
   (setq vhdl-basic-offset 2))
@@ -531,7 +531,7 @@
 ;; SQL
 ;; ============================================================================
 (use-package sql
-  :ensure nil
+  :straight nil
   :mode "\\.sql\\'"
   :init
   (setq sql-product 'postgres))
@@ -578,7 +578,7 @@
 ;; ORG MODE
 ;; ============================================================================
 (use-package org
-  :ensure nil
+  :straight nil
   :mode ("\\.org\\'" . org-mode)
   :init
   (setq org-startup-indented t

@@ -372,7 +372,7 @@
 ;; WHITESPACE
 ;; ============================================================================
 (use-package whitespace
-  :ensure nil
+  :straight nil
   :hook (before-save . whitespace-cleanup)
   :init
   (setq whitespace-style '(face tabs empty trailing lines-tail)

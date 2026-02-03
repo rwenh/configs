@@ -1,4 +1,4 @@
-;;; ui-config.el --- Professional Visual Configuration -*- lexical-binding: t -*-
+;;; ui-core.el --- Professional Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Elite UI/UX with modern design and maximum efficiency
 ;;; Code:
@@ -365,7 +365,7 @@
 ;; DIRED ENHANCEMENT
 ;; ============================================================================
 (use-package dired
-  :ensure nil
+  :straight nil
   :init
   (setq dired-listing-switches "-alGh --group-directories-first"
         dired-dwim-target t
@@ -386,7 +386,7 @@
 ;; ANSI COLOR
 ;; ============================================================================
 (use-package ansi-color
-  :ensure nil
+  :straight nil
   :config
   (defun emacs-ide-colorize-compilation-buffer ()
     "Colorize compilation output."
@@ -417,7 +417,7 @@
 ;; TAB BAR MODE
 ;; ============================================================================
 (use-package tab-bar
-  :ensure nil
+  :straight nil
   :init
   (setq tab-bar-show 1
         tab-bar-close-button-show nil
@@ -448,5 +448,5 @@
 
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
 
-(provide 'ui-config)
-;;; ui-config.el ends here
+(provide 'ui-core)
+;;; ui-core.el ends here

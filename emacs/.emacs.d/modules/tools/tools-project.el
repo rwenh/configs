@@ -144,7 +144,7 @@
 ;; RECENTF - RECENT FILES
 ;; ============================================================================
 (use-package recentf
-  :ensure nil
+  :straight nil
   :demand t
   :init
   (setq recentf-max-saved-items 500
@@ -163,7 +163,7 @@
 ;; BOOKMARKS
 ;; ============================================================================
 (use-package bookmark
-  :ensure nil
+  :straight nil
   :init
   (setq bookmark-save-flag 1
         bookmark-default-file (expand-file-name "bookmarks" 
