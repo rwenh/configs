@@ -1,20 +1,20 @@
-;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
+;;; init.el --- Enterprise Emacs IDE Core Bootstrap (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery
 ;;; Author: Enterprise Emacs Team
-;;; Version: 2.0.0
+;;; Version: 2.1.0
 ;;; Code:
 
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.0.0"
+(defconst emacs-ide-version "2.1.0"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
   "Minimum required Emacs version.")
 
-(defconst emacs-ide-build-date "2025-01-20"
+(defconst emacs-ide-build-date "2025-02-04"
   "Build date.")
 
 ;; ============================================================================
@@ -92,17 +92,27 @@
 (emacs-ide--track-phase "directory-setup")
 
 ;; ============================================================================
+;; LOAD CONFIGURATION FIRST (CRITICAL - Must happen before modules)
+;; ============================================================================
+(message "📋 Loading configuration...")
+(require 'emacs-ide-config)
+(emacs-ide-config-load)
+(emacs-ide--track-phase "config-load")
+
+;; ============================================================================
 ;; SAFE MODE CHECK
 ;; ============================================================================
-(when emacs-ide-safe-mode
+(when (bound-and-true-p emacs-ide-safe-mode)
   (message "⚠️  SAFE MODE: Skipping most configuration")
   (setq-default inhibit-startup-screen t
                 initial-scratch-message nil)
   ;; Load only essential recovery tools
   (load (expand-file-name "emacs-ide-recovery.el" emacs-ide-core-dir) nil t)
-  (emacs-ide-recovery-mode)
+  (when (fboundp 'emacs-ide-recovery-mode)
+    (emacs-ide-recovery-mode))
   ;; Stop here in safe mode
-  (provide 'init))
+  (provide 'init)
+  (kill-emacs 0))
 
 ;; ============================================================================
 ;; PACKAGE MANAGEMENT - STRAIGHT.EL BOOTSTRAP
@@ -148,7 +158,7 @@
       use-package-verbose nil)
 
 ;; Enterprise: Always measure package load time
-(setq use-package-verbose init-file-debug
+(setq use-package-verbose (bound-and-true-p init-file-debug)
       use-package-minimum-reported-time 0.1)
 
 (emacs-ide--track-phase "use-package-setup")
@@ -157,8 +167,7 @@
 ;; CORE SYSTEM MODULES - LOAD IN ORDER
 ;; ============================================================================
 (defvar emacs-ide-core-modules
-  '("emacs-ide-config"      ; Configuration management
-    "emacs-ide-health"      ; Health check system
+  '("emacs-ide-health"      ; Health check system
     "emacs-ide-package"     ; Package management utilities
     "emacs-ide-profiler"    ; Performance profiling
     "emacs-ide-security"    ; Security hardening
@@ -177,9 +186,9 @@
           t)
       (error
        (warn "✗ Failed to load core module %s: %s" module-name err)
-       ;; In production, this should trigger recovery
+       ;; Critical modules must load
        (when (string= module-name "emacs-ide-recovery")
-         (error "Critical: Recovery module failed to load!"))
+         (error "Critical: Recovery module failed to load! %s" err))
        nil))))
 
 ;; Load core modules
@@ -190,24 +199,20 @@
 (emacs-ide--track-phase "core-modules")
 
 ;; ============================================================================
-;; CONFIGURATION LOADING
-;; ============================================================================
-(when (fboundp 'emacs-ide-config-load)
-  (emacs-ide-config-load))
-
-(emacs-ide--track-phase "config-load")
-
-;; ============================================================================
 ;; PATH & ENVIRONMENT
 ;; ============================================================================
 (defun emacs-ide-setup-exec-path ()
-  "Setup PATH from shell environment."
-  (let ((path-from-shell
-         (replace-regexp-in-string
-          "[ \t\n]*$" ""
-          (shell-command-to-string "$SHELL --login -c 'echo $PATH'"))))
-    (setenv "PATH" path-from-shell)
-    (setq exec-path (split-string path-from-shell path-separator))))
+  "Setup PATH from shell environment safely."
+  (let* ((shell (or (getenv "SHELL") "/bin/sh"))
+         (path-from-shell
+          (condition-case nil
+              (replace-regexp-in-string
+               "[ \t\n]*$" ""
+               (shell-command-to-string (format "%s --login -c 'echo $PATH'" shell)))
+            (error (getenv "PATH")))))
+    (unless (string-empty-p path-from-shell)
+      (setenv "PATH" path-from-shell)
+      (setq exec-path (split-string path-from-shell path-separator)))))
 
 (when (memq window-system '(mac ns x pgtk))
   (emacs-ide-setup-exec-path))
@@ -323,7 +328,9 @@
                                                        emacs-ide--init-start-time)))
                    (gc-count (- gcs-done emacs-ide--gc-count-start))
                    (pkg-count (if (fboundp 'straight--recipe-cache)
-                                  (hash-table-count straight--recipe-cache)
+                                  (condition-case nil
+                                      (hash-table-count straight--recipe-cache)
+                                    (error 0))
                                 0)))
 
               ;; Display startup message
@@ -333,13 +340,14 @@
                        elapsed
                        pkg-count
                        gc-count
-                       emacs-ide-display-server)
+                       (or emacs-ide-display-server "TTY"))
 
-              ;; Performance check
-              (when (> elapsed 3.0)
-                (warn (concat "⚠️  Startup took %.2fs (target: <2.0s). "
-                             "Run M-x emacs-ide-profile-startup for details.")
-                      elapsed))
+              ;; Performance check (using config target)
+              (let ((target (or (bound-and-true-p emacs-ide-startup-time-target) 3.0)))
+                (when (> elapsed target)
+                  (warn (concat "⚠️  Startup took %.2fs (target: <%.1fs). "
+                               "Run M-x emacs-ide-profile-startup for details.")
+                        elapsed target)))
 
               ;; Log to telemetry
               (when (fboundp 'emacs-ide-telemetry-log-startup)
@@ -349,7 +357,8 @@
 ;; ============================================================================
 ;; CUSTOM FILE
 ;; ============================================================================
-(when (file-exists-p custom-file)
+(when (and (boundp 'custom-file)
+           (file-exists-p custom-file))
   (load custom-file nil 'nomessage))
 
 ;; ============================================================================
@@ -361,7 +370,7 @@
   (message (concat "Emacs IDE v%s | Emacs %s | %s | Build: %s")
            emacs-ide-version
            emacs-version
-           emacs-ide-display-server
+           (or emacs-ide-display-server "TTY")
            emacs-ide-build-date))
 
 (defun emacs-ide-startup-report ()
@@ -371,8 +380,8 @@
     (princ (format "=== EMACS IDE STARTUP REPORT ===\n\n"))
     (princ (format "Version: %s\n" emacs-ide-version))
     (princ (format "Emacs Version: %s\n" emacs-version))
-    (princ (format "Display Server: %s\n" emacs-ide-display-server))
-    (princ (format "CPUs: %d\n\n" emacs-ide-processor-count))
+    (princ (format "Display Server: %s\n" (or emacs-ide-display-server "TTY")))
+    (princ (format "CPUs: %d\n\n" (or emacs-ide-processor-count 4)))
     (princ "Startup Phases:\n")
     (dolist (phase (reverse emacs-ide--startup-phases))
       (princ (format "  %-30s %.3fs\n" (car phase) (cdr phase))))

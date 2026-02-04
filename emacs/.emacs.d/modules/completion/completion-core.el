@@ -1,13 +1,12 @@
-;;; completion-config.el --- Elite Completion Framework -*- lexical-binding: t -*-
+;;; completion-core.el --- Elite Completion Framework (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Vertico + Consult + Corfu - Maximum efficiency (Company disabled to avoid conflicts)
+;;; Vertico + Consult + Corfu - Maximum efficiency with proper config integration
 ;;; Code:
 
 ;; ============================================================================
-;; VERTICO - VERTICAL COMPLETION
+;; VERTICO - VERTICAL COMPLETION (DEFERRED)
 ;; ============================================================================
 (use-package vertico
-  :demand t
   :init
   (setq vertico-scroll-margin 0
         vertico-count 20
@@ -15,7 +14,8 @@
         vertico-cycle t)
   :config
   (vertico-mode 1)
-  (vertico-multiform-mode 1)
+  (when (fboundp 'vertico-multiform-mode)
+    (vertico-multiform-mode 1))
   (setq vertico-multiform-categories
         '((file grid)
           (consult-grep buffer)
@@ -32,10 +32,9 @@
   :hook (rfn-eshadow-update-overlay . vertico-directory-tidy))
 
 ;; ============================================================================
-;; ORDERLESS - FLEXIBLE MATCHING
+;; ORDERLESS - FLEXIBLE MATCHING (DEFERRED)
 ;; ============================================================================
 (use-package orderless
-  :demand t
   :init
   (setq completion-styles '(orderless basic)
         completion-category-defaults nil
@@ -44,10 +43,9 @@
         orderless-matching-styles '(orderless-literal orderless-regexp orderless-flex)))
 
 ;; ============================================================================
-;; MARGINALIA - RICH ANNOTATIONS
+;; MARGINALIA - RICH ANNOTATIONS (DEFERRED)
 ;; ============================================================================
 (use-package marginalia
-  :demand t
   :bind (:map minibuffer-local-map
               ("M-A" . marginalia-cycle))
   :init
@@ -58,7 +56,7 @@
   (marginalia-mode 1))
 
 ;; ============================================================================
-;; CONSULT - ENHANCED SEARCH
+;; CONSULT - ENHANCED SEARCH (DEFERRED)
 ;; ============================================================================
 (use-package consult
   :bind (("C-x b" . consult-buffer)
@@ -104,7 +102,7 @@
    :preview-key '(:debounce 0.4 any)))
 
 ;; ============================================================================
-;; EMBARK - CONTEXTUAL ACTIONS
+;; EMBARK - CONTEXTUAL ACTIONS (DEFERRED)
 ;; ============================================================================
 (use-package embark
   :bind (("C-." . embark-act)
@@ -123,13 +121,12 @@
   :hook (embark-collect-mode . consult-preview-at-point-mode))
 
 ;; ============================================================================
-;; CORFU - INLINE COMPLETION (MAIN COMPLETION SYSTEM)
+;; CORFU - INLINE COMPLETION (MAIN SYSTEM - DEFERRED)
 ;; ============================================================================
 (use-package corfu
-  :demand t
   :init
   (setq corfu-auto t
-        corfu-auto-delay 0.1
+        corfu-auto-delay (or (bound-and-true-p emacs-ide-completion-delay) 0.1)
         corfu-auto-prefix 2
         corfu-cycle t
         corfu-quit-at-boundary 'separator
@@ -150,9 +147,14 @@
               ([return] . corfu-insert))
   :config
   (global-corfu-mode 1)
-  (corfu-popupinfo-mode 1)
-  (corfu-history-mode 1))
+  (when (fboundp 'corfu-popupinfo-mode)
+    (corfu-popupinfo-mode 1))
+  (when (fboundp 'corfu-history-mode)
+    (corfu-history-mode 1)))
 
+;; ============================================================================
+;; CAPE - COMPLETION AT POINT EXTENSION (DEFERRED)
+;; ============================================================================
 (use-package cape
   :init
   (add-to-list 'completion-at-point-functions #'cape-dabbrev)
@@ -161,12 +163,7 @@
   (add-to-list 'completion-at-point-functions #'cape-keyword))
 
 ;; ============================================================================
-;; YASNIPPET
-;; ============================================================================
-;; YASnippet is configured in completion-snippets.el
-
-;; ============================================================================
-;; HIPPIE EXPAND
+;; HIPPIE EXPAND WITH YASNIPPET INTEGRATION
 ;; ============================================================================
 (setq hippie-expand-try-functions-list
       '(try-expand-dabbrev
@@ -178,46 +175,60 @@
         try-expand-list
         try-expand-line
         try-complete-lisp-symbol-partially
-        try-complete-lisp-symbol
-        yas-hippie-try-expand))
+        try-complete-lisp-symbol))
+
+;; Add yasnippet if available
+(with-eval-after-load 'yasnippet
+  (add-to-list 'hippie-expand-try-functions-list 'yas-hippie-try-expand))
 
 (global-set-key (kbd "M-/") 'hippie-expand)
 
 ;; ============================================================================
-;; RECENTF
+;; RECENTF - RECENT FILES (BUILTIN)
 ;; ============================================================================
-(recentf-mode 1)
-(setq recentf-max-saved-items 500
-      recentf-max-menu-items 50
-      recentf-auto-cleanup 'never
-      recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$"
-                        "\\.revive$" "/TAGS$" "^/var/folders\\.*"
-                        "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"
-                        "\\.emacs\\.d/.*" "\\.cache/.*"))
-
-(run-at-time nil (* 5 60) 'recentf-save-list)
-
-;; ============================================================================
-;; SAVEHIST
-;; ============================================================================
-(savehist-mode 1)
-(setq savehist-additional-variables '(search-ring regexp-search-ring
-                                      kill-ring compile-history
-                                      command-history register-alist)
-      history-length 10000
-      history-delete-duplicates t
-      savehist-autosave-interval 60
-      savehist-save-minibuffer-history t)
+(use-package recentf
+  :straight nil
+  :init
+  (setq recentf-max-saved-items 500
+        recentf-max-menu-items 50
+        recentf-auto-cleanup 'never
+        recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$"
+                         "\\.revive$" "/TAGS$" "^/var/folders\\.*"
+                         "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"
+                         "\\.emacs\\.d/.*" "\\.cache/.*"))
+  :config
+  (recentf-mode 1)
+  (run-at-time nil (* 5 60) 'recentf-save-list))
 
 ;; ============================================================================
-;; SAVE PLACE
+;; SAVEHIST - MINIBUFFER HISTORY (BUILTIN)
 ;; ============================================================================
-(save-place-mode 1)
-(setq save-place-forget-unreadable-files nil
-      save-place-file (expand-file-name "places" user-emacs-directory))
+(use-package savehist
+  :straight nil
+  :init
+  (setq savehist-additional-variables '(search-ring regexp-search-ring
+                                        kill-ring compile-history
+                                        command-history register-alist)
+        history-length 10000
+        history-delete-duplicates t
+        savehist-autosave-interval 60
+        savehist-save-minibuffer-history t)
+  :config
+  (savehist-mode 1))
 
 ;; ============================================================================
-;; ABBREV MODE
+;; SAVE PLACE (BUILTIN)
+;; ============================================================================
+(use-package saveplace
+  :straight nil
+  :init
+  (setq save-place-forget-unreadable-files nil
+        save-place-file (expand-file-name "places" user-emacs-directory))
+  :config
+  (save-place-mode 1))
+
+;; ============================================================================
+;; ABBREV MODE (BUILTIN)
 ;; ============================================================================
 (setq-default abbrev-mode t)
 (setq save-abbrevs 'silently
@@ -227,14 +238,17 @@
   (quietly-read-abbrev-file))
 
 ;; ============================================================================
-;; BOOKMARKS
+;; BOOKMARKS (BUILTIN)
 ;; ============================================================================
-(setq bookmark-save-flag 1
-      bookmark-default-file (expand-file-name "bookmarks" user-emacs-directory)
-      bookmark-version-control t)
+(use-package bookmark
+  :straight nil
+  :init
+  (setq bookmark-save-flag 1
+        bookmark-default-file (expand-file-name "bookmarks" user-emacs-directory)
+        bookmark-version-control t))
 
 ;; ============================================================================
-;; AUTO-COMPLETE PAIRS
+;; AUTO-COMPLETE PAIRS (BUILTIN)
 ;; ============================================================================
 (electric-pair-mode 1)
 (setq electric-pair-pairs
@@ -246,7 +260,7 @@
         (?` . ?`)))
 
 ;; ============================================================================
-;; COMPLETION STYLES
+;; COMPLETION STYLES (BUILTIN)
 ;; ============================================================================
 (setq completion-cycle-threshold 3
       completion-auto-help 'always
@@ -259,13 +273,13 @@
       read-buffer-completion-ignore-case t)
 
 ;; ============================================================================
-;; TAB COMPLETION
+;; TAB COMPLETION (BUILTIN)
 ;; ============================================================================
 (setq tab-always-indent 'complete
       tab-first-completion 'word-or-paren-or-punct)
 
 ;; ============================================================================
-;; MINIBUFFER SETTINGS
+;; MINIBUFFER SETTINGS (BUILTIN)
 ;; ============================================================================
 (setq enable-recursive-minibuffers t
       minibuffer-depth-indicate-mode t
@@ -277,16 +291,10 @@
 (minibuffer-electric-default-mode 1)
 
 ;; ============================================================================
-;; FILE NAME COMPLETION
+;; FILE NAME COMPLETION (BUILTIN)
 ;; ============================================================================
 (setq read-file-name-completion-ignore-case t
       read-buffer-completion-ignore-case t)
-
-;; ============================================================================
-;; ICOMPLETE (fallback) - DISABLED
-;; ============================================================================
-(fido-vertical-mode -1)
-(icomplete-mode -1)
 
 ;; ============================================================================
 ;; CUSTOM COMPLETION FUNCTIONS
@@ -295,12 +303,14 @@
   "Complete or indent intelligently."
   (interactive)
   (if (minibufferp)
-      (minibuffer-complete)
+      (when (fboundp 'minibuffer-complete)
+        (minibuffer-complete))
     (if (looking-at "\\>")
-        (completion-at-point)
+        (when (fboundp 'completion-at-point)
+          (completion-at-point))
       (indent-for-tab-command))))
 
 (global-set-key (kbd "TAB") 'emacs-ide-complete-or-indent)
 
-(provide 'completion-config)
-;;; completion-config.el ends here
+(provide 'completion-core)
+;;; completion-core.el ends here

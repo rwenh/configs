@@ -1,23 +1,13 @@
-;;; tools-git.el --- Git Integration with Magit -*- lexical-binding: t -*-
+;;; tools-git.el --- Git Integration with Magit (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional Git workflow with Magit and companions
+;;; NOTE: Keybindings are defined in keybindings.el - this module adds functionality only
 ;;; Code:
 
 ;; ============================================================================
 ;; MAGIT - GIT PORCELAIN
 ;; ============================================================================
 (use-package magit
-  :bind (("C-x g" . magit-status)
-         ("C-x M-g" . magit-dispatch)
-         ("C-c g g" . magit-status)
-         ("C-c g s" . magit-status)
-         ("C-c g b" . magit-blame)
-         ("C-c g l" . magit-log-buffer-file)
-         ("C-c g f" . magit-log-head)
-         ("C-c g c" . magit-clone)
-         ("C-c g i" . magit-init)
-         ("C-c g d" . magit-dispatch)
-         ("C-c g F" . magit-file-dispatch))
   :init
   (setq magit-display-buffer-function
         #'magit-display-buffer-same-window-except-diff-v1
@@ -34,7 +24,7 @@
         git-commit-fill-column 72
         git-commit-style-convention-checks '(non-empty-second-line))
   :config
-  ;; Performance improvements
+  ;; Performance improvements - only refresh on demand
   (setq magit-refresh-status-buffer nil)
   
   ;; Show word-granularity differences
@@ -58,15 +48,6 @@
   (set-face-foreground 'git-gutter:deleted "#f38ba8"))
 
 ;; ============================================================================
-;; GIT-TIMEMACHINE - BROWSE HISTORY
-;; ============================================================================
-(use-package git-timemachine
-  :bind (("C-x v t" . git-timemachine)
-         ("C-c g t" . git-timemachine))
-  :init
-  (setq git-timemachine-show-minibuffer-details t))
-
-;; ============================================================================
 ;; DIFF-HL - ALTERNATIVE TO GIT-GUTTER
 ;; ============================================================================
 (use-package diff-hl
@@ -77,9 +58,18 @@
   (setq diff-hl-draw-borders nil
         diff-hl-side 'left)
   :config
-  (diff-hl-flydiff-mode)
+  (when (fboundp 'diff-hl-flydiff-mode)
+    (diff-hl-flydiff-mode))
   (when (display-graphic-p)
-    (diff-hl-margin-mode)))
+    (when (fboundp 'diff-hl-margin-mode)
+      (diff-hl-margin-mode))))
+
+;; ============================================================================
+;; GIT-TIMEMACHINE - BROWSE HISTORY
+;; ============================================================================
+(use-package git-timemachine
+  :init
+  (setq git-timemachine-show-minibuffer-details t))
 
 ;; ============================================================================
 ;; MAGIT-TODOS - SHOW TODOS IN MAGIT
@@ -87,15 +77,14 @@
 (use-package magit-todos
   :after magit
   :config
-  (magit-todos-mode 1)
+  (when (fboundp 'magit-todos-mode)
+    (magit-todos-mode 1))
   (setq magit-todos-keywords '("TODO" "FIXME" "HACK" "NOTE" "XXX")))
 
 ;; ============================================================================
 ;; GIT-LINK - GENERATE GITHUB/GITLAB LINKS
 ;; ============================================================================
 (use-package git-link
-  :bind (("C-c g u" . git-link)
-         ("C-c g U" . git-link-commit))
   :init
   (setq git-link-open-in-browser t
         git-link-use-commit t))
@@ -131,109 +120,116 @@
 (defun emacs-ide-git-status ()
   "Show git status with enhanced info."
   (interactive)
-  (if (magit-git-repo-p)
-      (let ((branch (magit-get-current-branch))
-            (remote (magit-get-remote))
-            (ahead-behind (magit-rev-diff-count "HEAD" "@{u}")))
-        (message "Branch: %s | Remote: %s | Ahead: %s Behind: %s"
-                 (or branch "detached")
-                 (or remote "none")
-                 (car ahead-behind)
-                 (cdr ahead-behind)))
-    (message "Not in a git repository")))
-
-(defun emacs-ide-git-commit-conventional ()
-  "Insert conventional commit type."
-  (interactive)
-  (let ((type (completing-read "Commit type: "
-                              '("feat" "fix" "docs" "style" "refactor"
-                                "perf" "test" "build" "ci" "chore"))))
-    (insert (format "%s: " type))))
+  (if (fboundp 'magit-git-repo-p)
+      (if (magit-git-repo-p)
+          (let ((branch (magit-get-current-branch))
+                (remote (magit-get-remote))
+                (ahead-behind (magit-rev-diff-count "HEAD" "@{u}")))
+            (message "Branch: %s | Remote: %s | Ahead: %s Behind: %s"
+                     (or branch "detached")
+                     (or remote "none")
+                     (car ahead-behind)
+                     (cdr ahead-behind)))
+        (message "⚠️  Not in a git repository"))
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-stage-file ()
-  "Stage current file."
+  "Stage current file safely."
   (interactive)
   (when buffer-file-name
-    (magit-stage-file buffer-file-name)
-    (message "Staged: %s" (file-name-nondirectory buffer-file-name))))
+    (if (fboundp 'magit-stage-file)
+        (magit-stage-file buffer-file-name)
+      (message "⚠️  Magit not available"))))
 
 (defun emacs-ide-git-unstage-file ()
-  "Unstage current file."
+  "Unstage current file safely."
   (interactive)
   (when buffer-file-name
-    (magit-unstage-file buffer-file-name)
-    (message "Unstaged: %s" (file-name-nondirectory buffer-file-name))))
+    (if (fboundp 'magit-unstage-file)
+        (magit-unstage-file buffer-file-name)
+      (message "⚠️  Magit not available"))))
 
 (defun emacs-ide-git-commit-amend ()
-  "Amend last commit."
+  "Amend last commit safely."
   (interactive)
-  (magit-commit-amend))
+  (if (fboundp 'magit-commit-amend)
+      (magit-commit-amend)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-push ()
-  "Push current branch."
+  "Push current branch safely."
   (interactive)
-  (magit-push-current-to-pushremote nil))
+  (if (fboundp 'magit-push-current-to-pushremote)
+      (magit-push-current-to-pushremote nil)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-pull ()
-  "Pull current branch."
+  "Pull current branch safely."
   (interactive)
-  (magit-pull-from-upstream nil))
+  (if (fboundp 'magit-pull-from-upstream)
+      (magit-pull-from-upstream nil)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-create-branch ()
-  "Create and checkout new branch."
+  "Create and checkout new branch safely."
   (interactive)
-  (call-interactively 'magit-branch-and-checkout))
+  (if (fboundp 'magit-branch-and-checkout)
+      (call-interactively 'magit-branch-and-checkout)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-switch-branch ()
-  "Switch to another branch."
+  "Switch to another branch safely."
   (interactive)
-  (call-interactively 'magit-branch-checkout))
+  (if (fboundp 'magit-branch-checkout)
+      (call-interactively 'magit-branch-checkout)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-stash ()
-  "Stash changes."
+  "Stash changes safely."
   (interactive)
-  (magit-stash-both "WIP" nil))
+  (if (fboundp 'magit-stash-both)
+      (magit-stash-both "WIP" nil)
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-stash-pop ()
-  "Pop stash."
+  "Pop stash safely."
   (interactive)
-  (magit-stash-pop "stash@{0}"))
+  (if (fboundp 'magit-stash-pop)
+      (magit-stash-pop "stash@{0}")
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-diff-buffer ()
-  "Show diff of current buffer."
+  "Show diff of current buffer safely."
   (interactive)
   (when buffer-file-name
-    (magit-diff-buffer-file)))
+    (if (fboundp 'magit-diff-buffer-file)
+        (magit-diff-buffer-file)
+      (message "⚠️  Magit not available"))))
 
 (defun emacs-ide-git-log-buffer ()
-  "Show log of current buffer."
+  "Show log of current buffer safely."
   (interactive)
   (when buffer-file-name
-    (magit-log-buffer-file)))
+    (if (fboundp 'magit-log-buffer-file)
+        (magit-log-buffer-file)
+      (message "⚠️  Magit not available"))))
 
 (defun emacs-ide-git-blame-toggle ()
-  "Toggle git blame for current buffer."
+  "Toggle git blame for current buffer safely."
   (interactive)
-  (call-interactively 'magit-blame-addition))
-
-(defun emacs-ide-git-show-commit-at-point ()
-  "Show commit at point."
-  (interactive)
-  (when-let ((commit (magit-commit-at-point)))
-    (magit-show-commit commit)))
+  (if (fboundp 'magit-blame-addition)
+      (call-interactively 'magit-blame-addition)
+    (message "⚠️  Magit not available")))
 
 ;; ============================================================================
 ;; GIT WORKTREE HELPERS
 ;; ============================================================================
 (defun emacs-ide-git-worktree-create ()
-  "Create new worktree."
+  "Create new worktree safely."
   (interactive)
-  (call-interactively 'magit-worktree-checkout))
-
-(defun emacs-ide-git-worktree-list ()
-  "List worktrees."
-  (interactive)
-  (magit-list-worktrees))
+  (if (fboundp 'magit-worktree-checkout)
+      (call-interactively 'magit-worktree-checkout)
+    (message "⚠️  Magit not available")))
 
 ;; ============================================================================
 ;; GIT FLOW INTEGRATION
@@ -241,51 +237,28 @@
 (defun emacs-ide-git-flow-feature-start ()
   "Start new feature branch."
   (interactive)
-  (let ((name (read-string "Feature name: ")))
-    (magit-branch-and-checkout (concat "feature/" name) "develop")))
+  (if (fboundp 'magit-branch-and-checkout)
+      (let ((name (read-string "Feature name: ")))
+        (unless (string-empty-p name)
+          (magit-branch-and-checkout (concat "feature/" name) "develop")))
+    (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-flow-feature-finish ()
   "Finish feature branch."
   (interactive)
-  (let ((branch (magit-get-current-branch)))
-    (when (string-prefix-p "feature/" branch)
-      (magit-branch-checkout "develop")
-      (magit-merge-plain branch)
-      (magit-branch-delete branch))))
+  (if (fboundp 'magit-get-current-branch)
+      (let ((branch (magit-get-current-branch)))
+        (when (string-prefix-p "feature/" branch)
+          (magit-branch-checkout "develop")
+          (magit-merge-plain branch)
+          (magit-branch-delete branch)))
+    (message "⚠️  Magit not available")))
 
 ;; ============================================================================
-;; GIT PREFIX MAP
+;; KEYBINDINGS
 ;; ============================================================================
-(define-prefix-command 'emacs-ide-git-map)
-(global-set-key (kbd "C-c g") 'emacs-ide-git-map)
-
-(define-key emacs-ide-git-map (kbd "g") 'magit-status)
-(define-key emacs-ide-git-map (kbd "s") 'emacs-ide-git-stage-file)
-(define-key emacs-ide-git-map (kbd "u") 'emacs-ide-git-unstage-file)
-(define-key emacs-ide-git-map (kbd "c") 'magit-commit)
-(define-key emacs-ide-git-map (kbd "a") 'emacs-ide-git-commit-amend)
-(define-key emacs-ide-git-map (kbd "p") 'emacs-ide-git-push)
-(define-key emacs-ide-git-map (kbd "P") 'emacs-ide-git-pull)
-(define-key emacs-ide-git-map (kbd "b") 'emacs-ide-git-switch-branch)
-(define-key emacs-ide-git-map (kbd "B") 'emacs-ide-git-create-branch)
-(define-key emacs-ide-git-map (kbd "d") 'emacs-ide-git-diff-buffer)
-(define-key emacs-ide-git-map (kbd "l") 'emacs-ide-git-log-buffer)
-(define-key emacs-ide-git-map (kbd "t") 'git-timemachine)
-(define-key emacs-ide-git-map (kbd "z") 'emacs-ide-git-stash)
-(define-key emacs-ide-git-map (kbd "Z") 'emacs-ide-git-stash-pop)
-(define-key emacs-ide-git-map (kbd "?") 'emacs-ide-git-status)
-
-;; ============================================================================
-;; ENHANCED GIT STATUS IN MODELINE
-;; ============================================================================
-(defun emacs-ide-git-modeline-status ()
-  "Get git status for modeline."
-  (when (and buffer-file-name (magit-git-repo-p))
-    (let* ((branch (magit-get-current-branch))
-           (status (magit-file-status buffer-file-name)))
-      (format " [%s%s]"
-              (or branch "detached")
-              (if status (format " %s" status) "")))))
+;; NOTE: All keybindings are defined in keybindings.el
+;; This module provides the functionality only
 
 (provide 'tools-git)
 ;;; tools-git.el ends here

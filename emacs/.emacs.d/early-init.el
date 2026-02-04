@@ -1,8 +1,8 @@
-;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
+;;; early-init.el --- Enterprise Emacs IDE Early Initialization (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring
 ;;; Author: Enterprise Emacs Team
-;;; Version: 2.0.0
+;;; Version: 2.1.0
 ;;; Code:
 
 ;; ============================================================================
@@ -20,8 +20,27 @@
     (funcall body-fn)
     (let ((elapsed (float-time (time-subtract (current-time) start))))
       (push (cons phase-name elapsed) emacs-ide--early-init-benchmark-data)
-      (when (> elapsed 0.1)
-        (warn "Early-init phase '%s' took %.3fs (threshold: 0.1s)" phase-name elapsed)))))
+      (when (> elapsed 0.25)
+        (warn "Early-init phase '%s' took %.3fs (slow)" phase-name elapsed)))))
+
+;; ============================================================================
+;; UTILITY FUNCTIONS - MUST BE DEFINED EARLY
+;; ============================================================================
+(defun emacs-ide--get-processor-count ()
+  "Get number of CPU cores safely."
+  (let* ((env-count (getenv "NUMBER_OF_PROCESSORS"))
+         (count (if env-count
+                   (condition-case nil
+                       (string-to-number env-count)
+                     (error 0))
+                 0)))
+    (if (> count 0) count
+      (condition-case nil
+          (string-to-number
+           (string-trim
+            (shell-command-to-string
+             "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4")))
+        (error 4)))))
 
 ;; ============================================================================
 ;; GARBAGE COLLECTION - AGGRESSIVE OPTIMIZATION
@@ -72,10 +91,10 @@
 ;; ============================================================================
 (emacs-ide--benchmark-phase "ui-disable"
   (lambda ()
-    (push '(menu-bar-lines . 0) default-frame-alist)
-    (push '(tool-bar-lines . 0) default-frame-alist)
-    (push '(vertical-scroll-bars) default-frame-alist)
-    (push '(horizontal-scroll-bars) default-frame-alist)))
+    (menu-bar-mode -1)
+    (tool-bar-mode -1)
+    (scroll-bar-mode -1)
+    (horizontal-scroll-bar-mode -1)))
 
 ;; ============================================================================
 ;; WAYLAND/PGTK OPTIMIZATIONS
@@ -101,7 +120,7 @@
             native-comp-warning-on-missing-source nil
             native-comp-deferred-compilation t
             native-comp-speed 3
-            native-comp-async-jobs-number (max 1 (/ (num-processors) 2))
+            native-comp-async-jobs-number (max 1 (/ (or (emacs-ide--get-processor-count) 4) 2))
             native-comp-always-compile t
             package-native-compile t)
       
@@ -128,12 +147,19 @@
                 (setq gc-cons-threshold (* 16 1024 1024)  ; 16MB
                       gc-cons-percentage 0.1)
                 
-                ;; Setup idle GC
-                (setq emacs-ide--gc-timer
-                      (run-with-idle-timer 15 t #'garbage-collect))
+                ;; Setup idle GC with proper cleanup
+                (unless emacs-ide--gc-timer
+                  (setq emacs-ide--gc-timer
+                        (run-with-idle-timer 15 t #'garbage-collect)))
                 
                 (garbage-collect))))
           100)
+
+;; Cleanup GC timer on exit
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (when emacs-ide--gc-timer
+              (cancel-timer emacs-ide--gc-timer))))
 
 ;; ============================================================================
 ;; PROCESS & I/O OPTIMIZATION
@@ -241,13 +267,14 @@
                       (* 100 (/ (cdr phase) total-time)))))
       (princ "\n")
       (when (> total-time 0.5)
-        (princ "⚠️  WARNING: Early-init took longer than expected (target: <0.5s)\n")))))
+        (princ "⚠️  Early-init took longer than expected (target: <0.5s)\n")))))
 
 ;; ============================================================================
 ;; ENVIRONMENT DETECTION
 ;; ============================================================================
-(defvar emacs-ide-wayland-p (getenv "WAYLAND_DISPLAY")
-  "Whether running on Wayland.")
+(defvar emacs-ide-wayland-p
+  (and (getenv "WAYLAND_DISPLAY") t)
+  "Whether running on Wayland (boolean).")
 
 (defvar emacs-ide-display-server
   (cond (emacs-ide-wayland-p "Wayland")
@@ -256,11 +283,7 @@
   "Current display server.")
 
 (defvar emacs-ide-processor-count
-  (string-to-number
-   (string-trim
-    (or (getenv "NUMBER_OF_PROCESSORS")
-        (shell-command-to-string
-         "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4"))))
+  (emacs-ide--get-processor-count)
   "Number of CPU cores.")
 
 ;; ============================================================================
@@ -281,7 +304,8 @@
   "If non-nil, boot in safe mode (minimal config).")
 
 (when (or (getenv "EMACS_SAFE_MODE")
-          (member "--safe" command-line-args))
+          (member "--safe" command-line-args)
+          (member "--safe" command-line-args-left))
   (setq emacs-ide-safe-mode t)
   (message "🛡️  EMACS IDE SAFE MODE ENABLED - Minimal configuration"))
 

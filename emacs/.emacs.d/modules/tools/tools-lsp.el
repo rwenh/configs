@@ -1,29 +1,34 @@
-;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
+;;; tools-lsp.el --- LSP Mode Configuration (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations
 ;;; Code:
 
-;; Check if LSP is enabled in config before loading
-(when (bound-and-true-p emacs-ide-lsp-enable)
+;; Check if LSP is enabled in config
+(unless (bound-and-true-p emacs-ide-lsp-enable)
+  (message "⚠️  LSP disabled in config")
+  (provide 'tools-lsp)
+  (throw 'skip-module nil))
 
 ;; ============================================================================
 ;; LSP OPTIMIZATION FOR LARGE FILES
 ;; ============================================================================
 (defun emacs-ide-lsp-optimize-large-files ()
   "Optimize LSP for large files before activation."
-  (when (> (buffer-size) (or emacs-ide-lsp-large-file-threshold 100000))
-    (setq-local lsp-enable-symbol-highlighting nil
-                lsp-enable-on-type-formatting nil
-                lsp-enable-folding nil
-                lsp-lens-enable nil
-                lsp-semantic-tokens-enable nil
-                lsp-enable-indentation nil)
-    (message "LSP optimizations enabled for large file")))
+  (let ((threshold (or (bound-and-true-p emacs-ide-lsp-large-file-threshold) 100000)))
+    (when (> (buffer-size) threshold)
+      (setq-local lsp-enable-symbol-highlighting nil
+                  lsp-enable-on-type-formatting nil
+                  lsp-enable-folding nil
+                  lsp-lens-enable nil
+                  lsp-semantic-tokens-enable nil
+                  lsp-enable-indentation nil)
+      (message "LSP optimizations enabled for large file"))))
 
 (defun emacs-ide-lsp-deferred-optimized ()
   "Defer LSP with optimizations."
   (emacs-ide-lsp-optimize-large-files)
-  (lsp-deferred))
+  (when (fboundp 'lsp-deferred)
+    (lsp-deferred)))
 
 ;; ============================================================================
 ;; FLYCHECK - SYNTAX CHECKING
@@ -44,71 +49,42 @@
               ("C-c ! n" . flycheck-next-error)
               ("C-c ! p" . flycheck-previous-error)
               ("C-c ! l" . flycheck-list-errors)
-              ("C-c ! v" . flycheck-verify-setup)
-              ("C-c ! c" . flycheck-clear)
-              ("C-c ! s" . flycheck-select-checker)
-              ("C-c ! h" . flycheck-display-error-at-point)))
+              ("C-c ! v" . flycheck-verify-setup)))
 
 (use-package flycheck-pos-tip
   :after flycheck
   :if (display-graphic-p)
   :config
-  (flycheck-pos-tip-mode 1))
+  (when (fboundp 'flycheck-pos-tip-mode)
+    (flycheck-pos-tip-mode 1)))
 
 ;; ============================================================================
-;; LSP-MODE - CORE CONFIGURATION
+;; LSP-MODE - CORE CONFIGURATION (DEFERRED)
 ;; ============================================================================
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
   :hook (;; Programming modes with LSP
          (c-mode . emacs-ide-lsp-deferred-optimized)
          (c++-mode . emacs-ide-lsp-deferred-optimized)
-         (objc-mode . emacs-ide-lsp-deferred-optimized)
-         (cuda-mode . emacs-ide-lsp-deferred-optimized)
          (python-mode . emacs-ide-lsp-deferred-optimized)
-         (python-ts-mode . emacs-ide-lsp-deferred-optimized)
          (rust-mode . emacs-ide-lsp-deferred-optimized)
-         (rust-ts-mode . emacs-ide-lsp-deferred-optimized)
          (go-mode . emacs-ide-lsp-deferred-optimized)
-         (go-ts-mode . emacs-ide-lsp-deferred-optimized)
          (java-mode . emacs-ide-lsp-deferred-optimized)
-         (java-ts-mode . emacs-ide-lsp-deferred-optimized)
          (js-mode . emacs-ide-lsp-deferred-optimized)
-         (js-ts-mode . emacs-ide-lsp-deferred-optimized)
-         (js2-mode . emacs-ide-lsp-deferred-optimized)
          (typescript-mode . emacs-ide-lsp-deferred-optimized)
-         (typescript-ts-mode . emacs-ide-lsp-deferred-optimized)
-         (tsx-ts-mode . emacs-ide-lsp-deferred-optimized)
-         (web-mode . emacs-ide-lsp-deferred-optimized)
-         (html-mode . emacs-ide-lsp-deferred-optimized)
-         (css-mode . emacs-ide-lsp-deferred-optimized)
-         (php-mode . emacs-ide-lsp-deferred-optimized)
-         (ruby-mode . emacs-ide-lsp-deferred-optimized)
-         (elixir-mode . emacs-ide-lsp-deferred-optimized)
-         (kotlin-mode . emacs-ide-lsp-deferred-optimized)
-         (scala-mode . emacs-ide-lsp-deferred-optimized)
-         (swift-mode . emacs-ide-lsp-deferred-optimized)
-         (csharp-mode . emacs-ide-lsp-deferred-optimized)
-         (csharp-ts-mode . emacs-ide-lsp-deferred-optimized)
-         (zig-mode . emacs-ide-lsp-deferred-optimized)
-         (nim-mode . emacs-ide-lsp-deferred-optimized)
-         (lua-mode . emacs-ide-lsp-deferred-optimized)
-         (yaml-mode . emacs-ide-lsp-deferred-optimized)
-         (dockerfile-mode . emacs-ide-lsp-deferred-optimized)
-         (terraform-mode . emacs-ide-lsp-deferred-optimized)
          (lsp-mode . lsp-enable-which-key-integration))
   :init
   (setq lsp-keymap-prefix "C-c l"
         
-        ;; Performance
+        ;; Performance - use config values if available
         lsp-completion-provider :none
-        lsp-idle-delay 0.3
+        lsp-idle-delay (or (bound-and-true-p emacs-ide-completion-delay) 0.3)
         lsp-log-io nil
         lsp-enable-file-watchers t
         lsp-file-watch-threshold 2000
         lsp-keep-workspace-alive nil
         
-        ;; Features
+        ;; Features - use config values if available
         lsp-enable-folding t
         lsp-enable-links t
         lsp-enable-snippet t
@@ -120,7 +96,7 @@
         lsp-eldoc-enable-hover t
         lsp-eldoc-render-all nil
         lsp-headerline-breadcrumb-enable t
-        lsp-semantic-tokens-enable t
+        lsp-semantic-tokens-enable (or (bound-and-true-p emacs-ide-lsp-semantic-tokens) t)
         lsp-enable-symbol-highlighting t
         lsp-lens-enable t
         lsp-enable-on-type-formatting t
@@ -129,7 +105,7 @@
         lsp-auto-guess-root t
         lsp-restart 'auto-restart
         lsp-enable-suggest-server-download t
-        lsp-inlay-hint-enable t
+        lsp-inlay-hint-enable (or (bound-and-true-p emacs-ide-lsp-enable-inlay-hints) t)
         lsp-use-plists t
         lsp-warn-no-matched-clients nil
         lsp-diagnostics-provider :flycheck
@@ -154,21 +130,30 @@
               ("C-c l F" . lsp-format-region)
               ("C-c l a" . lsp-execute-code-action)
               ("C-c l d" . lsp-describe-thing-at-point)
-              ("C-c l g" . lsp-find-definition)
-              ("C-c l G" . lsp-find-declaration)
               ("C-c l R" . lsp-find-references)
               ("C-c l i" . lsp-find-implementation)
               ("C-c l t" . lsp-find-type-definition)
               ("C-c l o" . lsp-organize-imports)
-              ("C-c l s" . lsp-signature-activate)
-              ("C-c l h" . lsp-document-highlight)
-              ("C-c l I" . lsp-ui-imenu)
-              ("C-c l e" . lsp-treemacs-errors-list)
-              ("C-c l w" . lsp-restart-workspace)
-              ("C-c l W" . lsp-shutdown-workspace)))
+              ("C-c l h" . lsp-document-highlight))
+  :config
+  (defun emacs-ide-lsp-status ()
+    "Display LSP status."
+    (interactive)
+    (if (bound-and-true-p lsp-mode)
+        (message "LSP: %s | Workspace: %s"
+                 (if (lsp-workspaces) "✓ Connected" "✗ Disconnected")
+                 (or (lsp-workspace-root) "None"))
+      (message "LSP: Not active")))
+  
+  (defun emacs-ide-lsp-restart-all ()
+    "Restart all LSP workspaces."
+    (interactive)
+    (when (bound-and-true-p lsp-mode)
+      (lsp-restart-workspace)
+      (message "✓ LSP workspace restarted"))))
 
 ;; ============================================================================
-;; LSP-UI - ENHANCED UI
+;; LSP-UI - ENHANCED UI (DEFERRED)
 ;; ============================================================================
 (use-package lsp-ui
   :after lsp-mode
@@ -194,73 +179,42 @@
         lsp-ui-imenu-kind-position 'left)
   :bind (:map lsp-ui-mode-map
               ("M-." . lsp-ui-peek-find-definitions)
-              ("M-?" . lsp-ui-peek-find-references)
-              ("C-c l ." . lsp-ui-peek-find-workspace-symbol)
-              ("C-c l p" . lsp-ui-peek-jump-backward)
-              ("C-c l n" . lsp-ui-peek-jump-forward)))
+              ("M-?" . lsp-ui-peek-find-references)))
 
 ;; ============================================================================
-;; LSP-TREEMACS - TREE VIEW
+;; LSP-TREEMACS - TREE VIEW (DEFERRED)
 ;; ============================================================================
 (use-package lsp-treemacs
   :after (lsp-mode treemacs)
   :config
-  (lsp-treemacs-sync-mode 1))
+  (when (fboundp 'lsp-treemacs-sync-mode)
+    (lsp-treemacs-sync-mode 1)))
 
 ;; ============================================================================
 ;; LANGUAGE-SPECIFIC LSP SERVERS
 ;; ============================================================================
 
-;; Python - Pyright
+;; Python - Pyright (if available)
 (use-package lsp-pyright
   :after lsp-mode
+  :if (executable-find "pyright")
   :hook (python-mode . (lambda ()
-                         (require 'lsp-pyright)
-                         (lsp-deferred)))
+                        (require 'lsp-pyright nil t)
+                        (emacs-ide-lsp-deferred-optimized)))
   :init
   (setq lsp-pyright-multi-root nil
         lsp-pyright-auto-import-completions t
-        lsp-pyright-auto-search-paths t
-        lsp-pyright-diagnostic-mode "workspace"
-        lsp-pyright-use-library-code-for-types t
-        lsp-pyright-venv-path "~/.pyenv/versions"))
+        lsp-pyright-auto-search-paths t))
 
-;; Java - Eclipse JDT
-(use-package lsp-java
-  :after lsp-mode
-  :init
-  (setq lsp-java-vmargs '("-XX:+UseParallelGC"
-                         "-XX:GCTimeRatio=4"
-                         "-XX:AdaptiveSizePolicyWeight=90"
-                         "-Dsun.zip.disableMemoryMapping=true"
-                         "-Xmx4G" "-Xms100m")
-        lsp-java-java-path (or (executable-find "java") "/usr/bin/java")
-        lsp-java-configuration-runtimes '[(:name "JavaSE-17"
-                                          :path "/usr/lib/jvm/java-17-openjdk"
-                                          :default t)]
-        lsp-java-import-gradle-enabled t
-        lsp-java-maven-download-sources t
-        lsp-java-autobuild-enabled t
-        lsp-java-format-enabled t))
+;; Rust - rust-analyzer (if available)
+(with-eval-after-load 'rust-mode
+  (when (executable-find "rust-analyzer")
+    (require 'lsp-rust nil t)))
 
-;; Haskell
-(use-package lsp-haskell
-  :after lsp-mode)
-
-;; C/C++ - ccls
-(use-package ccls
-  :if (executable-find "ccls")
-  :hook ((c-mode c++-mode objc-mode) .
-         (lambda () (require 'ccls) (lsp-deferred)))
-  :init
-  (setq ccls-executable (executable-find "ccls")
-        ccls-sem-highlight-method 'font-lock
-        ccls-enable-skipped-ranges t
-        ccls-initialization-options
-        '(:cache (:directory ".ccls-cache")
-          :compilationDatabaseDirectory "build"
-          :index (:threads 8)
-          :completion (:detailedLabel t))))
+;; Go - gopls (if available)
+(with-eval-after-load 'go-mode
+  (when (executable-find "gopls")
+    (require 'lsp-go nil t)))
 
 ;; ============================================================================
 ;; DUMB-JUMP - FALLBACK NAVIGATION
@@ -268,17 +222,17 @@
 (use-package dumb-jump
   :bind (("M-g o" . dumb-jump-go-other-window)
          ("M-g j" . dumb-jump-go)
-         ("M-g b" . dumb-jump-back)
-         ("M-g q" . dumb-jump-quick-look))
+         ("M-g b" . dumb-jump-back))
   :init
   (setq dumb-jump-selector 'completing-read
         dumb-jump-aggressive t
         dumb-jump-prefer-searcher 'rg)
   :config
-  (add-hook 'xref-backend-functions #'dumb-jump-xref-activate))
+  (when (fboundp 'dumb-jump-xref-activate)
+    (add-hook 'xref-backend-functions #'dumb-jump-xref-activate)))
 
 ;; ============================================================================
-;; ELDOC - DOCUMENTATION
+;; ELDOC - DOCUMENTATION (BUILTIN)
 ;; ============================================================================
 (use-package eldoc
   :straight nil
@@ -289,45 +243,6 @@
   :config
   (global-eldoc-mode 1))
 
-(use-package eldoc-box
-  :bind (("C-c e" . eldoc-box-help-at-point)
-         ("C-c E" . eldoc-box-eglot-help-at-point)))
-
-;; ============================================================================
-;; FORMAT-ALL - CODE FORMATTING
-;; ============================================================================
-(use-package format-all
-  :bind (("C-c f" . format-all-buffer)
-         ("C-c F" . format-all-region-or-buffer))
-  :hook (prog-mode . format-all-mode)
-  :init
-  (setq-default format-all-formatters
-                '(("C" (clang-format))
-                  ("C++" (clang-format))
-                  ("Python" (black) (isort))
-                  ("Go" (gofmt) (goimports))
-                  ("Rust" (rustfmt))
-                  ("JavaScript" (prettier))
-                  ("TypeScript" (prettier))
-                  ("JSON" (prettier))
-                  ("HTML" (prettier))
-                  ("CSS" (prettier))
-                  ("YAML" (prettier))
-                  ("Markdown" (prettier))
-                  ("Ruby" (rubocop))
-                  ("PHP" (prettier))
-                  ("Java" (clang-format))
-                  ("SQL" (sqlformat))
-                  ("Lua" (lua-fmt))
-                  ("Shell" (shfmt))
-                  ("Haskell" (ormolu))
-                  ("Elixir" (mix-format))
-                  ("Nim" (nimpretty))
-                  ("Zig" (zig-fmt))
-                  ("Swift" (swift-format))
-                  ("Kotlin" (ktlint))
-                  ("Scala" (scalafmt)))))
-
 ;; ============================================================================
 ;; HELPFUL - BETTER HELP
 ;; ============================================================================
@@ -336,32 +251,34 @@
          ("C-h v" . helpful-variable)
          ("C-h k" . helpful-key)
          ("C-h F" . helpful-function)
-         ("C-h C" . helpful-command)
-         ("C-c C-d" . helpful-at-point)))
+         ("C-h C" . helpful-command)))
 
 ;; ============================================================================
-;; UTILITY FUNCTIONS
+;; LSP SERVER AVAILABILITY CHECK
 ;; ============================================================================
-(defun emacs-ide-lsp-status ()
-  "Display LSP status."
+(defun emacs-ide-lsp-check-servers ()
+  "Check LSP server availability."
   (interactive)
-  (if (bound-and-true-p lsp-mode)
-      (message "LSP: %s | Workspace: %s | Server: %s"
-               (if (lsp-workspaces) "✓ Connected" "✗ Disconnected")
-               (or (lsp-workspace-root) "None")
-               (if (lsp-workspaces)
-                   (lsp--workspace-print (car (lsp-workspaces)))
-                 "None"))
-    (message "LSP: Not active")))
-
-(defun emacs-ide-lsp-restart-all ()
-  "Restart all LSP workspaces."
-  (interactive)
-  (when (bound-and-true-p lsp-mode)
-    (lsp-restart-workspace)
-    (message "LSP workspace restarted")))
-
-) ;; End of (when emacs-ide-lsp-enable ...)
+  (let ((servers '(("pyright" . "python")
+                  ("rust-analyzer" . "rust")
+                  ("gopls" . "go")
+                  ("typescript-language-server" . "typescript")
+                  ("clangd" . "c/c++")))
+        (available '())
+        (missing '()))
+    (dolist (server servers)
+      (if (executable-find (car server))
+          (push server available)
+        (push server missing)))
+    (with-output-to-temp-buffer "*LSP Servers*"
+      (princ "=== LSP SERVERS STATUS ===\n\n")
+      (princ (format "Available: %d\n" (length available)))
+      (dolist (srv available)
+        (princ (format "  ✓ %s (%s)\n" (car srv) (cdr srv))))
+      (when missing
+        (princ (format "\nMissing: %d\n" (length missing)))
+        (dolist (srv missing)
+          (princ (format "  ✗ %s (%s)\n" (car srv) (cdr srv))))))))
 
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

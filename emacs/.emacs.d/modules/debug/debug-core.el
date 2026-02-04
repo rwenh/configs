@@ -1,4 +1,4 @@
-;;; debug-config.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
+;;; debug-core.el --- Professional Debugging Configuration (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
 ;;; Code:
@@ -18,16 +18,7 @@
          ("<f9>" . dap-breakpoint-toggle)
          ("C-<f9>" . dap-breakpoint-condition)
          ("S-<f9>" . dap-breakpoint-log-message)
-         ("C-S-<f9>" . dap-breakpoint-delete-all)
-         :map dap-mode-map
-         ("C-c d d" . dap-debug)
-         ("C-c d r" . dap-debug-restart)
-         ("C-c d l" . dap-debug-last)
-         ("C-c d e" . dap-debug-edit-template)
-         ("C-c d b" . dap-breakpoint-toggle)
-         ("C-c d c" . dap-breakpoint-condition)
-         ("C-c d h" . dap-hydra)
-         ("C-c d w" . dap-ui-repl))
+         ("C-S-<f9>" . dap-breakpoint-delete-all))
   :init
   (setq dap-auto-configure-features '(sessions locals breakpoints expressions controls tooltip repl)
         dap-auto-show-output t
@@ -44,16 +35,16 @@
   (tooltip-mode 1)
   (dap-ui-controls-mode 1)
   
-  (require 'dap-python nil t)
-  (require 'dap-node nil t)
-  (require 'dap-go nil t)
-  (require 'dap-lldb nil t)
-  (require 'dap-gdb-lldb nil t)
-  (require 'dap-cpptools nil t)
-  (require 'dap-java nil t)
-  (require 'dap-php nil t)
-  (require 'dap-ruby nil t)
-  (require 'dap-elixir nil t))
+  (condition-case nil (require 'dap-python) (error nil))
+  (condition-case nil (require 'dap-node) (error nil))
+  (condition-case nil (require 'dap-go) (error nil))
+  (condition-case nil (require 'dap-lldb) (error nil))
+  (condition-case nil (require 'dap-gdb-lldb) (error nil))
+  (condition-case nil (require 'dap-cpptools) (error nil))
+  (condition-case nil (require 'dap-java) (error nil))
+  (condition-case nil (require 'dap-php) (error nil))
+  (condition-case nil (require 'dap-ruby) (error nil))
+  (condition-case nil (require 'dap-elixir) (error nil)))
 
 ;; ============================================================================
 ;; PYTHON DEBUGGING
@@ -65,34 +56,28 @@
    "Python :: Run File"
    (list :type "python"
          :args ""
-         :cwd (projectile-project-root)
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory)
          :program (buffer-file-name)
          :request "launch"
          :name "Python :: Run File"))
   
   (dap-register-debug-template
-   "Python :: Run pytest"
+   "Python :: pytest"
    (list :type "python"
          :args "-m pytest -v"
-         :cwd (projectile-project-root)
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory)
          :module "pytest"
          :request "launch"
-         :name "Python :: pytest"))
-  
-  (dap-register-debug-template
-   "Python :: Django"
-   (list :type "python"
-         :args "runserver --noreload"
-         :cwd (projectile-project-root)
-         :program "manage.py"
-         :request "launch"
-         :name "Python :: Django")))
+         :name "Python :: pytest")))
 
 ;; ============================================================================
 ;; NODE.JS/JAVASCRIPT DEBUGGING
 ;; ============================================================================
 (with-eval-after-load 'dap-node
-  (dap-node-setup)
+  (when (fboundp 'dap-node-setup)
+    (dap-node-setup))
   
   (dap-register-debug-template
    "Node :: Run File"
@@ -100,22 +85,15 @@
          :request "launch"
          :name "Node :: Run File"
          :program (buffer-file-name)
-         :cwd (projectile-project-root)))
-  
-  (dap-register-debug-template
-   "Node :: Run Jest Test"
-   (list :type "node"
-         :request "launch"
-         :name "Node :: Jest"
-         :program "${workspaceFolder}/node_modules/.bin/jest"
-         :args '("--runInBand")
-         :cwd (projectile-project-root))))
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory))))
 
 ;; ============================================================================
 ;; GO DEBUGGING
 ;; ============================================================================
 (with-eval-after-load 'dap-go
-  (dap-go-setup)
+  (when (fboundp 'dap-go-setup)
+    (dap-go-setup))
   
   (dap-register-debug-template
    "Go :: Run File"
@@ -124,16 +102,8 @@
          :name "Go :: Run File"
          :mode "auto"
          :program (buffer-file-name)
-         :cwd (projectile-project-root)))
-  
-  (dap-register-debug-template
-   "Go :: Debug Test"
-   (list :type "go"
-         :request "launch"
-         :name "Go :: Debug Test"
-         :mode "test"
-         :program (buffer-file-name)
-         :cwd (projectile-project-root))))
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory))))
 
 ;; ============================================================================
 ;; C/C++/RUST DEBUGGING - LLDB/GDB
@@ -145,14 +115,8 @@
          :request "launch"
          :name "LLDB :: Run"
          :program nil
-         :cwd (projectile-project-root)))
-  
-  (dap-register-debug-template
-   "LLDB :: Attach"
-   (list :type "lldb"
-         :request "attach"
-         :name "LLDB :: Attach"
-         :pid nil)))
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory))))
 
 (with-eval-after-load 'dap-cpptools
   (dap-register-debug-template
@@ -162,48 +126,22 @@
          :name "GDB :: Run"
          :MIMode "gdb"
          :program nil
-         :cwd (projectile-project-root))))
-
-;; ============================================================================
-;; RUST DEBUGGING
-;; ============================================================================
-(defun emacs-ide-rust-debug ()
-  "Debug Rust program with LLDB."
-  (interactive)
-  (let* ((project-root (projectile-project-root))
-         (target-dir (concat project-root "target/debug/"))
-         (executable (read-file-name "Select executable: " target-dir)))
-    (dap-debug
-     (list :type "lldb"
-           :request "launch"
-           :name "Rust :: Debug"
-           :program executable
-           :cwd project-root
-           :sourceMap (list (cons "/rustc/*" nil))))))
+         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+                 default-directory))))
 
 ;; ============================================================================
 ;; JAVA DEBUGGING
 ;; ============================================================================
 (with-eval-after-load 'dap-java
-  (dap-java-setup))
+  (when (fboundp 'dap-java-setup)
+    (dap-java-setup)))
 
 ;; ============================================================================
 ;; PHP DEBUGGING
 ;; ============================================================================
 (with-eval-after-load 'dap-php
-  (dap-php-setup))
-
-;; ============================================================================
-;; RUBY DEBUGGING
-;; ============================================================================
-(with-eval-after-load 'dap-ruby
-  (dap-ruby-setup))
-
-;; ============================================================================
-;; ELIXIR DEBUGGING
-;; ============================================================================
-(with-eval-after-load 'dap-elixir
-  (dap-elixir-setup))
+  (when (fboundp 'dap-php-setup)
+    (dap-php-setup)))
 
 ;; ============================================================================
 ;; GDB INTEGRATION
@@ -227,9 +165,13 @@
   (defun emacs-ide-gdb-debug ()
     "Start GDB debugging session."
     (interactive)
-    (let ((executable (read-file-name "Select executable: "
-                                     (projectile-project-root))))
-      (gdb (format "gdb -i=mi %s" executable)))))
+    (if (executable-find "gdb")
+        (let ((executable (read-file-name "Select executable: "
+                                         (or (and (fboundp 'projectile-project-root)
+                                                 (projectile-project-root))
+                                            default-directory))))
+          (gdb (format "gdb -i=mi %s" executable)))
+      (message "⚠️  GDB not found. Install GDB to debug C/C++ code."))))
 
 ;; ============================================================================
 ;; EDEBUG - EMACS LISP DEBUGGER
@@ -255,14 +197,18 @@
   :commands (realgud:gdb realgud:pdb realgud:trepan realgud:node-debug)
   :config
   (defun emacs-ide-realgud-pdb ()
-    "Debug Python with pdb."
+    "Debug Python with pdb (if available)."
     (interactive)
-    (realgud:pdb (format "python -m pdb %s" (buffer-file-name))))
+    (if (executable-find "python3")
+        (realgud:pdb (format "python3 -m pdb %s" (buffer-file-name)))
+      (message "⚠️  Python not found")))
   
   (defun emacs-ide-realgud-node ()
-    "Debug Node.js."
+    "Debug Node.js (if available)."
     (interactive)
-    (realgud:node-debug (format "node inspect %s" (buffer-file-name)))))
+    (if (executable-find "node")
+        (realgud:node-debug (format "node inspect %s" (buffer-file-name)))
+      (message "⚠️  Node.js not found"))))
 
 ;; ============================================================================
 ;; DEBUGGING HYDRA
@@ -327,19 +273,7 @@ _q_: quit                            _d_: down frame    _R_: repl
     (princ "  C-c d b     Breakpoints\n")
     (princ "  C-c d s     Sessions/Stack\n")
     (princ "  C-c d w     REPL\n")
-    (princ "  C-c d h     Debug hydra\n\n")
-    (princ "LANGUAGE-SPECIFIC:\n")
-    (princ "  Python:     debugpy (pip install debugpy)\n")
-    (princ "  Node.js:    Built-in node inspect\n")
-    (princ "  Go:         Delve (go install github.com/go-delve/delve/cmd/dlv@latest)\n")
-    (princ "  C/C++/Rust: LLDB/GDB\n")
-    (princ "  Java:       JDTLS (LSP)\n\n")
-    (princ "QUICK START:\n")
-    (princ "  1. Set breakpoint with F9\n")
-    (princ "  2. Start debug with F5\n")
-    (princ "  3. Step through with F7/S-F7/M-F7\n")
-    (princ "  4. Inspect variables in locals window\n")
-    (princ "  5. Continue with C-F7\n\n")))
+    (princ "  C-c d h     Debug hydra\n\n")))
 
 (global-set-key (kbd "C-c d ?") 'emacs-ide-debug-help)
 
@@ -349,12 +283,14 @@ _q_: quit                            _d_: down frame    _R_: repl
 (use-package esup
   :commands (esup)
   :init
-  (setq esup-depth 0))
-
-(defun emacs-ide-profile-startup ()
-  "Profile Emacs startup."
-  (interactive)
-  (esup))
+  (setq esup-depth 0)
+  :config
+  (defun emacs-ide-profile-startup ()
+    "Profile Emacs startup."
+    (interactive)
+    (if (fboundp 'esup)
+        (esup)
+      (message "⚠️  esup not installed. Install it to profile startup."))))
 
 (use-package profiler
   :straight nil
@@ -363,27 +299,16 @@ _q_: quit                            _d_: down frame    _R_: repl
          ("C-c D q" . profiler-stop)))
 
 ;; ============================================================================
-;; BENCHMARK
-;; ============================================================================
-(defun emacs-ide-benchmark-init ()
-  "Benchmark init time."
-  (interactive)
-  (let ((start-time (current-time)))
-    (load-file user-init-file)
-    (message "Init loaded in %.2fs"
-             (float-time (time-subtract (current-time) start-time)))))
-
-;; ============================================================================
 ;; DEBUGGING INSTALLATION CHECK
 ;; ============================================================================
 (defun emacs-ide-check-debug-tools ()
   "Check debug tool availability."
   (interactive)
-  (let ((tools '(("debugpy" . "pip3 install debugpy")
-                 ("node" . "Built-in")
-                 ("dlv" . "go install github.com/go-delve/delve/cmd/dlv@latest")
-                 ("lldb" . "System package manager")
-                 ("gdb" . "System package manager")))
+  (let ((tools '(("debugpy" "pip3 install debugpy" "python")
+                 ("node" "Built-in" "javascript")
+                 ("dlv" "go install github.com/go-delve/delve/cmd/dlv@latest" "go")
+                 ("lldb" "System package manager" "c/c++")
+                 ("gdb" "System package manager" "c/c++")))
         (found '())
         (missing '()))
     (dolist (tool tools)
@@ -394,11 +319,12 @@ _q_: quit                            _d_: down frame    _R_: repl
       (princ "=== DEBUG TOOLS STATUS ===\n\n")
       (princ "AVAILABLE:\n")
       (dolist (tool found)
-        (princ (format "  ✓ %s\n" (car tool))))
+        (princ (format "  ✓ %s (%s)\n" (car tool) (nth 2 tool))))
       (when missing
         (princ "\nMISSING:\n")
         (dolist (tool missing)
-          (princ (format "  ✗ %s - Install: %s\n" (car tool) (cdr tool))))))))
+          (princ (format "  ✗ %s (%s) - Install: %s\n" 
+                        (car tool) (nth 2 tool) (nth 1 tool))))))))
 
-(provide 'debug-config)
-;;; debug-config.el ends here
+(provide 'debug-core)
+;;; debug-core.el ends here

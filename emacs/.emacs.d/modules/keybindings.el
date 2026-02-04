@@ -1,6 +1,7 @@
-;;; keybindings.el --- Professional Keybindings -*- lexical-binding: t -*-
+;;; keybindings.el --- Professional Keybindings (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Ergonomic, efficient, professional keybindings
+;;; Ergonomic, efficient, professional keybindings - CENTRALIZED
+;;; IMPORTANT: This is the authoritative keybinding file. All other modules should defer to this.
 ;;; Code:
 
 ;; ============================================================================
@@ -58,30 +59,32 @@
 (global-set-key (kbd "C-c l") 'windmove-right)
 
 ;; ============================================================================
-;; COMPILATION & BUILDING
+;; DEBUGGING - F5-F9 RESERVED FOR DEBUG
 ;; ============================================================================
-(global-set-key (kbd "<f5>") 'dap-debug)
-(global-set-key (kbd "<f6>") 'dap-debug-restart)
+;; Note: These are set by dap-mode in debug-core.el
+;; <f5>   = dap-debug
+;; <f6>   = dap-debug-restart
+;; <f7>   = dap-step-in
+;; S-<f7> = dap-next
+;; M-<f7> = dap-step-out
+;; C-<f7> = dap-continue
+;; <f9>   = dap-breakpoint-toggle
+;; C-<f9> = dap-breakpoint-condition
+;; S-<f9> = dap-breakpoint-log-message
+;; C-S-<f9> = dap-breakpoint-delete-all
+
 (global-set-key (kbd "S-<f5>") 'projectile-compile-project)
 (global-set-key (kbd "S-<f6>") 'projectile-test-project)
+
+;; Compilation
 (global-set-key (kbd "C-c c c") 'compile)
 (global-set-key (kbd "C-c c r") 'recompile)
 
 ;; ============================================================================
-;; DEBUGGING
+;; THEME - F12 RESERVED FOR THEME TOGGLE
 ;; ============================================================================
-(global-set-key (kbd "<f7>") 'dap-step-in)
-(global-set-key (kbd "S-<f7>") 'dap-next)
-(global-set-key (kbd "M-<f7>") 'dap-step-out)
-(global-set-key (kbd "C-<f7>") 'dap-continue)
-(global-set-key (kbd "<f9>") 'dap-breakpoint-toggle)
-(global-set-key (kbd "C-<f9>") 'dap-breakpoint-condition)
-(global-set-key (kbd "C-S-<f9>") 'dap-breakpoint-delete-all)
-
-;; ============================================================================
-;; THEME
-;; ============================================================================
-(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
+;; Note: Theme toggle is set by ui-core.el
+;; <f12> = emacs-ide-toggle-theme
 
 ;; ============================================================================
 ;; UTILITY
@@ -128,7 +131,7 @@
 (global-set-key (kbd "M-g I") 'consult-imenu-multi)
 (global-set-key (kbd "M-g o") 'consult-outline)
 
-;; Jump navigation
+;; Jump navigation (Avy)
 (global-set-key (kbd "C-:") 'avy-goto-char)
 (global-set-key (kbd "C-'") 'avy-goto-char-2)
 (global-set-key (kbd "M-g f") 'avy-goto-line)
@@ -142,29 +145,28 @@
 (global-set-key (kbd "M-?") 'xref-find-references)
 
 ;; ============================================================================
-;; PROJECT (Projectile) - Set up after projectile loads
+;; PROJECT (Projectile) - Prefix C-c p
 ;; ============================================================================
-(with-eval-after-load 'projectile
-  (define-key projectile-mode-map (kbd "C-c p") 'projectile-command-map))
-
-;; Alternative bindings that work before projectile loads
 (global-set-key (kbd "C-c p f") 'projectile-find-file)
 (global-set-key (kbd "C-c p p") 'projectile-switch-project)
 (global-set-key (kbd "C-c p s r") 'projectile-ripgrep)
+(global-set-key (kbd "C-c p s g") 'projectile-grep)
 (global-set-key (kbd "C-c p b") 'projectile-switch-to-buffer)
 (global-set-key (kbd "C-c p c") 'projectile-compile-project)
 (global-set-key (kbd "C-c p t") 'projectile-test-project)
+(global-set-key (kbd "C-c p r") 'projectile-run-project)
+(global-set-key (kbd "C-c p k") 'projectile-kill-buffers)
+(global-set-key (kbd "C-c p d") 'projectile-dired)
+(global-set-key (kbd "C-c p e") 'projectile-recentf)
 
 ;; ============================================================================
-;; GIT (Magit)
+;; GIT (Magit) - Prefix C-x g or C-c g
 ;; ============================================================================
 (global-set-key (kbd "C-x g") 'magit-status)
 (global-set-key (kbd "C-x M-g") 'magit-dispatch)
 
-;; Git prefix - C-c g
 (define-prefix-command 'emacs-ide-git-map)
 (global-set-key (kbd "C-c g") 'emacs-ide-git-map)
-(define-key emacs-ide-git-map (kbd "g") 'magit-status)
 (define-key emacs-ide-git-map (kbd "s") 'magit-status)
 (define-key emacs-ide-git-map (kbd "b") 'magit-blame)
 (define-key emacs-ide-git-map (kbd "l") 'magit-log-buffer-file)
@@ -195,15 +197,28 @@
 ;; ============================================================================
 ;; TERMINAL
 ;; ============================================================================
-(global-set-key (kbd "C-c t") 'vterm)
-(global-set-key (kbd "C-c T") 'vterm-other-window)
-(global-set-key (kbd "C-c M-t") 'multi-vterm)
+(when (fboundp 'vterm)
+  (global-set-key (kbd "C-c t") 'vterm))
+(when (fboundp 'vterm-other-window)
+  (global-set-key (kbd "C-c T") 'vterm-other-window))
+(when (fboundp 'multi-vterm)
+  (global-set-key (kbd "C-c M-t") 'multi-vterm))
 
 ;; ============================================================================
 ;; FILE TREE
 ;; ============================================================================
-(global-set-key (kbd "<f8>") 'neotree-toggle)
-(global-set-key (kbd "C-c n") 'neotree-projectile-action)
+(when (fboundp 'neotree-toggle)
+  (global-set-key (kbd "<f8>") 'neotree-toggle))
+
+;; ============================================================================
+;; UNDO/REDO
+;; ============================================================================
+(with-eval-after-load 'undo-tree
+  (global-set-key (kbd "C-_") 'undo-tree-undo)
+  (global-set-key (kbd "C-/") 'undo-tree-undo)
+  (global-set-key (kbd "C-?") 'undo-tree-redo)
+  (global-set-key (kbd "M-_") 'undo-tree-redo)
+  (global-set-key (kbd "C-x u") 'undo-tree-visualize))
 
 ;; ============================================================================
 ;; COMPLETION FRAMEWORK
@@ -218,52 +233,31 @@
 (global-set-key (kbd "M-SPC") 'set-mark-command)
 (global-set-key (kbd "C-z") 'repeat)
 
-;; Undo-tree additional bindings
-(with-eval-after-load 'undo-tree
-  ;; C-_ is the traditional Emacs undo binding
-  (global-set-key (kbd "C-_") 'undo-tree-undo)
-  ;; Also make sure these work
-  (global-set-key (kbd "C-/") 'undo-tree-undo)
-  (global-set-key (kbd "C-?") 'undo-tree-redo)
-  (global-set-key (kbd "M-_") 'undo-tree-redo)
-  (global-set-key (kbd "C-x u") 'undo-tree-visualize)
-  (global-set-key (kbd "C-c u") 'undo-tree-visualize))
-
 ;; ============================================================================
 ;; WAYLAND-SPECIFIC
 ;; ============================================================================
-(when (getenv "WAYLAND_DISPLAY")
-  (when (executable-find "wl-copy")
-    (defun emacs-ide-wayland-copy (start end)
-      "Copy to Wayland clipboard."
-      (interactive "r")
-      (let ((text (buffer-substring-no-properties start end)))
-        (with-temp-buffer
-          (insert text)
-          (call-process-region (point-min) (point-max) "wl-copy" nil nil nil)))
-      (deactivate-mark)
-      (message "Copied to Wayland clipboard"))
-    (global-set-key (kbd "C-c C-w") 'emacs-ide-wayland-copy))
-  
-  (when (executable-find "wl-paste")
-    (defun emacs-ide-wayland-paste ()
-      "Paste from Wayland clipboard."
-      (interactive)
-      (let ((text (shell-command-to-string "wl-paste -n 2>/dev/null")))
-        (unless (string= text "")
-          (insert text))))
-    (global-set-key (kbd "C-c C-y") 'emacs-ide-wayland-paste))
-  
-  (when (and (executable-find "grim") (executable-find "slurp"))
-    (defun emacs-ide-sway-screenshot ()
-      "Take Sway screenshot."
-      (interactive)
-      (let ((filename (format "~/Pictures/screenshot-%s.png"
-                             (format-time-string "%Y%m%d-%H%M%S"))))
-        (call-process-shell-command
-         (format "grim -g \"$(slurp)\" %s" filename))
-        (message "Screenshot: %s" filename)))
-    (global-set-key (kbd "C-c s") 'emacs-ide-sway-screenshot)))
+(when (and (getenv "WAYLAND_DISPLAY")
+           (executable-find "wl-copy"))
+  (defun emacs-ide-wayland-copy (start end)
+    "Copy to Wayland clipboard."
+    (interactive "r")
+    (let ((text (buffer-substring-no-properties start end)))
+      (with-temp-buffer
+        (insert text)
+        (call-process-region (point-min) (point-max) "wl-copy" nil nil nil)))
+    (deactivate-mark)
+    (message "✓ Copied to Wayland clipboard"))
+  (global-set-key (kbd "C-c C-w") 'emacs-ide-wayland-copy))
+
+(when (and (getenv "WAYLAND_DISPLAY")
+           (executable-find "wl-paste"))
+  (defun emacs-ide-wayland-paste ()
+    "Paste from Wayland clipboard."
+    (interactive)
+    (let ((text (shell-command-to-string "wl-paste -n 2>/dev/null")))
+      (unless (string= text "")
+        (insert text))))
+  (global-set-key (kbd "C-c C-y") 'emacs-ide-wayland-paste))
 
 ;; ============================================================================
 ;; KEYBINDINGS HELP
@@ -278,26 +272,25 @@ FILE & BUFFER:
   C-c w       Save buffer
   C-c q       Kill buffer and window
   C-c K       Kill other buffers
-  C-c f       Recent files (consult)
-  C-x b       Switch buffer (consult)
+  C-c f       Recent files
+  C-x b       Switch buffer
   C-c b       Project buffers
   C-c y p     Copy file path
   C-c y n     Copy file name
 
 EDITING:
-  M-<up/down> Move line
+  M-<up/dn>   Move line
   C-c C-u     Duplicate line
   C-a         Smart home
   M-;         Comment/uncomment
+  M-u/l/c     Up/downcase word or region
   C-=         Expand region
-  C-->        Contract region
-  C->         Mark next (multiple cursors)
-  C-<         Mark previous
+  C-</>       Mark previous/next
 
 NAVIGATION:
-  C-:         Jump to char (avy)
+  C-: or C-'  Jump to char (avy)
   M-g f       Jump to line
-  M-s l       Search line (consult)
+  M-s l       Search line
   M-s r       Ripgrep
   M-g i       Imenu
   M-.         Go to definition
@@ -305,15 +298,14 @@ NAVIGATION:
 
 WINDOWS:
   C-x 2/3     Split + follow
-  M-o         Ace window
+  M-o         Ace window (jump)
   C-c h/j/k/l Windmove (vim-style)
-  C-c </→     Winner undo/redo
+  C-c </>     Winner undo/redo
 
 DEBUGGING:
   F5          Start debug
   F6          Restart
-  F7          Step in
-  S-F7        Step over
+  F7/S-F7     Step in/over
   M-F7        Step out
   C-F7        Continue
   F9          Toggle breakpoint
@@ -328,21 +320,19 @@ PROJECT:
 
 GIT:
   C-x g       Magit status
+  C-c g s     Git status
   C-c g b     Blame
   C-c g l     Log
   C-x v t     Time machine
 
 LSP:
-  C-c l r     Rename
-  C-c l f     Format
-  C-c l a     Code actions
-  C-c l g     Go to definition
-  C-c l R     Find references
+  M-.         Go to definition
+  M-?         Find references
+  C-h f       Helpful (docs)
 
 UTILITY:
   C-c ?       Which-key
   C-c H       This help
-  C-c L       LSP status
   C-c R       Reload config
   F12         Toggle theme
   C-c t       Terminal (vterm)

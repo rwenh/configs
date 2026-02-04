@@ -1,4 +1,4 @@
-;;; emacs-ide-recovery.el --- Enterprise Error Recovery System -*- lexical-binding: t -*-
+;;; emacs-ide-recovery.el --- Enterprise Error Recovery System (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade error recovery and safe mode
 ;;; Code:
@@ -27,23 +27,35 @@
   "List of errors encountered during session.")
 
 ;; ============================================================================
-;; CRASH TRACKING
+;; CRASH TRACKING - WITH ATOMIC WRITES
 ;; ============================================================================
 (defun emacs-ide-recovery-load-crash-history ()
-  "Load crash history from file."
+  "Load crash history from file safely."
   (when (file-exists-p emacs-ide-recovery-crash-history-file)
-    (with-temp-buffer
-      (insert-file-contents emacs-ide-recovery-crash-history-file)
-      (setq emacs-ide-recovery-crash-count
-            (string-to-number (buffer-string))))))
+    (condition-case nil
+        (with-temp-buffer
+          (insert-file-contents emacs-ide-recovery-crash-history-file)
+          (setq emacs-ide-recovery-crash-count
+                (max 0 (string-to-number (buffer-string)))))
+      (error nil))))
 
 (defun emacs-ide-recovery-save-crash-history ()
-  "Save crash history to file."
-  (with-temp-file emacs-ide-recovery-crash-history-file
-    (insert (number-to-string emacs-ide-recovery-crash-count))))
+  "Save crash history to file atomically."
+  (let ((temp-file (concat emacs-ide-recovery-crash-history-file ".tmp")))
+    (condition-case err
+        (progn
+          (with-temp-file temp-file
+            (insert (number-to-string emacs-ide-recovery-crash-count)))
+          ;; Atomic rename
+          (rename-file temp-file emacs-ide-recovery-crash-history-file t))
+      (error
+       (warn "Failed to save crash history: %s" (error-message-string err))
+       ;; Clean up temp file if it exists
+       (when (file-exists-p temp-file)
+         (delete-file temp-file))))))
 
 (defun emacs-ide-recovery-increment-crash-count ()
-  "Increment crash counter."
+  "Increment crash counter safely."
   (setq emacs-ide-recovery-crash-count (1+ emacs-ide-recovery-crash-count))
   (emacs-ide-recovery-save-crash-history)
   (when (>= emacs-ide-recovery-crash-count
@@ -61,10 +73,10 @@
 (emacs-ide-recovery-load-crash-history)
 
 ;; ============================================================================
-;; ERROR LOGGING
+;; ERROR LOGGING - WITH ATOMIC WRITES
 ;; ============================================================================
 (defun emacs-ide-recovery-log (level message &rest args)
-  "Log recovery event with LEVEL and MESSAGE with ARGS."
+  "Log recovery event with LEVEL and MESSAGE atomically."
   (let ((formatted-message
          (format "[%s] [%s] %s\n"
                  (format-time-string "%Y-%m-%d %H:%M:%S")
@@ -80,24 +92,34 @@
     (when (and (file-exists-p emacs-ide-recovery-log-file)
                (> (nth 7 (file-attributes emacs-ide-recovery-log-file))
                   emacs-ide-recovery-max-log-size))
-      (rename-file emacs-ide-recovery-log-file
-                   (concat emacs-ide-recovery-log-file ".old")
-                   t))
+      (condition-case nil
+          (rename-file emacs-ide-recovery-log-file
+                      (concat emacs-ide-recovery-log-file ".old")
+                      t)
+        (error nil)))
     
-    ;; Append to log
-    (with-temp-buffer
-      (when (file-exists-p emacs-ide-recovery-log-file)
-        (insert-file-contents emacs-ide-recovery-log-file))
-      (goto-char (point-max))
-      (insert formatted-message)
-      (write-region (point-min) (point-max) emacs-ide-recovery-log-file))
+    ;; Append to log atomically
+    (condition-case err
+        (let ((temp-file (concat emacs-ide-recovery-log-file ".tmp")))
+          ;; Read existing content
+          (with-temp-buffer
+            (when (file-exists-p emacs-ide-recovery-log-file)
+              (insert-file-contents emacs-ide-recovery-log-file))
+            ;; Append new message
+            (goto-char (point-max))
+            (insert formatted-message)
+            ;; Write atomically
+            (write-region (point-min) (point-max) temp-file)))
+          (rename-file temp-file emacs-ide-recovery-log-file t))
+      (error
+       (warn "Failed to write recovery log: %s" (error-message-string err))))
     
     ;; Also display critical errors
     (when (eq level 'error)
       (display-warning 'emacs-ide formatted-message :error))))
 
 (defun emacs-ide-recovery-log-error (context error)
-  "Log ERROR in CONTEXT."
+  "Log ERROR in CONTEXT safely."
   (push (list :time (current-time)
               :context context
               :error error)
@@ -120,7 +142,7 @@
   (cdr (assoc package emacs-ide-recovery-package-fallbacks)))
 
 (defun emacs-ide-recovery-try-fallback (package error)
-  "Try fallback for PACKAGE after ERROR."
+  "Try fallback for PACKAGE after ERROR safely."
   (if-let ((fallback (emacs-ide-recovery-get-fallback package)))
       (progn
         (emacs-ide-recovery-log 'warning
@@ -197,75 +219,90 @@
          (backup-dir (expand-file-name
                      (concat "var/backups/config-" timestamp)
                      user-emacs-directory)))
-    (make-directory backup-dir t)
-    
-    (dolist (file '("init.el" "early-init.el"))
-      (let ((source (expand-file-name file user-emacs-directory))
-            (dest (expand-file-name file backup-dir)))
-        (when (file-exists-p source)
-          (copy-file source dest t))))
-    
-    ;; Backup core and modules
-    (dolist (dir '("core" "modules"))
-      (let ((source (expand-file-name dir user-emacs-directory))
-            (dest (expand-file-name dir backup-dir)))
-        (when (file-directory-p source)
-          (copy-directory source dest t t))))
-    
-    (emacs-ide-recovery-log 'info "Configuration backed up to %s" backup-dir)
-    (message "✓ Configuration backed up to %s" backup-dir)
-    backup-dir))
+    (condition-case err
+        (progn
+          (make-directory backup-dir t)
+          
+          (dolist (file '("init.el" "early-init.el"))
+            (let ((source (expand-file-name file user-emacs-directory))
+                  (dest (expand-file-name file backup-dir)))
+              (when (file-exists-p source)
+                (copy-file source dest t))))
+          
+          ;; Backup core and modules
+          (dolist (dir '("core" "modules"))
+            (let ((source (expand-file-name dir user-emacs-directory))
+                  (dest (expand-file-name dir backup-dir)))
+              (when (file-directory-p source)
+                (copy-directory source dest t t))))
+          
+          (emacs-ide-recovery-log 'info "Configuration backed up to %s" backup-dir)
+          (message "✓ Configuration backed up to %s" backup-dir)
+          backup-dir)
+      (error
+       (warn "Failed to backup configuration: %s" (error-message-string err))
+       nil))))
 
 (defun emacs-ide-recovery-restore-config (backup-dir)
-  "Restore configuration from BACKUP-DIR."
+  "Restore configuration from BACKUP-DIR with confirmation."
   (interactive "DBackup directory: ")
-  (when (y-or-n-p (format "Restore configuration from %s? " backup-dir))
-    (dolist (file '("init.el" "early-init.el"))
-      (let ((source (expand-file-name file backup-dir))
-            (dest (expand-file-name file user-emacs-directory)))
-        (when (file-exists-p source)
-          (copy-file source dest t))))
-    
-    (dolist (dir '("core" "modules"))
-      (let ((source (expand-file-name dir backup-dir))
-            (dest (expand-file-name dir user-emacs-directory)))
-        (when (file-directory-p source)
-          (delete-directory dest t)
-          (copy-directory source dest t t))))
-    
-    (emacs-ide-recovery-log 'info "Configuration restored from %s" backup-dir)
-    (message "✓ Configuration restored. Restart Emacs.")))
+  (when (y-or-n-p (format "Restore configuration from %s? This cannot be undone!" backup-dir))
+    (condition-case err
+        (progn
+          (dolist (file '("init.el" "early-init.el"))
+            (let ((source (expand-file-name file backup-dir))
+                  (dest (expand-file-name file user-emacs-directory)))
+              (when (file-exists-p source)
+                (copy-file source dest t))))
+          
+          (dolist (dir '("core" "modules"))
+            (let ((source (expand-file-name dir backup-dir))
+                  (dest (expand-file-name dir user-emacs-directory)))
+              (when (file-directory-p source)
+                (delete-directory dest t)
+                (copy-directory source dest t t))))
+          
+          (emacs-ide-recovery-log 'info "Configuration restored from %s" backup-dir)
+          (message "✓ Configuration restored. Restart Emacs."))
+      (error
+       (warn "Failed to restore configuration: %s" (error-message-string err))))))
 
 ;; ============================================================================
 ;; EMERGENCY COMMANDS
 ;; ============================================================================
 (defun emacs-ide-recovery-disable-package (package)
-  "Disable problematic PACKAGE."
+  "Disable problematic PACKAGE safely."
   (interactive "sPackage to disable: ")
   (let ((disable-file (expand-file-name "var/disabled-packages"
                                        user-emacs-directory)))
-    (with-temp-buffer
-      (when (file-exists-p disable-file)
-        (insert-file-contents disable-file))
-      (goto-char (point-max))
-      (insert (format "%s\n" package))
-      (write-region (point-min) (point-max) disable-file))
+    (condition-case err
+        (with-temp-buffer
+          (when (file-exists-p disable-file)
+            (insert-file-contents disable-file))
+          (goto-char (point-max))
+          (insert (format "%s\n" package))
+          (write-region (point-min) (point-max) disable-file))
+      (error
+       (warn "Failed to disable package: %s" (error-message-string err))))
     (emacs-ide-recovery-log 'warning "Disabled package: %s" package)
     (message "✓ Package %s disabled. Restart Emacs." package)))
 
 (defun emacs-ide-recovery-view-log ()
-  "View recovery log."
+  "View recovery log safely."
   (interactive)
   (if (file-exists-p emacs-ide-recovery-log-file)
       (view-file emacs-ide-recovery-log-file)
     (message "No recovery log found.")))
 
 (defun emacs-ide-recovery-clear-log ()
-  "Clear recovery log."
+  "Clear recovery log with confirmation."
   (interactive)
   (when (y-or-n-p "Clear recovery log? ")
-    (when (file-exists-p emacs-ide-recovery-log-file)
-      (delete-file emacs-ide-recovery-log-file))
+    (condition-case err
+        (when (file-exists-p emacs-ide-recovery-log-file)
+          (delete-file emacs-ide-recovery-log-file))
+      (error
+       (warn "Failed to clear log: %s" (error-message-string err))))
     (message "✓ Recovery log cleared")))
 
 (defun emacs-ide-recovery-report ()
@@ -274,7 +311,7 @@
   (with-output-to-temp-buffer "*Recovery Report*"
     (princ "=== EMACS IDE RECOVERY REPORT ===\n\n")
     (princ (format "Crash Count: %d\n" emacs-ide-recovery-crash-count))
-    (princ (format "Safe Mode: %s\n" (if emacs-ide-safe-mode "YES" "NO")))
+    (princ (format "Safe Mode: %s\n" (if (bound-and-true-p emacs-ide-safe-mode) "YES" "NO")))
     (princ (format "Errors This Session: %d\n\n" (length emacs-ide-recovery-errors)))
     
     (when emacs-ide-recovery-errors
@@ -286,35 +323,12 @@
         (princ (format "  %s\n" (plist-get err :error)))))
     
     (princ "\n\nRecovery Actions:\n")
-    (princ "  C-c r v  - View full recovery log\n")
+    (princ "  C-c r v  - View recovery log\n")
     (princ "  C-c r b  - Backup current config\n")
     (princ "  C-c r r  - Restore from backup\n")
     (princ "  C-c r d  - Disable problematic package\n")
     (princ "  C-c r c  - Clear recovery log\n")
     (princ "  C-c r R  - Reset crash counter\n")))
-
-;; ============================================================================
-;; AUTOMATIC RECOVERY
-;; ============================================================================
-(defun emacs-ide-recovery-handle-error (data context)
-  "Handle error DATA in CONTEXT."
-  (let ((error-message (error-message-string data)))
-    (emacs-ide-recovery-log-error context error-message)
-    
-    ;; Try to recover based on context
-    (cond
-     ((string-match-p "package" (symbol-name context))
-      ;; Package error - try fallback
-      (emacs-ide-recovery-try-fallback context data))
-     
-     ((string-match-p "lsp" (symbol-name context))
-      ;; LSP error - continue without LSP
-      (emacs-ide-recovery-log 'warning "Disabling LSP for this session")
-      (setq lsp-enable-on-type-formatting nil))
-     
-     (t
-      ;; Unknown error - log and continue
-      (emacs-ide-recovery-log 'error "Unhandled error in %s" context)))))
 
 ;; ============================================================================
 ;; GRACEFUL DEGRADATION

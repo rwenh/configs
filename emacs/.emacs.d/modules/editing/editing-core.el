@@ -1,4 +1,4 @@
-;;; editing-config.el --- Elite Editing Features -*- lexical-binding: t -*-
+;;; editing-core.el --- Elite Editing Features (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional text manipulation and ergonomic editing
 ;;; Code:
@@ -62,6 +62,10 @@
 (use-package undo-tree
   :demand t
   :init
+  (let ((undo-dir (expand-file-name "undo-tree-hist/" user-emacs-directory)))
+    (unless (file-directory-p undo-dir)
+      (make-directory undo-dir t)))
+  
   (setq undo-tree-auto-save-history t
         undo-tree-history-directory-alist `(("." . ,(expand-file-name "undo-tree-hist/" user-emacs-directory)))
         undo-tree-visualizer-timestamps t
@@ -71,10 +75,6 @@
         undo-strong-limit 12000000
         undo-outer-limit 120000000)
   :config
-  ;; Ensure undo-tree history directory exists
-  (let ((undo-dir (expand-file-name "undo-tree-hist/" user-emacs-directory)))
-    (unless (file-directory-p undo-dir)
-      (make-directory undo-dir t)))
   (global-undo-tree-mode 1)
   :bind (("C-/" . undo-tree-undo)
          ("C-?" . undo-tree-redo)
@@ -104,9 +104,7 @@
 ;; ============================================================================
 (use-package expand-region
   :bind (("C-=" . er/expand-region)
-         ("C--" . er/contract-region)
-         ("C-c =" . er/expand-region)
-         ("C-c -" . er/contract-region)))
+         ("C--" . er/contract-region)))
 
 ;; ============================================================================
 ;; AVY - JUMP NAVIGATION
@@ -134,9 +132,7 @@
 ;; ============================================================================
 (use-package move-text
   :bind (("M-<up>" . move-text-up)
-         ("M-<down>" . move-text-down)
-         ("M-p" . move-text-up)
-         ("M-n" . move-text-down)))
+         ("M-<down>" . move-text-down)))
 
 ;; ============================================================================
 ;; CUSTOM EDITING FUNCTIONS
@@ -202,26 +198,11 @@
   (interactive)
   (newline-and-indent))
 
-(defun emacs-ide-insert-current-date ()
-  "Insert current date."
-  (interactive)
-  (insert (format-time-string "%Y-%m-%d")))
-
-(defun emacs-ide-insert-current-time ()
-  "Insert current time."
-  (interactive)
-  (insert (format-time-string "%H:%M:%S")))
-
-(defun emacs-ide-insert-current-datetime ()
-  "Insert current datetime."
-  (interactive)
-  (insert (format-time-string "%Y-%m-%d %H:%M:%S")))
-
 (defun emacs-ide-reload-config ()
   "Reload configuration."
   (interactive)
   (load-file user-init-file)
-  (message "Configuration reloaded!"))
+  (message "✓ Configuration reloaded!"))
 
 (defun emacs-ide-create-non-existent-directory ()
   "Create parent directory if needed."
@@ -296,7 +277,7 @@
   (interactive)
   (save-excursion
     (indent-region (point-min) (point-max) nil))
-  (message "Buffer indented"))
+  (message "✓ Buffer indented"))
 
 (defun emacs-ide-cleanup-buffer ()
   "Cleanup buffer."
@@ -305,7 +286,7 @@
     (emacs-ide-indent-buffer)
     (untabify (point-min) (point-max))
     (delete-trailing-whitespace))
-  (message "Buffer cleaned"))
+  (message "✓ Buffer cleaned"))
 
 (defun emacs-ide-indent-region-or-buffer ()
   "Indent region or buffer."
@@ -314,91 +295,5 @@
       (indent-region (region-beginning) (region-end))
     (emacs-ide-indent-buffer)))
 
-;; ============================================================================
-;; CODE FOLDING
-;; ============================================================================
-(add-hook 'prog-mode-hook 'hs-minor-mode)
-
-(defun emacs-ide-hs-display-code-line-counts (ov)
-  "Display line counts in folding."
-  (when (eq 'code (overlay-get ov 'hs))
-    (overlay-put ov 'display
-                 (format " ... (%d lines)"
-                         (count-lines (overlay-start ov)
-                                     (overlay-end ov))))))
-
-(setq hs-set-up-overlay 'emacs-ide-hs-display-code-line-counts)
-
-;; ============================================================================
-;; TEXT TRANSFORMATION
-;; ============================================================================
-(defun emacs-ide-upcase-region-or-word ()
-  "Upcase region or word."
-  (interactive)
-  (if (region-active-p)
-      (upcase-region (region-beginning) (region-end))
-    (upcase-word 1)))
-
-(defun emacs-ide-downcase-region-or-word ()
-  "Downcase region or word."
-  (interactive)
-  (if (region-active-p)
-      (downcase-region (region-beginning) (region-end))
-    (downcase-word 1)))
-
-(defun emacs-ide-capitalize-region-or-word ()
-  "Capitalize region or word."
-  (interactive)
-  (if (region-active-p)
-      (capitalize-region (region-beginning) (region-end))
-    (capitalize-word 1)))
-
-;; ============================================================================
-;; SEARCH & REPLACE
-;; ============================================================================
-(global-set-key (kbd "C-s") 'isearch-forward-regexp)
-(global-set-key (kbd "C-r") 'isearch-backward-regexp)
-(global-set-key (kbd "M-%") 'query-replace-regexp)
-
-(setq isearch-lazy-count t
-      lazy-count-prefix-format "(%s/%s) "
-      isearch-allow-scroll t
-      isearch-allow-motion t
-      isearch-motion-changes-direction t
-      isearch-repeat-on-direction-change t
-      isearch-wrap-pause 'no)
-
-;; ============================================================================
-;; WHITESPACE
-;; ============================================================================
-(use-package whitespace
-  :straight nil
-  :hook (before-save . whitespace-cleanup)
-  :init
-  (setq whitespace-style '(face tabs empty trailing lines-tail)
-        whitespace-line-column 120))
-
-;; ============================================================================
-;; AGGRESSIVE INDENT
-;; ============================================================================
-(use-package aggressive-indent
-  :hook ((emacs-lisp-mode lisp-mode scheme-mode) . aggressive-indent-mode)
-  :init
-  (setq aggressive-indent-comments-too t))
-
-;; ============================================================================
-;; VISUAL REGEXP
-;; ============================================================================
-(use-package visual-regexp
-  :bind (("C-c r" . vr/replace)
-         ("C-c q" . vr/query-replace)
-         ("C-c m" . vr/mc-mark)))
-
-;; ============================================================================
-;; STRING-INFLECTION
-;; ============================================================================
-(use-package string-inflection
-  :bind ("C-c C-u" . string-inflection-all-cycle))
-
-(provide 'editing-config)
-;;; editing-config.el ends here
+(provide 'editing-core)
+;;; editing-core.el ends here

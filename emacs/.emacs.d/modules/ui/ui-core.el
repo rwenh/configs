@@ -1,4 +1,4 @@
-;;; ui-core.el --- Professional Visual Configuration -*- lexical-binding: t -*-
+;;; ui-core.el --- Professional Visual Configuration (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Elite UI/UX with modern design and maximum efficiency
 ;;; Code:
@@ -22,10 +22,9 @@
       inhibit-startup-echo-area-message t)
 
 ;; ============================================================================
-;; THEME - CATPPUCCIN/MODUS
+;; THEME - MODUS THEMES (DEFERRED)
 ;; ============================================================================
 (use-package modus-themes
-  :demand t
   :init
   (setq modus-themes-bold-constructs t
         modus-themes-italic-constructs t
@@ -48,26 +47,13 @@
         modus-themes-paren-match '(bold intense)
         modus-themes-region '(bg-only no-extend))
   :config
-  (load-theme 'modus-vivendi t))
-
-(defun emacs-ide-toggle-theme ()
-  "Toggle between light and dark theme."
-  (interactive)
-  (if (custom-theme-enabled-p 'modus-vivendi)
-      (progn (disable-theme 'modus-vivendi)
-             (load-theme 'modus-operandi t)
-             (message "☀️ Light theme"))
-    (disable-theme 'modus-operandi)
-    (load-theme 'modus-vivendi t)
-    (message "🌙 Dark theme")))
-
-(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
+  (let ((theme (or (bound-and-true-p emacs-ide-theme) 'modus-vivendi)))
+    (load-theme theme t)))
 
 ;; ============================================================================
-;; DASHBOARD
+;; DASHBOARD (DEFERRED)
 ;; ============================================================================
 (use-package dashboard
-  :demand t
   :init
   (setq dashboard-startup-banner 'logo
         dashboard-center-content t
@@ -81,31 +67,37 @@
         dashboard-set-init-info t
         dashboard-banner-logo-title "EMACS IDE - Professional Development Environment"
         dashboard-footer-messages '("Ready to code")
-        dashboard-footer-icon (all-the-icons-octicon "dashboard"
+        dashboard-footer-icon (when (fboundp 'all-the-icons-octicon)
+                               (all-the-icons-octicon "dashboard"
                                                       :height 1.1
                                                       :v-adjust -0.05
-                                                      :face 'font-lock-keyword-face))
+                                                      :face 'font-lock-keyword-face)))
   :config
-  (dashboard-setup-startup-hook)
+  (when (fboundp 'dashboard-setup-startup-hook)
+    (dashboard-setup-startup-hook))
   (setq initial-buffer-choice (lambda () (get-buffer-create "*dashboard*"))))
 
+;; ============================================================================
+;; ICONS (DEFERRED)
+;; ============================================================================
 (use-package all-the-icons
   :if (display-graphic-p)
-  :demand t)
+  :config)
 
 (use-package all-the-icons-dired
   :if (display-graphic-p)
+  :after all-the-icons
   :hook (dired-mode . all-the-icons-dired-mode))
 
 ;; ============================================================================
-;; FONTS - LIGATURES ENABLED
+;; FONTS - LIGATURES ENABLED (DEFERRED)
 ;; ============================================================================
 (when (display-graphic-p)
   (setq frame-resize-pixelwise t
         window-resize-pixelwise t)
   
   (defun emacs-ide-set-font (font-name size &optional weight)
-    "Set FONT-NAME at SIZE with optional WEIGHT."
+    "Set FONT-NAME at SIZE with optional WEIGHT safely."
     (when (member font-name (font-family-list))
       (set-face-attribute 'default nil
                           :font font-name
@@ -113,25 +105,34 @@
                           :weight (or weight 'normal))
       t))
   
-  (or (emacs-ide-set-font "JetBrains Mono" 11 'medium)
-      (emacs-ide-set-font "Fira Code" 11)
-      (emacs-ide-set-font "Cascadia Code" 11)
-      (emacs-ide-set-font "Iosevka" 11)
-      (emacs-ide-set-font "Source Code Pro" 11))
+  ;; Use config values if available
+  (let ((font (or (bound-and-true-p emacs-ide-font) "JetBrains Mono"))
+        (size (or (bound-and-true-p emacs-ide-font-size) 11)))
+    (or (emacs-ide-set-font font size 'medium)
+        (emacs-ide-set-font "Fira Code" size)
+        (emacs-ide-set-font "Cascadia Code" size)
+        (emacs-ide-set-font "Iosevka" size)
+        (emacs-ide-set-font "Source Code Pro" size)))
   
-  (or (set-face-attribute 'variable-pitch nil :font "Inter-11")
-      (set-face-attribute 'variable-pitch nil :font "Cantarell-11")
-      (set-face-attribute 'variable-pitch nil :font "DejaVu Sans-11"))
+  ;; Variable pitch font
+  (condition-case nil
+      (or (set-face-attribute 'variable-pitch nil :font "Inter-11")
+          (set-face-attribute 'variable-pitch nil :font "Cantarell-11")
+          (set-face-attribute 'variable-pitch nil :font "DejaVu Sans-11"))
+    (error nil))
   
-  ;; Ligature support
+  ;; Ligature support (macOS)
   (when (fboundp 'mac-auto-operator-composition-mode)
     (mac-auto-operator-composition-mode))
   
   ;; Emoji support
-  (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))
+  (when (fboundp 'set-fontset-font)
+    (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend)))
 
-;; Wayland smooth scrolling
-(when (and (getenv "WAYLAND_DISPLAY")
+;; ============================================================================
+;; WAYLAND SMOOTH SCROLLING
+;; ============================================================================
+(when (and (bound-and-true-p emacs-ide-wayland-p)
            (fboundp 'pixel-scroll-precision-mode))
   (pixel-scroll-precision-mode 1)
   (setq pixel-scroll-precision-use-momentum t
@@ -169,10 +170,9 @@
       show-paren-when-point-in-periphery t)
 
 ;; ============================================================================
-;; MODE-LINE - PROFESSIONAL
+;; MODE-LINE - DOOM-MODELINE (DEFERRED)
 ;; ============================================================================
 (use-package doom-modeline
-  :demand t
   :init
   (setq doom-modeline-height 30
         doom-modeline-bar-width 4
@@ -198,38 +198,21 @@
         doom-modeline-mu4e t
         doom-modeline-gnus t
         doom-modeline-irc t
-        doom-modeline-env-version t
-        doom-modeline-env-enable-python t
-        doom-modeline-env-enable-ruby t
-        doom-modeline-env-enable-perl t
-        doom-modeline-env-enable-go t
-        doom-modeline-env-enable-elixir t
-        doom-modeline-env-enable-rust t)
+        doom-modeline-env-version t)
   :config
   (doom-modeline-mode 1))
 
-;; ============================================================================
-;; BREADCRUMB
-;; ============================================================================
-(use-package breadcrumb
-  :demand t
-  :config
-  (breadcrumb-mode 1))
-
-;; ============================================================================
-;; FRAME TITLE
-;; ============================================================================
+;; Set frame title
 (setq frame-title-format
-      '(:eval (concat
-               (if (buffer-file-name)
+      '((:eval (if (buffer-file-name)
                    (abbreviate-file-name (buffer-file-name))
-                 "%b")
+                 "%b"))
                (when (buffer-modified-p) " •")
                " - Emacs IDE"
-               (when emacs-ide-wayland-p " [Wayland]"))))
+               (when (bound-and-true-p emacs-ide-wayland-p) " [Wayland]")))
 
 ;; ============================================================================
-;; VISUAL ENHANCEMENTS
+;; VISUAL ENHANCEMENTS (DEFERRED)
 ;; ============================================================================
 (use-package rainbow-delimiters
   :hook (prog-mode . rainbow-delimiters-mode))
@@ -256,7 +239,6 @@
           ("REVIEW" . "#c678dd"))))
 
 (use-package beacon
-  :demand t
   :init
   (setq beacon-blink-when-focused t
         beacon-blink-when-window-scrolls t
@@ -266,7 +248,6 @@
   (beacon-mode 1))
 
 (use-package dimmer
-  :demand t
   :init
   (setq dimmer-fraction 0.4
         dimmer-adjustment-mode :foreground
@@ -286,7 +267,6 @@
         highlight-indent-guides-auto-top-character-face-perc 40))
 
 (use-package pulsar
-  :demand t
   :init
   (setq pulsar-pulse t
         pulsar-delay 0.055
@@ -297,10 +277,9 @@
   (pulsar-global-mode 1))
 
 ;; ============================================================================
-;; WHICH-KEY
+;; WHICH-KEY (DEFERRED)
 ;; ============================================================================
 (use-package which-key
-  :demand t
   :init
   (setq which-key-idle-delay 0.3
         which-key-idle-secondary-delay 0.05
@@ -317,7 +296,7 @@
   (which-key-mode 1))
 
 ;; ============================================================================
-;; WINDOW MANAGEMENT
+;; WINDOW MANAGEMENT (DEFERRED)
 ;; ============================================================================
 (use-package ace-window
   :bind ("M-o" . ace-window)
@@ -337,11 +316,10 @@
          ("C-c w r" . rotate-frame-clockwise)))
 
 ;; ============================================================================
-;; NEOTREE
+;; NEOTREE (DEFERRED)
 ;; ============================================================================
 (use-package neotree
-  :bind (("<f8>" . neotree-toggle)
-         ("C-c n" . neotree-projectile-action))
+  :bind (("<f8>" . neotree-toggle))
   :init
   (setq neo-smart-open t
         neo-theme (if (display-graphic-p) 'icons 'arrow)
@@ -350,19 +328,10 @@
         neo-auto-indent-point t
         neo-modern-sidebar t
         neo-show-updir-line nil
-        neo-vc-integration '(face))
-  :config
-  (defun neotree-projectile-action ()
-    "Open NeoTree at project root."
-    (interactive)
-    (let ((project-root (projectile-project-root)))
-      (neotree-toggle)
-      (if project-root
-          (neotree-dir project-root)
-        (neotree-dir default-directory)))))
+        neo-vc-integration '(face)))
 
 ;; ============================================================================
-;; DIRED ENHANCEMENT
+;; DIRED ENHANCEMENT (DEFERRED)
 ;; ============================================================================
 (use-package dired
   :straight nil
@@ -383,7 +352,7 @@
   :hook (dired-mode . diredfl-mode))
 
 ;; ============================================================================
-;; ANSI COLOR
+;; ANSI COLOR (DEFERRED)
 ;; ============================================================================
 (use-package ansi-color
   :straight nil
@@ -404,7 +373,7 @@
   (set-frame-parameter nil 'alpha alpha-foreground))
 
 ;; ============================================================================
-;; VISUAL FILL COLUMN
+;; VISUAL FILL COLUMN (DEFERRED)
 ;; ============================================================================
 (use-package visual-fill-column
   :init
