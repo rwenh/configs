@@ -21,23 +21,45 @@ return {
     ft = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      local python_path = vim.fn.exepath("python3") or vim.fn.exepath("python")
-      
-      -- Actually setup dap-python with the python path
-      require('dap-python').setup(python_path)
-      
-      -- Optional: Check if debugpy is available and warn if not
-      if python_path ~= "" then
-        local handle = io.popen(python_path .. " -c 'import debugpy' 2>&1")
+      -- Function to check if debugpy is available in a Python path
+      local function has_debugpy(python)
+        if python == "" then return false end
+        local handle = io.popen(python .. " -c 'import debugpy' 2>&1")
         local result = handle:read("*a")
         handle:close()
-        
-        if result:match("ModuleNotFoundError") or result:match("No module named") then
+        return not (result:match("ModuleNotFoundError") or result:match("No module named"))
+      end
+
+      -- Try to find a Python with debugpy installed
+      local python_candidates = {
+        vim.fn.exepath("python3"),
+        vim.fn.exepath("python"),
+        "/usr/bin/python3",
+        "/usr/bin/python",
+      }
+
+      local python_path = nil
+      for _, candidate in ipairs(python_candidates) do
+        if has_debugpy(candidate) then
+          python_path = candidate
+          break
+        end
+      end
+
+      -- Fallback to system python if none found with debugpy
+      if not python_path then
+        python_path = vim.fn.exepath("python3") or vim.fn.exepath("python")
+        if python_path ~= "" then
           vim.notify(
-            "debugpy not found in " .. python_path .. ". Install with: " .. python_path .. " -m pip install debugpy",
+            "debugpy not found. Install with: " .. python_path .. " -m pip install debugpy",
             vim.log.levels.WARN
           )
         end
+      end
+
+      -- Setup dap-python with the found python path
+      if python_path and python_path ~= "" then
+        require('dap-python').setup(python_path)
       end
 
       -- Python-specific debug keymaps (using ;py prefix)
