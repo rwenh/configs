@@ -23,6 +23,10 @@ return {
     config = function()
       local python_path = vim.fn.exepath("python3") or vim.fn.exepath("python")
       
+      -- Actually setup dap-python with the python path
+      require('dap-python').setup(python_path)
+      
+      -- Optional: Check if debugpy is available and warn if not
       if python_path ~= "" then
         local handle = io.popen(python_path .. " -c 'import debugpy' 2>&1")
         local result = handle:read("*a")
@@ -30,7 +34,7 @@ return {
         
         if result:match("ModuleNotFoundError") or result:match("No module named") then
           vim.notify(
-            "debugpy not found. Install with: pip install debugpy",
+            "debugpy not found in " .. python_path .. ". Install with: " .. python_path .. " -m pip install debugpy",
             vim.log.levels.WARN
           )
         end
