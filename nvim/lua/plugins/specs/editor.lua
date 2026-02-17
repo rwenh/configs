@@ -7,6 +7,7 @@ return {
     lazy = false,
     dependencies = "nvim-tree/nvim-web-devicons",
     opts = {
+      hijack_netrw = false,   -- FIX: netrw disabled in options.lua so FileExplorer augroup doesn't exist
       view = { width = 35 },
       renderer = { group_empty = true, highlight_git = true, indent_markers = { enable = true } },
       filters = { custom = { "node_modules", ".cache", "__pycache__" }, dotfiles = false },
@@ -68,8 +69,8 @@ return {
     opts = { check_ts = true },
     config = function(_, opts)
       require("nvim-autopairs").setup(opts)
-      local cmp_autopairs = require("nvim-autopairs.completion.cmp")
-      require("cmp").event:on("confirm_done", cmp_autopairs.on_confirm_done())
+      -- FIX: blink.cmp handles bracket pairing natively (auto_brackets enabled in completion.lua)
+      -- No cmp event hook needed here anymore
     end,
   },
 
@@ -190,10 +191,10 @@ return {
     "kevinhwang91/nvim-ufo",
     dependencies = "kevinhwang91/promise-async",
     event = "BufReadPost",
-    opts = { 
-      provider_selector = function() 
-        return { "treesitter", "indent" } 
-      end 
+    opts = {
+      provider_selector = function()
+        return { "treesitter", "indent" }
+      end,
     },
     config = function(_, opts)
       require("ufo").setup(opts)
@@ -229,12 +230,12 @@ return {
     branch = "harpoon2",
     dependencies = "nvim-lua/plenary.nvim",
     keys = {
-      { "<leader>a", function() require("harpoon"):list():add() end, desc = "Harpoon add" },
-      { "<C-e>", function() require("harpoon").ui:toggle_quick_menu(require("harpoon"):list()) end, desc = "Harpoon menu" },
-      { "<C-1>", function() require("harpoon"):list():select(1) end, desc = "Harpoon 1" },
-      { "<C-2>", function() require("harpoon"):list():select(2) end, desc = "Harpoon 2" },
-      { "<C-3>", function() require("harpoon"):list():select(3) end, desc = "Harpoon 3" },
-      { "<C-4>", function() require("harpoon"):list():select(4) end, desc = "Harpoon 4" },
+      { "<leader>a",  function() require("harpoon"):list():add() end, desc = "Harpoon add" },
+      { "<C-e>",      function() require("harpoon").ui:toggle_quick_menu(require("harpoon"):list()) end, desc = "Harpoon menu" },
+      { "<C-1>",      function() require("harpoon"):list():select(1) end, desc = "Harpoon 1" },
+      { "<C-2>",      function() require("harpoon"):list():select(2) end, desc = "Harpoon 2" },
+      { "<C-3>",      function() require("harpoon"):list():select(3) end, desc = "Harpoon 3" },
+      { "<C-4>",      function() require("harpoon"):list():select(4) end, desc = "Harpoon 4" },
     },
   },
 }

@@ -1,17 +1,5 @@
--- lua/plugins/specs/lang/html.lua - HTML development
+-- lua/plugins/specs/lang/html.lua
+-- autotag and emmet are now centrally managed in web.lua
+-- Add HTML-specific extras here only
 
-return {
-  {
-    "windwp/nvim-ts-autotag",
-    ft = { "html", "xml", "jsx", "tsx" },
-    opts = {},
-  },
-
-  {
-    "mattn/emmet-vim",
-    ft = { "html", "css" },
-    init = function()
-      vim.g.user_emmet_leader_key = "<C-e>"
-    end,
-  },
-}
+return {}

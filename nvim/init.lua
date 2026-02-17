@@ -3,12 +3,12 @@
 
 if vim.loader then vim.loader.enable() end
 
-_G.claude_ide = {
-  version = "claude-1.1",
-  root = vim.fn.stdpath("config"),
-  data = vim.fn.stdpath("data"),
-  cache = vim.fn.stdpath("cache"),
-  debug = vim.env.NVIM_DEBUG == "1",
+_G.nvim_ide = {
+  version = "2.0",
+  root    = vim.fn.stdpath("config"),
+  data    = vim.fn.stdpath("data"),
+  cache   = vim.fn.stdpath("cache"),
+  debug   = vim.env.NVIM_DEBUG == "1",
 }
 
 local function safe_load(mod)
@@ -25,21 +25,28 @@ end
 -- Load in correct order
 safe_load("core.options")
 safe_load("core.bootstrap")
-safe_load("core.theme")
+
 safe_load("plugins")
 
--- Deferred loading
+-- Theme setup AFTER plugins so lazy.nvim has loaded the colorscheme plugin
+local theme = safe_load("core.theme")
+if theme then theme.setup() end
+
+-- Deferred: keymaps, autocmds, commands don't need to block startup
 vim.defer_fn(function()
   safe_load("core.keymaps")
   safe_load("core.autocmds")
   safe_load("core.commands")
 end, 0)
 
--- Show stats
+-- Startup stats
 vim.defer_fn(function()
-  local lazy_ok, lazy = pcall(require, "lazy")
-  if lazy_ok then
-    local stats = lazy.stats()
-    vim.notify(string.format("⚡ %d/%d plugins loaded in %.2fms", stats.loaded, stats.count, stats.startuptime), vim.log.levels.INFO)
+  local ok, lazy = pcall(require, "lazy")
+  if ok then
+    local s = lazy.stats()
+    vim.notify(
+      string.format("⚡ %d/%d plugins · %.0fms", s.loaded, s.count, s.startuptime),
+      vim.log.levels.INFO
+    )
   end
-end, 100)
+end, 150)

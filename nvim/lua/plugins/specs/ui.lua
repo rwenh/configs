@@ -1,18 +1,26 @@
--- lua/plugins/specs/ui.lua - UI plugins (Optimized)
+-- lua/plugins/specs/ui.lua - UI plugins (all themes pre-configured, pick in core/theme.lua)
 
 return {
-  -- Colorscheme
-  {
-    "maxmx03/solarized.nvim",
-    lazy = false,
-    priority = 1000,
-    config = function()
-      require("solarized").setup()
-      vim.cmd.colorscheme("solarized")
-    end,
-  },
 
-  -- Statusline
+  -- ┌─────────────────────────────────────────────────────┐
+  -- │                    THEMES                            │
+  -- └─────────────────────────────────────────────────────┘
+
+  { "catppuccin/nvim",            name = "catppuccin",       lazy = false, priority = 1000 },
+  { "folke/tokyonight.nvim",      lazy = false, priority = 1000,
+    opts = { style = "moon", transparent = false } },
+  { "rose-pine/neovim",           name = "rose-pine",        lazy = false, priority = 1000 },
+  { "rebelot/kanagawa.nvim",      lazy = false, priority = 1000 },
+  { "sainnhe/gruvbox-material",   lazy = false, priority = 1000,
+    init = function() vim.g.gruvbox_material_better_performance = 1 end },
+  { "maxmx03/solarized.nvim",     lazy = false, priority = 1000 },
+  { "craftzdog/solarized-osaka.nvim", lazy = false, priority = 1000,
+    opts = { transparent = false } },
+
+  -- ┌─────────────────────────────────────────────────────┐
+  -- │                   STATUS / BUFFER                    │
+  -- └─────────────────────────────────────────────────────┘
+
   {
     "nvim-lualine/lualine.nvim",
     event = "VeryLazy",
@@ -21,136 +29,155 @@ return {
         theme = "auto",
         globalstatus = true,
         component_separators = { left = "|", right = "|" },
-        section_separators = { left = "", right = "" },
+        section_separators   = { left = "", right = "" },
+        disabled_filetypes   = { statusline = { "dashboard", "alpha" } },
       },
       sections = {
-        lualine_c = { { "filename", path = 1 }, "diagnostics" },
+        lualine_a = { "mode" },
+        lualine_b = { "branch", "diff", "diagnostics" },
+        lualine_c = { { "filename", path = 1 } },
         lualine_x = { "encoding", "fileformat", "filetype" },
+        lualine_y = { "progress" },
+        lualine_z = { "location" },
       },
     },
   },
 
-  -- Bufferline
   {
     "akinsho/bufferline.nvim",
     event = "VeryLazy",
     opts = {
       options = {
-        mode = "buffers",
+        mode        = "buffers",
         diagnostics = "nvim_lsp",
-        offsets = { { filetype = "NvimTree", text = "File Explorer" } },
+        offsets     = { { filetype = "NvimTree", text = "Explorer", highlight = "Directory" } },
+        show_buffer_close_icons = true,
+        show_close_icon         = false,
+        separator_style         = "slant",
       },
     },
   },
 
-  -- Indent guides
+  -- ┌─────────────────────────────────────────────────────┐
+  -- │                      UI ELEMENTS                     │
+  -- └─────────────────────────────────────────────────────┘
+
   {
     "lukas-reineke/indent-blankline.nvim",
     event = { "BufReadPost", "BufNewFile" },
-    main = "ibl",
-    opts = {
-      indent = { char = "│" },
-      scope = { enabled = true },
-      exclude = { filetypes = { "help", "lazy", "mason", "notify" } },
+    main  = "ibl",
+    opts  = {
+      indent  = { char = "│" },
+      scope   = { enabled = true },
+      exclude = { filetypes = { "help", "lazy", "mason", "notify", "dashboard" } },
     },
   },
 
-  -- Notifications
   {
     "rcarriga/nvim-notify",
     lazy = false,
     opts = {
-      timeout = 3000,
-      stages = "fade",
-      render = "compact",
+      timeout  = 3000,
+      stages   = "fade_in_slide_out",
+      render   = "compact",
       top_down = false,
+      max_width = 60,
     },
     init = function()
       vim.notify = require("notify")
     end,
   },
 
-  -- Better UI elements
   {
     "stevearc/dressing.nvim",
     lazy = true,
     opts = {},
   },
 
-  -- Trouble (diagnostics)
   {
     "folke/trouble.nvim",
-    cmd = "Trouble",
-    opts = {},
+    cmd  = "Trouble",
+    opts = { use_diagnostic_signs = true },
   },
 
-  -- Which-key
   {
     "folke/which-key.nvim",
     event = "VeryLazy",
-    opts = {
+    opts  = {
       preset = "modern",
-      spec = {
-        { "<leader>b", group = "buffer" },
-        { "<leader>c", group = "code" },
-        { "<leader>d", group = "debug" },
-        { "<leader>f", group = "find" },
-        { "<leader>g", group = "git" },
-        { "<leader>r", group = "run" },
-        { "<leader>s", group = "search" },
-        { "<leader>t", group = "test" },
-        { "<leader>u", group = "ui" },
-        { "<leader>x", group = "trouble" },
+      spec   = {
+        { "<leader>b",  group = "buffer" },
+        { "<leader>c",  group = "code" },
+        { "<leader>d",  group = "debug" },
+        { "<leader>f",  group = "find" },
+        { "<leader>g",  group = "git" },
+        { "<leader>r",  group = "run/rust" },
+        { "<leader>s",  group = "search" },
+        { "<leader>t",  group = "test/theme" },
+        { "<leader>u",  group = "ui" },
+        { "<leader>x",  group = "trouble" },
       },
     },
   },
 
-  -- Terminal
   {
     "akinsho/toggleterm.nvim",
-    cmd = "ToggleTerm",
+    cmd  = "ToggleTerm",
     opts = {
-      size = 15,
+      size         = 15,
       open_mapping = [[<C-\>]],
       hide_numbers = true,
-      direction = "float",
-      float_opts = { border = "curved" },
+      direction    = "float",
+      float_opts   = { border = "curved" },
+      on_open = function()
+        vim.opt_local.number         = false
+        vim.opt_local.relativenumber = false
+      end,
     },
   },
 
-  -- Dashboard (OPTIMIZED: lazy=false with defer to avoid VimEnter slowdown)
+  -- ┌─────────────────────────────────────────────────────┐
+  -- │                     DASHBOARD                        │
+  -- └─────────────────────────────────────────────────────┘
+
   {
     "nvimdev/dashboard-nvim",
-    lazy = false,
-    priority = 100, -- Load after colorscheme but early
+    lazy     = false,
+    priority = 90,
     opts = {
       theme = "doom",
       config = {
         header = {
           "",
-          " ███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗",
-          " ████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║",
-          " ██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║",
-          " ██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║",
-          " ██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║",
-          " ╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝",
+          "  ██████╗ ███████╗ █████╗ ██╗     ██╗████████╗██╗   ██╗",
+          "  ██╔══██╗██╔════╝██╔══██╗██║     ██║╚══██╔══╝╚██╗ ██╔╝",
+          "  ██████╔╝█████╗  ███████║██║     ██║   ██║    ╚████╔╝ ",
+          "  ██╔══██╗██╔══╝  ██╔══██║██║     ██║   ██║     ╚██╔╝  ",
+          "  ██║  ██║███████╗██║  ██║███████╗██║   ██║      ██║   ",
+          "  ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚══════╝╚═╝   ╚═╝      ╚═╝   ",
+          "",
+          "  « Reality is merely code we haven't debugged yet »",
           "",
         },
         center = {
-          { icon = " ", desc = "Find File", action = "Telescope find_files" },
-          { icon = " ", desc = "Recent Files", action = "Telescope oldfiles" },
-          { icon = " ", desc = "Find Text", action = "Telescope live_grep" },
-          { icon = " ", desc = "Config", action = "edit $MYVIMRC" },
-          { icon = " ", desc = "Lazy", action = "Lazy" },
-          { icon = " ", desc = "Quit", action = "qa" },
+          { icon = "  ", desc = "Find File       ", action = "Telescope find_files",   key = "f" },
+          { icon = "  ", desc = "Recent Files    ", action = "Telescope oldfiles",      key = "r" },
+          { icon = "  ", desc = "Find Text       ", action = "Telescope live_grep",     key = "g" },
+          { icon = "  ", desc = "Sessions        ", action = "SessionRestore",          key = "s" },
+          { icon = "  ", desc = "Config          ", action = "edit $MYVIMRC",           key = "c" },
+          { icon = "  ", desc = "Theme           ", action = "lua require('core.theme').toggle()", key = "t" },
+          { icon = "󰒲  ", desc = "Lazy            ", action = "Lazy",                   key = "l" },
+          { icon = "  ", desc = "Quit            ", action = "qa",                      key = "q" },
         },
+        footer = function()
+          local ok, lazy = pcall(require, "lazy")
+          if ok then
+            local s = lazy.stats()
+            return { string.format("⚡ %d plugins ready", s.count) }
+          end
+          return {}
+        end,
       },
     },
-    config = function(_, opts)
-      -- Defer dashboard setup to avoid blocking startup
-      vim.defer_fn(function()
-        require("dashboard").setup(opts)
-      end, 0)
-    end,
   },
 }

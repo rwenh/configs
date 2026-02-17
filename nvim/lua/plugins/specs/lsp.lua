@@ -1,15 +1,15 @@
--- lua/plugins/specs/lsp.lua - LSP configuration (Fixed for Nvim 0.11+)
+-- lua/plugins/specs/lsp.lua - LSP configuration (Nvim 0.11+, blink.cmp aware)
 
 return {
   -- Mason
   {
     "williamboman/mason.nvim",
-    cmd = "Mason",
+    cmd   = "Mason",
     build = ":MasonUpdate",
-    opts = {},
+    opts  = { ui = { border = "rounded" } },
   },
 
-  -- Mason LSP config
+  -- Mason LSP bridge
   {
     "williamboman/mason-lspconfig.nvim",
     dependencies = "mason.nvim",
@@ -17,192 +17,161 @@ return {
       ensure_installed = {
         "lua_ls", "basedpyright", "rust_analyzer",
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
-        "clangd", "gopls",
-        "solargraph",
-        "elixirls",
-        "kotlin_language_server",
-        "zls",
+        "clangd", "gopls", "solargraph", "elixirls",
+        "kotlin_language_server", "zls",
       },
       automatic_installation = true,
     },
   },
 
-  -- LSP config
+  -- Core LSP config
   {
     "neovim/nvim-lspconfig",
-    event = { "BufReadPre", "BufNewFile" },
-    dependencies = {
-      "mason-lspconfig.nvim",
-      "hrsh7th/cmp-nvim-lsp",
-    },
+    event        = { "BufReadPre", "BufNewFile" },
+    dependencies = { "mason-lspconfig.nvim", "saghen/blink.cmp" },
     config = function()
-      local capabilities = require("cmp_nvim_lsp").default_capabilities()
+      -- blink.cmp provides capabilities (set globally in completion.lua)
+      -- No need to manually inject here
 
+      -- Shared on_attach keymaps
       vim.api.nvim_create_autocmd("LspAttach", {
-        group = vim.api.nvim_create_augroup("LspConfig", {}),
+        group = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
-          local opts = { buffer = e.buf }
-          local map = vim.keymap.set
-          map("n", "gd", vim.lsp.buf.definition, opts)
-          map("n", "gD", vim.lsp.buf.declaration, opts)
-          map("n", "gi", vim.lsp.buf.implementation, opts)
-          map("n", "gr", vim.lsp.buf.references, opts)
-          map("n", "K", vim.lsp.buf.hover, opts)
-          map("n", "<leader>rn", vim.lsp.buf.rename, opts)
-          map("n", "<leader>ca", vim.lsp.buf.code_action, opts)
-          map("v", "<leader>ca", vim.lsp.buf.code_action, opts)
+          local map = function(keys, fn, desc)
+            vim.keymap.set("n", keys, fn, { buffer = e.buf, desc = "LSP: " .. desc })
+          end
+          map("gd",         vim.lsp.buf.definition,    "Go to Definition")
+          map("gD",         vim.lsp.buf.declaration,   "Go to Declaration")
+          map("gi",         vim.lsp.buf.implementation,"Go to Implementation")
+          map("gr",         vim.lsp.buf.references,    "References")
+          map("K",          vim.lsp.buf.hover,         "Hover Docs")
+          map("<leader>rn", vim.lsp.buf.rename,        "Rename")
+          map("<leader>ca", vim.lsp.buf.code_action,   "Code Action")
+          map("<leader>td", vim.lsp.buf.type_definition, "Type Definition")
+          vim.keymap.set("v", "<leader>ca", vim.lsp.buf.code_action, { buffer = e.buf })
         end,
       })
 
+      -- Server configs
       local servers = {
         lua_ls = {
           settings = {
             Lua = {
-              diagnostics = { globals = { "vim" } },
-              workspace = { checkThirdParty = false },
-              telemetry = { enable = false },
+              diagnostics    = { globals = { "vim" } },
+              workspace      = { checkThirdParty = false },
+              telemetry      = { enable = false },
             },
           },
         },
         basedpyright = {
           settings = {
-            basedpyright = {
-              analysis = {
-                typeCheckingMode = "basic",
-              },
-            },
+            basedpyright = { analysis = { typeCheckingMode = "basic" } },
           },
         },
         rust_analyzer = {
           settings = {
-            ["rust-analyzer"] = {
-              checkOnSave = { command = "clippy" },
-            },
+            ["rust-analyzer"] = { checkOnSave = { command = "clippy" } },
           },
         },
-        ts_ls = {},
-        html = {},
-        cssls = {},
-        jsonls = {},
-        yamlls = {},
         gopls = {
           settings = {
             gopls = {
-              analyses = { unusedparams = true },
-              staticcheck = true,
+              analyses     = { unusedparams = true },
+              staticcheck  = true,
+              gofumpt      = true,
             },
           },
         },
-        clangd = {},
         solargraph = {
-          settings = {
-            solargraph = {
-              diagnostics = true,
-              completion = true,
-            },
-          },
+          settings = { solargraph = { diagnostics = true, completion = true } },
         },
         elixirls = {
           cmd = { vim.fn.expand("~/.local/share/nvim/mason/bin/elixir-ls") },
         },
+        ts_ls                  = {},
+        html                   = {},
+        cssls                  = {},
+        jsonls                 = {},
+        yamlls                 = {},
+        clangd                 = {},
         kotlin_language_server = {},
-        zls = {},
+        zls                    = {},
       }
 
-      -- CRITICAL FIX: Register config THEN enable
       for server, config in pairs(servers) do
-        config.capabilities = capabilities
-        vim.lsp.config(server, config)  -- Register the config
-        vim.lsp.enable(server)          -- Then enable the server
-      end
-      
-      -- VHDL LSP setup (optional - only if vhdl_ls is installed manually)
-      if vim.fn.executable("vhdl_ls") == 1 then
-        vim.lsp.config('vhdl_ls', {
-          capabilities = capabilities,
-          filetypes = { "vhdl", "vhd" },
-        })
-        vim.lsp.enable('vhdl_ls')
+        vim.lsp.config(server, config)
+        vim.lsp.enable(server)
       end
 
-      -- Fortran LSP (optional - only if fortls is installed)
-      if vim.fn.executable("fortls") == 1 then
-        vim.lsp.config('fortls', {
-          capabilities = capabilities,
-        })
-        vim.lsp.enable('fortls')
-      end
-
-      -- COBOL LSP (optional - only if cobol_ls is installed)
-      if vim.fn.executable("cobol-language-server") == 1 then
-        vim.lsp.config('cobol_ls', {
-          capabilities = capabilities,
+      -- Optional servers (only if binary present)
+      local optional = {
+        vhdl_ls  = { filetypes = { "vhdl", "vhd" } },
+        fortls   = {},
+        sqls     = {},
+        cobol_ls = {
           filetypes = { "cobol" },
-          settings = {
-            cobol = {
-              dialects = { "gnucobol", "ibm" },
-            },
-          },
-        })
-        vim.lsp.enable('cobol_ls')
+          settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
+        },
+      }
+
+      for server, config in pairs(optional) do
+        local bin = server:gsub("_ls$", "_ls"):gsub("_language_server$", "")
+        local exe = vim.fn.executable(server) == 1 and server
+                 or vim.fn.executable(bin) == 1 and bin
+        if exe then
+          vim.lsp.config(server, config)
+          vim.lsp.enable(server)
+        end
       end
 
-      -- SQL LSP (optional - only if sqls is installed)
-      if vim.fn.executable("sqls") == 1 then
-        vim.lsp.config('sqls', {
-          capabilities = capabilities,
-        })
-        vim.lsp.enable('sqls')
-      end
-
-      local signs = { Error = " ", Warn = " ", Hint = " ", Info = " " }
-      
+      -- Diagnostics UI
       vim.diagnostic.config({
-        virtual_text = { prefix = "●" },
-        signs = { text = signs },
-        underline = true,
-        severity_sort = true,
-        float = { border = "rounded" },
+        virtual_text   = { prefix = "●", spacing = 4 },
+        signs          = { text = { Error = " ", Warn = " ", Hint = " ", Info = " " } },
+        underline      = true,
+        severity_sort  = true,
+        float          = { border = "rounded", source = "always" },
+        update_in_insert = false,
       })
     end,
   },
 
-  -- LSP signature
+  -- LSP signature help
   {
     "ray-x/lsp_signature.nvim",
     event = "LspAttach",
-    opts = {
-      bind = true,
-      handler_opts = { border = "rounded" },
-    },
+    opts  = { bind = true, handler_opts = { border = "rounded" } },
   },
 
-  -- LSP progress
+  -- LSP progress indicator
   {
     "j-hui/fidget.nvim",
     event = "LspAttach",
-    opts = {},
+    opts  = { notification = { window = { winblend = 0 } } },
   },
 
-  -- Formatting
+  -- Formatting (conform handles autoformat; removed duplicate from autocmds.lua)
   {
     "stevearc/conform.nvim",
-    event = "BufReadPre", -- Changed from BufWritePre for better performance
-    opts = {
+    event = "BufWritePre",
+    opts  = {
       formatters_by_ft = {
-        lua = { "stylua" },
-        python = { "black", "isort" },
+        lua        = { "stylua" },
+        python     = { "black", "isort" },
         javascript = { "prettier" },
         typescript = { "prettier" },
-        json = { "prettier" },
-        yaml = { "prettier" },
-        sh = { "shfmt" },
-        go = { "goimports", "gofumpt" },
-        ruby = { "rubocop" },
-        kotlin = { "ktlint" },
-        elixir = { "mix" },
+        json       = { "prettier" },
+        yaml       = { "prettier" },
+        sh         = { "shfmt" },
+        go         = { "goimports", "gofumpt" },
+        ruby       = { "rubocop" },
+        kotlin     = { "ktlint" },
+        elixir     = { "mix" },
       },
-      format_on_save = { timeout_ms = 500, lsp_format = "fallback" },
+      format_on_save = {
+        timeout_ms  = 500,
+        lsp_format  = "fallback",
+      },
     },
   },
 
@@ -212,10 +181,10 @@ return {
     event = "BufReadPre",
     config = function()
       require("lint").linters_by_ft = {
-        python = { "ruff" },
+        python     = { "ruff" },
         javascript = { "eslint_d" },
-        sh = { "shellcheck" },
-        ruby = { "rubocop" },
+        sh         = { "shellcheck" },
+        ruby       = { "rubocop" },
       }
       vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
         callback = function() require("lint").try_lint() end,

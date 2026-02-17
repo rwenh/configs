@@ -1,18 +1,11 @@
--- lua/plugins/specs/lang/javascript. lua - JavaScript development
+-- lua/plugins/specs/lang/javascript.lua
+-- autotag is centrally managed in web.lua
 
 return {
   {
-    "windwp/nvim-ts-autotag",
-    ft = { "javascript", "jsx" },
-    opts = {},
-  },
-
-  {
     "mxsdev/nvim-dap-vscode-js",
-    ft = "javascript",
+    ft           = "javascript",
     dependencies = { "mfussenegger/nvim-dap" },
-    opts = {
-      adapters = { "pwa-node", "pwa-chrome" },
-    },
+    opts         = { adapters = { "pwa-node", "pwa-chrome" } },
   },
 }

@@ -1,18 +1,11 @@
--- lua/plugins/specs/lang/typescript.lua - TypeScript development
+-- lua/plugins/specs/lang/typescript.lua
+-- autotag is centrally managed in web.lua
 
 return {
   {
-    "windwp/nvim-ts-autotag",
-    ft = { "typescript", "typescriptreact", "tsx" },
-    opts = {},
-  },
-
-  {
     "mxsdev/nvim-dap-vscode-js",
-    ft = "typescript",
+    ft           = "typescript",
     dependencies = { "mfussenegger/nvim-dap" },
-    opts = {
-      adapters = { "pwa-node", "pwa-chrome" },
-    },
+    opts         = { adapters = { "pwa-node", "pwa-chrome" } },
   },
 }
