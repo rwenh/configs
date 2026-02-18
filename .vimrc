@@ -39,10 +39,14 @@ let g:loaded_netrwPlugin       = 1
 let g:loaded_netrwSettings     = 1
 let g:loaded_netrwFileHandlers = 1
 let g:loaded_matchit           = 1
-let g:loaded_matchparen        = 1
+" NOTE: matchparen is kept enabled intentionally — disabling it would conflict
+" with showmatch/matchtime. If startup is slow, consider: let g:loaded_matchparen = 1
 
 " Core performance settings
-set regexpengine=1
+" regexpengine: 0 = auto-select (Vim picks NFA or NL based on the pattern).
+" Force to 1 (old NFA) only if you see slow syntax highlighting on a specific
+" filetype; leave it on auto otherwise.
+set regexpengine=0
 set synmaxcol=300
 set lazyredraw
 set ttyfast
@@ -241,8 +245,10 @@ Plug 'christoomey/vim-tmux-navigator'
 Plug 'SirVer/ultisnips'
 Plug 'honza/vim-snippets'
 
-" Language support
-Plug 'sheerun/vim-polyglot'
+" Language support — only load polyglot on Vim; Neovim uses treesitter instead
+if !has('nvim-0.7')
+  Plug 'sheerun/vim-polyglot'
+endif
 
 " Tags and navigation
 Plug 'preservim/tagbar', { 'on': 'TagbarToggle' }
@@ -633,7 +639,7 @@ local on_attach = function(client, bufnr)
   vim.keymap.set('n', '<leader>ca', vim.lsp.buf.code_action,    opts)
   vim.keymap.set('n', 'gr',         vim.lsp.buf.references,     opts)
   vim.keymap.set('n', '<leader>lf', vim.lsp.buf.format,         opts)
-  vim.keymap.set('n', '<C-k>',      vim.lsp.buf.signature_help, opts)
+  vim.keymap.set('n', 'gs',         vim.lsp.buf.signature_help, opts)  -- <C-k> is reserved for window nav
 end
 
 local servers = { 'pyright', 'ts_ls', 'lua_ls', 'gopls', 'rust_analyzer', 'clangd', 'bashls' }
