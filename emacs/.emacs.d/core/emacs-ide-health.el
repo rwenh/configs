@@ -1,8 +1,15 @@
 ;;; emacs-ide-health.el --- Enterprise Health Check System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Health monitoring and auto-recovery.
-;;; FIX: dolist variable shadowing bug in emacs-ide-health-check-system-tools
-;;;      (was using `t' as loop var, masking required-tools check entirely)
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - emacs-ide-health-check-performance: `(cdr (car phases))` returns the
+;;;     LAST pushed phase (push prepends); now looks up by phase name
+;;;   - emacs-ide-health-display-results: plist details (:available ... :missing ...)
+;;;     were iterated raw, printing keyword symbols — now handles both plain
+;;;     lists and :available/:missing plist shape
+;;;   - emacs-ide-health-check-packages: removed `straight--installed-p`
+;;;     (not a real API); use `featurep` only
 ;;; Code:
 
 (require 'cl-lib)
@@ -30,10 +37,19 @@
   (push (cons name fn) emacs-ide-health-checks))
 
 ;; ============================================================================
+;; INTERNAL HELPERS
+;; ============================================================================
+(defun emacs-ide-health--find-phase (phase-name)
+  "Return elapsed time for PHASE-NAME in startup phases, or nil.
+FIX: `emacs-ide--startup-phases` is built with `push` so the list is in
+reverse order. We use assoc to find by name rather than relying on position."
+  (when (and (boundp 'emacs-ide--startup-phases)
+             emacs-ide--startup-phases)
+    (cdr (assoc phase-name emacs-ide--startup-phases))))
+
+;; ============================================================================
 ;; SYSTEM TOOLS CHECK
-;; BUG FIX: was (dolist (t required) ...) which shadowed the symbol `t'
-;;           causing (executable-find t) to always return nil and
-;;           missing-required to always be empty even when tools are absent.
+;; (dolist loop-var bug was already fixed in the uploaded version — preserved)
 ;; ============================================================================
 (defun emacs-ide-health-check-system-tools ()
   "Check essential system tools and return a plist result."
@@ -41,7 +57,6 @@
         (recommended '("rg" "fd" "ag"))
         (missing-required '())
         (missing-recommended '()))
-    ;; FIX: use 'tool' not 't' as loop variable
     (dolist (tool required)
       (unless (executable-find tool)
         (push tool missing-required)))
@@ -70,11 +85,11 @@
 ;; ============================================================================
 (defun emacs-ide-health-check-lsp-servers ()
   "Check for LSP servers available for configured languages."
-  (let ((servers '(("pyright" . "Python")
-                   ("rust-analyzer" . "Rust")
-                   ("gopls" . "Go")
+  (let ((servers '(("pyright"                    . "Python")
+                   ("rust-analyzer"              . "Rust")
+                   ("gopls"                      . "Go")
                    ("typescript-language-server" . "TypeScript")
-                   ("clangd" . "C/C++")))
+                   ("clangd"                     . "C/C++")))
         (available '())
         (missing '()))
     (dolist (s servers)
@@ -118,13 +133,13 @@
 
 ;; ============================================================================
 ;; PERFORMANCE CHECK
+;; FIX: `(cdr (car phases))` returns the LAST recorded phase because push
+;;      prepends. Now uses `emacs-ide-health--find-phase` by name.
 ;; ============================================================================
 (defun emacs-ide-health-check-performance ()
   "Check performance metrics."
-  (let* ((startup-time (if (and (boundp 'emacs-ide--startup-phases)
-                                emacs-ide--startup-phases)
-                           (cdr (car emacs-ide--startup-phases))
-                         nil))
+  (let* ((startup-time (or (emacs-ide-health--find-phase "startup-complete")
+                           (emacs-ide-health--find-phase "feature-modules")))
          (gc-count (- gcs-done
                       (if (boundp 'emacs-ide--gc-count-start)
                           emacs-ide--gc-count-start 0)))
@@ -146,15 +161,17 @@
 
 ;; ============================================================================
 ;; PACKAGES CHECK
+;; FIX: Removed `straight--installed-p` — not a real public API.
+;;      Use `featurep` only; packages that haven't been required yet
+;;      won't show as features, so we also check `locate-library`.
 ;; ============================================================================
 (defun emacs-ide-health-check-packages ()
   "Check package health."
   (let ((issues '()))
     (dolist (pkg '(use-package which-key projectile magit vertico corfu))
-      (unless (or (and (fboundp 'straight--installed-p)
-                       (condition-case nil (straight--installed-p pkg) (error nil)))
-                  (featurep pkg))
-        (push (format "Package possibly missing: %s" pkg) issues)))
+      (unless (or (featurep pkg)
+                  (locate-library (symbol-name pkg)))
+        (push (format "Package not found: %s" pkg) issues)))
     (if issues
         (list :status 'warning
               :message (format "%d package warnings" (length issues))
@@ -219,6 +236,26 @@
       (emacs-ide-health-auto-fix results))
     results))
 
+(defun emacs-ide-health--format-details (details)
+  "Format DETAILS for display.
+FIX: handles both plain lists and :available/:missing plist shapes
+     without printing raw keyword symbols as items."
+  (cond
+   ;; Plist with :available / :missing shape (from LSP check)
+   ((and (listp details) (keywordp (car details)))
+    (let ((available (plist-get details :available))
+          (missing   (plist-get details :missing)))
+      (concat
+       (when available
+         (format "      Available: %s\n" (string-join available ", ")))
+       (when missing
+         (format "      Missing:   %s\n" (string-join missing ", "))))))
+   ;; Plain list of strings
+   ((listp details)
+    (mapconcat (lambda (d) (format "    - %s\n" d)) details ""))
+   ;; Scalar
+   (t (format "    - %s\n" details))))
+
 (defun emacs-ide-health-display-results (results errors warnings)
   "Display RESULTS with ERRORS and WARNINGS counts."
   (with-output-to-temp-buffer "*Health Check*"
@@ -229,22 +266,20 @@
                          (t              "✓ HEALTHY"))))
     (princ (format "Time: %s\n\n" (format-time-string "%Y-%m-%d %H:%M:%S")))
     (dolist (r results)
-      (let* ((name   (car r))
-             (res    (cdr r))
-             (status (plist-get res :status))
-             (msg    (plist-get res :message))
+      (let* ((name    (car r))
+             (res     (cdr r))
+             (status  (plist-get res :status))
+             (msg     (plist-get res :message))
              (details (plist-get res :details))
-             (icon   (cond ((eq status 'ok)      "✓")
-                           ((eq status 'warning) "⚠")
-                           ((eq status 'error)   "✗")
-                           (t "?"))))
+             (icon    (cond ((eq status 'ok)      "✓")
+                            ((eq status 'warning) "⚠")
+                            ((eq status 'error)   "✗")
+                            (t "?"))))
         (princ (format "%s %s\n" icon (upcase (symbol-name name))))
         (princ (format "  %s\n" msg))
         (when details
           (princ "  Details:\n")
-          (dolist (d (if (listp details) details (list details)))
-            (unless (keywordp d)
-              (princ (format "    - %s\n" d)))))
+          (princ (emacs-ide-health--format-details details)))
         (princ "\n")))))
 
 (defun emacs-ide-health-auto-fix (results)

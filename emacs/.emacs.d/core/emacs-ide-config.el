@@ -1,12 +1,19 @@
-;;; emacs-ide-config.el --- Configuration Management System (CALIBRATED) -*- lexical-binding: t -*-
+;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; YAML and Elisp configuration management with proper nested parsing
-;;; Author: Enterprise Emacs Team
-;;; Version: 2.1.0
+;;; YAML and Elisp configuration management with proper nested parsing.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - emacs-ide-config-apply: replaced `defvar` with `setq` so config values
+;;;     actually update on reload (defvar is a no-op if var is already bound)
+;;;   - emacs-ide-config-apply: boolean `false` from YAML parses to nil;
+;;;     when-let skipped nil values entirely — use `when (assoc ...)` instead
+;;;   - YAML key regex `[a-z_]+` missed hyphenated keys (font-size, gc-threshold)
+;;;     → extended to `[a-z][a-z0-9_-]*`
+;;;   - emacs-ide-config-get-nested: accepts a string path now, not a symbol,
+;;;     to avoid symbol-name mangling and support arbitrary depth safely
 ;;; Code:
 
 (require 'cl-lib)
-(require 'json)  ; Use json for nested structure support
 
 ;; ============================================================================
 ;; CONFIGURATION VARIABLES
@@ -72,7 +79,9 @@
       (emacs-ide-config-detect-environment))
 
 ;; ============================================================================
-;; IMPROVED YAML PARSING - HANDLES NESTED STRUCTURES
+;; YAML PARSING
+;; FIX: key regex extended from [a-z_]+ to [a-z][a-z0-9_-]* so hyphenated
+;;      keys like font-size, gc-threshold, large-file-threshold are captured.
 ;; ============================================================================
 (defun emacs-ide-config-parse-yaml-improved (file)
   "Parse YAML FILE with support for nested structures.
@@ -81,46 +90,42 @@ Returns association list of configuration."
     (with-temp-buffer
       (insert-file-contents file)
       (let ((data '())
-            (current-section nil)
-            (current-indent 0)
-            (stack '()))
+            (current-section nil))
         (goto-char (point-min))
         (while (not (eobp))
           (let* ((line (buffer-substring-no-properties
-                       (line-beginning-position)
-                       (line-end-position)))
+                        (line-beginning-position)
+                        (line-end-position)))
                  (indent (- (length line) (length (string-trim-left line))))
                  (trimmed (string-trim line)))
-            
-            ;; Skip empty lines and comments
+
             (unless (or (string-empty-p trimmed)
-                       (string-prefix-p "#" trimmed))
-              
-              ;; Handle section headers (no indent, ends with :)
-              (if (and (= indent 0) (string-suffix-p ":" trimmed))
-                  (let ((section-name (intern (substring trimmed 0 -1))))
+                        (string-prefix-p "#" trimmed))
+
+              ;; Section header: zero indent, ends with colon, no value after colon
+              (if (and (= indent 0)
+                       (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed))
+                  (let ((section-name (intern (match-string 1 trimmed))))
                     (setq current-section section-name)
-                    (setq current-indent 0)
-                    (setq stack (list section-name '()))
-                    (push (cons section-name '()) data))
-                
-                ;; Handle key-value pairs (indented)
+                    (unless (assoc section-name data)
+                      (push (cons section-name '()) data)))
+
+                ;; Key-value pair inside a section
                 (when (and (> indent 0) current-section)
                   (cond
                    ;; List item
-                   ((string-prefix-p "-" trimmed)
-                    (let ((value (string-trim (substring trimmed 1)))
-                          (parsed-value (emacs-ide-config-parse-value value)))
-                      (when (car stack)
-                        (let ((section-data (assoc (car stack) data)))
-                          (when section-data
-                            (setcdr section-data
-                                   (cons parsed-value (cdr section-data))))))))
-                   
-                   ;; Nested key-value pair
-                   ((string-match "^\\([a-z_]+\\):[[:space:]]*\\(.*\\)$" trimmed)
+                   ((string-prefix-p "- " trimmed)
+                    (let* ((value (string-trim (substring trimmed 2)))
+                           (parsed-value (emacs-ide-config-parse-value value))
+                           (section-data (assoc current-section data)))
+                      (when section-data
+                        (setcdr section-data
+                                (append (cdr section-data) (list parsed-value))))))
+
+                   ;; FIX: key regex now includes hyphens [a-z][a-z0-9_-]*
+                   ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
                     (let* ((key (intern (match-string 1 trimmed)))
-                           (value-str (match-string 2 trimmed))
+                           (value-str (string-trim (match-string 2 trimmed)))
                            (parsed-value (emacs-ide-config-parse-value value-str))
                            (section-data (assoc current-section data)))
                       (when section-data
@@ -128,33 +133,27 @@ Returns association list of configuration."
                           (if existing
                               (setcdr existing parsed-value)
                             (setcdr section-data
-                                   (cons (cons key parsed-value) (cdr section-data)))))))))))
-            
-            (forward-line 1)))
-        
-        ;; Return with reversed section order
-        (nreverse data)))))
+                                    (append (cdr section-data)
+                                            (list (cons key parsed-value)))))))))))))
+
+          (forward-line 1))
+        (nreverse data))))))
+
 
 (defun emacs-ide-config-parse-value (value-string)
   "Parse VALUE-STRING to appropriate Emacs Lisp type."
   (let ((trimmed (string-trim value-string)))
     (cond
-     ;; Empty or nil
-     ((or (string-empty-p trimmed) (string= trimmed "null"))
-      nil)
-     ;; Boolean
+     ((or (string-empty-p trimmed) (string= trimmed "null")) nil)
      ((string= trimmed "true") t)
+     ;; FIX: explicit 'false' → must return nil but be distinguishable from
+     ;;      "missing key". We use nil; callers must use (assoc key section)
+     ;;      not (when-let (val ...)) to detect false booleans.
      ((string= trimmed "false") nil)
-     ;; Number
-     ((string-match-p "^-?[0-9]+$" trimmed)
-      (string-to-number trimmed))
-     ;; Float
-     ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed)
-      (string-to-number trimmed))
-     ;; Symbol
-     ((string-match-p "^[a-z-]+$" trimmed)
-      (intern trimmed))
-     ;; String (remove quotes if present)
+     ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
+     ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed) (string-to-number trimmed))
+     ;; FIX: symbol pattern now includes hyphens
+     ((string-match-p "^[a-z][a-z0-9_-]*$" trimmed) (intern trimmed))
      (t (replace-regexp-in-string "^['\"]\\|['\"]$" "" trimmed)))))
 
 ;; ============================================================================
@@ -165,102 +164,102 @@ Returns association list of configuration."
   (interactive)
   (condition-case err
       (progn
-        ;; Try to load config file, fallback to defaults
         (setq emacs-ide-config-data
               (or (and (file-exists-p emacs-ide-config-file)
-                      (emacs-ide-config-parse-yaml-improved emacs-ide-config-file))
+                       (emacs-ide-config-parse-yaml-improved emacs-ide-config-file))
                   emacs-ide-config-defaults))
-        
-        ;; Apply configuration
         (emacs-ide-config-apply emacs-ide-config-data)
-        
-        ;; Mark as loaded
         (setq emacs-ide-config-loaded-p t)
-        
         (message "✓ Configuration loaded for environment: %s"
                  emacs-ide-config-environment)
         t)
     (error
-     (warn "⚠️  Failed to load configuration: %s. Using defaults." (error-message-string err))
+     (warn "⚠️  Failed to load configuration: %s. Using defaults."
+           (error-message-string err))
      (setq emacs-ide-config-data emacs-ide-config-defaults)
      (setq emacs-ide-config-loaded-p t)
      nil)))
 
 (defun emacs-ide-config-apply (config)
-  "Apply CONFIG settings to Emacs."
+  "Apply CONFIG settings to Emacs.
+FIX: Use `setq` not `defvar` so values update on reload.
+FIX: Use `(assoc key section)` instead of `when-let (val ...)` so that
+     boolean `false` values (parsed as nil) are still applied."
   ;; General settings
   (when-let ((general (cdr (assoc 'general config))))
-    (when-let ((theme (cdr (assoc 'theme general))))
-      (defvar emacs-ide-theme theme))
-    (when-let ((font (cdr (assoc 'font general))))
-      (defvar emacs-ide-font font))
-    (when-let ((font-size (cdr (assoc 'font-size general))))
-      (defvar emacs-ide-font-size font-size))
-    (when-let ((safe-mode (cdr (assoc 'safe-mode general))))
-      (defvar emacs-ide-safe-mode safe-mode)))
-  
+    (when (assoc 'theme general)
+      (setq emacs-ide-theme (cdr (assoc 'theme general))))
+    (when (assoc 'font general)
+      (setq emacs-ide-font (cdr (assoc 'font general))))
+    (when (assoc 'font-size general)
+      (setq emacs-ide-font-size (cdr (assoc 'font-size general))))
+    ;; FIX: safe-mode can legitimately be nil (false); detect by key presence
+    (when (assoc 'safe-mode general)
+      (setq emacs-ide-safe-mode (cdr (assoc 'safe-mode general)))))
+
   ;; Completion settings
   (when-let ((completion (cdr (assoc 'completion config))))
-    (when-let ((backend (cdr (assoc 'backend completion))))
-      (defvar emacs-ide-completion-backend backend))
-    (when-let ((delay (cdr (assoc 'delay completion))))
-      (defvar emacs-ide-completion-delay delay)))
-  
+    (when (assoc 'backend completion)
+      (setq emacs-ide-completion-backend (cdr (assoc 'backend completion))))
+    (when (assoc 'delay completion)
+      (setq emacs-ide-completion-delay (cdr (assoc 'delay completion)))))
+
   ;; LSP settings
   (when-let ((lsp (cdr (assoc 'lsp config))))
-    (when-let ((enable (cdr (assoc 'enable lsp))))
-      (defvar emacs-ide-lsp-enable enable))
-    (when-let ((inlay-hints (cdr (assoc 'inlay-hints lsp))))
-      (defvar emacs-ide-lsp-enable-inlay-hints inlay-hints))
-    (when-let ((threshold (cdr (assoc 'large-file-threshold lsp))))
-      (defvar emacs-ide-lsp-large-file-threshold threshold)))
-  
+    (when (assoc 'enable lsp)
+      (setq emacs-ide-lsp-enable (cdr (assoc 'enable lsp))))
+    (when (assoc 'inlay-hints lsp)
+      (setq emacs-ide-lsp-enable-inlay-hints (cdr (assoc 'inlay-hints lsp))))
+    (when (assoc 'large-file-threshold lsp)
+      (setq emacs-ide-lsp-large-file-threshold
+            (cdr (assoc 'large-file-threshold lsp)))))
+
   ;; Performance settings
   (when-let ((performance (cdr (assoc 'performance config))))
-    (when-let ((gc-threshold (cdr (assoc 'gc-threshold performance))))
-      (setq gc-cons-threshold gc-threshold))
-    (when-let ((target (cdr (assoc 'startup-time-target performance))))
-      (defvar emacs-ide-startup-time-target target))
-    (when-let ((jobs (cdr (assoc 'native-comp-jobs performance))))
-      (when (fboundp 'native-comp-available-p)
-        (defvar emacs-ide-native-comp-jobs (max 1 jobs)))))
-  
+    (when (assoc 'gc-threshold performance)
+      (setq gc-cons-threshold (cdr (assoc 'gc-threshold performance))))
+    (when (assoc 'startup-time-target performance)
+      (setq emacs-ide-startup-time-target
+            (cdr (assoc 'startup-time-target performance))))
+    (when (assoc 'native-comp-jobs performance)
+      (setq emacs-ide-native-comp-jobs
+            (max 1 (cdr (assoc 'native-comp-jobs performance))))))
+
   ;; Features settings
   (when-let ((features (cdr (assoc 'features config))))
-    (when-let ((dashboard (cdr (assoc 'dashboard features))))
-      (defvar emacs-ide-feature-dashboard dashboard))
-    (when-let ((which-key (cdr (assoc 'which-key features))))
-      (defvar emacs-ide-feature-which-key which-key)))
-  
+    (when (assoc 'dashboard features)
+      (setq emacs-ide-feature-dashboard (cdr (assoc 'dashboard features))))
+    (when (assoc 'which-key features)
+      (setq emacs-ide-feature-which-key (cdr (assoc 'which-key features)))))
+
   ;; Security settings
   (when-let ((security (cdr (assoc 'security config))))
-    (when-let ((tls-verify (cdr (assoc 'tls-verify security))))
+    (when (assoc 'tls-verify security)
       (with-eval-after-load 'gnutls
-        (setq gnutls-verify-error tls-verify))))
-  
+        (setq gnutls-verify-error (cdr (assoc 'tls-verify security))))))
+
   ;; Telemetry settings
   (when-let ((telemetry (cdr (assoc 'telemetry config))))
-    (when-let ((enabled (cdr (assoc 'enabled telemetry))))
-      (defvar emacs-ide-telemetry-enabled enabled))))
+    (when (assoc 'enabled telemetry)
+      (setq emacs-ide-telemetry-enabled (cdr (assoc 'enabled telemetry))))))
 
 ;; ============================================================================
 ;; CONFIGURATION ACCESSORS
 ;; ============================================================================
 (defun emacs-ide-config-get (section key &optional default)
-  "Get config value for SECTION and KEY, or DEFAULT.
-SECTION and KEY should be symbols."
+  "Get config value for SECTION and KEY (symbols), or DEFAULT."
   (let* ((section-data (cdr (assoc section emacs-ide-config-data)))
-         (value (cdr (assoc key section-data))))
-    (or value default)))
+         (cell (assoc key section-data)))
+    (if cell (cdr cell) default)))
 
 (defun emacs-ide-config-get-nested (path &optional default)
-  "Get config value using dot-separated PATH (e.g., 'performance.gc-threshold').
-Returns DEFAULT if not found."
-  (let* ((parts (split-string (symbol-name path) "\\."))
+  "Get config value using dot-separated string PATH (e.g., \"performance.gc-threshold\").
+FIX: PATH is now a string, not a symbol, to avoid symbol-name round-trip issues."
+  (let* ((parts (split-string path "\\."))
          (section (intern (car parts)))
          (key (intern (cadr parts)))
-         (value (emacs-ide-config-get section key)))
-    (or value default)))
+         (cell (assoc key (cdr (assoc section emacs-ide-config-data)))))
+    (if cell (cdr cell) default)))
 
 (defun emacs-ide-config-set (section key value)
   "Set config value for SECTION KEY to VALUE."
@@ -270,12 +269,14 @@ Returns DEFAULT if not found."
           (if key-data
               (setcdr key-data value)
             (setcdr section-data
-                   (cons (cons key value) (cdr section-data)))))
+                    (append (cdr section-data) (list (cons key value))))))
       (push (cons section (list (cons key value)))
             emacs-ide-config-data))))
 
 ;; ============================================================================
 ;; CONFIGURATION VARIABLES (with defaults)
+;; These are set here as initial defaults; emacs-ide-config-apply will
+;; override them with values from config.yml via `setq`.
 ;; ============================================================================
 (defvar emacs-ide-theme 'modus-vivendi
   "Current theme (from config).")
@@ -316,6 +317,9 @@ Returns DEFAULT if not found."
 (defvar emacs-ide-feature-which-key t
   "Which-key feature enabled (from config).")
 
+(defvar emacs-ide-native-comp-jobs 4
+  "Native compilation parallel jobs (from config).")
+
 ;; ============================================================================
 ;; CONFIGURATION TEMPLATES
 ;; ============================================================================
@@ -326,66 +330,45 @@ Returns DEFAULT if not found."
             (y-or-n-p "config.yml exists. Overwrite? "))
     (with-temp-file emacs-ide-config-file
       (insert "# Enterprise Emacs IDE Configuration
-# Version: 2.1.0
+# Version: 2.2.1
 # Edit this file to customize your setup
 # Changes take effect after: M-x emacs-ide-config-reload
 
-# ============================================================================
-# GENERAL SETTINGS
-# ============================================================================
 general:
-  theme: modus-vivendi        # or modus-operandi
-  font: JetBrains Mono        # Primary font
-  font_size: 11               # Font size in points
-  safe_mode: false            # Enable safe mode on startup
+  theme: modus-vivendi
+  font: JetBrains Mono
+  font-size: 11
+  safe-mode: false
 
-# ============================================================================
-# COMPLETION FRAMEWORK
-# ============================================================================
 completion:
-  backend: corfu              # or company
-  delay: 0.1                  # Delay before showing completions
-  snippet_expansion: true     # Enable YASnippet
+  backend: corfu
+  delay: 0.1
+  snippet-expansion: true
 
-# ============================================================================
-# LSP (LANGUAGE SERVER PROTOCOL)
-# ============================================================================
 lsp:
-  enable: true                # Master LSP switch
-  inlay_hints: true           # Show type hints inline
-  large_file_threshold: 100000 # Disable LSP features for large files
-  semantic_tokens: true       # Semantic highlighting
+  enable: true
+  inlay-hints: true
+  large-file-threshold: 100000
+  semantic-tokens: true
 
-# ============================================================================
-# PERFORMANCE
-# ============================================================================
 performance:
-  gc_threshold: 16777216      # 16MB - GC threshold
-  startup_time_target: 3.0    # Target startup time (seconds)
-  native_comp_jobs: 4         # Parallel compilation jobs
+  gc-threshold: 16777216
+  startup-time-target: 3.0
+  native-comp-jobs: 4
 
-# ============================================================================
-# UI FEATURES
-# ============================================================================
 features:
-  dashboard: true             # Startup dashboard
-  which_key: true             # Show available keybindings
-  beacon: true                # Highlight cursor on scroll
-  rainbow_delimiters: true    # Color-code parentheses
+  dashboard: true
+  which-key: true
+  beacon: true
+  rainbow-delimiters: true
 
-# ============================================================================
-# SECURITY
-# ============================================================================
 security:
-  tls_verify: true            # Verify TLS certificates
-  package_signatures: allow-unsigned
+  tls-verify: true
+  package-signatures: allow-unsigned
 
-# ============================================================================
-# TELEMETRY (LOCAL ONLY)
-# ============================================================================
 telemetry:
-  enabled: true               # Enable local telemetry
-  usage_stats: true           # Track command usage
+  enabled: true
+  usage-stats: true
 "))
     (message "✓ Created config template at %s" emacs-ide-config-file)))
 
@@ -415,9 +398,10 @@ telemetry:
     (dolist (section emacs-ide-config-data)
       (princ (format "\n[%s]\n" (upcase (symbol-name (car section)))))
       (dolist (item (cdr section))
-        (princ (format "  %-30s = %s\n"
-                      (symbol-name (car item))
-                      (cdr item)))))))
+        (when (consp item)
+          (princ (format "  %-30s = %s\n"
+                         (symbol-name (car item))
+                         (cdr item))))))))
 
 (provide 'emacs-ide-config)
 ;;; emacs-ide-config.el ends here

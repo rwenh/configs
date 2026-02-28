@@ -1,6 +1,15 @@
-;;; tools-project.el --- Project Management with Projectile (CALIBRATED) -*- lexical-binding: t -*-
+;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Professional project management and navigation with config integration
+;;; Professional project management and navigation with config integration.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - Removed duplicate `recentf` use-package block (canonical config is in
+;;;     completion-core.el; having two with different :exclude lists caused the
+;;;     last-loaded version to win unpredictably, and tools-project.el's version
+;;;     excluded ".emacs.d/.*" which hid all config files from recentf).
+;;;   - Removed duplicate `bookmark` use-package block (canonical is in
+;;;     completion-core.el; having two caused double initialisation and the
+;;;     bookmark-default-file path differed between them).
 ;;; Code:
 
 ;; ============================================================================
@@ -13,19 +22,19 @@
         projectile-enable-caching t
         projectile-indexing-method 'hybrid
         projectile-sort-order 'recentf
-        
-        ;; Project search paths - use config if available
+
+        ;; Project search paths — use config if available, otherwise sensible defaults
         projectile-project-search-path
         (or (and (boundp 'emacs-ide-config-data)
-                (let ((project-cfg (cdr (assoc 'project emacs-ide-config-data))))
-                  (when project-cfg
-                    (let ((paths (cdr (assoc 'search-paths project-cfg))))
-                      (when (listp paths)
-                        (mapcar (lambda (p) (cons p 2)) paths))))))
+                 (let ((project-cfg (cdr (assoc 'project emacs-ide-config-data))))
+                   (when project-cfg
+                     (let ((paths (cdr (assoc 'search-paths project-cfg))))
+                       (when (listp paths)
+                         (mapcar (lambda (p) (cons p 2)) paths))))))
             '(("~/projects" . 2)
-              ("~/work" . 2)
-              ("~/code" . 2)))
-        
+              ("~/work"     . 2)
+              ("~/code"     . 2)))
+
         ;; Ignored directories
         projectile-globally-ignored-directories
         '(".git" ".svn" ".hg" "node_modules" "__pycache__"
@@ -33,19 +42,19 @@
           ".venv" "venv" "vendor" ".next" ".nuxt" "out"
           "coverage" ".cache" ".idea" ".vscode" "*.egg-info"
           ".tox" "htmlcov" ".elixir_ls" ".eunit" "_build")
-        
+
         ;; Ignored files
         projectile-globally-ignored-files
         '("*.pyc" "*.o" "*.so" "*.dll" "*.exe" "*.class"
           "*.elc" "*.log" ".DS_Store" "Thumbs.db" "*.jar"
           "*.war" "*.beam" "TAGS")
-        
+
         ;; Features
         projectile-auto-discover t
         projectile-switch-project-action #'projectile-dired
         projectile-require-project-root nil
         projectile-track-known-projects-automatically t
-        
+
         ;; Use ripgrep if available, fallback to git grep
         projectile-use-git-grep (not (executable-find "rg"))
         projectile-generic-command
@@ -53,39 +62,38 @@
          ((executable-find "rg") "rg --files --hidden --follow --glob '!.git'")
          ((executable-find "fd") "fd . -0 -H -E .git")
          (t "find . -type f -print0")))
-  
+
   :config
   (projectile-mode +1)
-  
+
   ;; Load additional config-based project paths if available
-  (when (and (boundp 'emacs-ide-config-data)
-             emacs-ide-config-data)
+  (when (and (boundp 'emacs-ide-config-data) emacs-ide-config-data)
     (when-let ((project-config (cdr (assoc 'project emacs-ide-config-data))))
       (when-let ((paths (cdr (assoc 'search-paths project-config))))
         (when (listp paths)
           (setq projectile-project-search-path
                 (mapcar (lambda (p) (cons (expand-file-name p) 2)) paths))))))
-  
+
   :bind-keymap
   ("C-c p" . projectile-command-map)
-  
+
   :bind (:map projectile-mode-map
-              ("C-c p f" . projectile-find-file)
-              ("C-c p d" . projectile-find-dir)
+              ("C-c p f"   . projectile-find-file)
+              ("C-c p d"   . projectile-find-dir)
               ("C-c p s r" . projectile-ripgrep)
               ("C-c p s g" . projectile-grep)
-              ("C-c p b" . projectile-switch-to-buffer)
-              ("C-c p p" . projectile-switch-project)
-              ("C-c p c" . projectile-compile-project)
-              ("C-c p t" . projectile-test-project)
-              ("C-c p r" . projectile-run-project)
-              ("C-c p k" . projectile-kill-buffers)
-              ("C-c p D" . projectile-dired)
-              ("C-c p e" . projectile-recentf)
-              ("C-c p i" . projectile-invalidate-cache)
-              ("C-c p R" . projectile-regenerate-tags)
-              ("C-c p !" . projectile-run-shell-command-in-root)
-              ("C-c p &" . projectile-run-async-shell-command-in-root)))
+              ("C-c p b"   . projectile-switch-to-buffer)
+              ("C-c p p"   . projectile-switch-project)
+              ("C-c p c"   . projectile-compile-project)
+              ("C-c p t"   . projectile-test-project)
+              ("C-c p r"   . projectile-run-project)
+              ("C-c p k"   . projectile-kill-buffers)
+              ("C-c p D"   . projectile-dired)
+              ("C-c p e"   . projectile-recentf)
+              ("C-c p i"   . projectile-invalidate-cache)
+              ("C-c p R"   . projectile-regenerate-tags)
+              ("C-c p !"   . projectile-run-shell-command-in-root)
+              ("C-c p &"   . projectile-run-async-shell-command-in-root)))
 
 ;; ============================================================================
 ;; CONSULT-PROJECTILE INTEGRATION
@@ -112,7 +120,7 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  :bind (("C-c T" . treemacs)
+  :bind (("C-c T"   . treemacs)
          ("C-c t f" . treemacs-find-file)
          ("C-c t t" . treemacs-select-window)))
 
@@ -123,46 +131,12 @@
   :after (treemacs magit))
 
 ;; ============================================================================
-;; RECENTF - RECENT FILES
-;; ============================================================================
-(use-package recentf
-  :straight nil
-  :demand t
-  :init
-  (setq recentf-max-saved-items 500
-        recentf-max-menu-items 50
-        recentf-auto-cleanup 'never
-        recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$"
-                         "\\.revive$" "/TAGS$" "^/var/folders\\.*"
-                         "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"
-                         "\\.emacs\\.d/.*" "\\.cache/.*"
-                         "bookmarks" "recentf"))
-  :config
-  (recentf-mode 1)
-  (run-at-time nil (* 5 60) 'recentf-save-list))
-
-;; ============================================================================
-;; BOOKMARKS
-;; ============================================================================
-(use-package bookmark
-  :straight nil
-  :init
-  (setq bookmark-save-flag 1
-        bookmark-default-file (expand-file-name "bookmarks" 
-                                               (expand-file-name "var" user-emacs-directory))
-        bookmark-version-control t)
-  :bind (("C-c b s" . bookmark-set)
-         ("C-c b j" . bookmark-jump)
-         ("C-c b l" . bookmark-bmenu-list)
-         ("C-c b d" . bookmark-delete)))
-
-;; ============================================================================
 ;; PROJECT UTILITY FUNCTIONS
 ;; ============================================================================
 (defun emacs-ide-project-root ()
   "Get current project root safely."
   (or (and (fboundp 'projectile-project-root)
-          (projectile-project-root))
+           (projectile-project-root))
       default-directory))
 
 (defun emacs-ide-project-find-file-at-point ()
@@ -182,8 +156,8 @@
           (message "Project: %s | Files: %d"
                    (projectile-project-name)
                    (length (or (and (fboundp 'projectile-current-project-files)
-                                   (projectile-current-project-files))
-                             '())))
+                                    (projectile-current-project-files))
+                               '())))
         (message "Project: %s" project-root))
     (message "Not in a project")))
 
@@ -192,23 +166,16 @@
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
-     ((file-exists-p "Makefile")
-      (compile "make"))
-     ((file-exists-p "CMakeLists.txt")
-      (compile "cmake --build build"))
-     ((file-exists-p "Cargo.toml")
-      (compile "cargo build"))
+     ((file-exists-p "Makefile")       (compile "make"))
+     ((file-exists-p "CMakeLists.txt") (compile "cmake --build build"))
+     ((file-exists-p "Cargo.toml")     (compile "cargo build"))
      ((file-exists-p "package.json")
-      (when (executable-find "npm")
-        (compile "npm run build")))
+      (when (executable-find "npm")    (compile "npm run build")))
      ((file-exists-p "pom.xml")
-      (when (executable-find "mvn")
-        (compile "mvn compile")))
+      (when (executable-find "mvn")    (compile "mvn compile")))
      ((file-exists-p "build.gradle")
-      (when (executable-find "gradle")
-        (compile "gradle build")))
-     (t
-      (call-interactively 'compile)))))
+      (when (executable-find "gradle") (compile "gradle build")))
+     (t (call-interactively 'compile)))))
 
 (defun emacs-ide-project-run ()
   "Run project intelligently with validation."
@@ -218,18 +185,14 @@
      ((file-exists-p "Cargo.toml")
       (compile "cargo run"))
      ((file-exists-p "package.json")
-      (when (executable-find "npm")
-        (compile "npm start")))
+      (when (executable-find "npm") (compile "npm start")))
      ((file-exists-p "manage.py")
-      (when (executable-find "python3")
-        (compile "python3 manage.py runserver")))
+      (when (executable-find "python3") (compile "python3 manage.py runserver")))
      ((file-exists-p "main.go")
-      (when (executable-find "go")
-        (compile "go run .")))
+      (when (executable-find "go") (compile "go run .")))
      ((fboundp 'projectile-run-project)
       (projectile-run-project))
-     (t
-      (message "⚠️  No run command detected for this project")))))
+     (t (message "⚠️  No run command detected for this project")))))
 
 (defun emacs-ide-project-test ()
   "Test project intelligently with validation."
@@ -239,18 +202,14 @@
      ((file-exists-p "Cargo.toml")
       (compile "cargo test"))
      ((file-exists-p "package.json")
-      (when (executable-find "npm")
-        (compile "npm test")))
+      (when (executable-find "npm") (compile "npm test")))
      ((file-exists-p "pytest.ini")
-      (when (executable-find "pytest")
-        (compile "pytest")))
+      (when (executable-find "pytest") (compile "pytest")))
      ((file-exists-p "go.mod")
-      (when (executable-find "go")
-        (compile "go test ./...")))
+      (when (executable-find "go") (compile "go test ./...")))
      ((fboundp 'projectile-test-project)
       (projectile-test-project))
-     (t
-      (message "⚠️  No test command detected for this project")))))
+     (t (message "⚠️  No test command detected for this project")))))
 
 ;; ============================================================================
 ;; PROJECT TEMPLATES
@@ -277,7 +236,7 @@
         (unless (string-empty-p name)
           (shell-command (format "cargo new %s" name))
           (message "✓ Created Rust project: %s" name)))
-    (message "⚠️  Cargo not found. Install Rust to create projects.")))
+    (message "⚠️  Cargo not found.")))
 
 (defun emacs-ide-project-create-go ()
   "Create new Go project structure."
@@ -292,7 +251,7 @@
       (message "✓ Created Go project: %s" name))))
 
 ;; ============================================================================
-;; KEYBINDINGS FOR PROJECT UTILITIES
+;; KEYBINDING FOR PROJECT INFO
 ;; ============================================================================
 (global-set-key (kbd "C-c p I") 'emacs-ide-project-info)
 

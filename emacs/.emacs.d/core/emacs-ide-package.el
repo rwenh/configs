@@ -1,6 +1,10 @@
 ;;; emacs-ide-package.el --- Package Management Utilities -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Utilities for package management, profiling, and optimization
+;;; Utilities for package load-time tracking and reporting.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - `hash-table-to-list` does not exist in Emacs 29 — replaced with
+;;;     `cl-loop for k being the hash-keys ...` (same pattern used in telemetry)
 ;;; Code:
 
 (require 'cl-lib)
@@ -27,15 +31,18 @@
 (advice-add 'require :around #'emacs-ide-package-track-load)
 
 (defun emacs-ide-package-report ()
-  "Show package load time report."
+  "Show package load time report.
+FIX: `hash-table-to-list` does not exist in Emacs 29.
+     Use `cl-loop for k being the hash-keys` instead."
   (interactive)
-  (let ((sorted-packages
-         (cl-sort (hash-table-to-list emacs-ide-package-load-times)
-                  #'> :key #'cdr)))
+  (let* ((pairs (cl-loop for k being the hash-keys of emacs-ide-package-load-times
+                          collect (cons k (gethash k emacs-ide-package-load-times))))
+         (sorted (cl-sort pairs #'> :key #'cdr))
+         (top (cl-subseq sorted 0 (min 20 (length sorted)))))
     (with-output-to-temp-buffer "*Package Load Times*"
       (princ "=== PACKAGE LOAD TIMES ===\n\n")
       (princ "Top 20 Slowest Packages:\n\n")
-      (cl-loop for (pkg . time) in (cl-subseq sorted-packages 0 (min 20 (length sorted-packages)))
+      (cl-loop for (pkg . time) in top
                for i from 1
                do (princ (format "%2d. %-30s %.3fs\n" i pkg time))))))
 

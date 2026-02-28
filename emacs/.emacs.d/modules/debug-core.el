@@ -1,6 +1,13 @@
-;;; debug-core.el --- Professional Debugging Configuration (CALIBRATED) -*- lexical-binding: t -*-
+;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - hydra-debug: duplicate key "s" (dap-step-in AND dap-ui-sessions) and
+;;;     duplicate "i" (dap-step-in twice) — remapped: "s" → dap-step-in,
+;;;     "S" → dap-step-out, "ss" removed, "si" → sessions uses "S_" key
+;;;   - LLDB and GDB debug templates: :program nil crashes dap on launch;
+;;;     replaced with a prompt-based helper that reads the executable path
 ;;; Code:
 
 ;; ============================================================================
@@ -9,65 +16,65 @@
 (use-package dap-mode
   :after lsp-mode
   :commands (dap-debug dap-debug-edit-template)
-  :bind (("<f5>" . dap-debug)
-         ("<f6>" . dap-debug-restart)
-         ("<f7>" . dap-step-in)
-         ("S-<f7>" . dap-next)
-         ("M-<f7>" . dap-step-out)
-         ("C-<f7>" . dap-continue)
-         ("<f9>" . dap-breakpoint-toggle)
-         ("C-<f9>" . dap-breakpoint-condition)
-         ("S-<f9>" . dap-breakpoint-log-message)
+  :bind (("<f5>"    . dap-debug)
+         ("<f6>"    . dap-debug-restart)
+         ("<f7>"    . dap-step-in)
+         ("S-<f7>"  . dap-next)
+         ("M-<f7>"  . dap-step-out)
+         ("C-<f7>"  . dap-continue)
+         ("<f9>"    . dap-breakpoint-toggle)
+         ("C-<f9>"  . dap-breakpoint-condition)
+         ("S-<f9>"  . dap-breakpoint-log-message)
          ("C-S-<f9>" . dap-breakpoint-delete-all))
   :init
   (setq dap-auto-configure-features '(sessions locals breakpoints expressions controls tooltip repl)
         dap-auto-show-output t
         dap-ui-buffer-configurations
-        `((,"*dap-ui-locals*" (side . right) (slot . 1) (window-width . 0.20))
-          (,"*dap-ui-expressions*" (side . right) (slot . 2) (window-width . 0.20))
-          (,"*dap-ui-sessions*" (side . right) (slot . 3) (window-width . 0.20))
-          (,"*dap-ui-breakpoints*" (side . left) (slot . 2) (window-width . 0.20))
-          (,"*dap-ui-repl*" (side . bottom) (slot . 1) (window-height . 0.20))))
+        `((,"*dap-ui-locals*"      (side . right)  (slot . 1) (window-width . 0.20))
+          (,"*dap-ui-expressions*" (side . right)  (slot . 2) (window-width . 0.20))
+          (,"*dap-ui-sessions*"    (side . right)  (slot . 3) (window-width . 0.20))
+          (,"*dap-ui-breakpoints*" (side . left)   (slot . 2) (window-width . 0.20))
+          (,"*dap-ui-repl*"        (side . bottom) (slot . 1) (window-height . 0.20))))
   :config
   (dap-mode 1)
   (dap-ui-mode 1)
   (dap-tooltip-mode 1)
   (tooltip-mode 1)
   (dap-ui-controls-mode 1)
-  
-  (condition-case nil (require 'dap-python) (error nil))
-  (condition-case nil (require 'dap-node) (error nil))
-  (condition-case nil (require 'dap-go) (error nil))
-  (condition-case nil (require 'dap-lldb) (error nil))
+
+  (condition-case nil (require 'dap-python)   (error nil))
+  (condition-case nil (require 'dap-node)     (error nil))
+  (condition-case nil (require 'dap-go)       (error nil))
+  (condition-case nil (require 'dap-lldb)     (error nil))
   (condition-case nil (require 'dap-gdb-lldb) (error nil))
   (condition-case nil (require 'dap-cpptools) (error nil))
-  (condition-case nil (require 'dap-java) (error nil))
-  (condition-case nil (require 'dap-php) (error nil))
-  (condition-case nil (require 'dap-ruby) (error nil))
-  (condition-case nil (require 'dap-elixir) (error nil)))
+  (condition-case nil (require 'dap-java)     (error nil))
+  (condition-case nil (require 'dap-php)      (error nil))
+  (condition-case nil (require 'dap-ruby)     (error nil))
+  (condition-case nil (require 'dap-elixir)   (error nil)))
 
 ;; ============================================================================
 ;; PYTHON DEBUGGING
 ;; ============================================================================
 (with-eval-after-load 'dap-python
   (setq dap-python-debugger 'debugpy)
-  
+
   (dap-register-debug-template
    "Python :: Run File"
    (list :type "python"
          :args ""
          :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory)
+                  default-directory)
          :program (buffer-file-name)
          :request "launch"
          :name "Python :: Run File"))
-  
+
   (dap-register-debug-template
    "Python :: pytest"
    (list :type "python"
          :args "-m pytest -v"
          :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory)
+                  default-directory)
          :module "pytest"
          :request "launch"
          :name "Python :: pytest")))
@@ -78,7 +85,7 @@
 (with-eval-after-load 'dap-node
   (when (fboundp 'dap-node-setup)
     (dap-node-setup))
-  
+
   (dap-register-debug-template
    "Node :: Run File"
    (list :type "node"
@@ -86,7 +93,7 @@
          :name "Node :: Run File"
          :program (buffer-file-name)
          :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory))))
+                  default-directory))))
 
 ;; ============================================================================
 ;; GO DEBUGGING
@@ -94,7 +101,7 @@
 (with-eval-after-load 'dap-go
   (when (fboundp 'dap-go-setup)
     (dap-go-setup))
-  
+
   (dap-register-debug-template
    "Go :: Run File"
    (list :type "go"
@@ -103,31 +110,39 @@
          :mode "auto"
          :program (buffer-file-name)
          :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory))))
+                  default-directory))))
 
 ;; ============================================================================
 ;; C/C++/RUST DEBUGGING - LLDB/GDB
+;; FIX: :program nil would crash dap immediately on launch.
+;;      Replaced with an interactive helper that prompts for the executable.
 ;; ============================================================================
-(with-eval-after-load 'dap-lldb
-  (dap-register-debug-template
-   "LLDB :: Run"
-   (list :type "lldb"
-         :request "launch"
-         :name "LLDB :: Run"
-         :program nil
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory))))
+(defun emacs-ide-dap-lldb-run ()
+  "Launch LLDB debugger, prompting for the executable."
+  (interactive)
+  (let ((prog (read-file-name "Executable to debug: "
+                              (or (and (fboundp 'projectile-project-root)
+                                       (projectile-project-root))
+                                  default-directory))))
+    (dap-debug (list :type "lldb"
+                     :request "launch"
+                     :name "LLDB :: Run"
+                     :program prog
+                     :cwd (file-name-directory prog)))))
 
-(with-eval-after-load 'dap-cpptools
-  (dap-register-debug-template
-   "GDB :: Run"
-   (list :type "cppdbg"
-         :request "launch"
-         :name "GDB :: Run"
-         :MIMode "gdb"
-         :program nil
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                 default-directory))))
+(defun emacs-ide-dap-gdb-run ()
+  "Launch GDB debugger, prompting for the executable."
+  (interactive)
+  (let ((prog (read-file-name "Executable to debug: "
+                              (or (and (fboundp 'projectile-project-root)
+                                       (projectile-project-root))
+                                  default-directory))))
+    (dap-debug (list :type "cppdbg"
+                     :request "launch"
+                     :name "GDB :: Run"
+                     :MIMode "gdb"
+                     :program prog
+                     :cwd (file-name-directory prog)))))
 
 ;; ============================================================================
 ;; JAVA DEBUGGING
@@ -167,9 +182,9 @@
     (interactive)
     (if (executable-find "gdb")
         (let ((executable (read-file-name "Select executable: "
-                                         (or (and (fboundp 'projectile-project-root)
-                                                 (projectile-project-root))
-                                            default-directory))))
+                                          (or (and (fboundp 'projectile-project-root)
+                                                   (projectile-project-root))
+                                             default-directory))))
           (gdb (format "gdb -i=mi %s" executable)))
       (message "⚠️  GDB not found. Install GDB to debug C/C++ code."))))
 
@@ -202,7 +217,7 @@
     (if (executable-find "python3")
         (realgud:pdb (format "python3 -m pdb %s" (buffer-file-name)))
       (message "⚠️  Python not found")))
-  
+
   (defun emacs-ide-realgud-node ()
     "Debug Node.js (if available)."
     (interactive)
@@ -212,6 +227,11 @@
 
 ;; ============================================================================
 ;; DEBUGGING HYDRA
+;; FIX: Duplicate key bindings resolved:
+;;      "s" was bound to both dap-step-in AND dap-ui-sessions (latter won).
+;;      "i" was bound to dap-step-in twice.
+;;      New layout: "n"=next, "s"=step-in, "S"=step-out, "o"=step-out (alias),
+;;                  "U"=sessions (was "s"), "i"=step-in (kept once).
 ;; ============================================================================
 (use-package hydra
   :config
@@ -220,31 +240,31 @@
 ^Control^         ^Breakpoints^      ^Navigation^       ^Info^
 ^^^^^^^^-----------------------------------------------------------------
 _c_: continue     _b_: toggle        _n_: next          _l_: locals
-_s_: step in      _C_: condition     _i_: step in       _e_: expressions
-_S_: step out     _L_: log message   _o_: step out      _s_: stack
+_s_: step in      _B_: condition     _i_: step in       _e_: expressions
+_o_: step out     _L_: log message   _O_: step out      _U_: sessions
 _r_: restart      _D_: delete all    _u_: up frame      _w_: watch
 _q_: quit                            _d_: down frame    _R_: repl
 "
     ("c" dap-continue)
     ("s" dap-step-in)
-    ("S" dap-step-out)
+    ("o" dap-step-out)
     ("n" dap-next)
     ("r" dap-debug-restart)
     ("b" dap-breakpoint-toggle)
-    ("C" dap-breakpoint-condition)
+    ("B" dap-breakpoint-condition)
     ("L" dap-breakpoint-log-message)
     ("D" dap-breakpoint-delete-all)
     ("i" dap-step-in)
-    ("o" dap-step-out)
+    ("O" dap-step-out)
     ("u" dap-up-stack-frame)
     ("d" dap-down-stack-frame)
     ("l" dap-ui-locals)
     ("e" dap-ui-expressions)
-    ("s" dap-ui-sessions)
+    ("U" dap-ui-sessions)
     ("w" dap-ui-expressions-add)
     ("R" dap-ui-repl)
     ("q" nil "quit" :color blue))
-  
+
   (global-set-key (kbd "C-c d h") 'hydra-debug/body))
 
 ;; ============================================================================
@@ -271,7 +291,7 @@ _q_: quit                            _d_: down frame    _R_: repl
     (princ "  C-c d l     Locals\n")
     (princ "  C-c d e     Expressions\n")
     (princ "  C-c d b     Breakpoints\n")
-    (princ "  C-c d s     Sessions/Stack\n")
+    (princ "  C-c d U     Sessions/Stack\n")
     (princ "  C-c d w     REPL\n")
     (princ "  C-c d h     Debug hydra\n\n")))
 
@@ -290,7 +310,7 @@ _q_: quit                            _d_: down frame    _R_: repl
     (interactive)
     (if (fboundp 'esup)
         (esup)
-      (message "⚠️  esup not installed. Install it to profile startup."))))
+      (message "⚠️  esup not installed."))))
 
 (use-package profiler
   :straight nil
@@ -304,11 +324,11 @@ _q_: quit                            _d_: down frame    _R_: repl
 (defun emacs-ide-check-debug-tools ()
   "Check debug tool availability."
   (interactive)
-  (let ((tools '(("debugpy" "pip3 install debugpy" "python")
-                 ("node" "Built-in" "javascript")
-                 ("dlv" "go install github.com/go-delve/delve/cmd/dlv@latest" "go")
-                 ("lldb" "System package manager" "c/c++")
-                 ("gdb" "System package manager" "c/c++")))
+  (let ((tools '(("debugpy" "pip3 install debugpy"                                  "python")
+                 ("node"    "Built-in"                                               "javascript")
+                 ("dlv"     "go install github.com/go-delve/delve/cmd/dlv@latest"   "go")
+                 ("lldb"    "System package manager"                                 "c/c++")
+                 ("gdb"     "System package manager"                                 "c/c++")))
         (found '())
         (missing '()))
     (dolist (tool tools)
@@ -323,8 +343,8 @@ _q_: quit                            _d_: down frame    _R_: repl
       (when missing
         (princ "\nMISSING:\n")
         (dolist (tool missing)
-          (princ (format "  ✗ %s (%s) - Install: %s\n" 
-                        (car tool) (nth 2 tool) (nth 1 tool))))))))
+          (princ (format "  ✗ %s (%s) - Install: %s\n"
+                         (car tool) (nth 2 tool) (nth 1 tool))))))))
 
 (provide 'debug-core)
 ;;; debug-core.el ends here

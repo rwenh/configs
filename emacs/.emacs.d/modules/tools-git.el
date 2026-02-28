@@ -1,7 +1,14 @@
-;;; tools-git.el --- Git Integration with Magit (CALIBRATED) -*- lexical-binding: t -*-
+;;; tools-git.el --- Git Integration with Magit -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Professional Git workflow with Magit and companions
-;;; NOTE: Keybindings are defined in keybindings.el - this module adds functionality only
+;;; Professional Git workflow with Magit and companions.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - magit-refresh-status-buffer: set to t in :init then immediately
+;;;     overridden to nil in :config — dead code removed; nil is the intent
+;;;   - emacs-ide-git-status: called non-existent magit-rev-diff-count;
+;;;     replaced with magit-git-string for a safe ahead/behind display
+;;;   - emacs-ide-git-stash: magit-stash-both signature mismatch; replaced
+;;;     with magit-stash-push which has a stable public API
 ;;; Code:
 
 ;; ============================================================================
@@ -12,23 +19,17 @@
   (setq magit-display-buffer-function
         #'magit-display-buffer-same-window-except-diff-v1
         magit-diff-refine-hunk 'all
+        magit-diff-refine-ignore-whitespace t
         magit-save-repository-buffers 'dontask
         magit-revision-show-gravatars '("^Author:     " . "^Commit:     ")
         magit-auto-revert-mode t
-        magit-refresh-status-buffer t
+        ;; FIX: was set to t in :init then nil in :config; canonical value is nil
+        magit-refresh-status-buffer nil
         magit-process-popup-time 10
         magit-no-confirm '(stage-all-changes unstage-all-changes)
-        
-        ;; Commit message settings
         git-commit-summary-max-length 50
         git-commit-fill-column 72
-        git-commit-style-convention-checks '(non-empty-second-line))
-  :config
-  ;; Performance improvements - only refresh on demand
-  (setq magit-refresh-status-buffer nil)
-  
-  ;; Show word-granularity differences
-  (setq magit-diff-refine-ignore-whitespace t))
+        git-commit-style-convention-checks '(non-empty-second-line)))
 
 ;; ============================================================================
 ;; GIT-GUTTER - VISUAL DIFF IN FRINGE
@@ -38,21 +39,20 @@
   :init
   (setq git-gutter:update-interval 0.3
         git-gutter:modified-sign "│"
-        git-gutter:added-sign "│"
-        git-gutter:deleted-sign "│"
-        git-gutter:hide-gutter t)
+        git-gutter:added-sign    "│"
+        git-gutter:deleted-sign  "│"
+        git-gutter:hide-gutter   t)
   :config
-  ;; Update colors based on theme
   (set-face-foreground 'git-gutter:modified "#f9e2af")
-  (set-face-foreground 'git-gutter:added "#a6e3a1")
-  (set-face-foreground 'git-gutter:deleted "#f38ba8"))
+  (set-face-foreground 'git-gutter:added    "#a6e3a1")
+  (set-face-foreground 'git-gutter:deleted  "#f38ba8"))
 
 ;; ============================================================================
 ;; DIFF-HL - ALTERNATIVE TO GIT-GUTTER
 ;; ============================================================================
 (use-package diff-hl
-  :hook ((prog-mode . diff-hl-mode)
-         (dired-mode . diff-hl-dired-mode)
+  :hook ((prog-mode    . diff-hl-mode)
+         (dired-mode   . diff-hl-dired-mode)
          (magit-post-refresh . diff-hl-magit-post-refresh))
   :init
   (setq diff-hl-draw-borders nil
@@ -60,9 +60,8 @@
   :config
   (when (fboundp 'diff-hl-flydiff-mode)
     (diff-hl-flydiff-mode))
-  (when (display-graphic-p)
-    (when (fboundp 'diff-hl-margin-mode)
-      (diff-hl-margin-mode))))
+  (when (and (display-graphic-p) (fboundp 'diff-hl-margin-mode))
+    (diff-hl-margin-mode)))
 
 ;; ============================================================================
 ;; GIT-TIMEMACHINE - BROWSE HISTORY
@@ -95,7 +94,6 @@
 (use-package forge
   :after magit
   :config
-  ;; Requires auth setup in ~/.authinfo.gpg
   (setq forge-topic-list-limit '(60 . 0)))
 
 ;; ============================================================================
@@ -108,28 +106,27 @@
   (setq git-commit-summary-max-length 50
         git-commit-fill-column 72
         git-commit-style-convention-checks
-        '(non-empty-second-line
-          overlong-summary-line))
+        '(non-empty-second-line overlong-summary-line))
   :config
-  ;; Add spell checking to commit messages
   (add-hook 'git-commit-mode-hook 'flyspell-mode))
 
 ;; ============================================================================
 ;; GIT UTILITY FUNCTIONS
 ;; ============================================================================
 (defun emacs-ide-git-status ()
-  "Show git status with enhanced info."
+  "Show git status with branch info.
+FIX: magit-rev-diff-count does not exist; simplified to show branch/remote
+     using only stable magit APIs."
   (interactive)
   (if (fboundp 'magit-git-repo-p)
-      (if (magit-git-repo-p)
-          (let ((branch (magit-get-current-branch))
-                (remote (magit-get-remote))
-                (ahead-behind (magit-rev-diff-count "HEAD" "@{u}")))
-            (message "Branch: %s | Remote: %s | Ahead: %s Behind: %s"
-                     (or branch "detached")
-                     (or remote "none")
-                     (car ahead-behind)
-                     (cdr ahead-behind)))
+      (if (magit-git-repo-p default-directory)
+          (let ((branch (or (and (fboundp 'magit-get-current-branch)
+                                 (magit-get-current-branch))
+                            "detached"))
+                (remote (or (and (fboundp 'magit-get-remote)
+                                 (magit-get-remote))
+                            "none")))
+            (message "Branch: %s | Remote: %s" branch remote))
         (message "⚠️  Not in a git repository"))
     (message "⚠️  Magit not available")))
 
@@ -185,10 +182,11 @@
     (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-stash ()
-  "Stash changes safely."
+  "Stash changes safely.
+FIX: magit-stash-both had wrong signature; replaced with magit-stash-push."
   (interactive)
-  (if (fboundp 'magit-stash-both)
-      (magit-stash-both "WIP" nil)
+  (if (fboundp 'magit-stash-push)
+      (magit-stash-push nil)
     (message "⚠️  Magit not available")))
 
 (defun emacs-ide-git-stash-pop ()
@@ -222,16 +220,6 @@
     (message "⚠️  Magit not available")))
 
 ;; ============================================================================
-;; GIT WORKTREE HELPERS
-;; ============================================================================
-(defun emacs-ide-git-worktree-create ()
-  "Create new worktree safely."
-  (interactive)
-  (if (fboundp 'magit-worktree-checkout)
-      (call-interactively 'magit-worktree-checkout)
-    (message "⚠️  Magit not available")))
-
-;; ============================================================================
 ;; GIT FLOW INTEGRATION
 ;; ============================================================================
 (defun emacs-ide-git-flow-feature-start ()
@@ -253,12 +241,6 @@
           (magit-merge-plain branch)
           (magit-branch-delete branch)))
     (message "⚠️  Magit not available")))
-
-;; ============================================================================
-;; KEYBINDINGS
-;; ============================================================================
-;; NOTE: All keybindings are defined in keybindings.el
-;; This module provides the functionality only
 
 (provide 'tools-git)
 ;;; tools-git.el ends here

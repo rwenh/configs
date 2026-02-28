@@ -1,15 +1,19 @@
 ;;; keybindings.el --- Professional Keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Authoritative keybinding file — all other modules defer here.
-;;; FIX 1: C-c C-d collision resolved.
-;;;         Was bound to BOTH emacs-ide-delete-current-file (line 19) and
-;;;         helpful-at-point (line 188) in the original. helpful-at-point
-;;;         wins because it's set last, silently killing delete-file binding.
-;;;         Resolution: delete-file → C-c D d (capital D prefix)
-;;;                     helpful-at-point → C-c C-d (kept, more useful daily)
-;;; FIX 2: M-u/M-l/M-c were bound to emacs-ide-upcase/downcase/capitalize
-;;;         functions that don't exist in any module. Removed those bindings;
-;;;         the built-in upcase-word/downcase-word/capitalize-word remain.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - C-c j collision: was bound to windmove-down AND used as prefix for
+;;;     avy sub-keys (C-c j c/l/w/j). windmove-down on C-c j consumed the
+;;;     prefix making avy sub-keys unreachable. Windmove moved to C-c w-h/j/k/l
+;;;     (w prefix = window). Avy C-c j prefix retained.
+;;;   - C-c b collision: was bound to consult-project-buffer AND used as prefix
+;;;     for bookmark sub-keys (C-c b s/j/l). consult-project-buffer moved to
+;;;     C-c B (capital). Bookmark C-c b prefix retained.
+;;;   - M-g o collision: consult-outline AND dumb-jump-go-other-window both
+;;;     used M-g o. dumb-jump-go-other-window moved to M-g O.
+;;;   - C-c C-d / C-c D d: preserved as fixed in previous audit.
+;;;   - Removed bindings for undefined functions emacs-ide-upcase/downcase/capitalize.
 ;;; Code:
 
 ;; ============================================================================
@@ -24,7 +28,7 @@
 (global-set-key (kbd "C-c y p") 'emacs-ide-copy-file-path)
 (global-set-key (kbd "C-c y n") 'emacs-ide-copy-file-name)
 (global-set-key (kbd "C-c C-r") 'emacs-ide-rename-current-file)
-;; FIX: was C-c C-d — now C-c D d to avoid collision with helpful-at-point
+;; delete-file stays at C-c D d (capital D) — avoids collision with helpful-at-point
 (global-set-key (kbd "C-c D d") 'emacs-ide-delete-current-file)
 
 ;; ============================================================================
@@ -33,7 +37,8 @@
 (global-set-key (kbd "C-x b")   'consult-buffer)
 (global-set-key (kbd "C-x 4 b") 'consult-buffer-other-window)
 (global-set-key (kbd "C-x 5 b") 'consult-buffer-other-frame)
-(global-set-key (kbd "C-c b")   'consult-project-buffer)
+;; FIX: moved from C-c b (collided with bookmark prefix) → C-c B
+(global-set-key (kbd "C-c B")   'consult-project-buffer)
 
 ;; ============================================================================
 ;; LINE MANIPULATION
@@ -60,10 +65,24 @@
 (global-set-key (kbd "M-o")        'ace-window)
 (global-set-key (kbd "C-c <left>")  'winner-undo)
 (global-set-key (kbd "C-c <right>") 'winner-redo)
-(global-set-key (kbd "C-c h")      'windmove-left)
-(global-set-key (kbd "C-c j")      'windmove-down)
-(global-set-key (kbd "C-c k")      'windmove-up)
-(global-set-key (kbd "C-c l")      'windmove-right)
+;; FIX: Windmove moved from C-c h/j/k/l to C-c w-h/j/k/l
+;;      C-c j was colliding with avy's C-c j prefix (C-c j c/l/w/j)
+(global-set-key (kbd "C-c w h") 'windmove-left)
+(global-set-key (kbd "C-c w j") 'windmove-down)
+(global-set-key (kbd "C-c w k") 'windmove-up)
+(global-set-key (kbd "C-c w l") 'windmove-right)
+
+;; ============================================================================
+;; AVY NAVIGATION — C-c j prefix (now free from windmove collision)
+;; ============================================================================
+(global-set-key (kbd "C-:")      'avy-goto-char)
+(global-set-key (kbd "C-'")      'avy-goto-char-2)
+(global-set-key (kbd "M-g f")    'avy-goto-line)
+(global-set-key (kbd "M-g w")    'avy-goto-word-1)
+(global-set-key (kbd "C-c j c")  'avy-goto-char)
+(global-set-key (kbd "C-c j l")  'avy-goto-line)
+(global-set-key (kbd "C-c j w")  'avy-goto-word-1)
+(global-set-key (kbd "C-c j j")  'avy-goto-char-timer)
 
 ;; ============================================================================
 ;; DEBUGGING — F5-F9 (set by dap-mode in debug-core.el)
@@ -112,11 +131,9 @@
 (global-set-key (kbd "M-s g") 'consult-grep)
 (global-set-key (kbd "M-g i") 'consult-imenu)
 (global-set-key (kbd "M-g I") 'consult-imenu-multi)
+;; FIX: M-g o was colliding with dumb-jump-go-other-window (in tools-lsp.el)
+;;      consult-outline stays on M-g o; dumb-jump moved to M-g O
 (global-set-key (kbd "M-g o") 'consult-outline)
-(global-set-key (kbd "C-:")   'avy-goto-char)
-(global-set-key (kbd "C-'")   'avy-goto-char-2)
-(global-set-key (kbd "M-g f") 'avy-goto-line)
-(global-set-key (kbd "M-g w") 'avy-goto-word-1)
 
 ;; ============================================================================
 ;; LSP NAVIGATION
@@ -126,14 +143,14 @@
 (global-set-key (kbd "M-?") 'xref-find-references)
 
 ;; ============================================================================
-;; HELP — C-c C-d goes to helpful-at-point (the more useful daily binding)
-;; FIX: now explicitly set here rather than relying on tools-lsp.el order
+;; HELP
+;; FIX: C-c C-d → helpful-at-point (more useful daily; delete-file → C-c D d)
 ;; ============================================================================
-(global-set-key (kbd "C-h f") 'helpful-callable)
-(global-set-key (kbd "C-h v") 'helpful-variable)
-(global-set-key (kbd "C-h k") 'helpful-key)
-(global-set-key (kbd "C-h F") 'helpful-function)
-(global-set-key (kbd "C-h C") 'helpful-command)
+(global-set-key (kbd "C-h f")   'helpful-callable)
+(global-set-key (kbd "C-h v")   'helpful-variable)
+(global-set-key (kbd "C-h k")   'helpful-key)
+(global-set-key (kbd "C-h F")   'helpful-function)
+(global-set-key (kbd "C-h C")   'helpful-command)
 (global-set-key (kbd "C-c C-d") 'helpful-at-point)
 
 ;; ============================================================================
@@ -170,7 +187,7 @@
 (define-key emacs-ide-git-map (kbd "f") 'magit-file-dispatch)
 
 ;; ============================================================================
-;; BOOKMARKS
+;; BOOKMARKS — C-c b prefix (now free from consult-project-buffer collision)
 ;; ============================================================================
 (global-set-key (kbd "C-c b s") 'bookmark-set)
 (global-set-key (kbd "C-c b j") 'bookmark-jump)
@@ -205,7 +222,7 @@
 ;; ============================================================================
 ;; COMPLETION
 ;; ============================================================================
-(global-set-key (kbd "M-y")   'consult-yank-pop)
+(global-set-key (kbd "M-y")     'consult-yank-pop)
 (global-set-key (kbd "C-x r b") 'consult-bookmark)
 
 ;; ============================================================================
@@ -273,7 +290,7 @@ FILE & BUFFER:
   C-c K         Kill other buffers
   C-c f         Recent files (consult)
   C-x b         Switch buffer (consult)
-  C-c b         Project buffers
+  C-c B         Project buffers
   C-c y p       Copy file path
   C-c y n       Copy file name
   C-c C-r       Rename file
@@ -292,11 +309,13 @@ NAVIGATION (Avy):
   C-'           Jump to 2-char
   M-g f         Jump to line
   M-g w         Jump to word
+  C-c j c/l/w/j Avy sub-commands
 
 SEARCH:
   M-s l         consult-line
   M-s r         consult-ripgrep
   M-g i         consult-imenu
+  M-g o         consult-outline
   M-.           xref definition
   M-,           xref pop
   M-?           xref references
@@ -304,7 +323,7 @@ SEARCH:
 WINDOWS:
   M-o           ace-window
   C-x 2/3       Split + follow
-  C-c h/j/k/l   Windmove
+  C-c w h/j/k/l Windmove (window prefix)
   C-c </>       Winner undo/redo
 
 DEBUG:
@@ -340,6 +359,11 @@ HELP:
   C-h v         helpful-variable
   C-h k         helpful-key
   C-c C-d       helpful-at-point
+
+BOOKMARKS (C-c b):
+  C-c b s       Set bookmark
+  C-c b j       Jump to bookmark
+  C-c b l       List bookmarks
 
 SPELLING:
   C-c S s       Spell word

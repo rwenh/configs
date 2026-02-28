@@ -1,6 +1,14 @@
-;;; completion-core.el --- Elite Completion Framework (CALIBRATED) -*- lexical-binding: t -*-
+;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Vertico + Consult + Corfu - Maximum efficiency with proper config integration
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - Removed single-quote from electric-pair-pairs (breaks Elisp/most langs)
+;;;   - save-place-file moved to var/ subdirectory (consistent with rest of config)
+;;;   - abbrev-file-name moved to var/ subdirectory
+;;;   - Removed duplicate recentf/bookmark configs (canonical in tools-project.el)
+;;;   - TAB global rebind scoped to prog-mode/text-mode only (was breaking
+;;;     org-mode, terminal modes, etc.)
 ;;; Code:
 
 ;; ============================================================================
@@ -26,8 +34,8 @@
   :after vertico
   :straight nil
   :bind (:map vertico-map
-              ("RET" . vertico-directory-enter)
-              ("DEL" . vertico-directory-delete-char)
+              ("RET"   . vertico-directory-enter)
+              ("DEL"   . vertico-directory-delete-char)
               ("M-DEL" . vertico-directory-delete-word))
   :hook (rfn-eshadow-update-overlay . vertico-directory-tidy))
 
@@ -59,28 +67,28 @@
 ;; CONSULT - ENHANCED SEARCH (DEFERRED)
 ;; ============================================================================
 (use-package consult
-  :bind (("C-x b" . consult-buffer)
+  :bind (("C-x b"   . consult-buffer)
          ("C-x 4 b" . consult-buffer-other-window)
          ("C-x 5 b" . consult-buffer-other-frame)
          ("C-x r b" . consult-bookmark)
-         ("M-y" . consult-yank-pop)
-         ("M-g g" . consult-goto-line)
+         ("M-y"     . consult-yank-pop)
+         ("M-g g"   . consult-goto-line)
          ("M-g M-g" . consult-goto-line)
-         ("M-g o" . consult-outline)
-         ("M-g m" . consult-mark)
-         ("M-g k" . consult-global-mark)
-         ("M-g i" . consult-imenu)
-         ("M-g I" . consult-imenu-multi)
-         ("M-s l" . consult-line)
-         ("M-s L" . consult-line-multi)
-         ("M-s k" . consult-keep-lines)
-         ("M-s u" . consult-focus-lines)
-         ("M-s r" . consult-ripgrep)
-         ("M-s g" . consult-grep)
-         ("M-s G" . consult-git-grep)
-         ("M-s f" . consult-find)
-         ("M-s F" . consult-locate)
-         ("C-c f" . consult-recent-file)
+         ("M-g o"   . consult-outline)
+         ("M-g m"   . consult-mark)
+         ("M-g k"   . consult-global-mark)
+         ("M-g i"   . consult-imenu)
+         ("M-g I"   . consult-imenu-multi)
+         ("M-s l"   . consult-line)
+         ("M-s L"   . consult-line-multi)
+         ("M-s k"   . consult-keep-lines)
+         ("M-s u"   . consult-focus-lines)
+         ("M-s r"   . consult-ripgrep)
+         ("M-s g"   . consult-grep)
+         ("M-s G"   . consult-git-grep)
+         ("M-s f"   . consult-find)
+         ("M-s F"   . consult-locate)
+         ("C-c f"   . consult-recent-file)
          :map isearch-mode-map
          ("M-s l" . consult-line)
          ("M-s L" . consult-line-multi))
@@ -105,16 +113,16 @@
 ;; EMBARK - CONTEXTUAL ACTIONS (DEFERRED)
 ;; ============================================================================
 (use-package embark
-  :bind (("C-." . embark-act)
-         ("C-;" . embark-dwim)
+  :bind (("C-."   . embark-act)
+         ("C-;"   . embark-dwim)
          ("C-h B" . embark-bindings))
   :init
   (setq prefix-help-command #'embark-prefix-help-command
         embark-indicators '(embark-minimal-indicator
-                           embark-highlight-indicator
-                           embark-isearch-highlight-indicator)
+                            embark-highlight-indicator
+                            embark-isearch-highlight-indicator)
         embark-quit-after-action '((kill-buffer . nil)
-                                  (t . t))))
+                                   (t . t))))
 
 (use-package embark-consult
   :after (embark consult)
@@ -139,12 +147,12 @@
         corfu-max-width 100
         corfu-min-width 20)
   :bind (:map corfu-map
-              ("TAB" . corfu-next)
-              ([tab] . corfu-next)
-              ("S-TAB" . corfu-previous)
+              ("TAB"     . corfu-next)
+              ([tab]     . corfu-next)
+              ("S-TAB"   . corfu-previous)
               ([backtab] . corfu-previous)
-              ("RET" . corfu-insert)
-              ([return] . corfu-insert))
+              ("RET"     . corfu-insert)
+              ([return]  . corfu-insert))
   :config
   (global-corfu-mode 1)
   (when (fboundp 'corfu-popupinfo-mode)
@@ -177,28 +185,10 @@
         try-complete-lisp-symbol-partially
         try-complete-lisp-symbol))
 
-;; Add yasnippet if available
 (with-eval-after-load 'yasnippet
   (add-to-list 'hippie-expand-try-functions-list 'yas-hippie-try-expand))
 
 (global-set-key (kbd "M-/") 'hippie-expand)
-
-;; ============================================================================
-;; RECENTF - RECENT FILES (BUILTIN)
-;; ============================================================================
-(use-package recentf
-  :straight nil
-  :init
-  (setq recentf-max-saved-items 500
-        recentf-max-menu-items 50
-        recentf-auto-cleanup 'never
-        recentf-exclude '("/tmp/" "/ssh:" "\\.?ido\\.last$"
-                         "\\.revive$" "/TAGS$" "^/var/folders\\.*"
-                         "COMMIT_EDITMSG\\'" "^/sudo:" "^/scp:"
-                         "\\.emacs\\.d/.*" "\\.cache/.*"))
-  :config
-  (recentf-mode 1)
-  (run-at-time nil (* 5 60) 'recentf-save-list))
 
 ;; ============================================================================
 ;; SAVEHIST - MINIBUFFER HISTORY (BUILTIN)
@@ -218,42 +208,37 @@
 
 ;; ============================================================================
 ;; SAVE PLACE (BUILTIN)
+;; FIX: moved to var/ for consistency with rest of config
 ;; ============================================================================
 (use-package saveplace
   :straight nil
   :init
   (setq save-place-forget-unreadable-files nil
-        save-place-file (expand-file-name "places" user-emacs-directory))
+        save-place-file (expand-file-name "var/places" user-emacs-directory))
   :config
   (save-place-mode 1))
 
 ;; ============================================================================
 ;; ABBREV MODE (BUILTIN)
+;; FIX: moved abbrev-file-name to var/ for consistency
 ;; ============================================================================
 (setq-default abbrev-mode t)
 (setq save-abbrevs 'silently
-      abbrev-file-name (expand-file-name "abbrev_defs" user-emacs-directory))
+      abbrev-file-name (expand-file-name "var/abbrev_defs" user-emacs-directory))
 
 (when (file-exists-p abbrev-file-name)
   (quietly-read-abbrev-file))
 
 ;; ============================================================================
-;; BOOKMARKS (BUILTIN)
-;; ============================================================================
-(use-package bookmark
-  :straight nil
-  :init
-  (setq bookmark-save-flag 1
-        bookmark-default-file (expand-file-name "bookmarks" user-emacs-directory)
-        bookmark-version-control t))
-
-;; ============================================================================
 ;; AUTO-COMPLETE PAIRS (BUILTIN)
+;; FIX: Removed (?'  . ?') from electric-pair-pairs — single-quote pairing
+;;      is harmful in Emacs Lisp (where ' is a reader prefix) and many other
+;;      languages. Electric pair mode's built-in rules already handle '' in
+;;      string contexts where needed.
 ;; ============================================================================
 (electric-pair-mode 1)
 (setq electric-pair-pairs
       '((?\" . ?\")
-        (?\' . ?\')
         (?\{ . ?\})
         (?\[ . ?\])
         (?\( . ?\))
@@ -291,13 +276,10 @@
 (minibuffer-electric-default-mode 1)
 
 ;; ============================================================================
-;; FILE NAME COMPLETION (BUILTIN)
-;; ============================================================================
-(setq read-file-name-completion-ignore-case t
-      read-buffer-completion-ignore-case t)
-
-;; ============================================================================
 ;; CUSTOM COMPLETION FUNCTIONS
+;; FIX: TAB rebind scoped to prog-mode and text-mode only via hooks.
+;;      Global TAB rebind was breaking org-mode, vterm, and other modes
+;;      that rely on the standard tab behaviour.
 ;; ============================================================================
 (defun emacs-ide-complete-or-indent ()
   "Complete or indent intelligently."
@@ -310,7 +292,10 @@
           (completion-at-point))
       (indent-for-tab-command))))
 
-(global-set-key (kbd "TAB") 'emacs-ide-complete-or-indent)
+(dolist (hook '(prog-mode-hook text-mode-hook))
+  (add-hook hook
+            (lambda ()
+              (local-set-key (kbd "TAB") 'emacs-ide-complete-or-indent))))
 
 (provide 'completion-core)
 ;;; completion-core.el ends here

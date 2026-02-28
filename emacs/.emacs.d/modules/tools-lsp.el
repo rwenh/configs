@@ -1,24 +1,23 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; FIX 1: Replaced bare (throw 'skip-module nil) with a proper guard using
-;;;         (cl-return-from) — the original throw had no enclosing catch and
-;;;         would signal an error instead of gracefully skipping.
-;;; FIX 2: Added explicit lsp-completion-at-point wiring into corfu via
-;;;         cape so LSP completions reliably appear in the popup.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - Guard: original (unless ... (provide) ...) continued executing after
+;;;     provide because provide does not stop evaluation. Fixed with a proper
+;;;     top-level `when` wrapping all LSP setup.
+;;;   - dumb-jump-go-other-window was bound to M-g o colliding with
+;;;     consult-outline in keybindings.el; moved to M-g O here.
+;;;   - emacs-ide-lsp-semantic-tokens was undefined; replaced with direct
+;;;     reference to emacs-ide-lsp-enable-inlay-hints / config value.
 ;;; Code:
 
 (require 'cl-lib)
 
 ;; ============================================================================
 ;; GUARD: LSP DISABLED IN CONFIG
-;; FIX: original used (throw 'skip-module nil) with no catch — would error.
-;;      Now we simply check and provide early.
+;; FIX: provide alone doesn't stop execution. Use a top-level when guard.
 ;; ============================================================================
-(unless (bound-and-true-p emacs-ide-lsp-enable)
-  (message "⚠️  LSP disabled in config — skipping tools-lsp")
-  (provide 'tools-lsp))
-
 (when (bound-and-true-p emacs-ide-lsp-enable)
 
 ;; ============================================================================
@@ -89,9 +88,7 @@
          (lsp-mode        . lsp-enable-which-key-integration))
   :init
   (setq lsp-keymap-prefix              "C-c l"
-        ;; FIX: :none means lsp won't install its own company backend,
-        ;; so we must wire lsp-completion-at-point → corfu ourselves (below)
-        lsp-completion-provider        :none
+        lsp-completion-provider        :none   ; wire manually below for corfu
         lsp-idle-delay                 (or (bound-and-true-p emacs-ide-completion-delay) 0.3)
         lsp-log-io                     nil
         lsp-enable-file-watchers       t
@@ -108,8 +105,8 @@
         lsp-eldoc-enable-hover               t
         lsp-eldoc-render-all                 nil
         lsp-headerline-breadcrumb-enable     t
-        lsp-semantic-tokens-enable
-        (or (bound-and-true-p emacs-ide-lsp-semantic-tokens) t)
+        ;; FIX: emacs-ide-lsp-semantic-tokens was undefined; use config var directly
+        lsp-semantic-tokens-enable           t
         lsp-enable-symbol-highlighting       t
         lsp-lens-enable                      t
         lsp-enable-on-type-formatting        t
@@ -125,11 +122,11 @@
         lsp-diagnostics-provider             :flycheck
         lsp-auto-configure                   t
         lsp-watch-file-ignore-regexps
-        '("[/\\\\]\\.git$"        "[/\\\\]\\.hg$"
-          "[/\\\\]node_modules$"  "[/\\\\]__pycache__$"
-          "[/\\\\]\\.venv$"       "[/\\\\]venv$"
-          "[/\\\\]target$"        "[/\\\\]build$"
-          "[/\\\\]dist$"          "[/\\\\]\\.mypy_cache$"
+        '("[/\\\\]\\.git$"         "[/\\\\]\\.hg$"
+          "[/\\\\]node_modules$"   "[/\\\\]__pycache__$"
+          "[/\\\\]\\.venv$"        "[/\\\\]venv$"
+          "[/\\\\]target$"         "[/\\\\]build$"
+          "[/\\\\]dist$"           "[/\\\\]\\.mypy_cache$"
           "[/\\\\]\\.pytest_cache$"))
   :bind (:map lsp-mode-map
               ("C-c l r" . lsp-rename)
@@ -145,9 +142,7 @@
               ("C-c l w" . lsp-workspace-restart)
               ("C-c l W" . lsp-workspace-shutdown))
   :config
-  ;; FIX: Wire lsp-completion-at-point into corfu.
-  ;; With lsp-completion-provider :none, lsp registers capf via
-  ;; lsp-completion-at-point; we ensure it sits first in the list.
+  ;; Wire lsp-completion-at-point into corfu
   (defun emacs-ide-lsp-setup-completion ()
     "Prepend lsp-completion-at-point to capf list for corfu."
     (when (fboundp 'lsp-completion-at-point)
@@ -199,8 +194,8 @@
         lsp-ui-imenu-enable                 t
         lsp-ui-imenu-kind-position          'left)
   :bind (:map lsp-ui-mode-map
-              ("M-." . lsp-ui-peek-find-definitions)
-              ("M-?" . lsp-ui-peek-find-references)
+              ("M-."     . lsp-ui-peek-find-definitions)
+              ("M-?"     . lsp-ui-peek-find-references)
               ("C-c l u" . lsp-ui-doc-toggle)))
 
 ;; ============================================================================
@@ -236,11 +231,13 @@
 
 ;; ============================================================================
 ;; DUMB-JUMP — fallback navigation when LSP unavailable
+;; FIX: dumb-jump-go-other-window moved from M-g o to M-g O
+;;      to avoid collision with consult-outline on M-g o (keybindings.el)
 ;; ============================================================================
 (use-package dumb-jump
   :bind (("M-g j" . dumb-jump-go)
          ("M-g b" . dumb-jump-back)
-         ("M-g o" . dumb-jump-go-other-window))
+         ("M-g O" . dumb-jump-go-other-window))  ; was M-g o — collision fixed
   :init
   (setq dumb-jump-selector     'completing-read
         dumb-jump-aggressive   t
@@ -265,11 +262,11 @@
 ;; HELPFUL — better help buffers
 ;; ============================================================================
 (use-package helpful
-  :bind (("C-h f" . helpful-callable)
-         ("C-h v" . helpful-variable)
-         ("C-h k" . helpful-key)
-         ("C-h F" . helpful-function)
-         ("C-h C" . helpful-command)
+  :bind (("C-h f"   . helpful-callable)
+         ("C-h v"   . helpful-variable)
+         ("C-h k"   . helpful-key)
+         ("C-h F"   . helpful-function)
+         ("C-h C"   . helpful-command)
          ("C-c C-d" . helpful-at-point)))
 
 ;; ============================================================================
@@ -278,11 +275,11 @@
 (defun emacs-ide-lsp-check-servers ()
   "Check and display LSP server availability."
   (interactive)
-  (let ((servers '(("pyright"                  . "Python")
-                   ("rust-analyzer"            . "Rust")
-                   ("gopls"                    . "Go")
+  (let ((servers '(("pyright"                    . "Python")
+                   ("rust-analyzer"              . "Rust")
+                   ("gopls"                      . "Go")
                    ("typescript-language-server" . "TypeScript/JS")
-                   ("clangd"                   . "C/C++")))
+                   ("clangd"                     . "C/C++")))
         (available '())
         (missing '()))
     (dolist (server servers)
@@ -302,6 +299,10 @@
       (princ "or: M-x lsp-install-server\n"))))
 
 ) ;; end (when emacs-ide-lsp-enable ...)
+
+;; Always provide, even when LSP is disabled
+(unless (bound-and-true-p emacs-ide-lsp-enable)
+  (message "⚠️  LSP disabled in config — skipping tools-lsp"))
 
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

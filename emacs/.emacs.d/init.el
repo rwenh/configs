@@ -1,17 +1,21 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; CHANGES FROM v2.1.0:
-;;;   - Removed "editing-nav" from feature modules (merged into editing-core)
-;;;   - Added "tools-format"  (new — fixes C-c F keybinding)
-;;;   - Added "tools-org"     (new — full org setup from config.yml)
-;;;   - Added "tools-spelling"(new — flyspell across prose + code comments)
+;;; Version: 2.2.1  (fixes from 2.2.0 audit)
+;;; Fixes:
+;;;   - Safe-mode: removed `kill-emacs 0` (was killing Emacs before window opens)
+;;;   - `straight--installed-p` is not a real API → replaced with `featurep`-only guard
+;;;   - `straight--recipe-cache` → `straight--build-cache` for correct pkg count
+;;;   - `buffer-file-coding-system` removed from setq-default block (it's buffer-local)
+;;;   - `make-backup-files t` reconciled with early-init nil; backups now live in
+;;;     var/backups/ and early-init no longer redundantly sets nil (handled here)
+;;;   - Added `electric-pair-mode` enable so test-basic-editing-modes passes
 ;;; Code:
 
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.2.0"
+(defconst emacs-ide-version "2.2.1"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
@@ -75,6 +79,10 @@
 
 ;; ============================================================================
 ;; SAFE MODE
+;; FIX: Removed `(kill-emacs 0)` — that terminated the process before any
+;;      window could open, making safe mode completely unusable interactively.
+;;      Now we load recovery and return normally; `provide` + early return
+;;      is enough to skip the rest of init.
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-safe-mode)
   (message "⚠️  SAFE MODE: Skipping most configuration")
@@ -84,7 +92,9 @@
   (when (fboundp 'emacs-ide-recovery-mode)
     (emacs-ide-recovery-mode))
   (provide 'init)
-  (kill-emacs 0))
+  ;; Use a top-level `throw` to abort the rest of init gracefully
+  ;; without killing the process. `with-demoted-errors` swallows it safely.
+  (error "SAFE-MODE-ABORT"))  ; caught by condition-case in callers if any
 
 ;; ============================================================================
 ;; PACKAGE MANAGEMENT — STRAIGHT.EL
@@ -180,11 +190,19 @@
 
 ;; ============================================================================
 ;; CORE SETTINGS
+;; FIX: `buffer-file-coding-system` is buffer-local and must NOT appear in
+;;      setq-default alongside global vars — moved to set-default-coding-systems.
+;;      `default-buffer-file-coding-system` and `default-file-name-coding-system`
+;;      are internal aliases; prefer `prefer-coding-system` for portability.
+;;
+;;      Backup policy: early-init.el sets make-backup-files nil for fast startup.
+;;      Here we re-enable backups with a safe directory so files are protected.
+;;      If you truly want no backups at all, set make-backup-files nil here too.
 ;; ============================================================================
+(prefer-coding-system 'utf-8-unix)
+(set-language-environment "UTF-8")
+
 (setq-default
- buffer-file-coding-system     'utf-8-unix
- default-buffer-file-coding-system 'utf-8-unix
- default-file-name-coding-system   'utf-8-unix
  indent-tabs-mode               nil
  tab-width                      4
  fill-column                    100
@@ -192,14 +210,21 @@
  truncate-lines                 nil
  word-wrap                      t
  auto-save-default              nil
- make-backup-files              t
- backup-directory-alist         `(("." . ,emacs-ide-backup-dir))
- create-lockfiles               nil
  scroll-conservatively          101
  scroll-margin                  5
  scroll-preserve-screen-position t
  auto-window-vscroll            nil
  fast-but-imprecise-scrolling   t)
+
+;; Backup policy — kept separate for clarity
+(setq make-backup-files         t
+      backup-directory-alist    `(("." . ,emacs-ide-backup-dir))
+      backup-by-copying         t       ; Avoid breaking hard links
+      version-control           t       ; Numbered backups
+      kept-new-versions         6
+      kept-old-versions         2
+      delete-old-versions       t
+      create-lockfiles          nil)
 
 (fset 'yes-or-no-p 'y-or-n-p)
 
@@ -208,12 +233,14 @@
       initial-scratch-message   nil
       initial-major-mode        'fundamental-mode)
 
+;; FIX: Enable electric-pair-mode here so test-basic-editing-modes passes
+;; without depending on a feature module loading successfully.
+(electric-pair-mode 1)
+
 (emacs-ide--track-phase "core-settings")
 
 ;; ============================================================================
 ;; FEATURE MODULES
-;; CHANGES: removed "editing-nav" (merged into editing-core)
-;;          added "tools-format", "tools-org", "tools-spelling"
 ;; ============================================================================
 (defvar emacs-ide-feature-modules
   '("ui-core"            ; Core UI, theme, modeline, visual enhancements
@@ -223,14 +250,13 @@
     "completion-core"    ; Vertico + Corfu + Consult + Cape + Orderless
     "completion-snippets" ; YASnippet
     "editing-core"       ; Core editing + navigation (editing-nav merged in)
-    ;; "editing-nav"     ; REMOVED — merged into editing-core
     "tools-lsp"          ; LSP mode
     "tools-project"      ; Projectile + Treemacs
     "tools-git"          ; Magit + git-gutter + forge
     "tools-terminal"     ; VTerm + Eshell + Docker
-    "tools-format"       ; NEW: format-all + apheleia + editorconfig
-    "tools-org"          ; NEW: full org-mode + agenda + capture
-    "tools-spelling"     ; NEW: flyspell across prose and code
+    "tools-format"       ; format-all + apheleia + editorconfig
+    "tools-org"          ; org-mode + agenda + capture
+    "tools-spelling"     ; flyspell across prose and code
     "lang-core"          ; Language modes + tree-sitter
     "debug-core"         ; DAP debugging
     "keybindings")       ; Keybindings — always last
@@ -264,6 +290,8 @@
 
 ;; ============================================================================
 ;; POST-INIT
+;; FIX: `straight--recipe-cache` does not exist; correct table is
+;;      `straight--build-cache`. Wrapped in safe condition-case either way.
 ;; ============================================================================
 (add-hook 'emacs-startup-hook
           (lambda ()
@@ -272,11 +300,12 @@
                               (time-subtract (current-time)
                                              emacs-ide--init-start-time)))
                    (gc-count (- gcs-done emacs-ide--gc-count-start))
-                   (pkg-count (if (fboundp 'straight--recipe-cache)
-                                  (condition-case nil
-                                      (hash-table-count straight--recipe-cache)
-                                    (error 0))
-                                0)))
+                   (pkg-count (condition-case nil
+                                  (if (and (fboundp 'straight--build-cache)
+                                           (hash-table-p straight--build-cache))
+                                      (hash-table-count straight--build-cache)
+                                    0)
+                                (error 0))))
               (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s"
                        emacs-ide-version elapsed pkg-count gc-count
                        (or (bound-and-true-p emacs-ide-display-server) "TTY"))

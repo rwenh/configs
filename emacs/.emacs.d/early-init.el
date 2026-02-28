@@ -1,8 +1,15 @@
-;;; early-init.el --- Enterprise Emacs IDE Early Initialization (CALIBRATED) -*- lexical-binding: t -*-
+;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Production-grade early initialization with performance monitoring
-;;; Author: Enterprise Emacs Team
-;;; Version: 2.1.0
+;;; Production-grade early initialization with performance monitoring.
+;;; Version: 2.2.0  (fixes from 2.1.0 audit)
+;;; Fixes:
+;;;   - Removed non-existent `horizontal-scroll-bar-mode` call (TTY crash)
+;;;   - Replaced deprecated `native-comp-deferred-compilation` with correct var
+;;;   - Removed non-standard `native-comp-warning-on-missing-source` and
+;;;     `native-comp-always-compile` (void-variable warnings)
+;;;   - Guarded `pgtk-use-im-context-on-new-connection` with boundp
+;;;   - Removed `command-line-x-option-alist nil` (wrong variable, not redisplay)
+;;;   - Safe-mode arg check: use only `command-line-args-left` (avoids duplicate)
 ;;; Code:
 
 ;; ============================================================================
@@ -30,10 +37,10 @@
   "Get number of CPU cores safely."
   (let* ((env-count (getenv "NUMBER_OF_PROCESSORS"))
          (count (if env-count
-                   (condition-case nil
-                       (string-to-number env-count)
-                     (error 0))
-                 0)))
+                    (condition-case nil
+                        (string-to-number env-count)
+                      (error 0))
+                  0)))
     (if (> count 0) count
       (condition-case nil
           (string-to-number
@@ -88,42 +95,50 @@
 
 ;; ============================================================================
 ;; UI ELEMENTS - DISABLE BEFORE INIT
+;; FIX: `horizontal-scroll-bar-mode` does not exist in Emacs 29; removed.
+;;      Horizontal scroll bars are already suppressed via default-frame-alist.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "ui-disable"
   (lambda ()
     (menu-bar-mode -1)
     (tool-bar-mode -1)
-    (scroll-bar-mode -1)
-    (horizontal-scroll-bar-mode -1)))
+    (scroll-bar-mode -1)))
 
 ;; ============================================================================
 ;; WAYLAND/PGTK OPTIMIZATIONS
+;; FIX: guard `pgtk-use-im-context-on-new-connection` with boundp
 ;; ============================================================================
 (emacs-ide--benchmark-phase "wayland-optimization"
   (lambda ()
     (when (eq window-system 'pgtk)
       (push '(inhibit-double-buffering . t) default-frame-alist)
-      (setq pgtk-wait-for-event-timeout 0.001
-            pgtk-use-im-context-on-new-connection t))
-    
+      (setq pgtk-wait-for-event-timeout 0.001)
+      (when (boundp 'pgtk-use-im-context-on-new-connection)
+        (setq pgtk-use-im-context-on-new-connection t)))
+
     (when (getenv "WAYLAND_DISPLAY")
       (setq x-wait-for-event-timeout 0.001))))
 
 ;; ============================================================================
 ;; NATIVE COMPILATION - SILENT & OPTIMIZED
+;; FIX: `native-comp-deferred-compilation` deprecated in 29.1 → removed.
+;;      `native-comp-warning-on-missing-source` is non-standard → removed.
+;;      `native-comp-always-compile` is non-standard → removed.
+;;      Use `native-comp-jit-compilation` (the correct Emacs 29 variable).
 ;; ============================================================================
 (emacs-ide--benchmark-phase "native-comp-setup"
   (lambda ()
     (when (and (fboundp 'native-comp-available-p)
                (native-comp-available-p))
       (setq native-comp-async-report-warnings-errors nil
-            native-comp-warning-on-missing-source nil
-            native-comp-deferred-compilation t
-            native-comp-speed 3
+            native-comp-speed 2                       ; 3 can cause crashes; 2 is safe
             native-comp-async-jobs-number (max 1 (/ (or (emacs-ide--get-processor-count) 4) 2))
-            native-comp-always-compile t
             package-native-compile t)
-      
+
+      ;; Emacs 29+: jit compilation toggle
+      (when (boundp 'native-comp-jit-compilation)
+        (setq native-comp-jit-compilation t))
+
       (when (fboundp 'startup-redirect-eln-cache)
         (startup-redirect-eln-cache
          (convert-standard-filename
@@ -142,16 +157,16 @@
             (emacs-ide--benchmark-phase "post-startup-restore"
               (lambda ()
                 (setq file-name-handler-alist emacs-ide--file-name-handler-alist)
-                
+
                 ;; Restore GC to reasonable values
                 (setq gc-cons-threshold (* 16 1024 1024)  ; 16MB
                       gc-cons-percentage 0.1)
-                
+
                 ;; Setup idle GC with proper cleanup
                 (unless emacs-ide--gc-timer
                   (setq emacs-ide--gc-timer
                         (run-with-idle-timer 15 t #'garbage-collect)))
-                
+
                 (garbage-collect))))
           100)
 
@@ -171,14 +186,16 @@
 
 ;; ============================================================================
 ;; REDISPLAY OPTIMIZATION
+;; FIX: Removed `command-line-x-option-alist nil` — that var controls X11
+;;      startup options, not redisplay. Setting it nil can break X geometry
+;;      arguments and is unrelated to rendering performance.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "redisplay-optimization"
   (lambda ()
     (setq inhibit-compacting-font-caches t
           fast-but-imprecise-scrolling t
           redisplay-skip-fontification-on-input t
-          highlight-nonselected-windows nil
-          command-line-x-option-alist nil)))
+          highlight-nonselected-windows nil)))
 
 ;; ============================================================================
 ;; SITE-LISP OPTIMIZATION
@@ -196,7 +213,7 @@
     (set-face-attribute 'default nil
                         :background "#1e1e2e"
                         :foreground "#cdd6f4")
-    
+
     (set-face-attribute 'mode-line nil
                         :background "#313244"
                         :foreground "#cdd6f4")))
@@ -262,9 +279,9 @@
       (princ "Phase Breakdown:\n")
       (dolist (phase (reverse emacs-ide--early-init-benchmark-data))
         (princ (format "  %-25s %.3fs (%.1f%%)\n"
-                      (car phase)
-                      (cdr phase)
-                      (* 100 (/ (cdr phase) total-time)))))
+                       (car phase)
+                       (cdr phase)
+                       (* 100 (/ (cdr phase) total-time)))))
       (princ "\n")
       (when (> total-time 0.5)
         (princ "⚠️  Early-init took longer than expected (target: <0.5s)\n")))))
@@ -299,14 +316,18 @@
 
 ;; ============================================================================
 ;; EMERGENCY RECOVERY MODE
+;; FIX: Use only `command-line-args-left` for --safe detection.
+;;      `command-line-args` includes argv[0] (emacs binary) and is consumed
+;;      before early-init; `command-line-args-left` is the correct hook point.
 ;; ============================================================================
 (defvar emacs-ide-safe-mode nil
   "If non-nil, boot in safe mode (minimal config).")
 
 (when (or (getenv "EMACS_SAFE_MODE")
-          (member "--safe" command-line-args)
           (member "--safe" command-line-args-left))
   (setq emacs-ide-safe-mode t)
+  ;; Remove the flag so Emacs doesn't complain about unknown option
+  (setq command-line-args-left (delete "--safe" command-line-args-left))
   (message "🛡️  EMACS IDE SAFE MODE ENABLED - Minimal configuration"))
 
 (provide 'early-init)

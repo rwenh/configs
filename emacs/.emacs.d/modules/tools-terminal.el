@@ -1,10 +1,13 @@
 ;;; tools-terminal.el --- Terminal Integration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; VTerm, Eshell, and terminal utilities.
-;;; FIX: Removed duplicate emacs-ide-colorize-compilation-buffer definition.
-;;;      The authoritative definition lives in ui-core.el. Having it here too
-;;;      caused the last-loaded version to win unpredictably. The compile
-;;;      buffer setup remains; we just don't redefine the colorize function.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - dired-listing-switches used --group-directories-first which is a
+;;;     GNU coreutils-only flag; it errors on macOS/BSD ls. Now guarded
+;;;     behind a system-type check, falling back to safe portable flags.
+;;;   - emacs-ide-colorize-compilation-buffer NOT redefined here (canonical
+;;;     definition lives in ui-core.el).
 ;;; Code:
 
 ;; ============================================================================
@@ -15,20 +18,20 @@
   (let ((shell (getenv "SHELL")))
     (cond
      ((and shell (file-executable-p shell)) shell)
-     ((file-executable-p "/bin/bash")  "/bin/bash")
-     ((file-executable-p "/bin/zsh")   "/bin/zsh")
-     ((file-executable-p "/bin/sh")    "/bin/sh")
+     ((file-executable-p "/bin/bash") "/bin/bash")
+     ((file-executable-p "/bin/zsh")  "/bin/zsh")
+     ((file-executable-p "/bin/sh")   "/bin/sh")
      (t "sh"))))
 
 (use-package vterm
   :bind (("C-c t" . emacs-ide-vterm-here)
          ("C-c T" . vterm-other-window))
   :init
-  (setq vterm-max-scrollback              100000
-        vterm-shell                       (emacs-ide-detect-shell)
-        vterm-kill-buffer-on-exit         t
-        vterm-term-environment-variable   "xterm-256color"
-        vterm-timer-delay                 0.01
+  (setq vterm-max-scrollback            100000
+        vterm-shell                     (emacs-ide-detect-shell)
+        vterm-kill-buffer-on-exit       t
+        vterm-term-environment-variable "xterm-256color"
+        vterm-timer-delay               0.01
         vterm-clear-scrollback-when-clearing t)
   :config
   (add-to-list 'vterm-eval-cmds
@@ -101,8 +104,8 @@
   "Run current buffer's file in vterm with appropriate interpreter."
   (interactive)
   (when buffer-file-name
-    (let* ((file (buffer-file-name))
-           (ext  (file-name-extension file))
+    (let* ((file   (buffer-file-name))
+           (ext    (file-name-extension file))
            (interp (cond
                     ((string= ext "py") (and (executable-find "python3") "python3"))
                     ((string= ext "js") (and (executable-find "node") "node"))
@@ -152,17 +155,17 @@
 
 ;; ============================================================================
 ;; COMPILATION BUFFER
-;; FIX: colorization hook is NOT redefined here; see ui-core.el.
-;;      We only set compilation variables.
+;; NOTE: emacs-ide-colorize-compilation-buffer is defined in ui-core.el only.
+;;       Do NOT redefine it here.
 ;; ============================================================================
 (use-package compile
   :straight nil
   :init
-  (setq compilation-scroll-output   'first-error
-        compilation-window-height   20
-        compilation-ask-about-save  nil
-        compilation-always-kill     t
-        compilation-skip-threshold  2))
+  (setq compilation-scroll-output  'first-error
+        compilation-window-height  20
+        compilation-ask-about-save nil
+        compilation-always-kill    t
+        compilation-skip-threshold 2))
 
 ;; ============================================================================
 ;; COMINT
@@ -170,14 +173,36 @@
 (use-package comint
   :straight nil
   :init
-  (setq comint-prompt-read-only            t
-        comint-scroll-to-bottom-on-input   t
-        comint-scroll-to-bottom-on-output  t
-        comint-scroll-show-maximum-output  t
-        comint-input-ignoredups            t
-        comint-completion-addsuffix        t
-        comint-buffer-maximum-size         10000
-        comint-move-point-for-output       t))
+  (setq comint-prompt-read-only           t
+        comint-scroll-to-bottom-on-input  t
+        comint-scroll-to-bottom-on-output t
+        comint-scroll-show-maximum-output t
+        comint-input-ignoredups           t
+        comint-completion-addsuffix       t
+        comint-buffer-maximum-size        10000
+        comint-move-point-for-output      t))
+
+;; ============================================================================
+;; DIRED
+;; FIX: --group-directories-first is GNU coreutils only; errors on macOS/BSD.
+;;      Guard behind system-type; macOS uses portable flags instead.
+;; ============================================================================
+(use-package dired
+  :straight nil
+  :init
+  (setq dired-listing-switches
+        (if (eq system-type 'darwin)
+            "-alGh"                          ; macOS BSD ls — no GNU-only flags
+          "-alGh --group-directories-first") ; GNU/Linux coreutils
+        dired-dwim-target                   t
+        dired-recursive-copies              'always
+        dired-recursive-deletes             'always
+        dired-kill-when-opening-new-dired-buffer t
+        dired-auto-revert-buffer            t)
+  :bind (:map dired-mode-map
+              ("h" . dired-up-directory)
+              ("l" . dired-find-alternate-file)
+              ("C-c C-p" . wdired-change-to-wdired-mode)))
 
 ;; ============================================================================
 ;; DOCKER

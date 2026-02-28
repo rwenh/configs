@@ -1,30 +1,33 @@
 ;;; ui-core.el --- Professional Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Elite UI/UX with modern design and maximum efficiency.
-;;; FIX 1: Removed duplicate dashboard setup — dashboard is owned by
-;;;         ui-dashboard.el; having it in both caused double hook registration
-;;;         and a blank/doubled startup screen.
-;;; FIX 2: Removed duplicate emacs-ide-colorize-compilation-buffer definition
-;;;         (also defined in tools-terminal.el). Compilation colorization now
-;;;         lives only here; tools-terminal.el's copy was removed.
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - doom-modeline: ui-core.el called (doom-modeline-mode 1) directly AND
+;;;     ui-modeline.el added it via after-init-hook — double activation caused
+;;;     a redundant re-init on every startup. ui-core.el now uses
+;;;     after-init-hook consistently, matching ui-modeline.el's approach.
+;;;     ui-modeline.el's duplicate block is suppressed (see that file).
+;;;   - Removed dashboard setup from this file (owned by ui-dashboard.el).
+;;;   - emacs-ide-colorize-compilation-buffer defined here only (canonical).
 ;;; Code:
 
 ;; ============================================================================
 ;; UI CLEANUP
 ;; ============================================================================
-(when (fboundp 'menu-bar-mode)             (menu-bar-mode -1))
-(when (fboundp 'tool-bar-mode)             (tool-bar-mode -1))
-(when (fboundp 'scroll-bar-mode)           (scroll-bar-mode -1))
+(when (fboundp 'menu-bar-mode)              (menu-bar-mode -1))
+(when (fboundp 'tool-bar-mode)              (tool-bar-mode -1))
+(when (fboundp 'scroll-bar-mode)            (scroll-bar-mode -1))
 (when (fboundp 'horizontal-scroll-bar-mode) (horizontal-scroll-bar-mode -1))
-(when (fboundp 'tooltip-mode)             (tooltip-mode -1))
-(when (fboundp 'blink-cursor-mode)        (blink-cursor-mode -1))
+(when (fboundp 'tooltip-mode)               (tooltip-mode -1))
+(when (fboundp 'blink-cursor-mode)          (blink-cursor-mode -1))
 
-(setq ring-bell-function             'ignore
-      visible-bell                   nil
-      use-dialog-box                 nil
-      use-file-dialog                nil
-      echo-keystrokes                0.01
-      inhibit-splash-screen          t
+(setq ring-bell-function              'ignore
+      visible-bell                    nil
+      use-dialog-box                  nil
+      use-file-dialog                 nil
+      echo-keystrokes                 0.01
+      inhibit-splash-screen           t
       inhibit-startup-echo-area-message t)
 
 ;; ============================================================================
@@ -89,9 +92,9 @@
   (let ((font (or (bound-and-true-p emacs-ide-font) "JetBrains Mono"))
         (size (or (bound-and-true-p emacs-ide-font-size) 11)))
     (or (emacs-ide-set-font font size 'medium)
-        (emacs-ide-set-font "Fira Code"      size)
-        (emacs-ide-set-font "Cascadia Code"  size)
-        (emacs-ide-set-font "Iosevka"        size)
+        (emacs-ide-set-font "Fira Code"       size)
+        (emacs-ide-set-font "Cascadia Code"   size)
+        (emacs-ide-set-font "Iosevka"         size)
         (emacs-ide-set-font "Source Code Pro" size)))
 
   (condition-case nil
@@ -100,7 +103,7 @@
           (set-face-attribute 'variable-pitch nil :font "DejaVu Sans-11"))
     (error nil))
 
-  ;; Ligatures via the ligature package (Linux/Windows JetBrains Mono support)
+  ;; Ligatures (Linux/Windows)
   (use-package ligature
     :config
     (ligature-set-ligatures
@@ -124,9 +127,9 @@
 (when (and (bound-and-true-p emacs-ide-wayland-p)
            (fboundp 'pixel-scroll-precision-mode))
   (pixel-scroll-precision-mode 1)
-  (setq pixel-scroll-precision-use-momentum          t
-        pixel-scroll-precision-large-scroll-height   40.0
-        pixel-scroll-precision-interpolation-factor  1.0))
+  (setq pixel-scroll-precision-use-momentum         t
+        pixel-scroll-precision-large-scroll-height  40.0
+        pixel-scroll-precision-interpolation-factor 1.0))
 
 ;; ============================================================================
 ;; LINE NUMBERS
@@ -155,6 +158,9 @@
 
 ;; ============================================================================
 ;; DOOM-MODELINE
+;; FIX: Was calling (doom-modeline-mode 1) directly here AND in ui-modeline.el
+;;      via after-init-hook — causing double initialisation. Now uses
+;;      after-init-hook exclusively so it activates once, consistently.
 ;; ============================================================================
 (use-package doom-modeline
   :init
@@ -176,7 +182,8 @@
         doom-modeline-lsp                     t
         doom-modeline-env-version             t)
   :config
-  (doom-modeline-mode 1))
+  ;; FIX: use after-init-hook instead of direct call to avoid double activation
+  (add-hook 'after-init-hook #'doom-modeline-mode))
 
 ;; Frame title
 (setq frame-title-format
@@ -234,12 +241,12 @@
 (use-package highlight-indent-guides
   :hook (prog-mode . highlight-indent-guides-mode)
   :init
-  (setq highlight-indent-guides-method           'character
-        highlight-indent-guides-responsive        'top
-        highlight-indent-guides-delay             0
-        highlight-indent-guides-auto-enabled      t
-        highlight-indent-guides-auto-character-face-perc     20
-        highlight-indent-guides-auto-top-character-face-perc 40))
+  (setq highlight-indent-guides-method                        'character
+        highlight-indent-guides-responsive                    'top
+        highlight-indent-guides-delay                         0
+        highlight-indent-guides-auto-enabled                  t
+        highlight-indent-guides-auto-character-face-perc      20
+        highlight-indent-guides-auto-top-character-face-perc  40))
 
 (use-package pulsar
   :init
@@ -274,11 +281,11 @@
 (use-package ace-window
   :bind ("M-o" . ace-window)
   :init
-  (setq aw-keys             '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
-        aw-scope            'frame
-        aw-background       t
-        aw-dispatch-always  t
-        aw-minibuffer-flag  t))
+  (setq aw-keys            '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
+        aw-scope           'frame
+        aw-background      t
+        aw-dispatch-always t
+        aw-minibuffer-flag t))
 
 (winner-mode 1)
 
@@ -293,38 +300,24 @@
 (use-package neotree
   :bind ("<f8>" . neotree-toggle)
   :init
-  (setq neo-smart-open           t
-        neo-theme                (if (display-graphic-p) 'icons 'arrow)
-        neo-window-width         30
+  (setq neo-smart-open            t
+        neo-theme                 (if (display-graphic-p) 'icons 'arrow)
+        neo-window-width          30
         neo-create-file-auto-open t
-        neo-auto-indent-point    t
-        neo-modern-sidebar       t
-        neo-show-updir-line      nil
-        neo-vc-integration       '(face)))
+        neo-auto-indent-point     t
+        neo-modern-sidebar        t
+        neo-show-updir-line       nil
+        neo-vc-integration        '(face)))
 
 ;; ============================================================================
 ;; DIRED
 ;; ============================================================================
-(use-package dired
-  :straight nil
-  :init
-  (setq dired-listing-switches              "-alGh --group-directories-first"
-        dired-dwim-target                   t
-        dired-recursive-copies              'always
-        dired-recursive-deletes             'always
-        dired-kill-when-opening-new-dired-buffer t
-        dired-auto-revert-buffer            t)
-  :bind (:map dired-mode-map
-              ("h" . dired-up-directory)
-              ("l" . dired-find-alternate-file)
-              ("C-c C-p" . wdired-change-to-wdired-mode)))
-
 (use-package diredfl
   :hook (dired-mode . diredfl-mode))
 
 ;; ============================================================================
 ;; COMPILATION COLORIZATION
-;; FIX: defined here only. tools-terminal.el's duplicate was removed.
+;; Canonical definition — tools-terminal.el does NOT redefine this.
 ;; ============================================================================
 (use-package ansi-color
   :straight nil
@@ -340,8 +333,8 @@
 ;; ============================================================================
 (use-package visual-fill-column
   :init
-  (setq visual-fill-column-width                      120
-        visual-fill-column-center-text                nil
+  (setq visual-fill-column-width                       120
+        visual-fill-column-center-text                 nil
         visual-fill-column-enable-sensible-window-split t)
   :hook ((org-mode markdown-mode) . visual-fill-column-mode))
 
@@ -351,12 +344,12 @@
 (use-package tab-bar
   :straight nil
   :init
-  (setq tab-bar-show                1
-        tab-bar-close-button-show   nil
-        tab-bar-new-button-show     nil
-        tab-bar-tab-hints           t
-        tab-bar-separator           " "
-        tab-bar-tab-name-function   'tab-bar-tab-name-current-with-count
+  (setq tab-bar-show              1
+        tab-bar-close-button-show nil
+        tab-bar-new-button-show   nil
+        tab-bar-tab-hints         t
+        tab-bar-separator         " "
+        tab-bar-tab-name-function 'tab-bar-tab-name-current-with-count
         tab-bar-format
         '(tab-bar-format-tabs tab-bar-separator
           tab-bar-format-align-right tab-bar-format-global))
