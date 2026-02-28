@@ -1,90 +1,82 @@
-;;; keybindings.el --- Professional Keybindings (CALIBRATED) -*- lexical-binding: t -*-
+;;; keybindings.el --- Professional Keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Ergonomic, efficient, professional keybindings - CENTRALIZED
-;;; IMPORTANT: This is the authoritative keybinding file. All other modules should defer to this.
+;;; Authoritative keybinding file — all other modules defer here.
+;;; FIX 1: C-c C-d collision resolved.
+;;;         Was bound to BOTH emacs-ide-delete-current-file (line 19) and
+;;;         helpful-at-point (line 188) in the original. helpful-at-point
+;;;         wins because it's set last, silently killing delete-file binding.
+;;;         Resolution: delete-file → C-c D d (capital D prefix)
+;;;                     helpful-at-point → C-c C-d (kept, more useful daily)
+;;; FIX 2: M-u/M-l/M-c were bound to emacs-ide-upcase/downcase/capitalize
+;;;         functions that don't exist in any module. Removed those bindings;
+;;;         the built-in upcase-word/downcase-word/capitalize-word remain.
 ;;; Code:
 
 ;; ============================================================================
 ;; FILE OPERATIONS
 ;; ============================================================================
 (global-set-key (kbd "C-x C-b") 'ibuffer)
-(global-set-key (kbd "C-x k") 'emacs-ide-kill-current-buffer)
-(global-set-key (kbd "C-c w") 'save-buffer)
-(global-set-key (kbd "C-c q") 'kill-buffer-and-window)
-(global-set-key (kbd "C-c K") 'emacs-ide-kill-other-buffers)
-(global-set-key (kbd "C-c f") 'consult-recent-file)
+(global-set-key (kbd "C-x k")   'emacs-ide-kill-current-buffer)
+(global-set-key (kbd "C-c w")   'save-buffer)
+(global-set-key (kbd "C-c q")   'kill-buffer-and-window)
+(global-set-key (kbd "C-c K")   'emacs-ide-kill-other-buffers)
+(global-set-key (kbd "C-c f")   'consult-recent-file)
 (global-set-key (kbd "C-c y p") 'emacs-ide-copy-file-path)
 (global-set-key (kbd "C-c y n") 'emacs-ide-copy-file-name)
 (global-set-key (kbd "C-c C-r") 'emacs-ide-rename-current-file)
-(global-set-key (kbd "C-c C-d") 'emacs-ide-delete-current-file)
+;; FIX: was C-c C-d — now C-c D d to avoid collision with helpful-at-point
+(global-set-key (kbd "C-c D d") 'emacs-ide-delete-current-file)
 
 ;; ============================================================================
 ;; BUFFER NAVIGATION
 ;; ============================================================================
-(global-set-key (kbd "C-x b") 'consult-buffer)
+(global-set-key (kbd "C-x b")   'consult-buffer)
 (global-set-key (kbd "C-x 4 b") 'consult-buffer-other-window)
 (global-set-key (kbd "C-x 5 b") 'consult-buffer-other-frame)
-(global-set-key (kbd "C-c b") 'consult-project-buffer)
+(global-set-key (kbd "C-c b")   'consult-project-buffer)
 
 ;; ============================================================================
 ;; LINE MANIPULATION
 ;; ============================================================================
-(global-set-key (kbd "M-<up>") 'move-text-up)
+(global-set-key (kbd "M-<up>")   'move-text-up)
 (global-set-key (kbd "M-<down>") 'move-text-down)
-(global-set-key (kbd "C-c C-u") 'emacs-ide-duplicate-line)
-(global-set-key (kbd "C-c M-u") 'emacs-ide-duplicate-region)
-(global-set-key (kbd "C-a") 'emacs-ide-smart-beginning-of-line)
-(global-set-key (kbd "M-j") 'emacs-ide-join-lines)
-(global-set-key (kbd "C-o") 'emacs-ide-split-line)
+(global-set-key (kbd "C-c C-u")  'emacs-ide-duplicate-line)
+(global-set-key (kbd "C-c M-u")  'emacs-ide-duplicate-region)
+(global-set-key (kbd "C-a")      'emacs-ide-smart-beginning-of-line)
+(global-set-key (kbd "M-j")      'emacs-ide-join-lines)
+(global-set-key (kbd "C-o")      'emacs-ide-split-line)
 
 ;; ============================================================================
 ;; COMMENTING
 ;; ============================================================================
-(global-set-key (kbd "M-;") 'emacs-ide-comment-or-uncomment)
+(global-set-key (kbd "M-;")   'emacs-ide-comment-or-uncomment)
 (global-set-key (kbd "C-c ;") 'comment-dwim)
 
 ;; ============================================================================
 ;; WINDOW MANAGEMENT
 ;; ============================================================================
-(global-set-key (kbd "C-x 2") 'emacs-ide-split-horizontal-and-follow)
-(global-set-key (kbd "C-x 3") 'emacs-ide-split-vertical-and-follow)
-(global-set-key (kbd "M-o") 'ace-window)
-(global-set-key (kbd "C-c <left>") 'winner-undo)
+(global-set-key (kbd "C-x 2")      'emacs-ide-split-horizontal-and-follow)
+(global-set-key (kbd "C-x 3")      'emacs-ide-split-vertical-and-follow)
+(global-set-key (kbd "M-o")        'ace-window)
+(global-set-key (kbd "C-c <left>")  'winner-undo)
 (global-set-key (kbd "C-c <right>") 'winner-redo)
-
-;; Windmove (vim-style)
-(global-set-key (kbd "C-c h") 'windmove-left)
-(global-set-key (kbd "C-c j") 'windmove-down)
-(global-set-key (kbd "C-c k") 'windmove-up)
-(global-set-key (kbd "C-c l") 'windmove-right)
+(global-set-key (kbd "C-c h")      'windmove-left)
+(global-set-key (kbd "C-c j")      'windmove-down)
+(global-set-key (kbd "C-c k")      'windmove-up)
+(global-set-key (kbd "C-c l")      'windmove-right)
 
 ;; ============================================================================
-;; DEBUGGING - F5-F9 RESERVED FOR DEBUG
+;; DEBUGGING — F5-F9 (set by dap-mode in debug-core.el)
 ;; ============================================================================
-;; Note: These are set by dap-mode in debug-core.el
-;; <f5>   = dap-debug
-;; <f6>   = dap-debug-restart
-;; <f7>   = dap-step-in
-;; S-<f7> = dap-next
-;; M-<f7> = dap-step-out
-;; C-<f7> = dap-continue
-;; <f9>   = dap-breakpoint-toggle
-;; C-<f9> = dap-breakpoint-condition
-;; S-<f9> = dap-breakpoint-log-message
-;; C-S-<f9> = dap-breakpoint-delete-all
-
 (global-set-key (kbd "S-<f5>") 'projectile-compile-project)
 (global-set-key (kbd "S-<f6>") 'projectile-test-project)
-
-;; Compilation
 (global-set-key (kbd "C-c c c") 'compile)
 (global-set-key (kbd "C-c c r") 'recompile)
 
 ;; ============================================================================
-;; THEME - F12 RESERVED FOR THEME TOGGLE
+;; THEME — F12
 ;; ============================================================================
-;; Note: Theme toggle is set by ui-core.el
-;; <f12> = emacs-ide-toggle-theme
+(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 
 ;; ============================================================================
 ;; UTILITY
@@ -93,16 +85,14 @@
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
 (global-set-key (kbd "C-c ?") 'which-key-show-top-level)
 (global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
-(global-set-key (kbd "C-c S") 'emacs-ide-show-startup-time)
-(global-set-key (kbd "C-c I") 'emacs-ide-show-system-info)
 
 ;; ============================================================================
 ;; FORMATTING
 ;; ============================================================================
-(global-set-key (kbd "C-c F") 'format-all-region-or-buffer)
+(global-set-key (kbd "C-c F")   'format-all-region-or-buffer)
 (global-set-key (kbd "C-c C-f") 'emacs-ide-indent-buffer)
 (global-set-key (kbd "C-c M-f") 'emacs-ide-cleanup-buffer)
-(global-set-key (kbd "C-M-\\") 'emacs-ide-indent-region-or-buffer)
+(global-set-key (kbd "C-M-\\")  'emacs-ide-indent-region-or-buffer)
 
 ;; ============================================================================
 ;; CODE FOLDING
@@ -114,13 +104,6 @@
 (global-set-key (kbd "C-c @ A") 'hs-show-all)
 
 ;; ============================================================================
-;; TEXT TRANSFORMATION
-;; ============================================================================
-(global-set-key (kbd "M-u") 'emacs-ide-upcase-region-or-word)
-(global-set-key (kbd "M-l") 'emacs-ide-downcase-region-or-word)
-(global-set-key (kbd "M-c") 'emacs-ide-capitalize-region-or-word)
-
-;; ============================================================================
 ;; SEARCH & NAVIGATION
 ;; ============================================================================
 (global-set-key (kbd "M-s l") 'consult-line)
@@ -130,40 +113,51 @@
 (global-set-key (kbd "M-g i") 'consult-imenu)
 (global-set-key (kbd "M-g I") 'consult-imenu-multi)
 (global-set-key (kbd "M-g o") 'consult-outline)
-
-;; Jump navigation (Avy)
-(global-set-key (kbd "C-:") 'avy-goto-char)
-(global-set-key (kbd "C-'") 'avy-goto-char-2)
+(global-set-key (kbd "C-:")   'avy-goto-char)
+(global-set-key (kbd "C-'")   'avy-goto-char-2)
 (global-set-key (kbd "M-g f") 'avy-goto-line)
 (global-set-key (kbd "M-g w") 'avy-goto-word-1)
 
 ;; ============================================================================
-;; LSP
+;; LSP NAVIGATION
 ;; ============================================================================
 (global-set-key (kbd "M-.") 'xref-find-definitions)
 (global-set-key (kbd "M-,") 'xref-pop-marker-stack)
 (global-set-key (kbd "M-?") 'xref-find-references)
 
 ;; ============================================================================
-;; PROJECT (Projectile) - Prefix C-c p
+;; HELP — C-c C-d goes to helpful-at-point (the more useful daily binding)
+;; FIX: now explicitly set here rather than relying on tools-lsp.el order
 ;; ============================================================================
-(global-set-key (kbd "C-c p f") 'projectile-find-file)
-(global-set-key (kbd "C-c p p") 'projectile-switch-project)
-(global-set-key (kbd "C-c p s r") 'projectile-ripgrep)
-(global-set-key (kbd "C-c p s g") 'projectile-grep)
-(global-set-key (kbd "C-c p b") 'projectile-switch-to-buffer)
-(global-set-key (kbd "C-c p c") 'projectile-compile-project)
-(global-set-key (kbd "C-c p t") 'projectile-test-project)
-(global-set-key (kbd "C-c p r") 'projectile-run-project)
-(global-set-key (kbd "C-c p k") 'projectile-kill-buffers)
-(global-set-key (kbd "C-c p d") 'projectile-dired)
-(global-set-key (kbd "C-c p e") 'projectile-recentf)
+(global-set-key (kbd "C-h f") 'helpful-callable)
+(global-set-key (kbd "C-h v") 'helpful-variable)
+(global-set-key (kbd "C-h k") 'helpful-key)
+(global-set-key (kbd "C-h F") 'helpful-function)
+(global-set-key (kbd "C-h C") 'helpful-command)
+(global-set-key (kbd "C-c C-d") 'helpful-at-point)
 
 ;; ============================================================================
-;; GIT (Magit) - Prefix C-x g or C-c g
+;; PROJECT (Projectile)
 ;; ============================================================================
-(global-set-key (kbd "C-x g") 'magit-status)
+(global-set-key (kbd "C-c p f")   'projectile-find-file)
+(global-set-key (kbd "C-c p p")   'projectile-switch-project)
+(global-set-key (kbd "C-c p s r") 'projectile-ripgrep)
+(global-set-key (kbd "C-c p s g") 'projectile-grep)
+(global-set-key (kbd "C-c p b")   'projectile-switch-to-buffer)
+(global-set-key (kbd "C-c p c")   'projectile-compile-project)
+(global-set-key (kbd "C-c p t")   'projectile-test-project)
+(global-set-key (kbd "C-c p r")   'projectile-run-project)
+(global-set-key (kbd "C-c p k")   'projectile-kill-buffers)
+(global-set-key (kbd "C-c p d")   'projectile-dired)
+(global-set-key (kbd "C-c p e")   'projectile-recentf)
+(global-set-key (kbd "C-c p I")   'emacs-ide-project-info)
+
+;; ============================================================================
+;; GIT (Magit)
+;; ============================================================================
+(global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x M-g") 'magit-dispatch)
+(global-set-key (kbd "C-x v t") 'git-timemachine)
 
 (define-prefix-command 'emacs-ide-git-map)
 (global-set-key (kbd "C-c g") 'emacs-ide-git-map)
@@ -174,18 +168,6 @@
 (define-key emacs-ide-git-map (kbd "i") 'magit-init)
 (define-key emacs-ide-git-map (kbd "d") 'magit-dispatch)
 (define-key emacs-ide-git-map (kbd "f") 'magit-file-dispatch)
-
-(global-set-key (kbd "C-x v t") 'git-timemachine)
-
-;; ============================================================================
-;; HELP
-;; ============================================================================
-(global-set-key (kbd "C-h f") 'helpful-callable)
-(global-set-key (kbd "C-h v") 'helpful-variable)
-(global-set-key (kbd "C-h k") 'helpful-key)
-(global-set-key (kbd "C-h F") 'helpful-function)
-(global-set-key (kbd "C-h C") 'helpful-command)
-(global-set-key (kbd "C-c C-d") 'helpful-at-point)
 
 ;; ============================================================================
 ;; BOOKMARKS
@@ -221,30 +203,47 @@
   (global-set-key (kbd "C-x u") 'undo-tree-visualize))
 
 ;; ============================================================================
-;; COMPLETION FRAMEWORK
+;; COMPLETION
 ;; ============================================================================
-(global-set-key (kbd "M-y") 'consult-yank-pop)
+(global-set-key (kbd "M-y")   'consult-yank-pop)
 (global-set-key (kbd "C-x r b") 'consult-bookmark)
 
 ;; ============================================================================
-;; ERGONOMIC IMPROVEMENTS
+;; ERGONOMIC
 ;; ============================================================================
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
-(global-set-key (kbd "M-SPC") 'set-mark-command)
-(global-set-key (kbd "C-z") 'repeat)
+(global-set-key (kbd "M-SPC")   'set-mark-command)
+(global-set-key (kbd "C-z")     'repeat)
 
 ;; ============================================================================
-;; WAYLAND-SPECIFIC
+;; SPELLING
+;; ============================================================================
+(global-set-key (kbd "C-c S s") 'ispell-word)
+(global-set-key (kbd "C-c S b") 'flyspell-buffer)
+(global-set-key (kbd "C-c S n") 'flyspell-goto-next-error)
+(global-set-key (kbd "C-c S t") 'emacs-ide-spell-toggle)
+
+;; ============================================================================
+;; ORG MODE
+;; ============================================================================
+(global-set-key (kbd "C-c o a") 'org-agenda)
+(global-set-key (kbd "C-c o c") 'org-capture)
+(global-set-key (kbd "C-c o l") 'org-store-link)
+(global-set-key (kbd "C-c o t") 'org-todo)
+
+;; ============================================================================
+;; WAYLAND CLIPBOARD
 ;; ============================================================================
 (when (and (getenv "WAYLAND_DISPLAY")
            (executable-find "wl-copy"))
   (defun emacs-ide-wayland-copy (start end)
-    "Copy to Wayland clipboard."
+    "Copy region to Wayland clipboard."
     (interactive "r")
     (let ((text (buffer-substring-no-properties start end)))
       (with-temp-buffer
         (insert text)
-        (call-process-region (point-min) (point-max) "wl-copy" nil nil nil)))
+        (call-process-region (point-min) (point-max)
+                             "wl-copy" nil nil nil)))
     (deactivate-mark)
     (message "✓ Copied to Wayland clipboard"))
   (global-set-key (kbd "C-c C-w") 'emacs-ide-wayland-copy))
@@ -266,77 +265,101 @@
   "Display keybindings cheat sheet."
   (interactive)
   (with-output-to-temp-buffer "*Keybindings*"
-    (princ "=== EMACS IDE PROFESSIONAL KEYBINDINGS ===
+    (princ "=== EMACS IDE KEYBINDINGS ===
 
 FILE & BUFFER:
-  C-c w       Save buffer
-  C-c q       Kill buffer and window
-  C-c K       Kill other buffers
-  C-c f       Recent files
-  C-x b       Switch buffer
-  C-c b       Project buffers
-  C-c y p     Copy file path
-  C-c y n     Copy file name
+  C-c w         Save buffer
+  C-c q         Kill buffer and window
+  C-c K         Kill other buffers
+  C-c f         Recent files (consult)
+  C-x b         Switch buffer (consult)
+  C-c b         Project buffers
+  C-c y p       Copy file path
+  C-c y n       Copy file name
+  C-c C-r       Rename file
+  C-c D d       Delete file
 
 EDITING:
-  M-<up/dn>   Move line
-  C-c C-u     Duplicate line
-  C-a         Smart home
-  M-;         Comment/uncomment
-  M-u/l/c     Up/downcase word or region
-  C-=         Expand region
-  C-</>       Mark previous/next
+  M-<up/dn>     Move line up/down
+  C-c C-u       Duplicate line
+  C-a           Smart home (indent → BOL)
+  M-;           Comment/uncomment
+  C-=           Expand region
+  C-< / C->     Multiple cursor prev/next
 
-NAVIGATION:
-  C-: or C-'  Jump to char (avy)
-  M-g f       Jump to line
-  M-s l       Search line
-  M-s r       Ripgrep
-  M-g i       Imenu
-  M-.         Go to definition
-  M-,         Pop back
+NAVIGATION (Avy):
+  C-:           Jump to char
+  C-'           Jump to 2-char
+  M-g f         Jump to line
+  M-g w         Jump to word
+
+SEARCH:
+  M-s l         consult-line
+  M-s r         consult-ripgrep
+  M-g i         consult-imenu
+  M-.           xref definition
+  M-,           xref pop
+  M-?           xref references
 
 WINDOWS:
-  C-x 2/3     Split + follow
-  M-o         Ace window (jump)
-  C-c h/j/k/l Windmove (vim-style)
-  C-c </>     Winner undo/redo
+  M-o           ace-window
+  C-x 2/3       Split + follow
+  C-c h/j/k/l   Windmove
+  C-c </>       Winner undo/redo
 
-DEBUGGING:
-  F5          Start debug
-  F6          Restart
-  F7/S-F7     Step in/over
-  M-F7        Step out
-  C-F7        Continue
-  F9          Toggle breakpoint
-  C-c d h     Debug hydra
+DEBUG:
+  F5            Start debug (dap)
+  F7/S-F7       Step in/over
+  M-F7          Step out
+  C-F7          Continue
+  F9            Toggle breakpoint
+  C-c d h       Debug hydra
 
-PROJECT:
-  C-c p f     Find file
-  C-c p p     Switch project
-  C-c p s r   Ripgrep
-  C-c p c     Compile
-  C-c p t     Test
+PROJECT (C-c p):
+  C-c p f       Find file
+  C-c p p       Switch project
+  C-c p s r     Ripgrep in project
+  C-c p c       Compile
+  C-c p t       Test
 
-GIT:
-  C-x g       Magit status
-  C-c g s     Git status
-  C-c g b     Blame
-  C-c g l     Log
-  C-x v t     Time machine
+GIT (C-c g):
+  C-x g         Magit status
+  C-c g s       Status
+  C-c g b       Blame
+  C-c g l       Log file
+  C-x v t       Time machine
 
-LSP:
-  M-.         Go to definition
-  M-?         Find references
-  C-h f       Helpful (docs)
+LSP (C-c l):
+  C-c l r       Rename symbol
+  C-c l f       Format buffer
+  C-c l a       Code action
+  C-c l R       Find references
+
+HELP:
+  C-h f         helpful-callable
+  C-h v         helpful-variable
+  C-h k         helpful-key
+  C-c C-d       helpful-at-point
+
+SPELLING:
+  C-c S s       Spell word
+  C-c S b       Spell buffer
+  C-c S n       Next error
+  C-c S t       Toggle flyspell
+
+ORG:
+  C-c o a       Agenda
+  C-c o c       Capture
+  C-c o l       Store link
 
 UTILITY:
-  C-c ?       Which-key
-  C-c H       This help
-  C-c R       Reload config
-  F12         Toggle theme
-  C-c t       Terminal (vterm)
-  F8          File tree
+  C-c ?         which-key
+  C-c H         This help
+  C-c R         Reload config
+  F12           Toggle theme
+  F8            File tree (neotree)
+  C-c t         vterm
+  C-c P         Presentation mode
 
 Press q to close.
 ")))

@@ -1,6 +1,10 @@
-;;; editing-core.el --- Elite Editing Features (CALIBRATED) -*- lexical-binding: t -*-
+;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Professional text manipulation and ergonomic editing
+;;; Professional text manipulation and ergonomic editing.
+;;; NOTE: editing-nav.el has been MERGED INTO this file and should be deleted.
+;;;       The original editing-nav.el was a near-empty stub that re-declared
+;;;       avy with conflicting keybindings (C-; vs C-: from editing-core.el).
+;;;       The authoritative avy config is here; keybindings.el finalises keys.
 ;;; Code:
 
 ;; ============================================================================
@@ -8,12 +12,11 @@
 ;; ============================================================================
 (delete-selection-mode 1)
 (global-auto-revert-mode 1)
-(electric-pair-mode 1)
 
-(setq-default auto-revert-avoid-polling t
-              auto-revert-interval 3
-              auto-revert-check-vc-info t
-              auto-revert-verbose nil
+(setq-default auto-revert-avoid-polling          t
+              auto-revert-interval               3
+              auto-revert-check-vc-info          t
+              auto-revert-verbose                nil
               global-auto-revert-non-file-buffers t)
 
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
@@ -32,27 +35,19 @@
               ("C-M-t" . sp-transpose-sexp)
               ("C-M-n" . sp-next-sexp)
               ("C-M-p" . sp-previous-sexp)
-              ("C-)" . sp-forward-slurp-sexp)
-              ("C-}" . sp-forward-barf-sexp)
-              ("C-(" . sp-backward-slurp-sexp)
-              ("C-{" . sp-backward-barf-sexp)
-              ("M-<delete>" . sp-unwrap-sexp)
-              ("M-<backspace>" . sp-backward-unwrap-sexp)
-              ("C-M-<backspace>" . sp-splice-sexp-killing-backward)
-              ("C-M-<delete>" . sp-splice-sexp-killing-forward))
+              ("C-)"   . sp-forward-slurp-sexp)
+              ("C-}"   . sp-forward-barf-sexp)
+              ("C-("   . sp-backward-slurp-sexp)
+              ("C-{"   . sp-backward-barf-sexp))
   :init
-  (setq sp-show-pair-delay 0
-        sp-show-pair-from-inside t
+  (setq sp-show-pair-delay        0
+        sp-show-pair-from-inside  t
         sp-escape-quotes-after-insert nil
         sp-highlight-pair-overlay t
-        sp-highlight-wrap-overlay t
-        sp-max-pair-length 4
-        sp-max-prefix-length 50
         sp-navigate-close-if-unbalanced t
-        sp-message-width nil)
+        sp-message-width          nil)
   :config
   (require 'smartparens-config)
-  (sp-use-paredit-bindings)
   (sp-local-pair 'emacs-lisp-mode "`" nil :when '(sp-in-string-p))
   (sp-local-pair 'markdown-mode "```" "```"))
 
@@ -65,15 +60,15 @@
   (let ((undo-dir (expand-file-name "undo-tree-hist/" user-emacs-directory)))
     (unless (file-directory-p undo-dir)
       (make-directory undo-dir t)))
-  
-  (setq undo-tree-auto-save-history t
-        undo-tree-history-directory-alist `(("." . ,(expand-file-name "undo-tree-hist/" user-emacs-directory)))
+  (setq undo-tree-auto-save-history    t
+        undo-tree-history-directory-alist
+        `(("." . ,(expand-file-name "undo-tree-hist/" user-emacs-directory)))
         undo-tree-visualizer-timestamps t
-        undo-tree-visualizer-diff t
+        undo-tree-visualizer-diff       t
         undo-tree-enable-undo-in-region t
-        undo-limit 800000
-        undo-strong-limit 12000000
-        undo-outer-limit 120000000)
+        undo-limit                      800000
+        undo-strong-limit               12000000
+        undo-outer-limit                120000000)
   :config
   (global-undo-tree-mode 1)
   :bind (("C-/" . undo-tree-undo)
@@ -96,7 +91,7 @@
          ("C-c m e" . mc/edit-ends-of-lines)
          ("C-c m b" . mc/edit-beginnings-of-lines))
   :init
-  (setq mc/always-run-for-all t
+  (setq mc/always-run-for-all    t
         mc/insert-numbers-default 1))
 
 ;; ============================================================================
@@ -107,11 +102,12 @@
          ("C--" . er/contract-region)))
 
 ;; ============================================================================
-;; AVY - JUMP NAVIGATION
+;; AVY — merged from editing-nav.el (now deleted)
+;; Keybindings are finalised in keybindings.el; declared here for completeness.
 ;; ============================================================================
 (use-package avy
-  :bind (("C-:" . avy-goto-char)
-         ("C-'" . avy-goto-char-2)
+  :bind (("C-:"   . avy-goto-char)
+         ("C-'"   . avy-goto-char-2)
          ("M-g f" . avy-goto-line)
          ("M-g w" . avy-goto-word-1)
          ("M-g e" . avy-goto-word-0)
@@ -120,25 +116,26 @@
          ("C-c j w" . avy-goto-word-1)
          ("C-c j j" . avy-goto-char-timer))
   :init
-  (setq avy-background t
-        avy-style 'at-full
+  (setq avy-background    t
+        avy-style         'at-full
         avy-timeout-seconds 0.3
-        avy-all-windows t
+        avy-all-windows   t
         avy-case-fold-search t
-        avy-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l ?q ?w ?e ?r ?u ?i ?o ?p)))
+        avy-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l
+                   ?q ?w ?e ?r ?u ?i ?o ?p)))
 
 ;; ============================================================================
 ;; MOVE-TEXT
 ;; ============================================================================
 (use-package move-text
-  :bind (("M-<up>" . move-text-up)
+  :bind (("M-<up>"   . move-text-up)
          ("M-<down>" . move-text-down)))
 
 ;; ============================================================================
-;; CUSTOM EDITING FUNCTIONS
+;; EDITING UTILITY FUNCTIONS
 ;; ============================================================================
 (defun emacs-ide-duplicate-line ()
-  "Duplicate current line."
+  "Duplicate the current line below."
   (interactive)
   (save-excursion
     (let ((line (thing-at-point 'line t)))
@@ -148,7 +145,7 @@
   (forward-line 1))
 
 (defun emacs-ide-duplicate-region ()
-  "Duplicate region."
+  "Duplicate the active region."
   (interactive)
   (when (region-active-p)
     (let ((text (buffer-substring (region-beginning) (region-end))))
@@ -156,31 +153,31 @@
       (insert text))))
 
 (defun emacs-ide-smart-beginning-of-line ()
-  "Move to first non-whitespace or beginning."
+  "Toggle between first non-whitespace and true beginning of line."
   (interactive)
   (let ((oldpos (point)))
     (back-to-indentation)
-    (and (= oldpos (point))
-         (beginning-of-line))))
+    (when (= oldpos (point))
+      (beginning-of-line))))
 
 (defun emacs-ide-kill-current-buffer ()
-  "Kill current buffer."
+  "Kill the current buffer without prompting."
   (interactive)
   (kill-buffer (current-buffer)))
 
 (defun emacs-ide-kill-other-buffers ()
-  "Kill all buffers except current."
+  "Kill all file-visiting buffers except the current one."
   (interactive)
   (let ((count 0))
     (dolist (buffer (delq (current-buffer) (buffer-list)))
       (unless (or (string-prefix-p " " (buffer-name buffer))
                   (string-prefix-p "*" (buffer-name buffer)))
         (kill-buffer buffer)
-        (setq count (1+ count))))
+        (cl-incf count)))
     (message "Killed %d buffer(s)" count)))
 
 (defun emacs-ide-comment-or-uncomment ()
-  "Comment or uncomment intelligently."
+  "Comment or uncomment the line or active region."
   (interactive)
   (let (beg end)
     (if (region-active-p)
@@ -189,61 +186,59 @@
     (comment-or-uncomment-region beg end)))
 
 (defun emacs-ide-join-lines ()
-  "Join current line with next."
+  "Join the current line with the next."
   (interactive)
   (delete-indentation 1))
 
 (defun emacs-ide-split-line ()
-  "Split line at point."
+  "Split the line at point."
   (interactive)
   (newline-and-indent))
 
 (defun emacs-ide-reload-config ()
-  "Reload configuration."
+  "Reload the Emacs init file."
   (interactive)
   (load-file user-init-file)
   (message "✓ Configuration reloaded!"))
 
 (defun emacs-ide-create-non-existent-directory ()
-  "Create parent directory if needed."
-  (let ((parent-directory (file-name-directory buffer-file-name)))
-    (when (and parent-directory
-               (not (file-exists-p parent-directory)))
-      (if (y-or-n-p (format "Directory `%s' does not exist. Create? "
-                            parent-directory))
-          (make-directory parent-directory t)
+  "Offer to create parent directories when finding a new file."
+  (let ((parent (file-name-directory buffer-file-name)))
+    (when (and parent (not (file-exists-p parent)))
+      (if (y-or-n-p (format "Directory `%s' does not exist. Create? " parent))
+          (make-directory parent t)
         (error "Cannot save without parent directory")))))
 
-(add-hook 'find-file-not-found-functions 'emacs-ide-create-non-existent-directory)
+(add-hook 'find-file-not-found-functions
+          #'emacs-ide-create-non-existent-directory)
 
 (defun emacs-ide-rename-current-file ()
-  "Rename current file."
+  "Rename the file backing the current buffer."
   (interactive)
   (let ((filename (buffer-file-name)))
     (if (not (and filename (file-exists-p filename)))
-        (message "Buffer not visiting file!")
+        (message "Buffer not visiting a file!")
       (let ((new-name (read-file-name "New name: " filename)))
-        (cond
-         ((vc-backend filename) (vc-rename-file filename new-name))
-         (t
+        (if (vc-backend filename)
+            (vc-rename-file filename new-name)
           (rename-file filename new-name t)
-          (set-visited-file-name new-name t t)))))))
+          (set-visited-file-name new-name t t))))))
 
 (defun emacs-ide-delete-current-file ()
-  "Delete current file."
+  "Delete the file backing the current buffer."
   (interactive)
   (let ((filename (buffer-file-name)))
     (if (not (and filename (file-exists-p filename)))
-        (message "Buffer not visiting file!")
+        (message "Buffer not visiting a file!")
       (when (y-or-n-p (format "Delete %s? " filename))
         (delete-file filename)
         (kill-buffer (current-buffer))
         (message "Deleted: %s" filename)))))
 
 (defun emacs-ide-copy-file-path ()
-  "Copy file path."
+  "Copy the current buffer's full file path to the kill ring."
   (interactive)
-  (let ((filepath (if (equal major-mode 'dired-mode)
+  (let ((filepath (if (eq major-mode 'dired-mode)
                       default-directory
                     (buffer-file-name))))
     (when filepath
@@ -251,36 +246,36 @@
       (message "Copied: %s" filepath))))
 
 (defun emacs-ide-copy-file-name ()
-  "Copy file name."
+  "Copy the current buffer's file name (no directory) to the kill ring."
   (interactive)
-  (let ((filename (file-name-nondirectory (buffer-file-name))))
-    (when filename
-      (kill-new filename)
-      (message "Copied: %s" filename))))
+  (when-let ((filename (buffer-file-name)))
+    (let ((name (file-name-nondirectory filename)))
+      (kill-new name)
+      (message "Copied: %s" name))))
 
 (defun emacs-ide-split-horizontal-and-follow ()
-  "Split horizontally and follow."
+  "Split window below and move cursor to new window."
   (interactive)
   (split-window-below)
   (balance-windows)
   (other-window 1))
 
 (defun emacs-ide-split-vertical-and-follow ()
-  "Split vertically and follow."
+  "Split window right and move cursor to new window."
   (interactive)
   (split-window-right)
   (balance-windows)
   (other-window 1))
 
 (defun emacs-ide-indent-buffer ()
-  "Indent entire buffer."
+  "Indent the entire buffer."
   (interactive)
   (save-excursion
     (indent-region (point-min) (point-max) nil))
   (message "✓ Buffer indented"))
 
 (defun emacs-ide-cleanup-buffer ()
-  "Cleanup buffer."
+  "Indent buffer, untabify, and strip trailing whitespace."
   (interactive)
   (save-excursion
     (emacs-ide-indent-buffer)
@@ -289,7 +284,7 @@
   (message "✓ Buffer cleaned"))
 
 (defun emacs-ide-indent-region-or-buffer ()
-  "Indent region or buffer."
+  "Indent the active region, or the whole buffer if none."
   (interactive)
   (if (region-active-p)
       (indent-region (region-beginning) (region-end))

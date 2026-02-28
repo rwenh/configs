@@ -1,15 +1,11 @@
-;;; editing-nav.el --- Navigation configuration -*- lexical-binding: t -*-
+;;; editing-nav.el --- DEPRECATED: merged into editing-core.el -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Avy and navigation utilities
-;;; Author: Enterprise Emacs Team
-;;; Version: 2.0.0
+;;; This file has been merged into editing-core.el.
+;;; You can safely DELETE this file from your modules/ directory.
+;;; The original stub caused conflicting avy keybindings (C-; vs C-:).
+;;; All navigation config now lives in editing-core.el.
 ;;; Code:
 
-(use-package avy
-  :bind (("C-;" . avy-goto-char)
-         ("C-'" . avy-goto-char-2)
-         ("M-g f" . avy-goto-line)
-         ("M-g w" . avy-goto-word-1)))
-
+(message "⚠️  editing-nav.el is deprecated — delete it. Content merged into editing-core.el")
 (provide 'editing-nav)
 ;;; editing-nav.el ends here
