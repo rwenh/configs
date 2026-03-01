@@ -1,7 +1,7 @@
 ;;; tools-terminal.el --- Terminal Integration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; VTerm, Eshell, and terminal utilities.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
 ;;;   - dired-listing-switches used --group-directories-first which is a
 ;;;     GNU coreutils-only flag; it errors on macOS/BSD ls. Now guarded
@@ -215,6 +215,7 @@
 
 (use-package docker
   :if (executable-find "docker")
+  ;; C-c D o: docker lives here; debug-core.el owns C-c D s/r/q
   :bind ("C-c D o" . docker))
 
 (defun emacs-ide-docker-build ()

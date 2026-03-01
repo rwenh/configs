@@ -1,7 +1,7 @@
 ;;; tools-spelling.el --- Spell Checking -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Flyspell for prose buffers and flyspell-prog-mode for code.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
 ;;;   - flyspell-generic-check-word-p predicate was INVERTED: the function
 ;;;     returned t for URLs/paths/long-tokens (things to SKIP) and nil for
@@ -9,6 +9,11 @@
 ;;;     return t to CHECK a word and nil to SKIP it — the opposite of what
 ;;;     was written. Fixed: function now returns nil (skip) for symbols/URLs,
 ;;;     t (check) otherwise, which is the correct semantics.
+;;;   - 2.2.2: C-; collision fixed (see previous audit): flyspell-correct-wrapper
+;;;     moved from C-; to C-c S c.
+;;;   - 2.2.2: C-c S s/b/n/t were only bound in keybindings.el (now rewritten
+;;;     vanilla-first). Moved into this module via :bind so they are self-
+;;;     contained and never orphaned by a keybindings.el change.
 ;;; Code:
 
 ;; ============================================================================
@@ -46,6 +51,14 @@
          (git-commit-mode . flyspell-mode)
          ;; In code: only check strings and comments
          (prog-mode       . flyspell-prog-mode))
+  :bind (;; Global C-c S prefix — self-contained, not dependent on keybindings.el
+         ("C-c S s" . ispell-word)
+         ("C-c S b" . emacs-ide-spell-buffer)
+         ("C-c S n" . flyspell-goto-next-error)
+         ("C-c S t" . emacs-ide-spell-toggle)
+         ;; Mode-local correction key
+         :map flyspell-mode-map
+         ("C-c S c" . flyspell-correct-wrapper))
   :init
   (setq flyspell-issue-message-flag  nil
         flyspell-issue-welcome-flag  nil
@@ -73,9 +86,7 @@ Skips URLs, file-path-like symbols, and very long tokens."
 ;; FLYSPELL-CORRECT — consult-based correction UI
 ;; ============================================================================
 (use-package flyspell-correct
-  :after flyspell
-  :bind (:map flyspell-mode-map
-              ("C-;" . flyspell-correct-wrapper)))
+  :after flyspell)  ; C-c S c binding lives in flyspell :bind above
 
 (use-package flyspell-correct-avy-menu
   :after flyspell-correct)

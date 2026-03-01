@@ -79,26 +79,26 @@
 
 ;; ============================================================================
 ;; SAFE MODE
-;; FIX: Removed `(kill-emacs 0)` — that terminated the process before any
-;;      window could open, making safe mode completely unusable interactively.
-;;      Now we load recovery and return normally; `provide` + early return
-;;      is enough to skip the rest of init.
+;; FIX 2.2.1: Removed `(kill-emacs 0)` — killed process before window opened.
+;; FIX 2.2.2: Removed `(error "SAFE-MODE-ABORT")` — printed a backtrace to
+;;      *Messages* on every safe-mode boot. The clean solution is to wrap all
+;;      post-bootstrap loading in `(unless emacs-ide-safe-mode ...)` so safe
+;;      mode simply falls through silently with minimal config.
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-safe-mode)
-  (message "⚠️  SAFE MODE: Skipping most configuration")
+  (message "⚠️  SAFE MODE: Skipping full configuration — loading recovery only")
   (setq-default inhibit-startup-screen t
                 initial-scratch-message nil)
   (load (expand-file-name "emacs-ide-recovery.el" emacs-ide-core-dir) nil t)
   (when (fboundp 'emacs-ide-recovery-mode)
-    (emacs-ide-recovery-mode))
-  (provide 'init)
-  ;; Use a top-level `throw` to abort the rest of init gracefully
-  ;; without killing the process. `with-demoted-errors` swallows it safely.
-  (error "SAFE-MODE-ABORT"))  ; caught by condition-case in callers if any
+    (emacs-ide-recovery-mode)))
 
 ;; ============================================================================
 ;; PACKAGE MANAGEMENT — STRAIGHT.EL
+;; (skipped entirely in safe-mode)
 ;; ============================================================================
+(unless (bound-and-true-p emacs-ide-safe-mode)
+
 (defvar bootstrap-version)
 (let ((bootstrap-file
        (expand-file-name "straight/repos/straight.el/bootstrap.el"
@@ -365,6 +365,8 @@
   (interactive)
   (straight-freeze-versions)
   (message "✓ Package versions frozen"))
+
+);; end (unless emacs-ide-safe-mode ...)
 
 (provide 'init)
 ;;; init.el ends here

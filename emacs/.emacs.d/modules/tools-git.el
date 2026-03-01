@@ -1,7 +1,7 @@
 ;;; tools-git.el --- Git Integration with Magit -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional Git workflow with Magit and companions.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
 ;;;   - magit-refresh-status-buffer: set to t in :init then immediately
 ;;;     overridden to nil in :config — dead code removed; nil is the intent
@@ -9,6 +9,11 @@
 ;;;     replaced with magit-git-string for a safe ahead/behind display
 ;;;   - emacs-ide-git-stash: magit-stash-both signature mismatch; replaced
 ;;;     with magit-stash-push which has a stable public API
+;;;   - 2.2.2: Removed git-gutter entirely. git-gutter and diff-hl both
+;;;     provide fringe/gutter diff indicators and conflict with each other
+;;;     (double hooks on prog-mode, fringe ownership fights). diff-hl is
+;;;     kept as the sole provider — it has native Magit integration via
+;;;     diff-hl-magit-post-refresh and handles dired and TTY frames too.
 ;;; Code:
 
 ;; ============================================================================
@@ -32,23 +37,7 @@
         git-commit-style-convention-checks '(non-empty-second-line)))
 
 ;; ============================================================================
-;; GIT-GUTTER - VISUAL DIFF IN FRINGE
-;; ============================================================================
-(use-package git-gutter
-  :hook (prog-mode . git-gutter-mode)
-  :init
-  (setq git-gutter:update-interval 0.3
-        git-gutter:modified-sign "│"
-        git-gutter:added-sign    "│"
-        git-gutter:deleted-sign  "│"
-        git-gutter:hide-gutter   t)
-  :config
-  (set-face-foreground 'git-gutter:modified "#f9e2af")
-  (set-face-foreground 'git-gutter:added    "#a6e3a1")
-  (set-face-foreground 'git-gutter:deleted  "#f38ba8"))
-
-;; ============================================================================
-;; DIFF-HL - ALTERNATIVE TO GIT-GUTTER
+;; DIFF-HL - FRINGE/GUTTER DIFF INDICATORS (sole provider)
 ;; ============================================================================
 (use-package diff-hl
   :hook ((prog-mode    . diff-hl-mode)

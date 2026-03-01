@@ -1,7 +1,7 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.2.1
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - Guard: original (unless ... (provide) ...) continued executing after
 ;;;     provide because provide does not stop evaluation. Fixed with a proper
@@ -10,6 +10,12 @@
 ;;;     consult-outline in keybindings.el; moved to M-g O here.
 ;;;   - emacs-ide-lsp-semantic-tokens was undefined; replaced with direct
 ;;;     reference to emacs-ide-lsp-enable-inlay-hints / config value.
+;;;   - 2.2.2: `helpful` use-package block was inside the (when emacs-ide-lsp-enable)
+;;;     guard, so users with LSP disabled lost all helpful bindings (C-h f/v/k/F/C,
+;;;     C-c C-d). Moved outside the guard so helpful loads unconditionally.
+;;;   - 2.2.3: helpful use-package block removed entirely from this module.
+;;;     keybindings.el (always-last, unconditional) owns all helpful global
+;;;     bindings. Having them in two places was redundant noise.
 ;;; Code:
 
 (require 'cl-lib)
@@ -259,17 +265,6 @@
   (global-eldoc-mode 1))
 
 ;; ============================================================================
-;; HELPFUL — better help buffers
-;; ============================================================================
-(use-package helpful
-  :bind (("C-h f"   . helpful-callable)
-         ("C-h v"   . helpful-variable)
-         ("C-h k"   . helpful-key)
-         ("C-h F"   . helpful-function)
-         ("C-h C"   . helpful-command)
-         ("C-c C-d" . helpful-at-point)))
-
-;; ============================================================================
 ;; LSP SERVER STATUS CHECKER
 ;; ============================================================================
 (defun emacs-ide-lsp-check-servers ()
@@ -299,6 +294,9 @@
       (princ "or: M-x lsp-install-server\n"))))
 
 ) ;; end (when emacs-ide-lsp-enable ...)
+
+;; helpful bindings (C-h f/v/k/F/C, C-c C-d) are set in keybindings.el which
+;; loads unconditionally and always last — no need to duplicate them here.
 
 ;; Always provide, even when LSP is disabled
 (unless (bound-and-true-p emacs-ide-lsp-enable)

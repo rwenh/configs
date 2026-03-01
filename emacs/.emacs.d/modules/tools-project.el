@@ -1,7 +1,7 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional project management and navigation with config integration.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
 ;;;   - Removed duplicate `recentf` use-package block (canonical config is in
 ;;;     completion-core.el; having two with different :exclude lists caused the
@@ -10,6 +10,11 @@
 ;;;   - Removed duplicate `bookmark` use-package block (canonical is in
 ;;;     completion-core.el; having two caused double initialisation and the
 ;;;     bookmark-default-file path differed between them).
+;;;   - 2.2.2: C-c T conflict: treemacs was bound to C-c T, colliding with
+;;;     tools-terminal.el's vterm-other-window on the same key. Last-loaded
+;;;     module won silently. treemacs moved to <f9> (F-key, unambiguously IDE
+;;;     territory) and C-c t f / C-c t t kept for sub-commands. C-c T freed
+;;;     for tools-terminal.el exclusively.
 ;;; Code:
 
 ;; ============================================================================
@@ -120,7 +125,11 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  :bind (("C-c T"   . treemacs)
+  ;; FIX 2.2.2: C-c T moved to <f9> — was colliding with tools-terminal.el
+  ;; which binds C-c T to vterm-other-window. <f9> is unambiguous IDE territory.
+  ;; C-c t f / C-c t t kept as sub-commands (C-c t is tools-terminal.el's prefix
+  ;; but these specific sub-keys are free and thematically consistent as "tree").
+  :bind (("<f9>"    . treemacs)
          ("C-c t f" . treemacs-find-file)
          ("C-c t t" . treemacs-select-window)))
 

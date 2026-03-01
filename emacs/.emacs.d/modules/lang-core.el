@@ -1,6 +1,11 @@
 ;;; lang-core.el --- Professional Language Support (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; 50+ languages with LSP, Tree-sitter, compile-and-run, debugging
+;;; Version: 2.2.1
+;;; Fixes:
+;;;   - ruby-mode: added :straight nil — it is built-in since Emacs 29.
+;;;     Without it straight.el attempted a MELPA lookup on every startup,
+;;;     producing lock-file churn and occasional warning noise.
 ;;; Code:
 
 ;; ============================================================================
@@ -263,6 +268,7 @@
 ;; RUBY
 ;; ============================================================================
 (use-package ruby-mode
+  :straight nil
   :if (executable-find "ruby")
   :mode "\\.rb\\'"
   :init

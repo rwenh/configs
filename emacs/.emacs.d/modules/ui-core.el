@@ -1,7 +1,7 @@
 ;;; ui-core.el --- Professional Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Elite UI/UX with modern design and maximum efficiency.
-;;; Version: 2.2.1
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - doom-modeline: ui-core.el called (doom-modeline-mode 1) directly AND
 ;;;     ui-modeline.el added it via after-init-hook — double activation caused
@@ -10,6 +10,12 @@
 ;;;     ui-modeline.el's duplicate block is suppressed (see that file).
 ;;;   - Removed dashboard setup from this file (owned by ui-dashboard.el).
 ;;;   - emacs-ide-colorize-compilation-buffer defined here only (canonical).
+;;;   - 2.2.2: Removed global-set-key calls for C-c P and F12 from this file.
+;;;     Those bindings belong in keybindings.el (the authoritative source).
+;;;     The functions (emacs-ide-presentation-mode, emacs-ide-toggle-theme)
+;;;     remain defined here; keybindings.el binds them.
+;;;   - 2.2.3: Removed :bind (M-o . ace-window) — keybindings.el owns all
+;;;     global bindings. ace-window is configured here, bound there.
 ;;; Code:
 
 ;; ============================================================================
@@ -279,7 +285,7 @@
 ;; WINDOW MANAGEMENT
 ;; ============================================================================
 (use-package ace-window
-  :bind ("M-o" . ace-window)
+  ;; M-o binding lives in keybindings.el — no :bind here to avoid duplication
   :init
   (setq aw-keys            '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
         aw-scope           'frame
@@ -382,9 +388,8 @@
     (set-face-attribute 'default nil :height 200)
     (setq emacs-ide-presentation-mode t)
     (message "Presentation mode ON")))
-
-(global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
-(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
+;; NOTE: C-c P and F12 are bound in keybindings.el (the authoritative source).
+;;       Do not add global-set-key calls here.
 
 (provide 'ui-core)
 ;;; ui-core.el ends here

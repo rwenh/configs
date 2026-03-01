@@ -206,17 +206,21 @@
           inhibit-default-init t)))
 
 ;; ============================================================================
-;; INITIAL APPEARANCE - CATPPUCCIN COLORS
+;; INITIAL APPEARANCE - MODUS VIVENDI COLORS
+;; FIX: Previous values were Catppuccin Mocha (#1e1e2e/#cdd6f4) which caused
+;;      a visible flash when ui-core.el loaded modus-vivendi. Now aligned to
+;;      modus-vivendi's actual background/foreground so the frame is stable
+;;      from the first paint through theme load.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "initial-theme"
   (lambda ()
     (set-face-attribute 'default nil
-                        :background "#1e1e2e"
-                        :foreground "#cdd6f4")
+                        :background "#000000"   ; modus-vivendi bg-main
+                        :foreground "#ffffff")  ; modus-vivendi fg-main
 
     (set-face-attribute 'mode-line nil
-                        :background "#313244"
-                        :foreground "#cdd6f4")))
+                        :background "#1e1e1e"   ; modus-vivendi bg-mode-line-active
+                        :foreground "#ffffff")))
 
 ;; ============================================================================
 ;; REDUCE STARTUP NOISE

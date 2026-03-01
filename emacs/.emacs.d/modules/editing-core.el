@@ -5,6 +5,10 @@
 ;;;       The original editing-nav.el was a near-empty stub that re-declared
 ;;;       avy with conflicting keybindings (C-; vs C-: from editing-core.el).
 ;;;       The authoritative avy config is here; keybindings.el finalises keys.
+;;; Fixes:
+;;;   - 2.2.2: Removed C-c u → undo-tree-visualize. It was a stray undocumented
+;;;     global binding outside keybindings.el, violating the single-source
+;;;     architecture. C-x u (the standard key) is sufficient.
 ;;; Code:
 
 ;; ============================================================================
@@ -73,8 +77,9 @@
   (global-undo-tree-mode 1)
   :bind (("C-/" . undo-tree-undo)
          ("C-?" . undo-tree-redo)
-         ("C-x u" . undo-tree-visualize)
-         ("C-c u" . undo-tree-visualize)))
+         ;; C-c u removed: stray undocumented global outside keybindings.el.
+         ;; C-x u is the standard Emacs undo-tree key — sufficient.
+         ("C-x u" . undo-tree-visualize)))
 
 ;; ============================================================================
 ;; MULTIPLE CURSORS

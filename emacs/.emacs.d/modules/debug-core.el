@@ -1,7 +1,7 @@
 ;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
 ;;;   - hydra-debug: duplicate key "s" (dap-step-in AND dap-ui-sessions) and
 ;;;     duplicate "i" (dap-step-in twice) — remapped: "s" → dap-step-in,
@@ -314,6 +314,9 @@ _q_: quit                            _d_: down frame    _R_: repl
 
 (use-package profiler
   :straight nil
+  ;; C-c D namespace: debug-core.el owns s/r/q (profiler)
+  ;;                    tools-terminal.el owns o (docker)
+  ;;                    keybindings.el no longer uses C-c D
   :bind (("C-c D s" . profiler-start)
          ("C-c D r" . profiler-report)
          ("C-c D q" . profiler-stop)))
