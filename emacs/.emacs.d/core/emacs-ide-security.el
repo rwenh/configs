@@ -1,26 +1,43 @@
 ;;; emacs-ide-security.el --- Security Hardening -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Enterprise security configuration with config integration.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
-;;;   - auth-sources: was using `let` binding then `setq auth-sources` which
-;;;     assigned to the LOCAL let variable, not the global `auth-sources`.
-;;;     The mapcar result was silently discarded. Fixed to setq the global directly.
+;;;   - TLS load-order: with-eval-after-load 'gnutls meant gnutls-verify-error
+;;;     was never set before the first network call (package refresh, straight
+;;;     bootstrap, etc.) because gnutls only loads lazily on first TLS use.
+;;;     By then the health check and early network calls had already run with
+;;;     the default unverified settings. Fixed by requiring gnutls eagerly so
+;;;     TLS settings are applied unconditionally at startup.
+;;;   - auth-sources: local let variable assignment bug fixed in v2.2.1; retained.
 ;;; Code:
 
 ;; ============================================================================
-;; TLS CONFIGURATION - DEFERRED LOADING
+;; TLS CONFIGURATION
+;; FIX: Replaced (with-eval-after-load 'gnutls ...) with (require 'gnutls)
+;;      so TLS settings are active before any network call is made.
+;;      The health check was reporting TLS as unconfigured because gnutls
+;;      hadn't been loaded yet when the check ran.
 ;; ============================================================================
-(with-eval-after-load 'gnutls
-  (let ((tls-verify (or (bound-and-true-p emacs-ide-tls-verify) t)))
-    (setq gnutls-verify-error tls-verify
-          gnutls-min-prime-bits 3072
-          tls-checktrust t)))
+(require 'gnutls)
+
+(let ((tls-verify (or (and (boundp 'emacs-ide-config-data)
+                           (let ((sec (cdr (assoc 'security emacs-ide-config-data))))
+                             (cdr (assoc 'tls-verify sec))))
+                      t)))
+  (setq gnutls-verify-error   tls-verify
+        gnutls-min-prime-bits (or (and (boundp 'emacs-ide-config-data)
+                                       (let ((sec (cdr (assoc 'security emacs-ide-config-data))))
+                                         (cdr (assoc 'tls-min-prime-bits sec))))
+                                  3072)
+        tls-checktrust         t))
 
 ;; ============================================================================
 ;; PACKAGE SIGNATURE CHECKING
 ;; ============================================================================
-(let ((check-sigs (or (bound-and-true-p emacs-ide-package-check-signature)
+(let ((check-sigs (or (and (boundp 'emacs-ide-config-data)
+                           (let ((sec (cdr (assoc 'security emacs-ide-config-data))))
+                             (cdr (assoc 'package-signatures sec))))
                       'allow-unsigned)))
   (setq package-check-signature check-sigs))
 
@@ -100,7 +117,7 @@
             (princ "WARNINGS:\n")
             (dolist (item (nreverse warnings))
               (princ (format "  %s\n" item))))
-        (princ "No security warnings found.\n"))))
+        (princ "No security warnings found.\n")))))
 
 (provide 'emacs-ide-security)
 ;;; emacs-ide-security.el ends here
