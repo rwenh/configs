@@ -228,7 +228,7 @@ COMPILE  (C-c C-c is major-mode territory — use these instead):
   C-c B         compile
   C-c b         recompile
   C-c C-t       emacs-ide-test-run (full suite)
-  C-c T p/l/r/h test at point / last / report / hydra
+  C-c x p/l/r/h test at point / last / report / hydra
 
 DEBUG  (debug-core.el — F-keys are unambiguous IDE territory):
   F5            dap-debug

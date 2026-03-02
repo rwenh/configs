@@ -22,10 +22,10 @@
 ;;; Keybindings:
 ;;;   C-c C-t   emacs-ide-test-run          run nearest test / full suite
 ;;;   C-c C-T   emacs-ide-test-run-all      always run full suite
-;;;   C-c T p   emacs-ide-test-run-point    run test at point
-;;;   C-c T l   emacs-ide-test-run-last     repeat last test command
-;;;   C-c T r   emacs-ide-test-report       show test history report
-;;;   C-c T h   hydra-test/body             test hydra
+;;;   C-c x p   emacs-ide-test-run-point    run test at point
+;;;   C-c x l   emacs-ide-test-run-last     repeat last test command
+;;;   C-c x r   emacs-ide-test-report       show test history report
+;;;   C-c x h   hydra-test/body             test hydra
 ;;;
 ;;; Add "tools-test" to emacs-ide-feature-modules in init.el (after lang-core,
 ;;; before keybindings).
@@ -559,12 +559,15 @@ _a_: run all           _l_: repeat last    _q_: quit
 ;; ============================================================================
 ;; C-c t is bound to vterm by tools-terminal.el — do not use it as a prefix.
 ;; C-c T (uppercase) is unoccupied and used for the test sub-map.
+;; C-c t  = vterm (tools-terminal.el) — plain command, cannot be a prefix
+;; C-c T  = vterm-other-window (tools-terminal.el) — also taken
+;; C-c x  = free across all modules — used as the test sub-prefix
 (global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 (global-set-key (kbd "C-c C-T") 'emacs-ide-test-run-all)
-(global-set-key (kbd "C-c T p") 'emacs-ide-test-run-point)
-(global-set-key (kbd "C-c T l") 'emacs-ide-test-run-last)
-(global-set-key (kbd "C-c T r") 'emacs-ide-test-report)
-(global-set-key (kbd "C-c T h") 'hydra-test/body)
+(global-set-key (kbd "C-c x p") 'emacs-ide-test-run-point)
+(global-set-key (kbd "C-c x l") 'emacs-ide-test-run-last)
+(global-set-key (kbd "C-c x r") 'emacs-ide-test-report)
+(global-set-key (kbd "C-c x h") 'hydra-test/body)
 
 ;; ============================================================================
 ;; INIT.EL REGISTRATION REMINDER

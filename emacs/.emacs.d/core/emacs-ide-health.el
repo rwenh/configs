@@ -29,6 +29,38 @@
 (defvar emacs-ide-health-results nil
   "Results from last health check.")
 
+;; ============================================================================
+;; HEALTH SUMMARY — used by modeline, dashboard, and startup message
+;; ============================================================================
+(defvar emacs-ide-health--last-errors 0
+  "Error count from last health check.")
+
+(defvar emacs-ide-health--last-warnings 0
+  "Warning count from last health check.")
+
+(defun emacs-ide-health--summary-string ()
+  "Return a short status string for modeline/dashboard use.
+Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
+  (cond
+   ((null emacs-ide-health-last-check)
+    "? unchecked")
+   ((> emacs-ide-health--last-errors 0)
+    (format "✗ %d error%s"
+            emacs-ide-health--last-errors
+            (if (= emacs-ide-health--last-errors 1) "" "s")))
+   ((> emacs-ide-health--last-warnings 0)
+    (format "⚠ %d warning%s"
+            emacs-ide-health--last-warnings
+            (if (if (= emacs-ide-health--last-warnings 1) "" "s"))))
+   (t "✓ Healthy")))
+
+(defun emacs-ide-health--update-counts (errors warnings)
+  "Store ERRORS and WARNINGS counts and refresh modeline."
+  (setq emacs-ide-health--last-errors   errors
+        emacs-ide-health--last-warnings warnings)
+  ;; Poke the modeline to redisplay the segment
+  (force-mode-line-update t))
+
 (defvar emacs-ide-health-checks nil
   "Registry of health check functions; populated at load time.")
 
@@ -228,6 +260,7 @@ reverse order. We use assoc to find by name rather than relying on position."
               ((eq status 'warning) (cl-incf warnings)))))
     (setq emacs-ide-health-results (reverse results)
           emacs-ide-health-last-check (current-time))
+    (emacs-ide-health--update-counts errors warnings)
     (emacs-ide-health-display-results results errors warnings)
     (when (and emacs-ide-health-auto-fix
                (or (> errors 0) (> warnings 0))
@@ -301,20 +334,41 @@ FIX: handles both plain lists and :available/:missing plist shapes
 ;; STARTUP QUICK CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-startup ()
-  "Quick health check on startup (non-blocking)."
+  "Quick health check on startup (non-blocking).
+Runs a focused set of checks, stores results for modeline/dashboard,
+and echoes a hint if issues are found — without opening the full report."
   (when emacs-ide-health-check-on-startup
     (run-with-idle-timer
-     2 nil
+     3 nil   ; 3s: after dashboard renders and modeline is active
      (lambda ()
-       (let ((checks (list (cons 'system-tools #'emacs-ide-health-check-system-tools)
-                           (cons 'packages     #'emacs-ide-health-check-packages))))
+       (let* ((checks (list (cons 'system-tools #'emacs-ide-health-check-system-tools)
+                            (cons 'packages     #'emacs-ide-health-check-packages)
+                            (cons 'lsp-servers  #'emacs-ide-health-check-lsp-servers)
+                            (cons 'formatters   #'emacs-ide-health-check-formatters)
+                            (cons 'security     #'emacs-ide-health-check-security)))
+              (results '())
+              (errors 0)
+              (warnings 0))
          (dolist (chk checks)
            (let* ((res    (emacs-ide-health-run-check (car chk) (cdr chk)))
                   (status (plist-get (cdr res) :status)))
-             (when (eq status 'error)
-               (warn "Health check failed: %s - %s"
-                     (car res)
-                     (plist-get (cdr res) :message))))))))))
+             (push res results)
+             (cond ((eq status 'error)   (cl-incf errors))
+                   ((eq status 'warning) (cl-incf warnings)))))
+         ;; Store for modeline and dashboard
+         (setq emacs-ide-health-results    (reverse results)
+               emacs-ide-health-last-check (current-time))
+         (emacs-ide-health--update-counts errors warnings)
+         ;; Echo a non-intrusive hint — no popup, no forced buffer switch
+         (cond
+          ((> errors 0)
+           (message "🏥 Health: ✗ %d error%s found — M-x emacs-ide-health-check-all"
+                    errors (if (= errors 1) "" "s")))
+          ((> warnings 0)
+           (message "🏥 Health: ⚠ %d warning%s — M-x emacs-ide-health-check-all"
+                    warnings (if (= warnings 1) "" "s")))
+          (t
+           (message "🏥 Health: ✓ All checks passed"))))))))
 
 (provide 'emacs-ide-health)
 ;;; emacs-ide-health.el ends here

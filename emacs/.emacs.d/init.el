@@ -308,9 +308,19 @@
                                         (hash-table-count straight--build-cache)
                                       0)
                                   (error 0))))
-                (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s"
+                (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s%s"
                          emacs-ide-version elapsed pkg-count gc-count
-                         (or (bound-and-true-p emacs-ide-display-server) "TTY"))
+                         (or (bound-and-true-p emacs-ide-display-server) "TTY")
+                         ;; Append health hint if previous check found issues
+                         (let ((w (if (boundp 'emacs-ide-health--last-warnings)
+                                      emacs-ide-health--last-warnings 0))
+                               (e (if (boundp 'emacs-ide-health--last-errors)
+                                      emacs-ide-health--last-errors 0)))
+                           (cond ((> e 0) (format " | ✗ %d health error%s"
+                                                   e (if (= e 1) "" "s")))
+                                 ((> w 0) (format " | ⚠ %d health warning%s"
+                                                   w (if (= w 1) "" "s")))
+                                 (t ""))))
                 (let ((target (or (bound-and-true-p emacs-ide-startup-time-target) 3.0)))
                   (when (> elapsed target)
                     (warn "⚠️  Startup %.2fs exceeded target %.1fs. Run M-x emacs-ide-profile-startup."
