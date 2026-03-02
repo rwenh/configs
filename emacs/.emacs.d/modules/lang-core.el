@@ -351,20 +351,7 @@
 (use-package cmake-mode
   :mode ("CMakeLists\\.txt\\'" "\\.cmake\\'"))
 
-;; ============================================================================
-;; ORG MODE (BUILTIN)
-;; ============================================================================
-(use-package org
-  :straight nil
-  :mode ("\\.org\\'" . org-mode)
-  :init
-  (setq org-startup-indented t
-        org-hide-emphasis-markers t
-        org-src-fontify-natively t
-        org-src-tab-acts-natively t
-        org-edit-src-content-indentation 0
-        org-src-preserve-indentation t
-        org-startup-folded 'content))
+;; Org-mode is fully configured in tools-org.el — no duplicate block here.
 
 (provide 'lang-core)
 ;;; lang-core.el ends here

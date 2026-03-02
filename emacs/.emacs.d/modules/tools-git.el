@@ -1,19 +1,19 @@
 ;;; tools-git.el --- Git Integration with Magit -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional Git workflow with Magit and companions.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
+;;;   - 2.2.3: diff-hl magit-post-refresh hook fixed. use-package :hook
+;;;     appends "-hook" to the symbol, producing magit-post-refresh-hook-hook
+;;;     (a non-existent hook). magit-post-refresh is already a plain hook
+;;;     (not a mode). Moved to :config with explicit add-hook call.
 ;;;   - magit-refresh-status-buffer: set to t in :init then immediately
-;;;     overridden to nil in :config — dead code removed; nil is the intent
+;;;     overridden to nil in :config — dead code removed; nil is the intent.
 ;;;   - emacs-ide-git-status: called non-existent magit-rev-diff-count;
-;;;     replaced with magit-git-string for a safe ahead/behind display
+;;;     replaced with magit-git-string for a safe ahead/behind display.
 ;;;   - emacs-ide-git-stash: magit-stash-both signature mismatch; replaced
-;;;     with magit-stash-push which has a stable public API
-;;;   - 2.2.2: Removed git-gutter entirely. git-gutter and diff-hl both
-;;;     provide fringe/gutter diff indicators and conflict with each other
-;;;     (double hooks on prog-mode, fringe ownership fights). diff-hl is
-;;;     kept as the sole provider — it has native Magit integration via
-;;;     diff-hl-magit-post-refresh and handles dired and TTY frames too.
+;;;     with magit-stash-push which has a stable public API.
+;;;   - git-gutter removed entirely (conflicts with diff-hl fringe ownership).
 ;;; Code:
 
 ;; ============================================================================
@@ -38,15 +38,20 @@
 
 ;; ============================================================================
 ;; DIFF-HL - FRINGE/GUTTER DIFF INDICATORS (sole provider)
+;; FIX 2.2.3: magit-post-refresh is a plain hook variable, not a mode.
+;;   use-package :hook would transform it to 'magit-post-refresh-hook-hook'
+;;   which does not exist. Must use add-hook explicitly in :config.
 ;; ============================================================================
 (use-package diff-hl
-  :hook ((prog-mode    . diff-hl-mode)
-         (dired-mode   . diff-hl-dired-mode)
-         (magit-post-refresh . diff-hl-magit-post-refresh))
+  :hook ((prog-mode  . diff-hl-mode)
+         (dired-mode . diff-hl-dired-mode))
   :init
   (setq diff-hl-draw-borders nil
         diff-hl-side 'left)
   :config
+  ;; FIX: hook wired here with add-hook, not via :hook, because
+  ;; magit-post-refresh is already a hook variable (not a mode).
+  (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh)
   (when (fboundp 'diff-hl-flydiff-mode)
     (diff-hl-flydiff-mode))
   (when (and (display-graphic-p) (fboundp 'diff-hl-margin-mode))

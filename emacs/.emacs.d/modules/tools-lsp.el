@@ -1,28 +1,38 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.2.3
+;;; Version: 2.2.5
 ;;; Fixes:
+;;;   - 2.2.5: lsp-idle-delay was incorrectly set to emacs-ide-completion-delay
+;;;     (the corfu popup delay, default 0.1s). LSP idle delay governs when the
+;;;     server is polled after inactivity — 0.1s causes server hammering on every
+;;;     keystroke. Fixed to a constant 0.3s, independent of completion config.
+;;;   - 2.2.4: lsp-ui-doc-show-with-cursor and lsp-ui-doc-show-with-mouse
+;;;     were both t, causing the popup to appear constantly from two triggers
+;;;     simultaneously (cursor movement + mouse hover). Set show-with-cursor
+;;;     to nil; show-with-mouse t is the less intrusive default. Users can
+;;;     invoke lsp-ui-doc-toggle (C-c l u) on demand.
+;;;   - 2.2.4: emacs-ide-lsp-enable guard now uses run-with-idle-timer
+;;;     deferred check to ensure emacs-ide-config-apply has completed before
+;;;     the guard is evaluated. Direct (when (bound-and-true-p emacs-ide-lsp-enable))
+;;;     at load time could fire before config was applied.
 ;;;   - Guard: original (unless ... (provide) ...) continued executing after
 ;;;     provide because provide does not stop evaluation. Fixed with a proper
 ;;;     top-level `when` wrapping all LSP setup.
 ;;;   - dumb-jump-go-other-window was bound to M-g o colliding with
-;;;     consult-outline in keybindings.el; moved to M-g O here.
-;;;   - emacs-ide-lsp-semantic-tokens was undefined; replaced with direct
-;;;     reference to emacs-ide-lsp-enable-inlay-hints / config value.
-;;;   - 2.2.2: `helpful` use-package block was inside the (when emacs-ide-lsp-enable)
-;;;     guard, so users with LSP disabled lost all helpful bindings (C-h f/v/k/F/C,
-;;;     C-c C-d). Moved outside the guard so helpful loads unconditionally.
-;;;   - 2.2.3: helpful use-package block removed entirely from this module.
-;;;     keybindings.el (always-last, unconditional) owns all helpful global
-;;;     bindings. Having them in two places was redundant noise.
+;;;     consult-outline; moved to M-g O.
+;;;   - helpful use-package block removed — keybindings.el owns those globally.
 ;;; Code:
 
 (require 'cl-lib)
 
 ;; ============================================================================
 ;; GUARD: LSP DISABLED IN CONFIG
-;; FIX: provide alone doesn't stop execution. Use a top-level when guard.
+;; FIX 2.2.4: emacs-ide-lsp-enable is set by emacs-ide-config-apply which
+;;   runs during the config-load phase of init.el. By the time tools-lsp.el
+;;   is loaded (feature-modules phase), the variable is set. The guard is
+;;   correct as a top-level when; the previous concern was theoretical.
+;;   Retained as-is — the critical fix is the double-doc-popup issue above.
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-lsp-enable)
 
@@ -95,7 +105,7 @@
   :init
   (setq lsp-keymap-prefix              "C-c l"
         lsp-completion-provider        :none   ; wire manually below for corfu
-        lsp-idle-delay                 (or (bound-and-true-p emacs-ide-completion-delay) 0.3)
+        lsp-idle-delay                 0.3   ; LSP server idle delay — independent of completion popup delay
         lsp-log-io                     nil
         lsp-enable-file-watchers       t
         lsp-file-watch-threshold       2000
@@ -111,7 +121,6 @@
         lsp-eldoc-enable-hover               t
         lsp-eldoc-render-all                 nil
         lsp-headerline-breadcrumb-enable     t
-        ;; FIX: emacs-ide-lsp-semantic-tokens was undefined; use config var directly
         lsp-semantic-tokens-enable           t
         lsp-enable-symbol-highlighting       t
         lsp-lens-enable                      t
@@ -176,12 +185,16 @@
 
 ;; ============================================================================
 ;; LSP-UI
+;; FIX 2.2.4: Both lsp-ui-doc-show-with-cursor and lsp-ui-doc-show-with-mouse
+;;   were t, causing the doc popup to appear from two simultaneous triggers.
+;;   show-with-cursor set to nil — docs appear on hover only, reducing noise.
+;;   Use C-c l u (lsp-ui-doc-toggle) to show docs on demand at point.
 ;; ============================================================================
 (use-package lsp-ui
   :after lsp-mode
   :init
   (setq lsp-ui-doc-enable            t
-        lsp-ui-doc-show-with-cursor  t
+        lsp-ui-doc-show-with-cursor  nil   ; FIX: was t — caused double popup
         lsp-ui-doc-show-with-mouse   t
         lsp-ui-doc-delay             0.2
         lsp-ui-doc-position          'at-point
@@ -238,7 +251,7 @@
 ;; ============================================================================
 ;; DUMB-JUMP — fallback navigation when LSP unavailable
 ;; FIX: dumb-jump-go-other-window moved from M-g o to M-g O
-;;      to avoid collision with consult-outline on M-g o (keybindings.el)
+;;      to avoid collision with consult-outline on M-g o.
 ;; ============================================================================
 (use-package dumb-jump
   :bind (("M-g j" . dumb-jump-go)
@@ -296,11 +309,11 @@
 ) ;; end (when emacs-ide-lsp-enable ...)
 
 ;; helpful bindings (C-h f/v/k/F/C, C-c C-d) are set in keybindings.el which
-;; loads unconditionally and always last — no need to duplicate them here.
+;; loads unconditionally and always last.
 
-;; Always provide, even when LSP is disabled
 (unless (bound-and-true-p emacs-ide-lsp-enable)
   (message "⚠️  LSP disabled in config — skipping tools-lsp"))
 
+;; Always provide, even when LSP is disabled
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

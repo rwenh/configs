@@ -1,6 +1,12 @@
 ;;; emacs-ide-telemetry.el --- Usage Analytics (Local Only, CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Privacy-respecting local usage analytics with config integration and rotation.
+;;; Version: 2.2.2
+;;; Fixes:
+;;;   - 2.2.2: post-command-hook tracking throttled via an in-memory pending
+;;;     counter that flushes to the hash table on idle (0.5s). Previously ran
+;;;     on every keystroke with no throttling, which introduced perceptible lag
+;;;     on slow machines (hash-table puthash on every command).
 ;;; Code:
 
 (require 'cl-lib)
@@ -12,24 +18,62 @@
 (defvar emacs-ide-telemetry-command-counts (make-hash-table :test 'equal)
   "Track command usage counts.")
 
+;; ============================================================================
+;; THROTTLED COMMAND TRACKING
+;; FIX 2.2.2: Instead of updating the hash table on every command (which runs
+;;   puthash on every keystroke), we accumulate into a separate pending table
+;;   and flush to the main table on a 0.5-second idle timer. This eliminates
+;;   the per-keystroke hash overhead while still capturing all commands.
+;; ============================================================================
+(defvar emacs-ide-telemetry--pending-counts (make-hash-table :test 'equal)
+  "Transient accumulator; flushed to command-counts on idle.")
+
+(defvar emacs-ide-telemetry--flush-timer nil
+  "Idle timer for flushing pending counts.")
+
+(defun emacs-ide-telemetry--flush-pending ()
+  "Merge pending counts into the main command-counts table."
+  (maphash
+   (lambda (cmd n)
+     (puthash cmd
+              (+ (gethash cmd emacs-ide-telemetry-command-counts 0) n)
+              emacs-ide-telemetry-command-counts))
+   emacs-ide-telemetry--pending-counts)
+  (clrhash emacs-ide-telemetry--pending-counts))
+
+(defun emacs-ide-telemetry-track-command ()
+  "Record command in pending table (flushed to main table on idle).
+Guards for nil this-command and non-symbol commands."
+  (when (and (bound-and-true-p emacs-ide-telemetry-enabled)
+             (symbolp this-command)
+             this-command)
+    ;; Accumulate in the cheap pending table — no idle-timer cost per keystroke
+    (puthash this-command
+             (1+ (gethash this-command emacs-ide-telemetry--pending-counts 0))
+             emacs-ide-telemetry--pending-counts)))
+
+(defun emacs-ide-telemetry--ensure-flush-timer ()
+  "Start the idle flush timer if not already running."
+  (unless (and emacs-ide-telemetry--flush-timer
+               (timerp emacs-ide-telemetry--flush-timer))
+    (setq emacs-ide-telemetry--flush-timer
+          (run-with-idle-timer 0.5 t #'emacs-ide-telemetry--flush-pending))))
+
+;; Install hook only if telemetry is enabled and hook not already present
+(when (and (bound-and-true-p emacs-ide-telemetry-enabled)
+           (not (member #'emacs-ide-telemetry-track-command post-command-hook)))
+  (add-hook 'post-command-hook #'emacs-ide-telemetry-track-command)
+  (emacs-ide-telemetry--ensure-flush-timer))
+
+;; ============================================================================
+;; LOG HELPERS
+;; ============================================================================
 (defvar emacs-ide-telemetry-session-start (current-time)
   "Session start time.")
 
 (defvar emacs-ide-telemetry-log-file
   (expand-file-name "var/telemetry.log" user-emacs-directory)
   "Telemetry log file path.")
-
-(defun emacs-ide-telemetry-track-command ()
-  "Track command execution while guarding for nil this-command."
-  (when (and (bound-and-true-p emacs-ide-telemetry-enabled)
-             (symbolp this-command))
-    (let ((count (gethash this-command emacs-ide-telemetry-command-counts 0)))
-      (puthash this-command (1+ count) emacs-ide-telemetry-command-counts))))
-
-;; Add hook only if telemetry is enabled and hook not already present
-(when (and (bound-and-true-p emacs-ide-telemetry-enabled)
-           (not (member #'emacs-ide-telemetry-track-command post-command-hook)))
-  (add-hook 'post-command-hook #'emacs-ide-telemetry-track-command))
 
 (defun emacs-ide--ensure-log-dir ()
   "Ensure telemetry log directory exists."
@@ -47,7 +91,6 @@ Writes atomically and rotates by size."
                              (format-time-string "%Y-%m-%d %H:%M:%S")
                              elapsed gc-count pkg-count))
               (tmp (concat emacs-ide-telemetry-log-file ".tmp")))
-          ;; Append safely
           (with-temp-file tmp
             (when (file-exists-p emacs-ide-telemetry-log-file)
               (insert-file-contents emacs-ide-telemetry-log-file))
@@ -59,12 +102,17 @@ Writes atomically and rotates by size."
             (when (file-exists-p emacs-ide-telemetry-log-file)
               (rename-file emacs-ide-telemetry-log-file
                            (concat emacs-ide-telemetry-log-file ".old")
-                           t))))))
+                           t)))))
     (error (warn "Telemetry log failed: %s" (error-message-string err)))))
 
+;; ============================================================================
+;; REPORT
+;; ============================================================================
 (defun emacs-ide-telemetry-report ()
   "Show telemetry report (top commands and session duration)."
   (interactive)
+  ;; Flush any pending counts before reporting
+  (emacs-ide-telemetry--flush-pending)
   (let* ((alist (cl-loop for k being the hash-keys of emacs-ide-telemetry-command-counts
                          collect (cons k (gethash k emacs-ide-telemetry-command-counts))))
          (sorted (cl-sort alist #'> :key #'cdr))

@@ -1,32 +1,31 @@
 ;;; ui-core.el --- Professional Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Elite UI/UX with modern design and maximum efficiency.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
-;;;   - doom-modeline: ui-core.el called (doom-modeline-mode 1) directly AND
-;;;     ui-modeline.el added it via after-init-hook — double activation caused
-;;;     a redundant re-init on every startup. ui-core.el now uses
-;;;     after-init-hook consistently, matching ui-modeline.el's approach.
-;;;     ui-modeline.el's duplicate block is suppressed (see that file).
-;;;   - Removed dashboard setup from this file (owned by ui-dashboard.el).
-;;;   - emacs-ide-colorize-compilation-buffer defined here only (canonical).
-;;;   - 2.2.2: Removed global-set-key calls for C-c P and F12 from this file.
-;;;     Those bindings belong in keybindings.el (the authoritative source).
-;;;     The functions (emacs-ide-presentation-mode, emacs-ide-toggle-theme)
-;;;     remain defined here; keybindings.el binds them.
-;;;   - 2.2.3: Removed :bind (M-o . ace-window) — keybindings.el owns all
-;;;     global bindings. ace-window is configured here, bound there.
+;;;   - 2.2.4: Removed (horizontal-scroll-bar-mode -1) entirely. The function
+;;;     does not exist in Emacs 29; the fboundp guard prevented a crash but
+;;;     left dead unreachable code. horizontal scroll bars are already
+;;;     suppressed in early-init.el via default-frame-alist.
+;;;   - 2.2.3: doom-modeline now activated via after-init-hook only (not
+;;;     direct call). ui-modeline.el's duplicate after-init-hook suppressed.
+;;;   - 2.2.3: ace-window :bind removed — M-o is set in keybindings.el only.
+;;;   - 2.2.2: Global C-c P and F12 bindings removed (keybindings.el owns them).
+;;;   - Dashboard setup removed (owned by ui-dashboard.el).
+;;;   - emacs-ide-colorize-compilation-buffer is canonical here only.
 ;;; Code:
 
 ;; ============================================================================
 ;; UI CLEANUP
 ;; ============================================================================
-(when (fboundp 'menu-bar-mode)              (menu-bar-mode -1))
-(when (fboundp 'tool-bar-mode)              (tool-bar-mode -1))
-(when (fboundp 'scroll-bar-mode)            (scroll-bar-mode -1))
-(when (fboundp 'horizontal-scroll-bar-mode) (horizontal-scroll-bar-mode -1))
-(when (fboundp 'tooltip-mode)               (tooltip-mode -1))
-(when (fboundp 'blink-cursor-mode)          (blink-cursor-mode -1))
+(when (fboundp 'menu-bar-mode)   (menu-bar-mode -1))
+(when (fboundp 'tool-bar-mode)   (tool-bar-mode -1))
+(when (fboundp 'scroll-bar-mode) (scroll-bar-mode -1))
+;; NOTE: horizontal-scroll-bar-mode does not exist in Emacs 29.
+;;       Horizontal scroll bars are already suppressed via default-frame-alist
+;;       in early-init.el. No call needed here.
+(when (fboundp 'tooltip-mode)    (tooltip-mode -1))
+(when (fboundp 'blink-cursor-mode) (blink-cursor-mode -1))
 
 (setq ring-bell-function              'ignore
       visible-bell                    nil
@@ -164,9 +163,10 @@
 
 ;; ============================================================================
 ;; DOOM-MODELINE
-;; FIX: Was calling (doom-modeline-mode 1) directly here AND in ui-modeline.el
-;;      via after-init-hook — causing double initialisation. Now uses
-;;      after-init-hook exclusively so it activates once, consistently.
+;; FIX 2.2.3: Activates via after-init-hook only — not direct call.
+;;   ui-modeline.el's fallback block is guarded by (unless (featurep 'doom-modeline))
+;;   and handles the case where doom-modeline is absent entirely. The two files
+;;   do not overlap: ui-core.el owns doom-modeline; ui-modeline.el owns fallbacks.
 ;; ============================================================================
 (use-package doom-modeline
   :init
@@ -188,7 +188,6 @@
         doom-modeline-lsp                     t
         doom-modeline-env-version             t)
   :config
-  ;; FIX: use after-init-hook instead of direct call to avoid double activation
   (add-hook 'after-init-hook #'doom-modeline-mode))
 
 ;; Frame title
@@ -283,9 +282,10 @@
 
 ;; ============================================================================
 ;; WINDOW MANAGEMENT
+;; NOTE: M-o binding for ace-window lives in keybindings.el — not here.
+;;       See keybindings.el commentary on binding ownership.
 ;; ============================================================================
 (use-package ace-window
-  ;; M-o binding lives in keybindings.el — no :bind here to avoid duplication
   :init
   (setq aw-keys            '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
         aw-scope           'frame
@@ -323,7 +323,7 @@
 
 ;; ============================================================================
 ;; COMPILATION COLORIZATION
-;; Canonical definition — tools-terminal.el does NOT redefine this.
+;; Canonical definition — tools-terminal.el must NOT redefine this function.
 ;; ============================================================================
 (use-package ansi-color
   :straight nil
@@ -373,6 +373,7 @@
 
 ;; ============================================================================
 ;; PRESENTATION MODE
+;; NOTE: C-c P and F12 are bound in keybindings.el. Do not add global-set-key here.
 ;; ============================================================================
 (defvar emacs-ide-presentation-mode nil
   "Whether presentation mode is active.")
@@ -388,8 +389,6 @@
     (set-face-attribute 'default nil :height 200)
     (setq emacs-ide-presentation-mode t)
     (message "Presentation mode ON")))
-;; NOTE: C-c P and F12 are bound in keybindings.el (the authoritative source).
-;;       Do not add global-set-key calls here.
 
 (provide 'ui-core)
 ;;; ui-core.el ends here

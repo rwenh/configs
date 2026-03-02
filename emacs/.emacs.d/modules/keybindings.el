@@ -7,29 +7,43 @@
 ;;;   1. Upgrades a small number of built-ins to smarter equivalents
 ;;;      (ibuffer, consult variants) — same keys, better commands.
 ;;;   2. Adds global keys for features that simply don't exist in vanilla Emacs
-;;;      (avy is in editing-core.el, ace-window, magit, helpful, org globals).
+;;;      (ace-window, magit, helpful, org globals).
 ;;;   3. Leaves everything else alone — C-x C-s saves, M-; comments,
 ;;;      C-h f describes, C-/ undoes, exactly as Emacs intended.
 ;;;
 ;;; What this file does NOT do:
 ;;;   - Override C-c as a prefix-command (breaks all major-mode C-c bindings)
 ;;;   - Re-bind things Emacs already has a key for just to have a "custom" one
-;;;   - Duplicate bindings that individual modules already own via :bind
+;;;   - Bind commands that major modes also use locally (local bindings win anyway)
 ;;;
-;;; Module binding ownership (do not duplicate here):
+;;; ON DUPLICATE BINDINGS WITH MODULE :bind BLOCKS:
+;;;   Several consult commands are also bound inside their use-package :bind
+;;;   blocks in completion-core.el (C-x b, M-y, M-g g, M-s l/r, etc.).
+;;;   These global-set-key calls here are intentional: they serve as the
+;;;   canonical, always-active fallback that works even if completion-core.el
+;;;   fails to load. Since both sets map to the same commands, the last writer
+;;;   (this file, loaded last) wins — behaviour is identical either way.
+;;;   This is NOT a conflict; it is belt-and-suspenders insurance.
+;;;
+;;; Module binding ownership (do not add conflicting global bindings):
 ;;;   debug-core.el      → F5-F9, C-c d h, C-c d ?, C-c D s/r/q
 ;;;   editing-core.el    → C-/ C-? C-x u (undo-tree), C-> C-< (mc),
 ;;;                        C-= (expand-region), C-: C-' M-g f/w (avy),
 ;;;                        M-up/down (move-text), smartparens C-M-* map
 ;;;   tools-lsp.el       → C-c l * (lsp-mode-map), M-g j/b/O (dumb-jump),
-;;;                        C-c ! * (flycheck-mode-map), helpful bindings
-;;;   tools-project.el   → C-c p * (projectile-mode-map), C-c T (treemacs)
+;;;                        C-c ! * (flycheck-mode-map)
+;;;   tools-project.el   → C-c p * (projectile-mode-map), F9 (treemacs)
 ;;;   tools-terminal.el  → C-c t/T/M-t/e (vterm, multi-vterm, eshell)
 ;;;   tools-spelling.el  → C-c S * (flyspell-mode-map)
 ;;;   completion-core.el → C-. C-; (embark), M-/ (hippie-expand)
-;;;   ui-core.el         → M-o (ace-window via use-package :bind)
+;;;                        Also binds consult commands via :bind — see note above
+;;;   ui-core.el         → C-c w t/f/r (transpose-frame), F8 (neotree)
 ;;;
-;;; Version: 3.0.0
+;;; Version: 3.0.2
+;;; Changes from 3.0.1:
+;;;   - C-c C-c / C-c C-r compile bindings replaced with C-c B / C-c b.
+;;;     C-c C-c is owned by virtually every major mode; the global binding
+;;;     was dead in 90% of buffers and surprising when it fired elsewhere.
 ;;; Code:
 
 ;; ============================================================================
@@ -41,6 +55,7 @@
 (global-set-key (kbd "C-x C-b") 'ibuffer)
 
 ;; consult variants: same muscle memory, adds preview + fuzzy matching
+;; Note: also bound via :bind in completion-core.el — intentional, see commentary.
 (global-set-key (kbd "C-x b")   'consult-buffer)
 (global-set-key (kbd "C-x 4 b") 'consult-buffer-other-window)
 (global-set-key (kbd "C-x 5 b") 'consult-buffer-other-frame)
@@ -69,8 +84,8 @@
 
 ;; ============================================================================
 ;; WINDOW MANAGEMENT
-;; Vanilla Emacs has no fast multi-window jump. ace-window fills the gap.
-;; M-o is unbound in vanilla (it used to be facemenu, removed in Emacs 29).
+;; M-o is unbound in vanilla Emacs 29 (facemenu was removed).
+;; ace-window is configured in ui-core.el; bound globally here.
 ;; winner-mode C-c left/right are set automatically when winner-mode enables.
 ;; ============================================================================
 
@@ -84,14 +99,15 @@
 
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x M-g") 'magit-dispatch)
-(global-set-key (kbd "C-x v t") 'git-timemachine)  ; fits the C-x v vc prefix
+(global-set-key (kbd "C-x v t") 'git-timemachine) ; fits the C-x v vc prefix
 
 ;; ============================================================================
 ;; HELP — HELPFUL
 ;; Replaces C-h sub-keys with helpful equivalents — identical interface,
 ;; richer output. C-c C-d is new (vanilla has no at-point help key).
-;; NOTE: tools-lsp.el also sets these inside its own use-package block.
-;;       Defining them here ensures they work even when LSP is disabled.
+;; NOTE: tools-lsp.el also binds these inside its use-package block so they
+;; work when LSP is active. Defining them here ensures they work regardless
+;; of whether tools-lsp.el loaded successfully.
 ;; ============================================================================
 
 (global-set-key (kbd "C-h f")   'helpful-callable)
@@ -114,13 +130,14 @@
 
 ;; ============================================================================
 ;; COMPILE
-;; Vanilla Emacs has no default key for compile/recompile.
-;; C-c C-c / C-c C-r are free at the global level (major modes use them
-;; locally, which is fine — local bindings always win).
+;; C-c C-c is reserved by virtually every major mode (python, org, cc, etc.).
+;; Binding compile globally there makes it dead in 90% of buffers and fires
+;; unexpectedly in the rest. Use C-c B (Build) / C-c b (reBuild) instead —
+;; these are unoccupied at the global level.
 ;; ============================================================================
 
-(global-set-key (kbd "C-c C-c") 'compile)
-(global-set-key (kbd "C-c C-r") 'recompile)
+(global-set-key (kbd "C-c B") 'compile)
+(global-set-key (kbd "C-c b") 'recompile)
 
 ;; ============================================================================
 ;; UTILITY
@@ -133,10 +150,12 @@
 ;; Config management
 (global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
+;; C-c t is vterm (tools-terminal.el) — test sub-keys use C-c T prefix
+(global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 
-;; UI toggles (functions defined in ui-core.el)
+;; UI toggles (functions defined in ui-core.el and ui-theme.el)
 (global-set-key (kbd "<f8>")  'neotree-toggle)
-;; <f9> treemacs is bound in tools-project.el via :bind — no duplicate needed here
+;; F9 treemacs is bound in tools-project.el via :bind — no duplicate needed here
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
 
@@ -205,9 +224,11 @@ ORG  (Org manual recommendations):
   C-c c         org-capture
   C-c l         org-store-link (global); lsp prefix in LSP buffers
 
-COMPILE  (no vanilla default):
-  C-c C-c       compile
-  C-c C-r       recompile
+COMPILE  (C-c C-c is major-mode territory — use these instead):
+  C-c B         compile
+  C-c b         recompile
+  C-c C-t       emacs-ide-test-run (full suite)
+  C-c T p/l/r/h test at point / last / report / hydra
 
 DEBUG  (debug-core.el — F-keys are unambiguous IDE territory):
   F5            dap-debug
@@ -220,7 +241,7 @@ DEBUG  (debug-core.el — F-keys are unambiguous IDE territory):
   C-F9          dap-breakpoint-condition
   S-F9          dap-breakpoint-log-message
   C-S-F9        dap-breakpoint-delete-all
-  C-c d h       debug hydra  (keys inside: n s o c b B L D i u d l e U w R q)
+  C-c d h       debug hydra  (keys inside: n s o c b B L D u d l e U w R q)
   C-c d ?       debug help
 
 LSP  (tools-lsp.el — active only in LSP buffers):
@@ -246,6 +267,7 @@ PROJECT  (tools-project.el / projectile):
   C-c p r       projectile-run-project
   C-c p k       projectile-kill-buffers
   C-c p d       projectile-dired
+  F9            treemacs (set by tools-project.el)
 
 EDITING  (editing-core.el):
   C->           mc/mark-next-like-this
@@ -281,7 +303,6 @@ UTILITY:
   C-c L         LSP status
   C-c P         presentation mode toggle
   F8            neotree-toggle
-  F9            treemacs (set by tools-project.el)
   F12           toggle theme
 
 Press q to close.\n")))

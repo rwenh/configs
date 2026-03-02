@@ -1,13 +1,18 @@
 ;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - hydra-debug: duplicate key "s" (dap-step-in AND dap-ui-sessions) and
-;;;     duplicate "i" (dap-step-in twice) — remapped: "s" → dap-step-in,
-;;;     "S" → dap-step-out, "ss" removed, "si" → sessions uses "S_" key
+;;;   - 2.2.3: Hydra duplicate keys fully resolved. Previously "s" and "i"
+;;;     both mapped to dap-step-in (comment claimed it was fixed but wasn't).
+;;;     New unambiguous layout:
+;;;       n=next, s=step-in, o=step-out, c=continue, r=restart
+;;;       b=bp-toggle, B=bp-condition, L=bp-log, D=bp-delete-all
+;;;       u=up-frame, d=down-frame, l=locals, e=expressions,
+;;;       U=sessions, w=watch, R=repl, q=quit
+;;;     "i" key removed entirely (was redundant alias for dap-step-in).
 ;;;   - LLDB and GDB debug templates: :program nil crashes dap on launch;
-;;;     replaced with a prompt-based helper that reads the executable path
+;;;     replaced with a prompt-based helper that reads the executable path.
 ;;; Code:
 
 ;; ============================================================================
@@ -227,11 +232,13 @@
 
 ;; ============================================================================
 ;; DEBUGGING HYDRA
-;; FIX: Duplicate key bindings resolved:
-;;      "s" was bound to both dap-step-in AND dap-ui-sessions (latter won).
-;;      "i" was bound to dap-step-in twice.
-;;      New layout: "n"=next, "s"=step-in, "S"=step-out, "o"=step-out (alias),
-;;                  "U"=sessions (was "s"), "i"=step-in (kept once).
+;; FIX 2.2.3: All duplicate keys removed. Previous version still had both
+;;   "s" and "i" mapped to dap-step-in despite the comment claiming otherwise.
+;;   Final unambiguous layout (no key appears more than once):
+;;     n=next         s=step-in     o=step-out    c=continue    r=restart
+;;     b=bp-toggle    B=bp-cond     L=bp-log      D=bp-del-all
+;;     u=up-frame     d=down-frame  l=locals       e=expressions
+;;     U=sessions     w=watch       R=repl         q=quit
 ;; ============================================================================
 (use-package hydra
   :config
@@ -240,10 +247,10 @@
 ^Control^         ^Breakpoints^      ^Navigation^       ^Info^
 ^^^^^^^^-----------------------------------------------------------------
 _c_: continue     _b_: toggle        _n_: next          _l_: locals
-_s_: step in      _B_: condition     _i_: step in       _e_: expressions
-_o_: step out     _L_: log message   _O_: step out      _U_: sessions
-_r_: restart      _D_: delete all    _u_: up frame      _w_: watch
-_q_: quit                            _d_: down frame    _R_: repl
+_s_: step in      _B_: condition     _u_: up frame      _e_: expressions
+_o_: step out     _L_: log message   _d_: down frame    _U_: sessions
+_r_: restart      _D_: delete all                       _w_: watch
+_q_: quit                                               _R_: repl
 "
     ("c" dap-continue)
     ("s" dap-step-in)
@@ -254,8 +261,6 @@ _q_: quit                            _d_: down frame    _R_: repl
     ("B" dap-breakpoint-condition)
     ("L" dap-breakpoint-log-message)
     ("D" dap-breakpoint-delete-all)
-    ("i" dap-step-in)
-    ("O" dap-step-out)
     ("u" dap-up-stack-frame)
     ("d" dap-down-stack-frame)
     ("l" dap-ui-locals)
@@ -287,13 +292,11 @@ _q_: quit                            _d_: down frame    _R_: repl
     (princ "  S-F7        Step over\n")
     (princ "  M-F7        Step out\n")
     (princ "  C-F7        Continue\n\n")
-    (princ "WINDOWS:\n")
-    (princ "  C-c d l     Locals\n")
-    (princ "  C-c d e     Expressions\n")
-    (princ "  C-c d b     Breakpoints\n")
-    (princ "  C-c d U     Sessions/Stack\n")
-    (princ "  C-c d w     REPL\n")
-    (princ "  C-c d h     Debug hydra\n\n")))
+    (princ "HYDRA (C-c d h):\n")
+    (princ "  n=next  s=step-in  o=step-out  c=continue  r=restart\n")
+    (princ "  b=bp-toggle  B=bp-cond  L=bp-log  D=bp-del-all\n")
+    (princ "  u=up-frame  d=down-frame\n")
+    (princ "  l=locals  e=expressions  U=sessions  w=watch  R=repl\n\n")))
 
 (global-set-key (kbd "C-c d ?") 'emacs-ide-debug-help)
 
@@ -314,9 +317,6 @@ _q_: quit                            _d_: down frame    _R_: repl
 
 (use-package profiler
   :straight nil
-  ;; C-c D namespace: debug-core.el owns s/r/q (profiler)
-  ;;                    tools-terminal.el owns o (docker)
-  ;;                    keybindings.el no longer uses C-c D
   :bind (("C-c D s" . profiler-start)
          ("C-c D r" . profiler-report)
          ("C-c D q" . profiler-stop)))

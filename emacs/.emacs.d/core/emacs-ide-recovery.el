@@ -1,8 +1,12 @@
 ;;; emacs-ide-recovery.el --- Enterprise Error Recovery System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade error recovery and safe mode.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
+;;;   - 2.2.2: emacs-ide-recovery-disable-package now writes atomically
+;;;     (write to .tmp then rename) matching the pattern used by all other
+;;;     log-write functions in this module. Previously it used with-temp-buffer
+;;;     + write-region directly without a temp-file, risking corruption on crash.
 ;;;   - emacs-ide-recovery-log: atomic write had mismatched parens — the
 ;;;     `with-temp-buffer` closed before `rename-file`, leaving rename outside
 ;;;     the condition-case. Restructured so both write and rename are inside
@@ -78,10 +82,7 @@
 
 ;; ============================================================================
 ;; ERROR LOGGING - WITH ATOMIC WRITES
-;; FIX: Original code had mismatched parens — `with-temp-buffer` ended before
-;;      `rename-file`, so the rename was outside `condition-case` and could
-;;      throw uncaught. Now the entire write+rename sequence is inside one
-;;      condition-case block.
+;; FIX: write + rename in a single condition-case so rename is protected.
 ;; ============================================================================
 (defun emacs-ide-recovery-log (level message &rest args)
   "Log recovery event with LEVEL and MESSAGE atomically."
@@ -105,7 +106,7 @@
                      (concat emacs-ide-recovery-log-file ".old")
                      t)))
 
-    ;; FIX: write + rename in a single condition-case so rename is protected
+    ;; write + rename in a single condition-case so rename is protected
     (condition-case err
         (let ((temp-file (concat emacs-ide-recovery-log-file ".tmp")))
           (with-temp-buffer
@@ -114,7 +115,7 @@
             (goto-char (point-max))
             (insert formatted-message)
             (write-region (point-min) (point-max) temp-file nil 'quiet))
-          ;; rename is now INSIDE the condition-case
+          ;; rename is INSIDE the condition-case
           (rename-file temp-file emacs-ide-recovery-log-file t))
       (error
        (warn "Failed to write recovery log: %s" (error-message-string err))))
@@ -255,21 +256,31 @@
 
 ;; ============================================================================
 ;; EMERGENCY COMMANDS
+;; FIX 2.2.2: emacs-ide-recovery-disable-package now writes atomically via
+;;   a temp-file + rename, matching the pattern used by every other log-write
+;;   function in this module. The previous direct write-region call could
+;;   corrupt the file if Emacs crashed mid-write.
 ;; ============================================================================
 (defun emacs-ide-recovery-disable-package (package)
-  "Disable problematic PACKAGE safely."
+  "Disable problematic PACKAGE safely (atomic write)."
   (interactive "sPackage to disable: ")
-  (let ((disable-file (expand-file-name "var/disabled-packages"
-                                        user-emacs-directory)))
+  (let* ((disable-file (expand-file-name "var/disabled-packages"
+                                         user-emacs-directory))
+         (temp-file (concat disable-file ".tmp")))
     (condition-case err
-        (with-temp-buffer
-          (when (file-exists-p disable-file)
-            (insert-file-contents disable-file))
-          (goto-char (point-max))
-          (insert (format "%s\n" package))
-          (write-region (point-min) (point-max) disable-file nil 'quiet))
+        (progn
+          (with-temp-buffer
+            (when (file-exists-p disable-file)
+              (insert-file-contents disable-file))
+            (goto-char (point-max))
+            (insert (format "%s\n" package))
+            (write-region (point-min) (point-max) temp-file nil 'quiet))
+          ;; Atomic rename — consistent with the rest of this module
+          (rename-file temp-file disable-file t))
       (error
-       (warn "Failed to disable package: %s" (error-message-string err))))
+       (warn "Failed to disable package: %s" (error-message-string err))
+       (when (file-exists-p temp-file)
+         (ignore-errors (delete-file temp-file)))))
     (emacs-ide-recovery-log 'warning "Disabled package: %s" package)
     (message "✓ Package %s disabled. Restart Emacs." package)))
 

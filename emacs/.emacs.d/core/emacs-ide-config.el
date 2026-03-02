@@ -1,16 +1,19 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.1
+;;; Version: 2.2.4
 ;;; Fixes:
+;;;   - 2.2.2: emacs-ide-config-get-nested now handles arbitrary depth paths
+;;;     (was silently ignoring third+ segments, e.g. "environments.work.theme").
+;;;   - 2.2.2: YAML parser now supports 3-level nesting required for the
+;;;     `environments:` block (environments -> work/home -> keys). Previously
+;;;     only 2 levels were parsed so tools-org.el always got default paths.
 ;;;   - emacs-ide-config-apply: replaced `defvar` with `setq` so config values
 ;;;     actually update on reload (defvar is a no-op if var is already bound)
 ;;;   - emacs-ide-config-apply: boolean `false` from YAML parses to nil;
 ;;;     when-let skipped nil values entirely — use `when (assoc ...)` instead
 ;;;   - YAML key regex `[a-z_]+` missed hyphenated keys (font-size, gc-threshold)
-;;;     → extended to `[a-z][a-z0-9_-]*`
-;;;   - emacs-ide-config-get-nested: accepts a string path now, not a symbol,
-;;;     to avoid symbol-name mangling and support arbitrary depth safely
+;;;     -> extended to `[a-z][a-z0-9_-]*`
 ;;; Code:
 
 (require 'cl-lib)
@@ -79,18 +82,79 @@
       (emacs-ide-config-detect-environment))
 
 ;; ============================================================================
-;; YAML PARSING
-;; FIX: key regex extended from [a-z_]+ to [a-z][a-z0-9_-]* so hyphenated
-;;      keys like font-size, gc-threshold, large-file-threshold are captured.
+;; YAML VALUE PARSER
+;; ============================================================================
+(defun emacs-ide-config-parse-value (value-string)
+  "Parse VALUE-STRING to appropriate Emacs Lisp type.
+Strips inline YAML comments (# ...) before parsing so that values
+like \"16777216  # 16MB\" correctly parse to the integer 16777216."
+  (let* ((stripped (replace-regexp-in-string
+                    "[ \t]+#[^\"']*$" "" value-string))
+         (trimmed (string-trim stripped)))
+    (cond
+     ((or (string-empty-p trimmed) (string= trimmed "null")) nil)
+     ((string= trimmed "true") t)
+     ;; false -> nil; callers must use (assoc key section) not (when-let)
+     ;; to distinguish explicitly-false from absent key.
+     ((string= trimmed "false") nil)
+     ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
+     ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed) (string-to-number trimmed))
+     ;; Only intern values that are genuine Emacs option symbols — i.e. values
+     ;; the config uses as mode/backend selectors (corfu, modus-vivendi, hybrid,
+     ;; ripgrep, pyright, etc.) but NOT executable names like "black", "prettier",
+     ;; "rustfmt", "gofmt", "shfmt", "clang-format" which must stay as strings
+     ;; so executable-find and format-all receive the right type.
+     ;; Heuristic: intern only if the value is a known symbolic option keyword
+     ;; OR matches the option-symbol pattern AND is NOT in the executables list.
+     ((and (string-match-p "^[a-z][a-z0-9_-]*$" trimmed)
+           (not (member trimmed
+                        '("black" "prettier" "rustfmt" "gofmt" "gofumpt"
+                          "shfmt" "clang-format" "clang-format-diff"
+                          "autopep8" "yapf" "isort" "ruff"
+                          "eslint" "eslint_d" "biome" "deno"
+                          "rubocop" "standardrb" "perltidy"
+                          "phpcbf" "phpcs" "psalm" "phan"
+                          "ktlint" "google-java-format" "scalafmt"
+                          "terraform" "nixpkgs-fmt" "ormolu" "fourmolu"
+                          "swiftformat" "ocamlformat" "elm-format"
+                          "mix" "cljfmt" "zprint" "pgformatter"
+                          "luaformatter" "stylua" "cmake-format"
+                          "xmllint" "tidy" "sqlfluff"
+                          "pyright" "pylsp" "jedi-language-server"
+                          "rust-analyzer" "gopls" "typescript-language-server"
+                          "clangd" "ccls" "jdtls" "kotlin-language-server"
+                          "solargraph" "rubocop" "sorbet"
+                          "rg" "ripgrep" "grep" "ag" "fd" "find"
+                          "aspell" "hunspell" "ispell"
+                          "flake8" "pylint" "mypy" "ruff"
+                          "eslint" "tsc" "node" "npm" "npx"
+                          "cargo" "rustc" "go" "python" "python3"
+                          "ruby" "php" "java" "mvn" "gradle"))))
+      (intern trimmed))
+     (t (replace-regexp-in-string "^['\"]\\|['\"]$" "" trimmed)))))
+
+;; ============================================================================
+;; YAML PARSER
+;; FIX 2.2.2: Now supports 3-level nesting for the `environments:` block.
+;;   Architecture:
+;;     indent=0, ends with colon, no value  -> top-level section
+;;     indent=2, ends with colon, no value  -> sub-section (e.g. work/home)
+;;     indent=2, has value                  -> section key-value
+;;     indent=4, has value                  -> sub-section key-value
+;;     indent=2/4, starts with "- "        -> list item for parent
+;;
+;;   Result is a nested alist:
+;;     ((environments . ((work . ((theme . modus-operandi) ...)) ...)) ...)
 ;; ============================================================================
 (defun emacs-ide-config-parse-yaml-improved (file)
-  "Parse YAML FILE with support for nested structures.
+  "Parse YAML FILE with support for up to 3 levels of nesting.
 Returns association list of configuration."
   (when (file-exists-p file)
     (with-temp-buffer
       (insert-file-contents file)
       (let ((data '())
-            (current-section nil))
+            (current-section nil)      ; top-level section symbol
+            (current-subsection nil))  ; 2nd-level section symbol (e.g. 'work)
         (goto-char (point-min))
         (while (not (eobp))
           (let* ((line (buffer-substring-no-properties
@@ -102,59 +166,94 @@ Returns association list of configuration."
             (unless (or (string-empty-p trimmed)
                         (string-prefix-p "#" trimmed))
 
-              ;; Section header: zero indent, ends with colon, no value after colon
-              (if (and (= indent 0)
-                       (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed))
-                  (let ((section-name (intern (match-string 1 trimmed))))
-                    (setq current-section section-name)
-                    (unless (assoc section-name data)
-                      (push (cons section-name '()) data)))
+              (cond
 
-                ;; Key-value pair inside a section
-                (when (and (> indent 0) current-section)
-                  (cond
-                   ;; List item
-                   ((string-prefix-p "- " trimmed)
-                    (let* ((value (string-trim (substring trimmed 2)))
-                           (parsed-value (emacs-ide-config-parse-value value))
-                           (section-data (assoc current-section data)))
-                      (when section-data
-                        (setcdr section-data
-                                (append (cdr section-data) (list parsed-value))))))
+               ;; ── Level 0: top-level section header ──────────────────────
+               ((and (= indent 0)
+                     (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed))
+                (let ((name (intern (match-string 1 trimmed))))
+                  (setq current-section name
+                        current-subsection nil)
+                  (unless (assoc name data)
+                    (push (cons name '()) data))))
 
-                   ;; FIX: key regex now includes hyphens [a-z][a-z0-9_-]*
-                   ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
-                    (let* ((key (intern (match-string 1 trimmed)))
-                           (value-str (string-trim (match-string 2 trimmed)))
-                           (parsed-value (emacs-ide-config-parse-value value-str))
-                           (section-data (assoc current-section data)))
-                      (when section-data
-                        (let ((existing (assoc key (cdr section-data))))
-                          (if existing
-                              (setcdr existing parsed-value)
-                            (setcdr section-data
-                                    (append (cdr section-data)
-                                            (list (cons key parsed-value)))))))))))))
+               ;; ── Level 2: sub-section header OR key-value ────────────────
+               ((and (= indent 2) current-section)
+                (cond
+                 ;; Sub-section header (e.g. "  work:")
+                 ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed)
+                  (let* ((name (intern (match-string 1 trimmed)))
+                         (sec-entry (assoc current-section data)))
+                    (setq current-subsection name)
+                    (when sec-entry
+                      (unless (assoc name (cdr sec-entry))
+                        (setcdr sec-entry
+                                (append (cdr sec-entry)
+                                        (list (cons name '()))))))))
+
+                 ;; List item under section (no subsection active)
+                 ((and (string-prefix-p "- " trimmed) (null current-subsection))
+                  (let* ((val (emacs-ide-config-parse-value
+                               (string-trim (substring trimmed 2))))
+                         (sec-entry (assoc current-section data)))
+                    (when sec-entry
+                      (setcdr sec-entry
+                              (append (cdr sec-entry) (list val))))))
+
+                 ;; Key-value pair under section (no subsection active)
+                 ((and (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
+                       (null current-subsection))
+                  (let* ((key (intern (match-string 1 trimmed)))
+                         (val (emacs-ide-config-parse-value
+                               (string-trim (match-string 2 trimmed))))
+                         (sec-entry (assoc current-section data)))
+                    (when sec-entry
+                      (let ((existing (assoc key (cdr sec-entry))))
+                        (if existing
+                            (setcdr existing val)
+                          (setcdr sec-entry
+                                  (append (cdr sec-entry)
+                                          (list (cons key val)))))))))))
+
+               ;; ── Level 4: key-value inside a sub-section ─────────────────
+               ((and (= indent 4) current-section current-subsection)
+                (cond
+                 ;; List item under subsection
+                 ((string-prefix-p "- " trimmed)
+                  (let* ((val (emacs-ide-config-parse-value
+                               (string-trim (substring trimmed 2))))
+                         (sec-entry  (assoc current-section data))
+                         (sub-entry  (and sec-entry
+                                          (assoc current-subsection (cdr sec-entry)))))
+                    (when sub-entry
+                      (setcdr sub-entry
+                              (append (cdr sub-entry) (list val))))))
+
+                 ;; Key-value under subsection
+                 ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
+                  (let* ((key (intern (match-string 1 trimmed)))
+                         (val (emacs-ide-config-parse-value
+                               (string-trim (match-string 2 trimmed))))
+                         (sec-entry  (assoc current-section data))
+                         (sub-entry  (and sec-entry
+                                          (assoc current-subsection (cdr sec-entry)))))
+                    (when sub-entry
+                      (let ((existing (assoc key (cdr sub-entry))))
+                        (if existing
+                            (setcdr existing val)
+                          (setcdr sub-entry
+                                  (append (cdr sub-entry)
+                                          (list (cons key val)))))))))
+                 ;; Drop indent back when a non-indented line appears
+                 ))
+
+               ;; Indent fell back to 0 while inside a sub-section
+               ;; (already handled by the level-0 case above which resets
+               ;; current-subsection)
+               )))
 
           (forward-line 1))
-        (nreverse data))))))
-
-
-(defun emacs-ide-config-parse-value (value-string)
-  "Parse VALUE-STRING to appropriate Emacs Lisp type."
-  (let ((trimmed (string-trim value-string)))
-    (cond
-     ((or (string-empty-p trimmed) (string= trimmed "null")) nil)
-     ((string= trimmed "true") t)
-     ;; FIX: explicit 'false' → must return nil but be distinguishable from
-     ;;      "missing key". We use nil; callers must use (assoc key section)
-     ;;      not (when-let (val ...)) to detect false booleans.
-     ((string= trimmed "false") nil)
-     ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
-     ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed) (string-to-number trimmed))
-     ;; FIX: symbol pattern now includes hyphens
-     ((string-match-p "^[a-z][a-z0-9_-]*$" trimmed) (intern trimmed))
-     (t (replace-regexp-in-string "^['\"]\\|['\"]$" "" trimmed)))))
+        (nreverse data)))))
 
 ;; ============================================================================
 ;; CONFIGURATION LOADING & APPLICATION
@@ -183,65 +282,75 @@ Returns association list of configuration."
 (defun emacs-ide-config-apply (config)
   "Apply CONFIG settings to Emacs.
 FIX: Use `setq` not `defvar` so values update on reload.
-FIX: Use `(assoc key section)` instead of `when-let (val ...)` so that
-     boolean `false` values (parsed as nil) are still applied."
-  ;; General settings
-  (when-let ((general (cdr (assoc 'general config))))
-    (when (assoc 'theme general)
-      (setq emacs-ide-theme (cdr (assoc 'theme general))))
-    (when (assoc 'font general)
-      (setq emacs-ide-font (cdr (assoc 'font general))))
-    (when (assoc 'font-size general)
-      (setq emacs-ide-font-size (cdr (assoc 'font-size general))))
-    ;; FIX: safe-mode can legitimately be nil (false); detect by key presence
-    (when (assoc 'safe-mode general)
-      (setq emacs-ide-safe-mode (cdr (assoc 'safe-mode general)))))
+FIX: Use `(assoc key section)` not `when-let` so boolean false (nil) applies.
+FIX: Outer section guards use `(let ((s (assoc ...))) (when s ...))` so a
+     section whose cdr is nil (empty section) is not silently skipped the
+     way `when-let` would skip it."
+  (cl-flet ((section (key) (cdr (assoc key config)))
+            (val (key alist) (when (assoc key alist) (cdr (assoc key alist)))))
 
-  ;; Completion settings
-  (when-let ((completion (cdr (assoc 'completion config))))
-    (when (assoc 'backend completion)
-      (setq emacs-ide-completion-backend (cdr (assoc 'backend completion))))
-    (when (assoc 'delay completion)
-      (setq emacs-ide-completion-delay (cdr (assoc 'delay completion)))))
+    ;; General settings
+    (let ((general (section 'general)))
+      (when general
+        (when (assoc 'theme general)
+          (setq emacs-ide-theme (val 'theme general)))
+        (when (assoc 'font general)
+          (setq emacs-ide-font (val 'font general)))
+        (when (assoc 'font-size general)
+          (setq emacs-ide-font-size (val 'font-size general)))
+        (when (assoc 'safe-mode general)
+          (setq emacs-ide-safe-mode (val 'safe-mode general)))))
 
-  ;; LSP settings
-  (when-let ((lsp (cdr (assoc 'lsp config))))
-    (when (assoc 'enable lsp)
-      (setq emacs-ide-lsp-enable (cdr (assoc 'enable lsp))))
-    (when (assoc 'inlay-hints lsp)
-      (setq emacs-ide-lsp-enable-inlay-hints (cdr (assoc 'inlay-hints lsp))))
-    (when (assoc 'large-file-threshold lsp)
-      (setq emacs-ide-lsp-large-file-threshold
-            (cdr (assoc 'large-file-threshold lsp)))))
+    ;; Completion settings
+    (let ((completion (section 'completion)))
+      (when completion
+        (when (assoc 'backend completion)
+          (setq emacs-ide-completion-backend (val 'backend completion)))
+        (when (assoc 'delay completion)
+          (setq emacs-ide-completion-delay (val 'delay completion)))))
 
-  ;; Performance settings
-  (when-let ((performance (cdr (assoc 'performance config))))
-    (when (assoc 'gc-threshold performance)
-      (setq gc-cons-threshold (cdr (assoc 'gc-threshold performance))))
-    (when (assoc 'startup-time-target performance)
-      (setq emacs-ide-startup-time-target
-            (cdr (assoc 'startup-time-target performance))))
-    (when (assoc 'native-comp-jobs performance)
-      (setq emacs-ide-native-comp-jobs
-            (max 1 (cdr (assoc 'native-comp-jobs performance))))))
+    ;; LSP settings
+    (let ((lsp (section 'lsp)))
+      (when lsp
+        (when (assoc 'enable lsp)
+          (setq emacs-ide-lsp-enable (val 'enable lsp)))
+        (when (assoc 'inlay-hints lsp)
+          (setq emacs-ide-lsp-enable-inlay-hints (val 'inlay-hints lsp)))
+        (when (assoc 'large-file-threshold lsp)
+          (setq emacs-ide-lsp-large-file-threshold
+                (val 'large-file-threshold lsp)))))
 
-  ;; Features settings
-  (when-let ((features (cdr (assoc 'features config))))
-    (when (assoc 'dashboard features)
-      (setq emacs-ide-feature-dashboard (cdr (assoc 'dashboard features))))
-    (when (assoc 'which-key features)
-      (setq emacs-ide-feature-which-key (cdr (assoc 'which-key features)))))
+    ;; Performance settings
+    (let ((perf (section 'performance)))
+      (when perf
+        (when (assoc 'gc-threshold perf)
+          (setq gc-cons-threshold (val 'gc-threshold perf)))
+        (when (assoc 'startup-time-target perf)
+          (setq emacs-ide-startup-time-target (val 'startup-time-target perf)))
+        (when (assoc 'native-comp-jobs perf)
+          (setq emacs-ide-native-comp-jobs
+                (max 1 (val 'native-comp-jobs perf))))))
 
-  ;; Security settings
-  (when-let ((security (cdr (assoc 'security config))))
-    (when (assoc 'tls-verify security)
-      (with-eval-after-load 'gnutls
-        (setq gnutls-verify-error (cdr (assoc 'tls-verify security))))))
+    ;; Features settings
+    (let ((features (section 'features)))
+      (when features
+        (when (assoc 'dashboard features)
+          (setq emacs-ide-feature-dashboard (val 'dashboard features)))
+        (when (assoc 'which-key features)
+          (setq emacs-ide-feature-which-key (val 'which-key features)))))
 
-  ;; Telemetry settings
-  (when-let ((telemetry (cdr (assoc 'telemetry config))))
-    (when (assoc 'enabled telemetry)
-      (setq emacs-ide-telemetry-enabled (cdr (assoc 'enabled telemetry))))))
+    ;; Security settings
+    (let ((security (section 'security)))
+      (when security
+        (when (assoc 'tls-verify security)
+          (with-eval-after-load 'gnutls
+            (setq gnutls-verify-error (val 'tls-verify security))))))
+
+    ;; Telemetry settings
+    (let ((telemetry (section 'telemetry)))
+      (when telemetry
+        (when (assoc 'enabled telemetry)
+          (setq emacs-ide-telemetry-enabled (val 'enabled telemetry)))))))
 
 ;; ============================================================================
 ;; CONFIGURATION ACCESSORS
@@ -253,13 +362,24 @@ FIX: Use `(assoc key section)` instead of `when-let (val ...)` so that
     (if cell (cdr cell) default)))
 
 (defun emacs-ide-config-get-nested (path &optional default)
-  "Get config value using dot-separated string PATH (e.g., \"performance.gc-threshold\").
-FIX: PATH is now a string, not a symbol, to avoid symbol-name round-trip issues."
+  "Get config value using dot-separated string PATH of arbitrary depth.
+FIX 2.2.2: Previously only handled 2-level paths (silently dropped segment 3+).
+Now navigates the full alist tree for any depth, e.g.:
+  \"performance.gc-threshold\"       -> 2 levels
+  \"environments.work.theme\"        -> 3 levels
+  \"environments.work.org-directory\" -> 3 levels"
   (let* ((parts (split-string path "\\."))
-         (section (intern (car parts)))
-         (key (intern (cadr parts)))
-         (cell (assoc key (cdr (assoc section emacs-ide-config-data)))))
-    (if cell (cdr cell) default)))
+         (result emacs-ide-config-data)
+         (found t))
+    (dolist (part parts)
+      (if (not found)
+          nil
+        (let ((cell (assoc (intern part) result)))
+          (if cell
+              (setq result (cdr cell))
+            (setq found nil
+                  result default)))))
+    (if found result default)))
 
 (defun emacs-ide-config-set (section key value)
   "Set config value for SECTION KEY to VALUE."
@@ -330,7 +450,7 @@ FIX: PATH is now a string, not a symbol, to avoid symbol-name round-trip issues.
             (y-or-n-p "config.yml exists. Overwrite? "))
     (with-temp-file emacs-ide-config-file
       (insert "# Enterprise Emacs IDE Configuration
-# Version: 2.2.1
+# Version: 2.2.2
 # Edit this file to customize your setup
 # Changes take effect after: M-x emacs-ide-config-reload
 

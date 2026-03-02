@@ -1,15 +1,19 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.0  (fixes from 2.1.0 audit)
+;;; Version: 2.2.1
 ;;; Fixes:
+;;;   - 2.2.1: warning-minimum-level :emergency now restored to :warning in
+;;;     emacs-startup-hook (priority 90, before the GC restore at 100).
+;;;     Previously it stayed at :emergency for the entire session, hiding
+;;;     legitimate package and native-comp warnings.
 ;;;   - Removed non-existent `horizontal-scroll-bar-mode` call (TTY crash)
 ;;;   - Replaced deprecated `native-comp-deferred-compilation` with correct var
 ;;;   - Removed non-standard `native-comp-warning-on-missing-source` and
 ;;;     `native-comp-always-compile` (void-variable warnings)
 ;;;   - Guarded `pgtk-use-im-context-on-new-connection` with boundp
-;;;   - Removed `command-line-x-option-alist nil` (wrong variable, not redisplay)
-;;;   - Safe-mode arg check: use only `command-line-args-left` (avoids duplicate)
+;;;   - Removed `command-line-x-option-alist nil` (wrong variable)
+;;;   - Safe-mode arg check: use only `command-line-args-left`
 ;;; Code:
 
 ;; ============================================================================
@@ -121,9 +125,7 @@
 
 ;; ============================================================================
 ;; NATIVE COMPILATION - SILENT & OPTIMIZED
-;; FIX: `native-comp-deferred-compilation` deprecated in 29.1 → removed.
-;;      `native-comp-warning-on-missing-source` is non-standard → removed.
-;;      `native-comp-always-compile` is non-standard → removed.
+;; FIX: `native-comp-deferred-compilation` deprecated in 29.1 -> removed.
 ;;      Use `native-comp-jit-compilation` (the correct Emacs 29 variable).
 ;; ============================================================================
 (emacs-ide--benchmark-phase "native-comp-setup"
@@ -131,11 +133,10 @@
     (when (and (fboundp 'native-comp-available-p)
                (native-comp-available-p))
       (setq native-comp-async-report-warnings-errors nil
-            native-comp-speed 2                       ; 3 can cause crashes; 2 is safe
+            native-comp-speed 2
             native-comp-async-jobs-number (max 1 (/ (or (emacs-ide--get-processor-count) 4) 2))
             package-native-compile t)
 
-      ;; Emacs 29+: jit compilation toggle
       (when (boundp 'native-comp-jit-compilation)
         (setq native-comp-jit-compilation t))
 
@@ -170,6 +171,14 @@
                 (garbage-collect))))
           100)
 
+;; FIX 2.2.1: Restore warning level early enough to catch post-bootstrap
+;; warnings (native-comp, package, etc.). Priority 90 runs before the GC
+;; restore hook at priority 100.
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (setq warning-minimum-level :warning))
+          90)
+
 ;; Cleanup GC timer on exit
 (add-hook 'kill-emacs-hook
           (lambda ()
@@ -186,9 +195,6 @@
 
 ;; ============================================================================
 ;; REDISPLAY OPTIMIZATION
-;; FIX: Removed `command-line-x-option-alist nil` — that var controls X11
-;;      startup options, not redisplay. Setting it nil can break X geometry
-;;      arguments and is unrelated to rendering performance.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "redisplay-optimization"
   (lambda ()
@@ -207,10 +213,6 @@
 
 ;; ============================================================================
 ;; INITIAL APPEARANCE - MODUS VIVENDI COLORS
-;; FIX: Previous values were Catppuccin Mocha (#1e1e2e/#cdd6f4) which caused
-;;      a visible flash when ui-core.el loaded modus-vivendi. Now aligned to
-;;      modus-vivendi's actual background/foreground so the frame is stable
-;;      from the first paint through theme load.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "initial-theme"
   (lambda ()
@@ -224,6 +226,9 @@
 
 ;; ============================================================================
 ;; REDUCE STARTUP NOISE
+;; FIX 2.2.1: warning-minimum-level set to :emergency here for silent bootstrap.
+;;   It is restored to :warning in the emacs-startup-hook above (priority 90)
+;;   so post-bootstrap warnings from packages and native-comp are visible.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "warning-suppression"
   (lambda ()
@@ -321,8 +326,6 @@
 ;; ============================================================================
 ;; EMERGENCY RECOVERY MODE
 ;; FIX: Use only `command-line-args-left` for --safe detection.
-;;      `command-line-args` includes argv[0] (emacs binary) and is consumed
-;;      before early-init; `command-line-args-left` is the correct hook point.
 ;; ============================================================================
 (defvar emacs-ide-safe-mode nil
   "If non-nil, boot in safe mode (minimal config).")
@@ -330,7 +333,6 @@
 (when (or (getenv "EMACS_SAFE_MODE")
           (member "--safe" command-line-args-left))
   (setq emacs-ide-safe-mode t)
-  ;; Remove the flag so Emacs doesn't complain about unknown option
   (setq command-line-args-left (delete "--safe" command-line-args-left))
   (message "🛡️  EMACS IDE SAFE MODE ENABLED - Minimal configuration"))
 

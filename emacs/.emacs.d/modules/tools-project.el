@@ -1,20 +1,14 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional project management and navigation with config integration.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - Removed duplicate `recentf` use-package block (canonical config is in
-;;;     completion-core.el; having two with different :exclude lists caused the
-;;;     last-loaded version to win unpredictably, and tools-project.el's version
-;;;     excluded ".emacs.d/.*" which hid all config files from recentf).
-;;;   - Removed duplicate `bookmark` use-package block (canonical is in
-;;;     completion-core.el; having two caused double initialisation and the
-;;;     bookmark-default-file path differed between them).
-;;;   - 2.2.2: C-c T conflict: treemacs was bound to C-c T, colliding with
-;;;     tools-terminal.el's vterm-other-window on the same key. Last-loaded
-;;;     module won silently. treemacs moved to <f9> (F-key, unambiguously IDE
-;;;     territory) and C-c t f / C-c t t kept for sub-commands. C-c T freed
-;;;     for tools-terminal.el exclusively.
+;;;   - 2.2.3: projectile-project-search-path was set twice — first in :init
+;;;     with (cons p 2) without expand-file-name, then completely overwritten
+;;;     in :config with (cons (expand-file-name p) 2). The :init assignment
+;;;     was dead code. Consolidated into :config only, with expand-file-name.
+;;;   - Removed duplicate `recentf` and `bookmark` use-package blocks.
+;;;   - 2.2.2: C-c T conflict resolved — treemacs moved to <f9>.
 ;;; Code:
 
 ;; ============================================================================
@@ -27,18 +21,6 @@
         projectile-enable-caching t
         projectile-indexing-method 'hybrid
         projectile-sort-order 'recentf
-
-        ;; Project search paths — use config if available, otherwise sensible defaults
-        projectile-project-search-path
-        (or (and (boundp 'emacs-ide-config-data)
-                 (let ((project-cfg (cdr (assoc 'project emacs-ide-config-data))))
-                   (when project-cfg
-                     (let ((paths (cdr (assoc 'search-paths project-cfg))))
-                       (when (listp paths)
-                         (mapcar (lambda (p) (cons p 2)) paths))))))
-            '(("~/projects" . 2)
-              ("~/work"     . 2)
-              ("~/code"     . 2)))
 
         ;; Ignored directories
         projectile-globally-ignored-directories
@@ -71,13 +53,19 @@
   :config
   (projectile-mode +1)
 
-  ;; Load additional config-based project paths if available
-  (when (and (boundp 'emacs-ide-config-data) emacs-ide-config-data)
-    (when-let ((project-config (cdr (assoc 'project emacs-ide-config-data))))
-      (when-let ((paths (cdr (assoc 'search-paths project-config))))
-        (when (listp paths)
-          (setq projectile-project-search-path
-                (mapcar (lambda (p) (cons (expand-file-name p) 2)) paths))))))
+  ;; FIX 2.2.3: search path set ONCE here in :config only.
+  ;;   The previous :init block set (cons p 2) without expand-file-name and
+  ;;   was immediately overwritten here anyway — removed the :init version.
+  (setq projectile-project-search-path
+        (or (and (boundp 'emacs-ide-config-data)
+                 emacs-ide-config-data
+                 (when-let ((project-config (cdr (assoc 'project emacs-ide-config-data))))
+                   (when-let ((paths (cdr (assoc 'search-paths project-config))))
+                     (when (listp paths)
+                       (mapcar (lambda (p) (cons (expand-file-name p) 2)) paths)))))
+            '(("~/projects" . 2)
+              ("~/work"     . 2)
+              ("~/code"     . 2))))
 
   :bind-keymap
   ("C-c p" . projectile-command-map)
@@ -112,6 +100,8 @@
 
 ;; ============================================================================
 ;; TREEMACS - ADVANCED FILE TREE
+;; FIX 2.2.2: C-c T moved to <f9> — was colliding with tools-terminal.el
+;; which binds C-c T to vterm-other-window. <f9> is unambiguous IDE territory.
 ;; ============================================================================
 (use-package treemacs
   :defer t
@@ -125,10 +115,6 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  ;; FIX 2.2.2: C-c T moved to <f9> — was colliding with tools-terminal.el
-  ;; which binds C-c T to vterm-other-window. <f9> is unambiguous IDE territory.
-  ;; C-c t f / C-c t t kept as sub-commands (C-c t is tools-terminal.el's prefix
-  ;; but these specific sub-keys are free and thematically consistent as "tree").
   :bind (("<f9>"    . treemacs)
          ("C-c t f" . treemacs-find-file)
          ("C-c t t" . treemacs-select-window)))
@@ -262,7 +248,10 @@
 ;; ============================================================================
 ;; KEYBINDING FOR PROJECT INFO
 ;; ============================================================================
-(global-set-key (kbd "C-c p I") 'emacs-ide-project-info)
+;; C-c p I must be set after projectile's keymap is established.
+;; global-set-key at top level races with :bind-keymap and loses.
+(with-eval-after-load 'projectile
+  (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info))
 
 (provide 'tools-project)
 ;;; tools-project.el ends here

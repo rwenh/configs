@@ -1,11 +1,17 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 2.2.1  (fixes from 2.2.0 audit)
+;;; Version: 2.2.3
 ;;; Fixes:
+;;;   - 2.2.3: tools-test added to feature-modules (language-aware test runner)
+;;;   - 2.2.2: (unless emacs-ide-safe-mode ...) block now closes BEFORE the
+;;;     utility defuns and (provide 'init). Previously the block swallowed
+;;;     emacs-ide-show-version, emacs-ide-startup-report, emacs-ide-reload,
+;;;     emacs-ide-update, emacs-ide-freeze-versions, the custom-file load,
+;;;     and (provide 'init) — none of which were available in safe mode.
 ;;;   - Safe-mode: removed `kill-emacs 0` (was killing Emacs before window opens)
-;;;   - `straight--installed-p` is not a real API → replaced with `featurep`-only guard
-;;;   - `straight--recipe-cache` → `straight--build-cache` for correct pkg count
+;;;   - `straight--installed-p` is not a real API -> replaced with `featurep`-only guard
+;;;   - `straight--recipe-cache` -> `straight--build-cache` for correct pkg count
 ;;;   - `buffer-file-coding-system` removed from setq-default block (it's buffer-local)
 ;;;   - `make-backup-files t` reconciled with early-init nil; backups now live in
 ;;;     var/backups/ and early-init no longer redundantly sets nil (handled here)
@@ -15,13 +21,13 @@
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.2.1"
+(defconst emacs-ide-version "2.2.2"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
   "Minimum required Emacs version.")
 
-(defconst emacs-ide-build-date "2026-02-28"
+(defconst emacs-ide-build-date "2026-03-02"
   "Build date.")
 
 ;; ============================================================================
@@ -80,10 +86,9 @@
 ;; ============================================================================
 ;; SAFE MODE
 ;; FIX 2.2.1: Removed `(kill-emacs 0)` — killed process before window opened.
-;; FIX 2.2.2: Removed `(error "SAFE-MODE-ABORT")` — printed a backtrace to
-;;      *Messages* on every safe-mode boot. The clean solution is to wrap all
-;;      post-bootstrap loading in `(unless emacs-ide-safe-mode ...)` so safe
-;;      mode simply falls through silently with minimal config.
+;; FIX 2.2.2: The (unless emacs-ide-safe-mode ...) block now closes BEFORE the
+;;      utility defuns and (provide 'init) so those are always available.
+;;      Safe mode simply falls through with minimal config.
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-safe-mode)
   (message "⚠️  SAFE MODE: Skipping full configuration — loading recovery only")
@@ -99,223 +104,225 @@
 ;; ============================================================================
 (unless (bound-and-true-p emacs-ide-safe-mode)
 
-(defvar bootstrap-version)
-(let ((bootstrap-file
-       (expand-file-name "straight/repos/straight.el/bootstrap.el"
-                         emacs-ide-root-dir))
-      (bootstrap-version 6))
-  (unless (file-exists-p bootstrap-file)
-    (message "📦 Bootstrapping straight.el...")
-    (with-current-buffer
-        (url-retrieve-synchronously
-         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
-         'silent 'inhibit-cookies)
-      (goto-char (point-max))
-      (eval-print-last-sexp)))
-  (load bootstrap-file nil 'nomessage))
+  (defvar bootstrap-version)
+  (let ((bootstrap-file
+         (expand-file-name "straight/repos/straight.el/bootstrap.el"
+                           emacs-ide-root-dir))
+        (bootstrap-version 6))
+    (unless (file-exists-p bootstrap-file)
+      (message "📦 Bootstrapping straight.el...")
+      (with-current-buffer
+          (url-retrieve-synchronously
+           "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+           'silent 'inhibit-cookies)
+        (goto-char (point-max))
+        (eval-print-last-sexp)))
+    (load bootstrap-file nil 'nomessage))
 
-(setq straight-use-package-by-default   t
-      straight-check-for-modifications  '(check-on-save find-when-checking)
-      straight-cache-autoloads          t
-      straight-vc-git-default-clone-depth 1
-      straight-profiles '((nil . "default.el") (pinned . "versions.lock")))
+  (setq straight-use-package-by-default   t
+        straight-check-for-modifications  '(check-on-save find-when-checking)
+        straight-cache-autoloads          t
+        straight-vc-git-default-clone-depth 1
+        straight-profiles '((nil . "default.el") (pinned . "versions.lock")))
 
-(emacs-ide--track-phase "package-bootstrap")
+  (emacs-ide--track-phase "package-bootstrap")
 
-;; ============================================================================
-;; USE-PACKAGE
-;; ============================================================================
-(straight-use-package 'use-package)
+  ;; ============================================================================
+  ;; USE-PACKAGE
+  ;; ============================================================================
+  (straight-use-package 'use-package)
 
-(setq use-package-always-defer       t
-      use-package-expand-minimally   t
-      use-package-enable-imenu-support t
-      use-package-verbose            (bound-and-true-p init-file-debug)
-      use-package-minimum-reported-time 0.1)
+  (setq use-package-always-defer       t
+        use-package-expand-minimally   t
+        use-package-enable-imenu-support t
+        use-package-verbose            (bound-and-true-p init-file-debug)
+        use-package-minimum-reported-time 0.1)
 
-(emacs-ide--track-phase "use-package-setup")
+  (emacs-ide--track-phase "use-package-setup")
 
-;; ============================================================================
-;; CORE SYSTEM MODULES
-;; ============================================================================
-(defvar emacs-ide-core-modules
-  '("emacs-ide-health"     ; Health check system
-    "emacs-ide-package"    ; Package management utilities
-    "emacs-ide-profiler"   ; Performance profiling
-    "emacs-ide-security"   ; Security hardening
-    "emacs-ide-telemetry"  ; Usage tracking
-    "emacs-ide-recovery")  ; Error recovery
-  "Core system modules loaded before features.")
+  ;; ============================================================================
+  ;; CORE SYSTEM MODULES
+  ;; ============================================================================
+  (defvar emacs-ide-core-modules
+    '("emacs-ide-health"     ; Health check system
+      "emacs-ide-package"    ; Package management utilities
+      "emacs-ide-profiler"   ; Performance profiling
+      "emacs-ide-security"   ; Security hardening
+      "emacs-ide-telemetry"  ; Usage tracking
+      "emacs-ide-recovery")  ; Error recovery
+    "Core system modules loaded before features.")
 
-(defun emacs-ide-load-core-module (module-name)
-  "Load core MODULE-NAME with error handling."
-  (let ((file (expand-file-name (concat module-name ".el") emacs-ide-core-dir)))
-    (condition-case err
-        (progn (load file nil 'nomessage)
-               (message "✓ Core: %s" module-name)
-               t)
-      (error
-       (warn "✗ Failed core module %s: %s" module-name err)
-       (when (string= module-name "emacs-ide-recovery")
-         (error "Critical: Recovery module failed: %s" err))
-       nil))))
+  (defun emacs-ide-load-core-module (module-name)
+    "Load core MODULE-NAME with error handling."
+    (let ((file (expand-file-name (concat module-name ".el") emacs-ide-core-dir)))
+      (condition-case err
+          (progn (load file nil 'nomessage)
+                 (message "✓ Core: %s" module-name)
+                 t)
+        (error
+         (warn "✗ Failed core module %s: %s" module-name err)
+         (when (string= module-name "emacs-ide-recovery")
+           (error "Critical: Recovery module failed: %s" err))
+         nil))))
 
-(message "🔧 Loading core system...")
-(dolist (module emacs-ide-core-modules)
-  (emacs-ide-load-core-module module))
+  (message "🔧 Loading core system...")
+  (dolist (module emacs-ide-core-modules)
+    (emacs-ide-load-core-module module))
 
-(emacs-ide--track-phase "core-modules")
+  (emacs-ide--track-phase "core-modules")
 
-;; ============================================================================
-;; PATH & ENVIRONMENT
-;; ============================================================================
-(defun emacs-ide-setup-exec-path ()
-  "Set exec-path and PATH from login shell."
-  (let* ((shell (or (getenv "SHELL") "/bin/sh"))
-         (path-str
-          (condition-case nil
-              (replace-regexp-in-string
-               "[ \t\n]*$" ""
-               (shell-command-to-string
-                (format "%s --login -c 'echo $PATH'" shell)))
-            (error (getenv "PATH")))))
-    (unless (string-empty-p path-str)
-      (setenv "PATH" path-str)
-      (setq exec-path (split-string path-str path-separator)))))
+  ;; ============================================================================
+  ;; PATH & ENVIRONMENT
+  ;; ============================================================================
+  (defun emacs-ide-setup-exec-path ()
+    "Set exec-path and PATH from login shell."
+    (let* ((shell (or (getenv "SHELL") "/bin/sh"))
+           (path-str
+            (condition-case nil
+                (replace-regexp-in-string
+                 "[ \t\n]*$" ""
+                 (shell-command-to-string
+                  (format "%s --login -c 'echo $PATH'" shell)))
+              (error (getenv "PATH")))))
+      (unless (string-empty-p path-str)
+        (setenv "PATH" path-str)
+        (setq exec-path (split-string path-str path-separator)))))
 
-(when (memq window-system '(mac ns x pgtk))
-  (emacs-ide-setup-exec-path))
+  (when (memq window-system '(mac ns x pgtk))
+    (emacs-ide-setup-exec-path))
 
-(emacs-ide--track-phase "environment-setup")
+  (emacs-ide--track-phase "environment-setup")
 
-;; ============================================================================
-;; CORE SETTINGS
-;; FIX: `buffer-file-coding-system` is buffer-local and must NOT appear in
-;;      setq-default alongside global vars — moved to set-default-coding-systems.
-;;      `default-buffer-file-coding-system` and `default-file-name-coding-system`
-;;      are internal aliases; prefer `prefer-coding-system` for portability.
-;;
-;;      Backup policy: early-init.el sets make-backup-files nil for fast startup.
-;;      Here we re-enable backups with a safe directory so files are protected.
-;;      If you truly want no backups at all, set make-backup-files nil here too.
-;; ============================================================================
-(prefer-coding-system 'utf-8-unix)
-(set-language-environment "UTF-8")
+  ;; ============================================================================
+  ;; CORE SETTINGS
+  ;; FIX: `buffer-file-coding-system` is buffer-local and must NOT appear in
+  ;;      setq-default alongside global vars — moved to set-default-coding-systems.
+  ;;      Backup policy: early-init.el sets make-backup-files nil for fast startup.
+  ;;      Here we re-enable backups with a safe directory so files are protected.
+  ;; ============================================================================
+  (prefer-coding-system 'utf-8-unix)
+  (set-language-environment "UTF-8")
 
-(setq-default
- indent-tabs-mode               nil
- tab-width                      4
- fill-column                    100
- require-final-newline          t
- truncate-lines                 nil
- word-wrap                      t
- auto-save-default              nil
- scroll-conservatively          101
- scroll-margin                  5
- scroll-preserve-screen-position t
- auto-window-vscroll            nil
- fast-but-imprecise-scrolling   t)
+  (setq-default
+   indent-tabs-mode               nil
+   tab-width                      4
+   fill-column                    100
+   require-final-newline          t
+   truncate-lines                 nil
+   word-wrap                      t
+   auto-save-default              nil
+   scroll-conservatively          101
+   scroll-margin                  5
+   scroll-preserve-screen-position t
+   auto-window-vscroll            nil
+   fast-but-imprecise-scrolling   t)
 
-;; Backup policy — kept separate for clarity
-(setq make-backup-files         t
-      backup-directory-alist    `(("." . ,emacs-ide-backup-dir))
-      backup-by-copying         t       ; Avoid breaking hard links
-      version-control           t       ; Numbered backups
-      kept-new-versions         6
-      kept-old-versions         2
-      delete-old-versions       t
-      create-lockfiles          nil)
+  ;; Backup policy — kept separate for clarity
+  (setq make-backup-files         t
+        backup-directory-alist    `(("." . ,emacs-ide-backup-dir))
+        backup-by-copying         t       ; Avoid breaking hard links
+        version-control           t       ; Numbered backups
+        kept-new-versions         6
+        kept-old-versions         2
+        delete-old-versions       t
+        create-lockfiles          nil)
 
-(fset 'yes-or-no-p 'y-or-n-p)
+  (fset 'yes-or-no-p 'y-or-n-p)
 
-(setq inhibit-startup-screen    t
-      inhibit-startup-message   t
-      initial-scratch-message   nil
-      initial-major-mode        'fundamental-mode)
+  (setq inhibit-startup-screen    t
+        inhibit-startup-message   t
+        initial-scratch-message   nil
+        initial-major-mode        'fundamental-mode)
 
-;; FIX: Enable electric-pair-mode here so test-basic-editing-modes passes
-;; without depending on a feature module loading successfully.
-(electric-pair-mode 1)
+  ;; FIX: Enable electric-pair-mode here so test-basic-editing-modes passes
+  ;; without depending on a feature module loading successfully.
+  (electric-pair-mode 1)
 
-(emacs-ide--track-phase "core-settings")
+  (emacs-ide--track-phase "core-settings")
 
-;; ============================================================================
-;; FEATURE MODULES
-;; ============================================================================
-(defvar emacs-ide-feature-modules
-  '("ui-core"            ; Core UI, theme, modeline, visual enhancements
-    "ui-theme"           ; Theme toggle utility
-    "ui-modeline"        ; Modeline fallback logic
-    "ui-dashboard"       ; Startup dashboard
-    "completion-core"    ; Vertico + Corfu + Consult + Cape + Orderless
-    "completion-snippets" ; YASnippet
-    "editing-core"       ; Core editing + navigation (editing-nav merged in)
-    "tools-lsp"          ; LSP mode
-    "tools-project"      ; Projectile + Treemacs
-    "tools-git"          ; Magit + git-gutter + forge
-    "tools-terminal"     ; VTerm + Eshell + Docker
-    "tools-format"       ; format-all + apheleia + editorconfig
-    "tools-org"          ; org-mode + agenda + capture
-    "tools-spelling"     ; flyspell across prose and code
-    "lang-core"          ; Language modes + tree-sitter
-    "debug-core"         ; DAP debugging
-    "keybindings")       ; Keybindings — always last
-  "Feature modules loaded in order.")
+  ;; ============================================================================
+  ;; FEATURE MODULES
+  ;; ============================================================================
+  (defvar emacs-ide-feature-modules
+    '("ui-core"            ; Core UI, theme, modeline, visual enhancements
+      "ui-theme"           ; Theme toggle utility
+      "ui-modeline"        ; Modeline fallback logic
+      "ui-dashboard"       ; Startup dashboard
+      "completion-core"    ; Vertico + Corfu + Consult + Cape + Orderless
+      "completion-snippets" ; YASnippet
+      "editing-core"       ; Core editing + navigation (editing-nav merged in)
+      "tools-lsp"          ; LSP mode
+      "tools-project"      ; Projectile + Treemacs
+      "tools-git"          ; Magit + diff-hl + forge
+      "tools-terminal"     ; VTerm + Eshell + Docker
+      "tools-format"       ; format-all + apheleia + editorconfig
+      "tools-org"          ; org-mode + agenda + capture
+      "tools-spelling"     ; flyspell across prose and code
+      "lang-core"          ; Language modes + tree-sitter
+      "tools-test"         ; Language-aware test runner
+      "debug-core"         ; DAP debugging
+      "keybindings")       ; Keybindings — always last
+    "Feature modules loaded in order.")
 
-(defun emacs-ide-load-feature-module (module-name)
-  "Load feature MODULE-NAME with fallback."
-  (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
-    (condition-case err
-        (progn (load file nil 'nomessage)
-               (message "✓ Feature: %s" module-name)
-               t)
-      (error
-       (warn "✗ Failed feature module %s: %s" module-name err)
-       (when (fboundp 'emacs-ide-recovery-log-error)
-         (emacs-ide-recovery-log-error module-name err))
-       nil))))
+  (defun emacs-ide-load-feature-module (module-name)
+    "Load feature MODULE-NAME with fallback."
+    (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
+      (condition-case err
+          (progn (load file nil 'nomessage)
+                 (message "✓ Feature: %s" module-name)
+                 t)
+        (error
+         (warn "✗ Failed feature module %s: %s" module-name err)
+         (when (fboundp 'emacs-ide-recovery-log-error)
+           (emacs-ide-recovery-log-error module-name err))
+         nil))))
 
-(message "🎨 Loading feature modules...")
-(dolist (module emacs-ide-feature-modules)
-  (emacs-ide-load-feature-module module))
+  (message "🎨 Loading feature modules...")
+  (dolist (module emacs-ide-feature-modules)
+    (emacs-ide-load-feature-module module))
 
-(emacs-ide--track-phase "feature-modules")
+  (emacs-ide--track-phase "feature-modules")
 
-;; ============================================================================
-;; HEALTH CHECK
-;; ============================================================================
-(when (and (fboundp 'emacs-ide-health-check-startup)
-           (not noninteractive))
-  (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
+  ;; ============================================================================
+  ;; HEALTH CHECK
+  ;; ============================================================================
+  (when (and (fboundp 'emacs-ide-health-check-startup)
+             (not noninteractive))
+    (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
 
-;; ============================================================================
-;; POST-INIT
-;; FIX: `straight--recipe-cache` does not exist; correct table is
-;;      `straight--build-cache`. Wrapped in safe condition-case either way.
-;; ============================================================================
-(add-hook 'emacs-startup-hook
-          (lambda ()
-            (emacs-ide--track-phase "startup-complete")
-            (let* ((elapsed  (float-time
-                              (time-subtract (current-time)
-                                             emacs-ide--init-start-time)))
-                   (gc-count (- gcs-done emacs-ide--gc-count-start))
-                   (pkg-count (condition-case nil
-                                  (if (and (fboundp 'straight--build-cache)
-                                           (hash-table-p straight--build-cache))
-                                      (hash-table-count straight--build-cache)
-                                    0)
-                                (error 0))))
-              (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s"
-                       emacs-ide-version elapsed pkg-count gc-count
-                       (or (bound-and-true-p emacs-ide-display-server) "TTY"))
-              (let ((target (or (bound-and-true-p emacs-ide-startup-time-target) 3.0)))
-                (when (> elapsed target)
-                  (warn "⚠️  Startup %.2fs exceeded target %.1fs. Run M-x emacs-ide-profile-startup."
-                        elapsed target)))
-              (when (fboundp 'emacs-ide-telemetry-log-startup)
-                (emacs-ide-telemetry-log-startup elapsed gc-count pkg-count))))
-          100)
+  ;; ============================================================================
+  ;; POST-INIT
+  ;; FIX: `straight--recipe-cache` does not exist; correct table is
+  ;;      `straight--build-cache`. Wrapped in safe condition-case either way.
+  ;; ============================================================================
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              (emacs-ide--track-phase "startup-complete")
+              (let* ((elapsed  (float-time
+                                (time-subtract (current-time)
+                                               emacs-ide--init-start-time)))
+                     (gc-count (- gcs-done emacs-ide--gc-count-start))
+                     (pkg-count (condition-case nil
+                                    (if (and (fboundp 'straight--build-cache)
+                                             (hash-table-p straight--build-cache))
+                                        (hash-table-count straight--build-cache)
+                                      0)
+                                  (error 0))))
+                (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s"
+                         emacs-ide-version elapsed pkg-count gc-count
+                         (or (bound-and-true-p emacs-ide-display-server) "TTY"))
+                (let ((target (or (bound-and-true-p emacs-ide-startup-time-target) 3.0)))
+                  (when (> elapsed target)
+                    (warn "⚠️  Startup %.2fs exceeded target %.1fs. Run M-x emacs-ide-profile-startup."
+                          elapsed target)))
+                (when (fboundp 'emacs-ide-telemetry-log-startup)
+                  (emacs-ide-telemetry-log-startup elapsed gc-count pkg-count))))
+            100)
+
+) ;; end (unless emacs-ide-safe-mode ...)
+;; FIX 2.2.2: The block above closes HERE — before custom-file, utility
+;; defuns, and (provide 'init) — so all of the following are always available
+;; regardless of safe-mode state.
 
 ;; ============================================================================
 ;; CUSTOM FILE
@@ -324,7 +331,7 @@
   (load custom-file nil 'nomessage))
 
 ;; ============================================================================
-;; UTILITY COMMANDS
+;; UTILITY COMMANDS (always defined, even in safe mode)
 ;; ============================================================================
 (defun emacs-ide-show-version ()
   "Display version and system info."
@@ -365,8 +372,6 @@
   (interactive)
   (straight-freeze-versions)
   (message "✓ Package versions frozen"))
-
-);; end (unless emacs-ide-safe-mode ...)
 
 (provide 'init)
 ;;; init.el ends here

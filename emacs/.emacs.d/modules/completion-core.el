@@ -1,14 +1,17 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Vertico + Consult + Corfu - Maximum efficiency with proper config integration
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
+;;;   - 2.2.2: corfu-preview-current changed from 'insert to t.
+;;;     'insert auto-inserts the top candidate as you type, which breaks
+;;;     normal typing whenever a wrong completion is preselected. 't means
+;;;     preview-only (shown but not committed until TAB/RET).
 ;;;   - Removed single-quote from electric-pair-pairs (breaks Elisp/most langs)
-;;;   - save-place-file moved to var/ subdirectory (consistent with rest of config)
+;;;   - save-place-file moved to var/ subdirectory
 ;;;   - abbrev-file-name moved to var/ subdirectory
 ;;;   - Removed duplicate recentf/bookmark configs (canonical in tools-project.el)
-;;;   - TAB global rebind scoped to prog-mode/text-mode only (was breaking
-;;;     org-mode, terminal modes, etc.)
+;;;   - TAB global rebind scoped to prog-mode/text-mode only
 ;;; Code:
 
 ;; ============================================================================
@@ -130,6 +133,11 @@
 
 ;; ============================================================================
 ;; CORFU - INLINE COMPLETION (MAIN SYSTEM - DEFERRED)
+;; FIX 2.2.2: corfu-preview-current changed from 'insert to t.
+;;   'insert commits the top candidate into the buffer as you type —
+;;   this breaks normal typing (e.g. typing "foobar" auto-inserts a
+;;   wrong completion after every character). 't shows a preview
+;;   highlight only; the candidate is not inserted until TAB/RET.
 ;; ============================================================================
 (use-package corfu
   :init
@@ -139,7 +147,7 @@
         corfu-cycle t
         corfu-quit-at-boundary 'separator
         corfu-quit-no-match 'separator
-        corfu-preview-current 'insert
+        corfu-preview-current t          ; FIX: was 'insert (aggressive auto-insert)
         corfu-preselect 'prompt
         corfu-on-exact-match nil
         corfu-scroll-margin 5
@@ -208,7 +216,6 @@
 
 ;; ============================================================================
 ;; SAVE PLACE (BUILTIN)
-;; FIX: moved to var/ for consistency with rest of config
 ;; ============================================================================
 (use-package saveplace
   :straight nil
@@ -220,7 +227,6 @@
 
 ;; ============================================================================
 ;; ABBREV MODE (BUILTIN)
-;; FIX: moved abbrev-file-name to var/ for consistency
 ;; ============================================================================
 (setq-default abbrev-mode t)
 (setq save-abbrevs 'silently
@@ -233,8 +239,7 @@
 ;; AUTO-COMPLETE PAIRS (BUILTIN)
 ;; FIX: Removed (?'  . ?') from electric-pair-pairs — single-quote pairing
 ;;      is harmful in Emacs Lisp (where ' is a reader prefix) and many other
-;;      languages. Electric pair mode's built-in rules already handle '' in
-;;      string contexts where needed.
+;;      languages.
 ;; ============================================================================
 (electric-pair-mode 1)
 (setq electric-pair-pairs
@@ -278,8 +283,7 @@
 ;; ============================================================================
 ;; CUSTOM COMPLETION FUNCTIONS
 ;; FIX: TAB rebind scoped to prog-mode and text-mode only via hooks.
-;;      Global TAB rebind was breaking org-mode, vterm, and other modes
-;;      that rely on the standard tab behaviour.
+;;      Global TAB rebind was breaking org-mode, vterm, and other modes.
 ;; ============================================================================
 (defun emacs-ide-complete-or-indent ()
   "Complete or indent intelligently."

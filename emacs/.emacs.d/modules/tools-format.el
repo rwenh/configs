@@ -6,32 +6,52 @@
 ;;; on-save toggle from emacs-ide-config-data at load time.
 ;;; Add "tools-format" to emacs-ide-feature-modules in init.el,
 ;;; placed after lang-core and before keybindings.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
+;;; Fixes:
+;;;   - 2.2.2: emacs-ide-format--formatter-for had a dead branch: Elisp `null`
+;;;     and `(eq val nil)` are identical predicates — both match nil. Since YAML
+;;;     `false` parses to nil AND an absent key also returns nil from assoc,
+;;;     the "(eq val nil) -> disabled" branch was unreachable and the function
+;;;     could never distinguish "user explicitly set false" from "key absent".
+;;;     FIX: `emacs-ide-format--config-get` now returns a sentinel `:absent`
+;;;     when the key is missing from the section (vs nil for an explicit false).
+;;;     `emacs-ide-format--formatter-for` tests for `:absent` to mean "use
+;;;     default" and for nil to mean "disabled by user". This correctly
+;;;     implements the intended key-absent vs explicitly-false distinction.
 ;;; Code:
 
 ;; ============================================================================
 ;; CONFIG HELPERS
 ;; ============================================================================
 (defun emacs-ide-format--config-get (key)
-  "Get KEY from the `formatting' section of emacs-ide-config-data."
-  (when (boundp 'emacs-ide-config-data)
-    (let ((fmt (cdr (assoc 'formatting emacs-ide-config-data))))
-      (cdr (assoc key fmt)))))
+  "Get KEY from the `formatting' section of emacs-ide-config-data.
+Returns the value if present, or the sentinel symbol `:absent' if the
+key does not exist in the section.  This distinguishes YAML `false'
+(parsed as nil) from a missing key (both used to return nil)."
+  (if (not (boundp 'emacs-ide-config-data))
+      :absent
+    (let* ((fmt  (cdr (assoc 'formatting emacs-ide-config-data)))
+           (cell (assoc key fmt)))
+      (if cell (cdr cell) :absent))))
 
 (defun emacs-ide-format--formatter-for (language-key default)
   "Return formatter symbol for LANGUAGE-KEY from config, or DEFAULT.
-Returns nil if config explicitly sets the value to false (disabled)."
+Returns nil when the config key is explicitly set to false (disabled).
+FIX 2.2.2: Previously (null val) and (eq val nil) were identical tests —
+  both matched nil, making the 'false -> disabled' branch unreachable.
+  Now uses the `:absent' sentinel from `emacs-ide-format--config-get'
+  to distinguish absent key from explicit false."
   (let ((val (emacs-ide-format--config-get language-key)))
     (cond
-     ((null val) default)           ; key absent -> use default
-     ((eq val t) default)           ; true -> use default
-     ((eq val nil) nil)             ; false -> disabled
-     (t (intern val)))))            ; string -> symbol
+     ((eq val :absent) default)    ; key not in config  -> use default
+     ((eq val t)       default)    ; explicit true       -> use default
+     ((null val)       nil)        ; explicit false/nil  -> disabled
+     (t (intern val)))))           ; string value        -> symbol
 
 (defun emacs-ide-format--on-save-p ()
   "Return non-nil if format-on-save is enabled in config (default: true)."
   (let ((val (emacs-ide-format--config-get 'on-save)))
-    (if (null val) t val)))
+    (if (eq val :absent) t (and val t))))
 
 ;; ============================================================================
 ;; FORMAT-ALL - universal formatter dispatcher
@@ -41,12 +61,14 @@ Returns nil if config explicitly sets the value to false (disabled)."
              format-all-region
              format-all-region-or-buffer)
   :hook (prog-mode . format-all-ensure-formatter)
+  :bind (("C-c F" . format-all-region-or-buffer))
   :init
-  (setq format-all-show-errors
-        (or (emacs-ide-format--config-get 'show-errors) 'errors))
+  (let ((show-errors (emacs-ide-format--config-get 'show-errors)))
+    (setq format-all-show-errors
+          (if (eq show-errors :absent) 'errors show-errors)))
   :config
   ;; Build formatter list from config, falling back to sensible defaults.
-  ;; A language set to false in config is omitted entirely (formatter disabled).
+  ;; A language set to false in config is omitted entirely.
   (let ((formatters
          (delq nil
                (list
