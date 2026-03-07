@@ -37,7 +37,7 @@
 ;;;   tools-spelling.el  → C-c S * (flyspell-mode-map)
 ;;;   completion-core.el → C-. C-; (embark), M-/ (hippie-expand)
 ;;;                        Also binds consult commands via :bind — see note above
-;;;   ui-core.el         → C-c w t/f/r (transpose-frame), F8 (neotree)
+;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-<f8> (neotree)
 ;;;
 ;;; Version: 3.0.2
 ;;; Changes from 3.0.1:
@@ -154,7 +154,8 @@
 (global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 
 ;; UI toggles (functions defined in ui-core.el and ui-theme.el)
-(global-set-key (kbd "<f8>")  'neotree-toggle)
+;; neotree moved to C-<f8> — <f8> is now dap-breakpoint-toggle (debug-core.el)
+(global-set-key (kbd "C-<f8>") 'neotree-toggle)
 ;; F9 treemacs is bound in tools-project.el via :bind — no duplicate needed here
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
@@ -237,10 +238,10 @@ DEBUG  (debug-core.el — F-keys are unambiguous IDE territory):
   S-F7          dap-next (step over)
   M-F7          dap-step-out
   C-F7          dap-continue
-  F9            dap-breakpoint-toggle
-  C-F9          dap-breakpoint-condition
-  S-F9          dap-breakpoint-log-message
-  C-S-F9        dap-breakpoint-delete-all
+  F8            dap-breakpoint-toggle
+  C-F8          dap-breakpoint-condition
+  S-F8          dap-breakpoint-log-message
+  C-S-F8        dap-breakpoint-delete-all
   C-c d h       debug hydra  (keys inside: n s o c b B L D u d l e U w R q)
   C-c d ?       debug help
 
@@ -302,7 +303,8 @@ UTILITY:
   C-c R         reload config
   C-c L         LSP status
   C-c P         presentation mode toggle
-  F8            neotree-toggle
+  C-F8          neotree-toggle
+  F9            treemacs (set by tools-project.el)
   F12           toggle theme
 
 Press q to close.\n")))

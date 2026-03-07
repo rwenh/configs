@@ -1,7 +1,7 @@
 ;;; ui-modeline.el --- Modeline configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Activate a modeline package if available; do not force-load on startup.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - doom-modeline was activated both here (via after-init-hook) AND in
 ;;;     ui-core.el (also via after-init-hook after fix). Having two hooks
@@ -9,20 +9,28 @@
 ;;;     Resolution: ui-core.el owns doom-modeline setup (it sets all the
 ;;;     configuration vars). This file now only activates a FALLBACK modeline
 ;;;     if doom-modeline is NOT available, so the two files are non-overlapping.
+;;;   - 2.2.3: (unless (featurep 'doom-modeline) ...) evaluated at load time,
+;;;     before after-init-hook fires and before doom-modeline-mode runs.
+;;;     featurep was always nil here, so the fallback block always ran —
+;;;     it re-added a second doom-modeline-mode hook from this file.
+;;;     Fixed: use (locate-library "doom-modeline") which tests availability
+;;;     at load time without depending on activation order.
 ;;; Code:
 
 ;; doom-modeline is fully configured and activated in ui-core.el.
 ;; This file only handles the fallback case where doom-modeline is absent.
-(unless (featurep 'doom-modeline)
-  (when (require 'doom-modeline nil 'noerror)
-    ;; doom-modeline present but not yet set up — shouldn't happen normally,
-    ;; but handle gracefully by deferring to after-init
-    (add-hook 'after-init-hook #'doom-modeline-mode))
-
-  ;; True fallback: doom-modeline not installed at all
-  (unless (locate-library "doom-modeline")
-    (when (require 'powerline nil 'noerror)
-      (add-hook 'after-init-hook (lambda () (powerline-default-theme))))))
+;; FIX 2.2.3: The previous guard was (unless (featurep 'doom-modeline) ...).
+;;   featurep tests whether a feature is already loaded/provided. At load time
+;;   (during the feature-modules phase of init.el), doom-modeline has not yet
+;;   called (provide 'doom-modeline) because doom-modeline-mode runs in
+;;   after-init-hook — so featurep was always nil and the fallback block always
+;;   ran, adding a second after-init-hook for doom-modeline-mode.
+;;   Fix: use locate-library which tests *availability on disk* at load time,
+;;   independent of whether it has been activated yet.
+(unless (locate-library "doom-modeline")
+  ;; doom-modeline not installed — activate powerline as fallback if available
+  (when (require 'powerline nil 'noerror)
+    (add-hook 'after-init-hook (lambda () (powerline-default-theme)))))
 
 
 ;; ============================================================================

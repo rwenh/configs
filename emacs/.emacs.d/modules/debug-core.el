@@ -1,10 +1,13 @@
 ;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
-;;;   - 2.2.3: Hydra duplicate keys fully resolved. Previously "s" and "i"
-;;;     both mapped to dap-step-in (comment claimed it was fixed but wasn't).
+;;;   - 2.2.4: <f9> collision resolved. tools-project.el binds <f9> to treemacs
+;;;     (loads first); debug-core.el also bound <f9> to dap-breakpoint-toggle
+;;;     (loads after), silently overwriting treemacs's binding. Breakpoint keys
+;;;     shifted to F8 family: F8=toggle, C-F8=condition, S-F8=log, C-S-F8=delete-all.
+;;;     treemacs keeps <f9> uncontested. neotree in ui-core.el should use C-<f8>.
 ;;;     New unambiguous layout:
 ;;;       n=next, s=step-in, o=step-out, c=continue, r=restart
 ;;;       b=bp-toggle, B=bp-condition, L=bp-log, D=bp-delete-all
@@ -27,10 +30,14 @@
          ("S-<f7>"  . dap-next)
          ("M-<f7>"  . dap-step-out)
          ("C-<f7>"  . dap-continue)
-         ("<f9>"    . dap-breakpoint-toggle)
-         ("C-<f9>"  . dap-breakpoint-condition)
-         ("S-<f9>"  . dap-breakpoint-log-message)
-         ("C-S-<f9>" . dap-breakpoint-delete-all))
+         ;; FIX D: <f9> collided with tools-project.el (treemacs toggle, loads first).
+         ;; debug-core loads after tools-project, so its :bind fired last and silently
+         ;; overwrote treemacs's <f9> globally. Breakpoint keys shifted to F8 family;
+         ;; treemacs keeps <f9> uncontested. neotree (ui-core.el) should move to C-<f8>.
+         ("<f8>"    . dap-breakpoint-toggle)
+         ("C-<f8>"  . dap-breakpoint-condition)
+         ("S-<f8>"  . dap-breakpoint-log-message)
+         ("C-S-<f8>" . dap-breakpoint-delete-all))
   :init
   (setq dap-auto-configure-features '(sessions locals breakpoints expressions controls tooltip repl)
         dap-auto-show-output t
@@ -281,10 +288,10 @@ _q_: quit                                               _R_: repl
   (with-output-to-temp-buffer "*Debug Help*"
     (princ "=== EMACS IDE DEBUGGING GUIDE ===\n\n")
     (princ "BREAKPOINTS:\n")
-    (princ "  F9          Toggle breakpoint\n")
-    (princ "  C-F9        Conditional breakpoint\n")
-    (princ "  S-F9        Log message breakpoint\n")
-    (princ "  C-S-F9      Delete all breakpoints\n\n")
+    (princ "  F8          Toggle breakpoint\n")
+    (princ "  C-F8        Conditional breakpoint\n")
+    (princ "  S-F8        Log message breakpoint\n")
+    (princ "  C-S-F8      Delete all breakpoints\n\n")
     (princ "EXECUTION:\n")
     (princ "  F5          Start debugging\n")
     (princ "  F6          Restart\n")

@@ -304,7 +304,9 @@
 ;; NEOTREE
 ;; ============================================================================
 (use-package neotree
-  :bind ("<f8>" . neotree-toggle)
+  ;; FIX: <f8> moved to C-<f8> — debug-core.el now uses <f8> for
+  ;; dap-breakpoint-toggle (previously <f9> which collided with treemacs).
+  :bind ("C-<f8>" . neotree-toggle)
   :init
   (setq neo-smart-open            t
         neo-theme                 (if (display-graphic-p) 'icons 'arrow)

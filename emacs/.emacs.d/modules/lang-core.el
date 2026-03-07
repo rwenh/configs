@@ -1,11 +1,17 @@
 ;;; lang-core.el --- Professional Language Support (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; 50+ languages with LSP, Tree-sitter, compile-and-run, debugging
-;;; Version: 2.2.1
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - ruby-mode: added :straight nil — it is built-in since Emacs 29.
 ;;;     Without it straight.el attempted a MELPA lookup on every startup,
 ;;;     producing lock-file churn and occasional warning noise.
+;;;   - 2.2.3: go-mode gofmt-before-save hook was placed in :config with LOCAL=t,
+;;;     making it buffer-local for whatever buffer was current at package-load time,
+;;;     not for every subsequent go-mode buffer. Moved into go-mode-hook.
+;;;   - 2.2.3: python-mode-map C-c C-t shadow removed. The local binding to
+;;;     emacs-ide-python-pytest shadowed the global C-c C-t (emacs-ide-test-run)
+;;;     in Python buffers, breaking the universal test runner.
 ;;; Code:
 
 ;; ============================================================================
@@ -150,7 +156,10 @@
       (message "⚠️  pytest not found")))
 
   (define-key python-mode-map (kbd "C-c C-c") 'emacs-ide-python-run)
-  (define-key python-mode-map (kbd "C-c C-t") 'emacs-ide-python-pytest))
+  ;; FIX C: C-c C-t removed from python-mode-map — tools-test.el owns that
+  ;; key globally and auto-detects pytest. A mode-local shadow here caused
+  ;; emacs-ide-python-pytest to fire instead of emacs-ide-test-run in Python buffers.
+  )
 
 ;; ============================================================================
 ;; RUST
@@ -195,7 +204,11 @@
         (compile "go build -v")
       (message "⚠️  Go not found")))
 
-  (add-hook 'before-save-hook 'gofmt-before-save nil t)
+  ;; FIX: (add-hook 'before-save-hook ... nil t) inside :config would attach
+  ;; a buffer-local hook to whatever buffer is current at package-load time,
+  ;; not to every go-mode buffer. Wire it per-buffer via go-mode-hook instead.
+  (add-hook 'go-mode-hook
+            (lambda () (add-hook 'before-save-hook #'gofmt-before-save nil t)))
   (define-key go-mode-map (kbd "C-c C-c") 'emacs-ide-go-run)
   (define-key go-mode-map (kbd "C-c C-b") 'emacs-ide-go-build))
 

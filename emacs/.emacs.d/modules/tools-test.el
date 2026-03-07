@@ -30,7 +30,14 @@
 ;;; Add "tools-test" to emacs-ide-feature-modules in init.el (after lang-core,
 ;;; before keybindings).
 ;;;
-;;; Version: 1.0.0
+;;; Version: 1.0.2
+;;; Fixes:
+;;;   - 1.0.2: emacs-ide-test--detect-haskell used file-exists-p with "*.cabal"
+;;;     which is a shell glob, not a valid path — always returned nil, so cabal
+;;;     was never detected. Fixed to use directory-files with a regexp.
+;;;   - 1.0.2: emacs-ide-test--parse-results rspec branch set :passed to the
+;;;     total example count rather than passing count. "5 examples, 2 failures"
+;;;     produced passed=5,failed=2 (off by 2). Fixed: passed = total - failed.
 ;;; Code:
 
 (require 'cl-lib)
@@ -173,7 +180,10 @@
   (let ((root (emacs-ide-test--project-root)))
     (cond
      ((and (executable-find "cabal")
-           (file-exists-p (expand-file-name "*.cabal" root)))
+           ;; FIX A: file-exists-p with a glob like "*.cabal" never matches —
+           ;; it tests for a literal file named "*.cabal". Use directory-files
+           ;; with a regexp to detect any real .cabal file in the root.
+           (directory-files root nil "\\.cabal\\'"))
       (cons (format "cd %s && cabal test 2>&1" (shell-quote-argument root))
             "cabal test"))
      ((executable-find "stack")
@@ -306,10 +316,13 @@ Returns (command . description) or nil."
         (setq failed (string-to-number (match-string 1 output))))
       (setq status (if (= failed 0) 'passed 'failed)))
      ;; rspec: "5 examples, 0 failures"
+     ;; FIX B: group 1 = total examples, group 2 = failures.
+     ;; passed = total - failures (not total, which was the previous wrong value).
      ((string-match "\\([0-9]+\\) examples?, \\([0-9]+\\) failures?" output)
-      (setq passed (string-to-number (match-string 1 output))
-            failed (string-to-number (match-string 2 output))
-            status (if (= failed 0) 'passed 'failed)))
+      (let ((total (string-to-number (match-string 1 output))))
+        (setq failed (string-to-number (match-string 2 output))
+              passed (- total failed)
+              status (if (= failed 0) 'passed 'failed))))
      ;; ERT: "Ran 5 tests, 0 failures"
      ((string-match "Ran \\([0-9]+\\) tests?, \\([0-9]+\\) failures?" output)
       (setq passed (string-to-number (match-string 1 output))
