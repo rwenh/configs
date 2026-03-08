@@ -498,7 +498,7 @@ C-c C-T."
 
 (defun emacs-ide-test-run-point ()
   "Run the single test at point, if the framework supports it.
-C-c t p."
+C-c x p."
   (interactive)
   (let ((cmd (emacs-ide-test--run-at-point-command)))
     (if cmd
@@ -511,7 +511,7 @@ C-c t p."
       (emacs-ide-test-run))))
 
 (defun emacs-ide-test-run-last ()
-  "Repeat the last test command. C-c t l."
+  "Repeat the last test command. C-c x l."
   (interactive)
   (if (and emacs-ide-test--last-command emacs-ide-test--last-directory)
       (emacs-ide-test--run-command emacs-ide-test--last-command
@@ -520,7 +520,7 @@ C-c t p."
     (message "⚠️  No previous test command recorded.")))
 
 (defun emacs-ide-test-report ()
-  "Show test run history. C-c t r."
+  "Show test run history. C-c x r."
   (interactive)
   (if (null emacs-ide-test--history)
       (message "No test runs recorded yet.")
