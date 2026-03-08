@@ -115,9 +115,9 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  :bind (("<f9>"    . treemacs)
-         ("C-c t f" . treemacs-find-file)
-         ("C-c t t" . treemacs-select-window)))
+  :bind (("<f9>"      . treemacs)
+         ("C-c p t f" . treemacs-find-file)    ; was C-c t f — dead (C-c t = vterm plain cmd)
+         ("C-c p t t" . treemacs-select-window))) ; was C-c t t — dead (C-c t = vterm plain cmd)
 
 (use-package treemacs-projectile
   :after (treemacs projectile))

@@ -51,7 +51,7 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
    ((> emacs-ide-health--last-warnings 0)
     (format "⚠ %d warning%s"
             emacs-ide-health--last-warnings
-            (if (if (= emacs-ide-health--last-warnings 1) "" "s"))))
+            (if (= emacs-ide-health--last-warnings 1) "" "s")))
    (t "✓ Healthy")))
 
 (defun emacs-ide-health--update-counts (errors warnings)

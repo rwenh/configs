@@ -11,8 +11,14 @@
 
 (require 'cl-lib)
 
-(defvar emacs-ide-telemetry-enabled
-  (if (boundp 'emacs-ide-telemetry-enabled) emacs-ide-telemetry-enabled t)
+;; FIX: The previous init form was:
+;;   (if (boundp 'emacs-ide-telemetry-enabled) emacs-ide-telemetry-enabled t)
+;; This is dead code: defvar only evaluates its init form when the variable is
+;; NOT yet bound, so (boundp 'emacs-ide-telemetry-enabled) inside that form is
+;; always nil — the "preserve existing value" branch is unreachable.
+;; The correct idiom is simply `t` as the default.  defvar's own no-op-when-
+;; already-bound semantics preserves any value set earlier by emacs-ide-config-apply.
+(defvar emacs-ide-telemetry-enabled t
   "Enable telemetry collection (local only).")
 
 (defvar emacs-ide-telemetry-command-counts (make-hash-table :test 'equal)

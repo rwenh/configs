@@ -91,7 +91,10 @@ performance:
   startup-time-target: 2.0      # Target startup time (seconds)
   defer-heavy-packages: true    # Defer loading of heavy packages
   native-comp-jobs: 4           # Number of parallel compilation jobs
-  native-comp-deferred: true    # Defer native compilation
+  # FIX: native-comp-deferred-compilation was REMOVED in Emacs 29.
+  # The replacement is native-comp-jit-compilation (set in early-init.el).
+  # This key is informational only — emacs-ide-config-apply does not apply it.
+  # native-comp-deferred: true  ← REMOVED, do not use
   large-file-threshold: 10000000  # 10MB - Special handling for large files
   read-process-output-max: 4194304  # 4MB - Max process output buffer
 
@@ -256,7 +259,14 @@ keybindings:
 # ADVANCED SETTINGS
 # ============================================================================
 advanced:
-  warning-minimum-level: error  # Options: error, warning, debug
+  # FIX: The previous value 'error' is wrong in two ways:
+  #   1. Emacs warning levels are Lisp keyword symbols: :debug :warning :error :emergency
+  #      A bare string 'error' is not a valid level and would be silently ignored.
+  #   2. emacs-ide-config-apply has no handler for this key, so it is not applied
+  #      regardless of the value.  To change the warning level, set it directly
+  #      in your init.el: (setq warning-minimum-level :warning)
+  #      early-init.el manages this during startup (sets :emergency, restores :warning).
+  # warning-minimum-level: :warning  ← valid format if a handler is ever added
   custom-load-path: []          # Additional directories to add to load-path
   custom-requires: []           # Additional features to require on startup
   experimental:

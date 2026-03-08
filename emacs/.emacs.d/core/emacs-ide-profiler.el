@@ -31,10 +31,16 @@
     (message "Profiler stopped")))
 
 (defun emacs-ide-profile-report ()
-  "Show profiler report."
+  "Show profiler report and stop the profiler.
+FIX: Previously called profiler-report unconditionally — if the
+profiler was never started this opened an empty/misleading buffer.
+Now guarded: only reports when the profiler is actually running."
   (interactive)
-  (profiler-report)
-  (emacs-ide-profile-stop))
+  (if emacs-ide-profiler-running
+      (progn
+        (profiler-report)
+        (emacs-ide-profile-stop))
+    (message "Profiler is not running. Start it first with emacs-ide-profile-start.")))
 
 (provide 'emacs-ide-profiler)
 ;;; emacs-ide-profiler.el ends here

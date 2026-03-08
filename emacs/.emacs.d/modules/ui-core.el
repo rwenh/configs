@@ -39,30 +39,59 @@
 ;; THEME — MODUS
 ;; ============================================================================
 (use-package modus-themes
+  ;; FIX: Missing :demand t caused this block to be deferred (global
+  ;; use-package-always-defer t set in init.el). With no :hook/:bind/:commands
+  ;; to trigger loading, :config — which contains the load-theme call — never
+  ;; ran, so no theme loaded and Emacs started with bare default faces.
+  :demand t
   :init
-  (setq modus-themes-bold-constructs       t
-        modus-themes-italic-constructs     t
-        modus-themes-mixed-fonts           t
-        modus-themes-variable-pitch-ui     t
-        modus-themes-custom-auto-reload    t
-        modus-themes-disable-other-themes  t
-        modus-themes-prompts               '(bold intense)
-        modus-themes-completions
-        '((matches   . (extrabold))
-          (selection . (semibold accented))
-          (popup     . (accented intense)))
-        modus-themes-org-blocks            'gray-background
+  ;; Variables that remain valid in modus-themes v4 (ships with Emacs 29):
+  (setq modus-themes-bold-constructs      t
+        modus-themes-italic-constructs    t
+        modus-themes-mixed-fonts          t
+        modus-themes-variable-pitch-ui    t
+        modus-themes-custom-auto-reload   t
+        modus-themes-disable-other-themes t
+        ;; Headings format is unchanged in v4:
         modus-themes-headings
         '((1 . (rainbow overline background 1.5))
           (2 . (rainbow background 1.3))
           (3 . (rainbow bold 1.2))
           (t . (semilight 1.1)))
-        modus-themes-scale-headings        t
-        modus-themes-syntax
-        '(alt-syntax green-strings yellow-comments)
-        modus-themes-hl-line               '(intense)
-        modus-themes-paren-match           '(bold intense)
-        modus-themes-region                '(bg-only no-extend))
+        ;; modus-themes-completions: v4 dropped 'accented/'semibold — use supported props
+        modus-themes-completions
+        '((matches   . (underline))
+          (selection . (bold))
+          (popup     . (italic))))
+
+  ;; FIX: The following variables were REMOVED in modus-themes v4 and produce
+  ;; void-variable warnings on Emacs 29 (they are silently ignored at best):
+  ;;   modus-themes-syntax, modus-themes-scale-headings, modus-themes-hl-line,
+  ;;   modus-themes-paren-match, modus-themes-region, modus-themes-prompts,
+  ;;   modus-themes-org-blocks.
+  ;; Replaced with palette overrides — the v4 idiomatic customisation mechanism.
+  (setq modus-vivendi-palette-overrides
+        '(;; Syntax: green strings, yellow comments (replaces modus-themes-syntax)
+          (string          green-warmer)
+          (comment         yellow-faint)
+          ;; Highlighted line: distinct bg (replaces modus-themes-hl-line)
+          (bg-hl-line      bg-blue-nuanced)
+          ;; Paren match: intense (replaces modus-themes-paren-match)
+          (bg-paren-match  bg-magenta-intense)
+          ;; Region: soft bg (replaces modus-themes-region)
+          (bg-region       bg-lavender)
+          ;; Prompts: warm color (replaces modus-themes-prompts)
+          (prompt          magenta-warmer)
+          ;; Org src blocks: gray bg (replaces modus-themes-org-blocks)
+          (bg-org-block    bg-dim))
+        modus-operandi-palette-overrides
+        '((string          green-cooler)
+          (comment         yellow-faint)
+          (bg-hl-line      bg-blue-nuanced)
+          (bg-paren-match  bg-magenta-intense)
+          (bg-region       bg-lavender)
+          (prompt          magenta-warmer)
+          (bg-org-block    bg-dim)))
   :config
   (let ((theme (or (bound-and-true-p emacs-ide-theme) 'modus-vivendi)))
     (load-theme theme t)))
@@ -304,9 +333,13 @@
 ;; NEOTREE
 ;; ============================================================================
 (use-package neotree
-  ;; FIX: <f8> moved to C-<f8> — debug-core.el now uses <f8> for
-  ;; dap-breakpoint-toggle (previously <f9> which collided with treemacs).
-  :bind ("C-<f8>" . neotree-toggle)
+  ;; FIX: C-<f8> removed from neotree :bind.
+  ;; debug-core.el v2.2.4 assigns C-<f8> to dap-breakpoint-condition as part of
+  ;; its F8-family breakpoint layout (F8=toggle, C-F8=condition, S-F8=log,
+  ;; C-S-F8=delete-all). Both neotree and debug-core.el claimed C-<f8>; since
+  ;; keybindings.el (loaded last) re-assigned it to neotree-toggle, dap-
+  ;; breakpoint-condition was silently left unbound on every startup.
+  ;; Neotree is now bound to C-c n in keybindings.el — unambiguous, no F-key conflict.
   :init
   (setq neo-smart-open            t
         neo-theme                 (if (display-graphic-p) 'icons 'arrow)

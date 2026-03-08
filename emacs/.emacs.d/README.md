@@ -343,10 +343,10 @@ This lists only what is added or upgraded.
 |---|---|
 | `C-c C-t` | `emacs-ide-test-run` — auto-detect and run |
 | `C-c C-T` | `emacs-ide-test-run-all` — force full suite |
-| `C-c t p` | `emacs-ide-test-run-point` — test at cursor |
-| `C-c t l` | `emacs-ide-test-run-last` — repeat last |
-| `C-c t r` | `emacs-ide-test-report` — history |
-| `C-c t h` | Test hydra menu |
+| `C-c x p` | `emacs-ide-test-run-point` — test at cursor |
+| `C-c x l` | `emacs-ide-test-run-last` — repeat last |
+| `C-c x r` | `emacs-ide-test-report` — history |
+| `C-c x h` | Test hydra menu |
 
 Supported frameworks (auto-detected): pytest, unittest, cargo test, go test,
 jest, vitest, npm test, rspec, minitest, mvn test, gradle test, mix test,

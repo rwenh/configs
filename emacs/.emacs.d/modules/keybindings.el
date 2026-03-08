@@ -37,7 +37,7 @@
 ;;;   tools-spelling.el  → C-c S * (flyspell-mode-map)
 ;;;   completion-core.el → C-. C-; (embark), M-/ (hippie-expand)
 ;;;                        Also binds consult commands via :bind — see note above
-;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-<f8> (neotree)
+;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-c n (neotree)
 ;;;
 ;;; Version: 3.0.2
 ;;; Changes from 3.0.1:
@@ -154,8 +154,12 @@
 (global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 
 ;; UI toggles (functions defined in ui-core.el and ui-theme.el)
-;; neotree moved to C-<f8> — <f8> is now dap-breakpoint-toggle (debug-core.el)
-(global-set-key (kbd "C-<f8>") 'neotree-toggle)
+;; FIX: C-<f8> removed from neotree — it collided with dap-breakpoint-condition
+;; (debug-core.el F8 family: F8=toggle, C-F8=condition, S-F8=log, C-S-F8=del-all).
+;; keybindings.el was re-assigning C-<f8> to neotree-toggle last, silently
+;; killing dap-breakpoint-condition on every startup.
+;; Neotree moves to C-c n (unoccupied). C-<f8> is now left to debug-core.el.
+(global-set-key (kbd "C-c n") 'neotree-toggle)
 ;; F9 treemacs is bound in tools-project.el via :bind — no duplicate needed here
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
@@ -303,7 +307,7 @@ UTILITY:
   C-c R         reload config
   C-c L         LSP status
   C-c P         presentation mode toggle
-  C-F8          neotree-toggle
+  C-c n         neotree-toggle
   F9            treemacs (set by tools-project.el)
   F12           toggle theme
 

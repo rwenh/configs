@@ -314,14 +314,23 @@
 
 ;; ============================================================================
 ;; SECURITY - EARLY TLS CONFIGURATION
+;; FIX: Replaced (with-eval-after-load 'gnutls ...) with (require 'gnutls).
+;;      The old deferred form meant TLS hardening only applied after gnutls was
+;;      first loaded lazily — any network call made before that point (e.g. the
+;;      straight.el bootstrap URL fetch) used Emacs's default, insecure TLS
+;;      settings.  emacs-ide-security.el already fixed this same pattern in
+;;      v2.2.2, but early-init.el retained the old form.  Since early-init runs
+;;      before security.el, this block is the only TLS guard in safe-mode or
+;;      if security.el fails to load — so it must apply settings eagerly.
+;;      Note: tls-program is set here only; security.el does not override it.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "tls-security"
   (lambda ()
-    (with-eval-after-load 'gnutls
-      (setq gnutls-verify-error t
-            gnutls-min-prime-bits 3072
-            tls-checktrust t
-            tls-program '("gnutls-cli --x509cafile %t -p %p %h")))))
+    (require 'gnutls)
+    (setq gnutls-verify-error t
+          gnutls-min-prime-bits 3072
+          tls-checktrust t
+          tls-program '("gnutls-cli --x509cafile %t -p %p %h"))))
 
 ;; ============================================================================
 ;; EMERGENCY RECOVERY MODE

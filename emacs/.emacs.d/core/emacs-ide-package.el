@@ -17,14 +17,21 @@
   "Warn if package takes longer than this (seconds).")
 
 (defun emacs-ide-package-track-load (orig-fun &rest args)
-  "Advice to track package load time around ORIG-FUN with ARGS."
+  "Advice to track package load time around ORIG-FUN with ARGS.
+FIX: Only records timing on the FIRST load of each feature.
+Previously always overwrote the hash entry, so a second
+\(require 'foo) — a no-op at ~0ms — silently replaced the
+real load time with near-zero, corrupting the report."
   (let* ((package-name (car args))
+         ;; Snapshot loaded state BEFORE calling orig-fun
+         (already-loaded (featurep package-name))
          (start-time (current-time))
          (result (apply orig-fun args))
          (elapsed (float-time (time-subtract (current-time) start-time))))
-    (puthash package-name elapsed emacs-ide-package-load-times)
-    (when (> elapsed emacs-ide-package-slow-threshold)
-      (warn "Package %s took %.2fs to load" package-name elapsed))
+    (unless already-loaded
+      (puthash package-name elapsed emacs-ide-package-load-times)
+      (when (> elapsed emacs-ide-package-slow-threshold)
+        (warn "Package %s took %.2fs to load" package-name elapsed)))
     result))
 
 ;; Install advice

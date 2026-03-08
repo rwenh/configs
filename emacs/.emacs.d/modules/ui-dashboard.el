@@ -69,7 +69,15 @@ health check has populated emacs-ide-health-results."
 
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
   (use-package dashboard
-    :defer t
+    ;; FIX: Removed :defer t.
+    ;; With use-package-always-defer t set globally in init.el, :defer t here was
+    ;; redundant AND harmful: it deferred loading indefinitely because there was no
+    ;; :hook/:bind/:commands to trigger it.  The :config block — which calls
+    ;; dashboard-setup-startup-hook and sets initial-buffer-choice — therefore
+    ;; never ran, so the dashboard never appeared on startup.
+    ;; Dashboard must load eagerly at startup; :demand t is not needed because
+    ;; the absence of :defer explicitly opts out of the global always-defer default.
+    :demand t
     :init
     (setq dashboard-startup-banner 'logo
           dashboard-center-content t
