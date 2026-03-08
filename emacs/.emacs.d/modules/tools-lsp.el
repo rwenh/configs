@@ -232,9 +232,24 @@
 (use-package lsp-pyright
   :after lsp-mode
   :if (executable-find "pyright")
-  :hook (python-mode . (lambda ()
-                          (require 'lsp-pyright nil t)
-                          (emacs-ide-lsp-deferred-optimized)))
+  ;; FIX: Two bugs in the previous version:
+  ;;
+  ;; 1. LOAD ORDER: The hook lambda called (require 'lsp-pyright nil t) then
+  ;;    lsp-deferred. But lsp-mode already hooks python-mode to
+  ;;    emacs-ide-lsp-deferred-optimized (above), which fires FIRST and starts
+  ;;    lsp before lsp-pyright is required — so lsp chose a generic server, not
+  ;;    pyright. lsp-pyright must be required eagerly in :config so it registers
+  ;;    its server with lsp-mode before any python buffer is opened.
+  ;;
+  ;; 2. DOUBLE lsp-deferred: The hook also called lsp-deferred a second time,
+  ;;    causing lsp to start twice in every python buffer (once from lsp-mode's
+  ;;    hook, once from lsp-pyright's hook).
+  ;;
+  ;; Fix: require lsp-pyright in :config (runs at package load, before any buffer
+  ;; opens). Remove the hook entirely — lsp-mode's own python-mode hook already
+  ;; calls emacs-ide-lsp-deferred-optimized which invokes lsp-deferred once.
+  :config
+  (require 'lsp-pyright)
   :init
   (setq lsp-pyright-multi-root              nil
         lsp-pyright-auto-import-completions t

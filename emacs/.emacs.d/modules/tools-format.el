@@ -114,23 +114,31 @@ FIX 2.2.2: Previously (null val) and (eq val nil) were identical tests —
         (c   (emacs-ide-format--formatter-for 'c          "clang-format"))
         (cpp (emacs-ide-format--formatter-for 'cpp        "clang-format")))
 
-    (when (and py (executable-find (symbol-name py)))
-      (setf (alist-get 'python-mode apheleia-mode-alist) py))
+    ;; FIX: executable-find guards removed from apheleia entries.
+    ;; The previous code did (when (and js (executable-find (symbol-name js))) ...)
+    ;; i.e. (executable-find "prettier"). prettier is almost always installed
+    ;; locally via npm (./node_modules/.bin/prettier) and is NOT on PATH, so
+    ;; executable-find always returned nil and the js/ts/css/json/md entries
+    ;; were silently never added to apheleia-mode-alist — JS formatting never worked.
+    ;; apheleia handles a missing or locally-installed formatter gracefully
+    ;; (it reports a per-save error rather than crashing), so the guard is wrong here.
+    ;; format-all (above) still needs the PATH check because it builds a static list.
+    (when py (setf (alist-get 'python-mode apheleia-mode-alist) py))
 
-    (when (and js (executable-find (symbol-name js)))
+    (when js
       (dolist (mode '(js-mode js2-mode web-mode css-mode json-mode markdown-mode))
         (setf (alist-get mode apheleia-mode-alist) js)))
 
-    (when (and ts (executable-find (symbol-name ts)))
+    (when ts
       (setf (alist-get 'typescript-mode apheleia-mode-alist) ts))
 
-    (when (and rs (executable-find (symbol-name rs)))
+    (when rs
       (setf (alist-get 'rust-mode apheleia-mode-alist) rs))
 
-    (when (and go (executable-find (symbol-name go)))
+    (when go
       (setf (alist-get 'go-mode apheleia-mode-alist) go))
 
-    (when (and c (executable-find (symbol-name c)))
+    (when c
       (setf (alist-get 'c-mode   apheleia-mode-alist) c)
       (setf (alist-get 'c++-mode apheleia-mode-alist) (or cpp c))))
 
