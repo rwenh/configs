@@ -269,6 +269,8 @@ PROJECT  (tools-project.el / projectile):
   C-c p s r     projectile-ripgrep
   C-c p c       projectile-compile-project
   C-c p t       projectile-test-project
+  C-c p F       treemacs-find-file        (find current file in tree)
+  C-c p W       treemacs-select-window    (focus treemacs window)
   C-c p r       projectile-run-project
   C-c p k       projectile-kill-buffers
   C-c p d       projectile-dired

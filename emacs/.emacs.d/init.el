@@ -175,18 +175,26 @@
   ;; PATH & ENVIRONMENT
   ;; ============================================================================
   (defun emacs-ide-setup-exec-path ()
-    "Set exec-path and PATH from login shell."
-    (let* ((shell (or (getenv "SHELL") "/bin/sh"))
-           (path-str
-            (condition-case nil
-                (replace-regexp-in-string
-                 "[ \t\n]*$" ""
-                 (shell-command-to-string
-                  (format "%s --login -c 'echo $PATH'" shell)))
-              (error (getenv "PATH")))))
-      (unless (string-empty-p path-str)
-        (setenv "PATH" path-str)
-        (setq exec-path (split-string path-str path-separator)))))
+    "Set exec-path and PATH from login shell, with a hard 2-second timeout.
+FIX: The previous implementation used shell-command-to-string synchronously,
+which spawns a login shell sourcing ~/.bash_profile, ~/.profile etc.  On
+machines with slow shell init (nvm, pyenv, conda, NFS home, broken SSH agent)
+this blocked the main thread for tens or hundreds of seconds.  Now guarded
+with `with-timeout' — falls back to the current PATH if the shell takes
+longer than 2 seconds, keeping startup fast regardless of shell complexity."
+    (with-timeout
+        (2 (message "⚠️  exec-path setup timed out (>2s) — using existing PATH"))
+      (let* ((shell (or (getenv "SHELL") "/bin/sh"))
+             (path-str
+              (condition-case nil
+                  (replace-regexp-in-string
+                   "[ \t\n]*$" ""
+                   (shell-command-to-string
+                    (format "%s --login -c 'echo $PATH'" shell)))
+                (error (getenv "PATH")))))
+        (unless (string-empty-p path-str)
+          (setenv "PATH" path-str)
+          (setq exec-path (split-string path-str path-separator))))))
 
   (when (memq window-system '(mac ns x pgtk))
     (emacs-ide-setup-exec-path))

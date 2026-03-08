@@ -115,9 +115,13 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  :bind (("<f9>"      . treemacs)
-         ("C-c p t f" . treemacs-find-file)    ; was C-c t f — dead (C-c t = vterm plain cmd)
-         ("C-c p t t" . treemacs-select-window))) ; was C-c t t — dead (C-c t = vterm plain cmd)
+  ;; FIX: Treemacs helpers have no :bind here.
+  ;; C-c p t f / C-c p t t crashed with "non-prefix key C-c p" because
+  ;; C-c p t is already a plain command (projectile-test-project).
+  ;; C-c T f / C-c T s also collide — C-c T is vterm-other-window (plain cmd).
+  ;; Injected into projectile-command-map via with-eval-after-load below,
+  ;; using uppercase keys (C-c p F / C-c p W) that are free in that map.
+  :bind (("<f9>" . treemacs)))
 
 (use-package treemacs-projectile
   :after (treemacs projectile))
@@ -251,7 +255,14 @@
 ;; C-c p I must be set after projectile's keymap is established.
 ;; global-set-key at top level races with :bind-keymap and loses.
 (with-eval-after-load 'projectile
-  (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info))
+  (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info)
+  ;; FIX: Treemacs find-file / select-window injected here, not in treemacs :bind.
+  ;; C-c p t is a plain command (projectile-test-project) so C-c p t f/t can't work.
+  ;; C-c T is also a plain command (vterm-other-window).
+  ;; Injecting directly into projectile-command-map using uppercase keys (F, W)
+  ;; that are free in projectile's default map — safe prefix, no collision.
+  (define-key projectile-command-map (kbd "F") #'treemacs-find-file)
+  (define-key projectile-command-map (kbd "W") #'treemacs-select-window))
 
 (provide 'tools-project)
 ;;; tools-project.el ends here

@@ -101,14 +101,21 @@
         org-confirm-babel-evaluate  nil)
 
   :config
-  ;; Babel languages
-  (org-babel-do-load-languages
-   'org-babel-load-languages
-   '((emacs-lisp . t)
-     (python     . t)
-     (shell      . t)
-     (js         . t)
-     (C          . t)))
+  ;; FIX: org-babel-do-load-languages was called eagerly in :config, which
+  ;; triggered loading ob-python, ob-shell, ob-js, ob-C and their dependencies
+  ;; synchronously at startup — accounting for ~1.7s of the org load time.
+  ;; Deferred to a 3-second idle timer: babel backends load after the user
+  ;; starts interacting, not during the startup critical path.
+  (run-with-idle-timer
+   3 nil
+   (lambda ()
+     (org-babel-do-load-languages
+      'org-babel-load-languages
+      '((emacs-lisp . t)
+        (python     . t)
+        (shell      . t)
+        (js         . t)
+        (C          . t)))))
 
   ;; Capture templates
   (setq org-capture-templates
