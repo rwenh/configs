@@ -1,6 +1,6 @@
 " =============================================================================
 " Vim Configuration — Vim 8.2+ / openSUSE
-" Fully audited. No Neovim. No LSP. No cruft.
+" Fully audited. No Neovim. LSP via vim-lsp + asyncomplete.
 " =============================================================================
 
 " -----------------------------------------------------------------------------
@@ -20,7 +20,7 @@
 "   let g:loaded_netrwSettings=1 | let g:loaded_netrwFileHandlers=1
 "   EOF
 "
-" Also remove old LSP plugin dirs if they exist:
+" Also remove old LSP plugin dirs if they still exist:
 "   rm -rf ~/.vim/plugged/vim-lsp ~/.vim/plugged/vim-lsp-settings
 " -----------------------------------------------------------------------------
 
@@ -101,13 +101,20 @@ endif
 
 " Indentation defaults
 set autoindent
-set smartindent
+" NOTE: smartindent removed — filetype indent on covers this and smartindent
+" actively breaks '#' dedenting in Python and other filetypes.
 set expandtab
 set tabstop=4
 set softtabstop=4
 set shiftwidth=4
 set shiftround
 set smarttab
+
+" formatoptions — disable auto-comment continuation on o/O and newline
+augroup FormatOptions
+  autocmd!
+  autocmd FileType * setlocal formatoptions-=cro
+augroup END
 
 " Buffers and windows
 set hidden
@@ -127,9 +134,24 @@ set wildignore+=*.DS_Store,*.log,*.tmp
 set completeopt=menuone,noselect,noinsert
 
 " File handling
-set nobackup
-set nowritebackup
-set noswapfile
+" Swap files go to a dedicated dir — keeps project trees clean while still
+" giving Vim crash-recovery. Double-slash (//} makes paths unique so two
+" files with the same name in different dirs don't collide.
+if !isdirectory(expand('~/.vim/swap'))
+  call mkdir(expand('~/.vim/swap'), 'p', 0700)
+endif
+set swapfile
+set directory=~/.vim/swap//
+
+" Backup files — written before every save, auto-deleted on clean exit.
+" Only costs you if Vim crashes mid-write; persistent undo covers normal edits.
+if !isdirectory(expand('~/.vim/backup'))
+  call mkdir(expand('~/.vim/backup'), 'p', 0700)
+endif
+set backup
+set nowritebackup             " don't write a backup *during* the save (coc/LSP safe)
+set backupdir=~/.vim/backup//
+
 set autoread
 " autowrite deliberately OFF
 
@@ -212,22 +234,29 @@ if !s:EnsureVimPlug() | finish | endif
 call plug#begin(expand('~/.vim/plugged'))
 
 " --- Appearance ---
-Plug 'lifepillar/vim-solarized8'          " dark/light solarized
-Plug 'morhetz/gruvbox'                    " warm retro
-Plug 'joshdick/onedark.vim'               " atom one dark
-Plug 'vim-airline/vim-airline'            " statusline
+Plug 'lifepillar/vim-solarized8'
+Plug 'morhetz/gruvbox'
+Plug 'joshdick/onedark.vim'
+Plug 'NLKNguyen/papercolor-theme'         " clean light/dark option
+Plug 'vim-airline/vim-airline'
 Plug 'vim-airline/vim-airline-themes'
-Plug 'ryanoasis/vim-devicons'             " filetype icons
+Plug 'ryanoasis/vim-devicons'
 
 " --- Navigation ---
 Plug 'junegunn/fzf', { 'dir': '~/.fzf', 'do': './install --all' }
 Plug 'junegunn/fzf.vim'
 Plug 'preservim/nerdtree', { 'on': ['NERDTreeToggle', 'NERDTreeFind'] }
 Plug 'tiagofumo/vim-nerdtree-syntax-highlight', { 'on': 'NERDTreeToggle' }
-Plug 'xuyuanp/nerdtree-git-plugin', { 'on': 'NERDTreeToggle' }
+Plug 'xuyuanp/nerdtree-git-plugin',       { 'on': 'NERDTreeToggle' }
 Plug 'christoomey/vim-tmux-navigator'
-Plug 'preservim/tagbar', { 'on': 'TagbarToggle' }
+Plug 'preservim/tagbar',                  { 'on': 'TagbarToggle' }
 Plug 'ludovicchabant/vim-gutentags'
+
+" --- LSP — full language intelligence on Vim 8 ---
+Plug 'prabirshrestha/vim-lsp'             " LSP client
+Plug 'mattn/vim-lsp-settings'            " auto-install language servers
+Plug 'prabirshrestha/asyncomplete.vim'   " async completion engine
+Plug 'prabirshrestha/asyncomplete-lsp.vim' " LSP completion source
 
 " --- Editing ---
 Plug 'tpope/vim-commentary'
@@ -238,15 +267,19 @@ Plug 'tpope/vim-sleuth'
 Plug 'jiangmiao/auto-pairs'
 Plug 'wellle/targets.vim'
 Plug 'matze/vim-move'
-Plug 'mbbill/undotree', { 'on': 'UndotreeToggle' }
+Plug 'mbbill/undotree',                   { 'on': 'UndotreeToggle' }
 Plug 'jdhao/better-escape.vim'
 
-" --- Linting / Formatting — ALE only, no LSP ---
+" --- Linting / Formatting — ALE handles non-LSP linters + all formatters ---
+" NOTE: LSP-capable linters (gopls, rust-analyzer) are handled by vim-lsp.
+" ALE is kept for: shellcheck, vint, ruff/mypy (Python), eslint (JS/TS),
+" and all formatters (black, prettier, gofmt, rustfmt, shfmt).
 Plug 'dense-analysis/ale'
 
 " --- Snippets ---
 Plug 'SirVer/ultisnips'
 Plug 'honza/vim-snippets'
+Plug 'prabirshrestha/asyncomplete-ultisnips.vim'  " snippets in completion menu
 
 " --- Git ---
 Plug 'tpope/vim-fugitive'
@@ -274,8 +307,7 @@ Plug 'liuchengxu/vim-which-key'
 
 call plug#end()
 
-" Auto-install missing plugins — checks actual dirs so it self-corrects
-" without a stamp file. Once installed the dirs exist and this is a no-op.
+" Auto-install missing plugins on startup
 function! s:PlugAutoInstall()
   let l:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)')
   if len(l:missing) > 0
@@ -291,8 +323,11 @@ augroup END
 " -----------------------------------------------------------------------------
 " 4. Colorscheme
 " -----------------------------------------------------------------------------
-" Change s:theme to: solarized8 | gruvbox | onedark
-let s:theme = 'solarized8'
+" Theme is driven by $VIM_THEME env var so each machine can differ without
+" touching this file. Set it in ~/.vimrc.local or your shell rc:
+"   export VIM_THEME=gruvbox
+" Available: solarized8 | gruvbox | onedark | PaperColor
+let s:theme = !empty($VIM_THEME) ? $VIM_THEME : 'solarized8'
 
 function! s:ApplyTheme()
   try
@@ -300,7 +335,7 @@ function! s:ApplyTheme()
     execute 'colorscheme ' . s:theme
   catch
     colorscheme desert
-    echom 'Theme not found, falling back to desert'
+    echom 'Theme "' . s:theme . '" not found — falling back to desert'
   endtry
 endfunction
 
@@ -344,20 +379,40 @@ nnoremap <leader>wc :close<CR>
 nnoremap <leader>wo :only<CR>
 nnoremap <leader>w= <C-w>=
 
-" --- Window resize ---
+" --- Window resize (terminal-safe, avoids Alt+Arrow conflicts) ---
+nnoremap <C-w>, :vertical resize -5<CR>
+nnoremap <C-w>. :vertical resize +5<CR>
+nnoremap <C-w>- :resize -3<CR>
+nnoremap <C-w>+ :resize +3<CR>
+" Alt+Arrow kept as secondary option for GUI/modern terminals
 nnoremap <M-Up>    :resize +2<CR>
 nnoremap <M-Down>  :resize -2<CR>
 nnoremap <M-Left>  :vertical resize -2<CR>
 nnoremap <M-Right> :vertical resize +2<CR>
 
 " --- Buffers ---
-nnoremap <Tab>      :bnext<CR>
-nnoremap <S-Tab>    :bprevious<CR>
-nnoremap <leader>bd :bdelete<CR>
-nnoremap <leader>bD :bdelete!<CR>
-nnoremap <leader>bn :bnext<CR>
-nnoremap <leader>bp :bprevious<CR>
-nnoremap <leader>bC :CleanBuffers<CR>
+" Tab/S-Tab are guarded — they skip plugin UI buffers (NERDTree, FZF,
+" Floaterm, fugitive, dadbod, etc.) where Tab has its own meaning.
+function! s:SafeBnext()
+  if &buftype !=# '' || &filetype =~# '\v^(nerdtree|floaterm|fugitive|dbui|qf|help)$'
+    return
+  endif
+  bnext
+endfunction
+function! s:SafeBprev()
+  if &buftype !=# '' || &filetype =~# '\v^(nerdtree|floaterm|fugitive|dbui|qf|help)$'
+    return
+  endif
+  bprevious
+endfunction
+nnoremap <silent> <Tab>   :call <SID>SafeBnext()<CR>
+nnoremap <silent> <S-Tab> :call <SID>SafeBprev()<CR>
+nnoremap <leader><Tab> <C-^>
+nnoremap <leader>bd   :bdelete<CR>
+nnoremap <leader>bD   :bdelete!<CR>
+nnoremap <leader>bn   :bnext<CR>
+nnoremap <leader>bp   :bprevious<CR>
+nnoremap <leader>bC   :CleanBuffers<CR>
 
 " --- Search ---
 nnoremap <leader>sc :nohlsearch<CR>
@@ -424,6 +479,7 @@ nnoremap <leader>E :NERDTreeFind<CR>
 " --- FZF ---
 nnoremap <leader>ff :Files<CR>
 nnoremap <leader>fg :Rg<CR>
+nnoremap <leader>fw :Rg <C-r><C-w><CR>
 nnoremap <leader>fb :Buffers<CR>
 nnoremap <leader>fh :History<CR>
 nnoremap <leader>fc :Commands<CR>
@@ -464,6 +520,23 @@ nnoremap <leader>ad :ALEDetail<CR>
 nnoremap <leader>at :ALEToggle<CR>
 nnoremap ]a         :ALENextWrap<CR>
 nnoremap [a         :ALEPreviousWrap<CR>
+
+" --- LSP — go-to-definition, references, hover, rename, actions ---
+nnoremap <silent> gd        :LspDefinition<CR>
+nnoremap <silent> gD        :LspPeekDefinition<CR>
+nnoremap <silent> gr        :LspReferences<CR>
+nnoremap <silent> gi        :LspImplementation<CR>
+nnoremap <silent> gt        :LspTypeDefinition<CR>
+nnoremap <silent> K         :LspHover<CR>
+nnoremap <silent> <leader>rn :LspRename<CR>
+nnoremap <silent> <leader>ca :LspCodeAction<CR>
+nnoremap <silent> <leader>cf :LspDocumentFormat<CR>
+nnoremap <silent> <leader>cs :LspDocumentSymbol<CR>
+nnoremap <silent> <leader>cS :LspWorkspaceSymbol<CR>
+nnoremap <silent> ]e        :LspNextError<CR>
+nnoremap <silent> [e        :LspPreviousError<CR>
+nnoremap <silent> ]w        :LspNextWarning<CR>
+nnoremap <silent> [w        :LspPreviousWarning<CR>
 
 " --- Toggles ---
 nnoremap <leader>un :set number!<CR>
@@ -506,7 +579,16 @@ let g:better_escape_shortcut = ['jk', 'kj']
 let g:better_escape_interval = 200
 
 " --- Airline ---
-let g:airline_theme                         = 'solarized'
+" Derive airline theme from $VIM_THEME so it always matches the colorscheme.
+" Mapping covers the bundled airline themes; anything unrecognised falls back
+" to 'dark' which is neutral enough for any colorscheme.
+let s:airline_theme_map = {
+  \ 'solarized8':  'solarized',
+  \ 'gruvbox':     'gruvbox',
+  \ 'onedark':     'onedark',
+  \ 'PaperColor':  'papercolor',
+  \ }
+let g:airline_theme = get(s:airline_theme_map, s:theme, 'dark')
 let g:airline_powerline_fonts               = 1
 let g:airline#extensions#tabline#enabled   = 1
 let g:airline#extensions#tabline#formatter = 'unique_tail'
@@ -537,14 +619,69 @@ let g:fzf_colors = {
   \ 'marker':  ['fg', 'Keyword'],
   \ }
 
-" --- ALE — sole lint/fix engine, no LSP ---
+" --- vim-lsp ---
+" Diagnostic signs
+let g:lsp_diagnostics_signs_error         = { 'text': ' ' }
+let g:lsp_diagnostics_signs_warning       = { 'text': ' ' }
+let g:lsp_diagnostics_signs_information   = { 'text': ' ' }
+let g:lsp_diagnostics_signs_hint          = { 'text': ' ' }
+" Virtual text off — ALE handles inline messages to avoid duplication
+let g:lsp_diagnostics_virtual_text_enabled = 0
+" Highlights
+let g:lsp_document_highlight_enabled      = 1
+" Signature help in insert mode
+let g:lsp_signature_help_enabled          = 1
+" Completion
+let g:lsp_completion_documentation_delay  = 0
+" Fold support
+let g:lsp_fold_enabled                    = 0  " using indent-based folding
+" Log — set to 1 only when debugging LSP issues
+let g:lsp_log_verbose                     = 0
+let g:lsp_log_file                        = expand('~/.vim/vim-lsp.log')
+" vim-lsp-settings: auto-install servers to ~/.local/share/vim-lsp-settings
+let g:lsp_settings_servers_dir            = expand('~/.local/share/vim-lsp-settings/servers')
+let g:lsp_settings_filetype_go            = ['gopls']
+let g:lsp_settings_filetype_rust          = ['rust-analyzer']
+let g:lsp_settings_filetype_python        = ['pylsp']
+let g:lsp_settings_filetype_typescript   = ['typescript-language-server']
+let g:lsp_settings_filetype_javascript   = ['typescript-language-server']
+let g:lsp_settings_filetype_lua          = ['sumneko-lua-language-server']
+let g:lsp_settings_filetype_vim          = ['vim-language-server']
+let g:lsp_settings_filetype_sh           = ['bash-language-server']
+let g:lsp_settings_filetype_c            = ['clangd']
+let g:lsp_settings_filetype_cpp          = ['clangd']
+
+" --- asyncomplete ---
+" Tab/S-Tab cycle completion, Enter confirms
+inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
+inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+inoremap <expr> <CR>    pumvisible() ? asyncomplete#close_popup() : "\<CR>"
+" Refresh completion manually
+imap <C-Space> <Plug>(asyncomplete_force_refresh)
+let g:asyncomplete_auto_popup       = 1
+let g:asyncomplete_auto_completeopt = 0
+let g:asyncomplete_popup_delay      = 50
+
+" UltiSnips source in asyncomplete
+augroup AsyncompleteUltisnips
+  autocmd!
+  autocmd User asyncomplete_setup
+    \ call asyncomplete#register_source(
+    \   asyncomplete#sources#ultisnips#get_source_options({
+    \     'name':      'ultisnips',
+    \     'whitelist': ['*'],
+    \     'completor': function('asyncomplete#sources#ultisnips#completor'),
+    \ }))
+augroup END
+
+" --- ALE — non-LSP linters only + all formatters ---
+" LSP languages (go, rust) are now handled by vim-lsp above.
+" ALE stays as the formatter layer and handles shell, vim linting.
 let g:ale_linters_explicit     = 1
 let g:ale_linters = {
   \ 'python':     ['ruff', 'mypy'],
   \ 'javascript': ['eslint'],
   \ 'typescript': ['eslint'],
-  \ 'go':         ['gopls'],
-  \ 'rust':       ['analyzer'],
   \ 'sh':         ['shellcheck'],
   \ 'vim':        ['vint'],
   \ }
@@ -565,6 +702,8 @@ let g:ale_sign_error           = ' '
 let g:ale_sign_warning         = ' '
 let g:ale_echo_msg_format      = '[%linter%] %s [%severity%]'
 let g:ale_virtualtext_cursor   = 'disabled'
+" Don't let ALE override LSP hover/go-to — keep them distinct
+let g:ale_disable_lsp          = 1
 
 " --- UltiSnips ---
 let g:UltiSnipsExpandTrigger       = '<C-e>'
@@ -636,6 +775,7 @@ let g:markdown_syntax_conceal = 0
 call which_key#register('<Space>', "g:which_key_map")
 let g:which_key_map             = {}
 let g:which_key_map['<CR>']     = 'reload config'
+let g:which_key_map['<Tab>']    = 'last buffer'
 let g:which_key_map.e           = 'file explorer'
 let g:which_key_map.E           = 'find in tree'
 let g:which_key_map.U           = 'undo tree'
@@ -650,8 +790,9 @@ let g:which_key_map.u           = { 'name': '+toggle'    }
 let g:which_key_map.s           = { 'name': '+search'    }
 let g:which_key_map.y           = { 'name': '+yank'      }
 let g:which_key_map.d           = { 'name': '+duplicate' }
-let g:which_key_map.c           = { 'name': '+quickfix'  }
+let g:which_key_map.c           = { 'name': '+lsp/qf'   }
 let g:which_key_map.l           = { 'name': '+loclist'   }
+let g:which_key_map.r           = { 'name': '+lsp'       }
 let g:which_key_map.D           = { 'name': '+database'  }
 let g:which_key_map.S           = { 'name': '+session'   }
 
@@ -718,16 +859,16 @@ augroup END
 " -----------------------------------------------------------------------------
 augroup FileTypeIndent
   autocmd!
-  autocmd FileType python                 setlocal ts=4 sw=4 expandtab
-  autocmd FileType javascript,typescript  setlocal ts=2 sw=2 expandtab
+  autocmd FileType python                  setlocal ts=4 sw=4 expandtab
+  autocmd FileType javascript,typescript   setlocal ts=2 sw=2 expandtab
   autocmd FileType html,css,scss,json,yaml setlocal ts=2 sw=2 expandtab
-  autocmd FileType lua,vim,ruby           setlocal ts=2 sw=2 expandtab
-  autocmd FileType go,make                setlocal ts=4 sw=4 noexpandtab
-  autocmd FileType c,cpp,java,kotlin,rust setlocal ts=4 sw=4 expandtab
-  autocmd FileType sh,zsh,bash            setlocal ts=2 sw=2 expandtab
-  autocmd FileType sql,xml,xhtml          setlocal ts=2 sw=2 expandtab
-  autocmd FileType markdown,text          setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
-  autocmd FileType gitcommit              setlocal spell textwidth=72
+  autocmd FileType lua,vim,ruby            setlocal ts=2 sw=2 expandtab
+  autocmd FileType go,make                 setlocal ts=4 sw=4 noexpandtab
+  autocmd FileType c,cpp,java,kotlin,rust  setlocal ts=4 sw=4 expandtab
+  autocmd FileType sh,zsh,bash             setlocal ts=2 sw=2 expandtab
+  autocmd FileType sql,xml,xhtml           setlocal ts=2 sw=2 expandtab
+  autocmd FileType markdown,text           setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
+  autocmd FileType gitcommit               setlocal spell textwidth=72
 augroup END
 
 " -----------------------------------------------------------------------------
@@ -758,7 +899,7 @@ function! s:RunAction(action)
     echohl WarningMsg | echom 'No ' . a:action . ' for filetype: ' . l:ft | echohl None | return
   endif
   let l:vars = {
-    \ 'filepath': l:fp,       'dirname':  fnamemodify(l:fp, ':h'),
+    \ 'filepath': l:fp,         'dirname':  fnamemodify(l:fp, ':h'),
     \ 'filename': expand('%:t'), 'basename': expand('%:t:r'),
     \ }
   let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:vars, submatch(1), submatch(0))', 'g')
@@ -779,10 +920,12 @@ function! s:VimInfo()
   echo 'Config  : ' . $MYVIMRC
   echo 'Filetype: ' . &filetype
   echo 'Theme   : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
+  echo '$VIM_THEME: ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set, using default)')
   echo 'Python3 : ' . (executable('python3') ? trim(system('python3 --version')) : 'not found')
   echo 'Node    : ' . (executable('node')    ? trim(system('node --version'))    : 'not found')
   echo 'Git     : ' . (executable('git')     ? trim(system('git --version'))     : 'not found')
   echo 'rg      : ' . (executable('rg')      ? 'yes' : 'not found')
+  echo 'LSP log : ' . expand('~/.vim/vim-lsp.log')
   echo '=============================='
 endfunction
 
@@ -833,6 +976,10 @@ command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
 " -----------------------------------------------------------------------------
 " 11. Machine-local overrides
 " -----------------------------------------------------------------------------
+" Place per-machine settings in ~/.vimrc.local, e.g.:
+"   export VIM_THEME=gruvbox   (in shell rc)
+"   let g:lsp_settings_filetype_python = ['pyright']
+"   let g:dbs['mydb'] = 'postgresql://...'
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
