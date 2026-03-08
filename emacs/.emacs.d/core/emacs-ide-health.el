@@ -1,15 +1,22 @@
 ;;; emacs-ide-health.el --- Enterprise Health Check System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Health monitoring and auto-recovery.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
 ;;; Fixes:
-;;;   - emacs-ide-health-check-performance: `(cdr (car phases))` returns the
-;;;     LAST pushed phase (push prepends); now looks up by phase name
-;;;   - emacs-ide-health-display-results: plist details (:available ... :missing ...)
-;;;     were iterated raw, printing keyword symbols — now handles both plain
-;;;     lists and :available/:missing plist shape
-;;;   - emacs-ide-health-check-packages: removed `straight--installed-p`
-;;;     (not a real API); use `featurep` only
+;;;   - 2.2.2: emacs-ide-health-check-lsp-servers: pyright check corrected.
+;;;     The lsp-pyright package invokes `pyright-langserver --stdio`, not the
+;;;     `pyright` CLI. Checking `pyright` caused false "missing" reports on
+;;;     systems where only the language server binary was installed (the common
+;;;     case when installing via `npm i -g pyright`). Both binaries are now
+;;;     checked; either one satisfies the Python LSP requirement.
+;;;   - 2.2.2: emacs-ide-health-check-lsp-servers: typescript-language-server
+;;;     also requires `tsserver` (from the `typescript` npm package) at runtime.
+;;;     The server will start but immediately fail without it. Added a secondary
+;;;     check that warns if typescript-language-server is present but tsserver
+;;;     is not on PATH.
+;;;   - 2.2.1: emacs-ide-health-check-performance: phase lookup fixed via name.
+;;;   - 2.2.1: emacs-ide-health-display-results: plist details handled correctly.
+;;;   - 2.2.1: emacs-ide-health-check-packages: straight--installed-p removed.
 ;;; Code:
 
 (require 'cl-lib)
@@ -58,7 +65,6 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
   "Store ERRORS and WARNINGS counts and refresh modeline."
   (setq emacs-ide-health--last-errors   errors
         emacs-ide-health--last-warnings warnings)
-  ;; Poke the modeline to redisplay the segment
   (force-mode-line-update t))
 
 (defvar emacs-ide-health-checks nil
@@ -72,16 +78,13 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
 ;; INTERNAL HELPERS
 ;; ============================================================================
 (defun emacs-ide-health--find-phase (phase-name)
-  "Return elapsed time for PHASE-NAME in startup phases, or nil.
-FIX: `emacs-ide--startup-phases` is built with `push` so the list is in
-reverse order. We use assoc to find by name rather than relying on position."
+  "Return elapsed time for PHASE-NAME in startup phases, or nil."
   (when (and (boundp 'emacs-ide--startup-phases)
              emacs-ide--startup-phases)
     (cdr (assoc phase-name emacs-ide--startup-phases))))
 
 ;; ============================================================================
 ;; SYSTEM TOOLS CHECK
-;; (dolist loop-var bug was already fixed in the uploaded version — preserved)
 ;; ============================================================================
 (defun emacs-ide-health-check-system-tools ()
   "Check essential system tools and return a plist result."
@@ -114,30 +117,64 @@ reverse order. We use assoc to find by name rather than relying on position."
 
 ;; ============================================================================
 ;; LSP SERVERS CHECK
+;; FIX 2.2.2: pyright — lsp-pyright invokes `pyright-langserver --stdio`, not
+;;   the `pyright` CLI binary. Check both; either satisfies the requirement.
+;;   Previously only `pyright` was checked, so the check always showed
+;;   "missing" on systems where only pyright-langserver was installed
+;;   (the standard case after `npm install -g pyright`).
+;;
+;; FIX 2.2.2: typescript-language-server requires the `typescript` npm package
+;;   at runtime (it delegates to tsserver). If typescript-language-server is on
+;;   PATH but tsserver is not, the server starts then immediately crashes.
+;;   Added a secondary check that emits a warning in this case.
 ;; ============================================================================
+(defun emacs-ide-health--find-executable (candidates)
+  "Return the first executable in CANDIDATES list found on PATH, or nil."
+  (cl-some #'executable-find candidates))
+
 (defun emacs-ide-health-check-lsp-servers ()
   "Check for LSP servers available for configured languages."
-  (let ((servers '(("pyright"                    . "Python")
-                   ("rust-analyzer"              . "Rust")
-                   ("gopls"                      . "Go")
-                   ("typescript-language-server" . "TypeScript")
-                   ("clangd"                     . "C/C++")))
+  (let (;; Each entry: (display-name . (list-of-candidate-executables))
+        ;; Multiple candidates = any one satisfies the requirement.
+        (servers '(("Python"      . ("pyright-langserver" "pyright"))
+                   ("Rust"        . ("rust-analyzer"))
+                   ("Go"          . ("gopls"))
+                   ("TypeScript"  . ("typescript-language-server"))
+                   ("C/C++"       . ("clangd" "ccls"))))
         (available '())
-        (missing '()))
+        (missing '())
+        (secondary-warnings '()))
+
     (dolist (s servers)
-      (if (executable-find (car s))
-          (push (car s) available)
-        (push (car s) missing)))
-    (if available
-        (list :status (if missing 'warning 'ok)
-              :message (format "%d/%d LSP servers available"
-                               (length available) (length servers))
+      (let ((name (car s))
+            (candidates (cdr s)))
+        (if (emacs-ide-health--find-executable candidates)
+            (push name available)
+          (push name missing))))
+
+    ;; Secondary: typescript-language-server needs tsserver at runtime
+    (when (and (executable-find "typescript-language-server")
+               (not (executable-find "tsserver")))
+      (push "typescript-language-server is installed but `tsserver` (from npm package `typescript`) is missing — TS LSP will crash at startup"
+            secondary-warnings))
+
+    (let ((base-status (cond
+                        ((null available) 'error)
+                        (missing 'warning)
+                        (t 'ok)))
+          (base-msg (format "%d/%d LSP servers available"
+                            (length available) (length servers))))
+      (if secondary-warnings
+          (list :status 'warning
+                :message (concat base-msg " (runtime dependency issues)")
+                :details (list :available available
+                               :missing missing
+                               :warnings secondary-warnings)
+                :fixable t)
+        (list :status base-status
+              :message base-msg
               :details (list :available available :missing missing)
-              :fixable t)
-      (list :status 'error
-            :message "No LSP servers found"
-            :details missing
-            :fixable t))))
+              :fixable t)))))
 
 (emacs-ide-health-register-check 'lsp-servers #'emacs-ide-health-check-lsp-servers)
 
@@ -165,8 +202,6 @@ reverse order. We use assoc to find by name rather than relying on position."
 
 ;; ============================================================================
 ;; PERFORMANCE CHECK
-;; FIX: `(cdr (car phases))` returns the LAST recorded phase because push
-;;      prepends. Now uses `emacs-ide-health--find-phase` by name.
 ;; ============================================================================
 (defun emacs-ide-health-check-performance ()
   "Check performance metrics."
@@ -193,9 +228,6 @@ reverse order. We use assoc to find by name rather than relying on position."
 
 ;; ============================================================================
 ;; PACKAGES CHECK
-;; FIX: Removed `straight--installed-p` — not a real public API.
-;;      Use `featurep` only; packages that haven't been required yet
-;;      won't show as features, so we also check `locate-library`.
 ;; ============================================================================
 (defun emacs-ide-health-check-packages ()
   "Check package health."
@@ -271,18 +303,25 @@ reverse order. We use assoc to find by name rather than relying on position."
 
 (defun emacs-ide-health--format-details (details)
   "Format DETAILS for display.
-FIX: handles both plain lists and :available/:missing plist shapes
-     without printing raw keyword symbols as items."
+Handles plain lists, :available/:missing/:warnings plist shapes,
+and scalar values without printing raw keyword symbols as items."
   (cond
-   ;; Plist with :available / :missing shape (from LSP check)
+   ;; Plist with keyword keys (from LSP check)
    ((and (listp details) (keywordp (car details)))
     (let ((available (plist-get details :available))
-          (missing   (plist-get details :missing)))
+          (missing   (plist-get details :missing))
+          (warnings  (plist-get details :warnings)))
       (concat
        (when available
-         (format "      Available: %s\n" (string-join available ", ")))
+         (format "      Available: %s\n"
+                 (mapconcat (lambda (x) (if (symbolp x) (symbol-name x) x))
+                            available ", ")))
        (when missing
-         (format "      Missing:   %s\n" (string-join missing ", "))))))
+         (format "      Missing:   %s\n"
+                 (mapconcat (lambda (x) (if (symbolp x) (symbol-name x) x))
+                            missing ", ")))
+       (when warnings
+         (mapconcat (lambda (w) (format "      ⚠ %s\n" w)) warnings "")))))
    ;; Plain list of strings
    ((listp details)
     (mapconcat (lambda (d) (format "    - %s\n" d)) details ""))
@@ -334,12 +373,10 @@ FIX: handles both plain lists and :available/:missing plist shapes
 ;; STARTUP QUICK CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-startup ()
-  "Quick health check on startup (non-blocking).
-Runs a focused set of checks, stores results for modeline/dashboard,
-and echoes a hint if issues are found — without opening the full report."
+  "Quick health check on startup (non-blocking)."
   (when emacs-ide-health-check-on-startup
     (run-with-idle-timer
-     3 nil   ; 3s: after dashboard renders and modeline is active
+     3 nil
      (lambda ()
        (let* ((checks (list (cons 'system-tools #'emacs-ide-health-check-system-tools)
                             (cons 'packages     #'emacs-ide-health-check-packages)
@@ -355,11 +392,9 @@ and echoes a hint if issues are found — without opening the full report."
              (push res results)
              (cond ((eq status 'error)   (cl-incf errors))
                    ((eq status 'warning) (cl-incf warnings)))))
-         ;; Store for modeline and dashboard
          (setq emacs-ide-health-results    (reverse results)
                emacs-ide-health-last-check (current-time))
          (emacs-ide-health--update-counts errors warnings)
-         ;; Echo a non-intrusive hint — no popup, no forced buffer switch
          (cond
           ((> errors 0)
            (message "🏥 Health: ✗ %d error%s found — M-x emacs-ide-health-check-all"

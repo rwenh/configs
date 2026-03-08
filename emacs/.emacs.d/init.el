@@ -1,7 +1,7 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
 ;;;   - 2.2.3: tools-test added to feature-modules (language-aware test runner)
 ;;;   - 2.2.2: (unless emacs-ide-safe-mode ...) block now closes BEFORE the
@@ -21,7 +21,7 @@
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.2.3"
+(defconst emacs-ide-version "2.2.4"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
@@ -245,6 +245,7 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
   ;; FIX: Enable electric-pair-mode here so test-basic-editing-modes passes
   ;; without depending on a feature module loading successfully.
   (electric-pair-mode 1)
+  (delete-selection-mode 1)
 
   (emacs-ide--track-phase "core-settings")
 

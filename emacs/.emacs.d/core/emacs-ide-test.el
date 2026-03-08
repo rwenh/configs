@@ -1,12 +1,29 @@
 ;;; emacs-ide-test.el --- Enterprise Test Suite -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; ERT-based tests adapted to calibrated module names and robust guards.
-;;; Version: 2.2.1  (fixes from 2.1.0 audit)
+;;; Version: 2.2.2
 ;;; Fixes:
-;;;   - test-startup-time: `car` of push-built list is the LAST phase, not first.
-;;;     Now correctly finds the "startup-complete" phase by name, with fallback.
-;;;   - test-basic-editing-modes: `electric-pair-mode` now enabled in init core
-;;;     settings so test is reliable. Guard added if modules failed.
+;;;   - 2.2.2: test-critical-packages-installed: lsp-mode is loaded deferred
+;;;     (:defer t via use-package), so featurep 'lsp-mode is nil until a
+;;;     source file triggers it. Replaced with (locate-library ...) which
+;;;     checks whether the package is *installed* without requiring it to be
+;;;     active. Consistent with how emacs-ide-health-check-packages works.
+;;;   - 2.2.2: test-basic-editing-modes: removed global-auto-revert-mode
+;;;     assertion. It is not enabled in init.el core settings — only feature
+;;;     modules (ui-core, tools-project) may enable it. The test was
+;;;     non-deterministic: it passed if ui-core loaded successfully and failed
+;;;     in safe mode or when that module errored. Replaced with
+;;;     delete-selection-mode which IS enabled by init.el directly (via
+;;;     (delete-selection-mode 1) in core settings — see init.el 2.2.3+).
+;;;     NOTE: init.el must add `(delete-selection-mode 1)` to core-settings
+;;;     for this test to be reliable (see init.el fix note below).
+;;;   - 2.2.1: test-startup-time: phase lookup corrected to use assoc by name.
+;;;   - 2.2.1: test-basic-editing-modes: electric-pair-mode guard added.
+;;;
+;;; INIT.EL FIX REQUIRED:
+;;;   Add `(delete-selection-mode 1)` to the core-settings block in init.el
+;;;   (alongside the existing `(electric-pair-mode 1)`) so that
+;;;   test-basic-editing-modes is reliable without depending on feature modules.
 ;;; Code:
 
 (require 'ert)
@@ -19,8 +36,12 @@
   "Maximum acceptable startup time in seconds (CI-friendly).")
 
 (defun emacs-ide-test-package-installed-p (package)
-  "Check if PACKAGE is installed via featurep (straight API is internal)."
-  (featurep package))
+  "Check if PACKAGE is installed.
+FIX: Use (locate-library) instead of (featurep) so deferred packages
+that haven't been require'd yet (e.g. lsp-mode with :defer t) still
+report as installed when present on disk."
+  (or (featurep package)
+      (locate-library (symbol-name package))))
 
 (defun emacs-ide-test-file-exists-p (file)
   "Check if FILE exists under user-emacs-directory."
@@ -40,15 +61,11 @@
   (should (version<= "29.1" emacs-version)))
 
 (ert-deftest test-startup-time ()
-  "Startup phases were recorded and total elapsed time is within limit.
-FIX: Previously used (cdr (car phases)) which returns the LAST recorded phase
-     (push prepends). Now we look up 'startup-complete' by name, with a
-     fallback to the first phase in chronological order."
+  "Startup phases were recorded and total elapsed time is within limit."
   (skip-unless (boundp 'emacs-ide--startup-phases))
   (skip-unless emacs-ide--startup-phases)
   (let* ((startup-time
           (or (emacs-ide-test--find-phase "startup-complete")
-              ;; Fallback: last element in list = first phase recorded
               (cdr (car (last emacs-ide--startup-phases)))
               9999)))
     (should (< startup-time emacs-ide-test-startup-time-max))))
@@ -77,30 +94,38 @@ FIX: Previously used (cdr (car phases)) which returns the LAST recorded phase
   (should (boundp 'emacs-ide-recovery-crash-count)))
 
 (ert-deftest test-critical-packages-installed ()
-  "Critical packages are installed or available."
+  "Critical packages are installed or available.
+FIX: Uses emacs-ide-test-package-installed-p (locate-library + featurep)
+so deferred packages like lsp-mode — loaded lazily on first source file
+open — are not incorrectly reported as missing."
   (dolist (pkg '(use-package which-key projectile magit vertico corfu lsp-mode))
     (should (emacs-ide-test-package-installed-p pkg))))
 
 (ert-deftest test-lsp-availability ()
   "LSP mode is available when configured."
   (when (bound-and-true-p emacs-ide-lsp-enable)
-    (should (or (featurep 'lsp-mode)
-                (featurep 'eglot)))))
+    (should (or (emacs-ide-test-package-installed-p 'lsp-mode)
+                (emacs-ide-test-package-installed-p 'eglot)))))
 
 (ert-deftest test-completion-framework ()
   "Completion framework is active or available."
   (should (or (bound-and-true-p vertico-mode)
               (bound-and-true-p corfu-mode)
-              (featurep 'vertico)
-              (featurep 'corfu))))
+              (emacs-ide-test-package-installed-p 'vertico)
+              (emacs-ide-test-package-installed-p 'corfu))))
 
 (ert-deftest test-basic-editing-modes ()
   "Basic editing modes are enabled.
-Note: electric-pair-mode is now explicitly enabled in init.el core settings,
-so this test is reliable without depending on feature modules."
+electric-pair-mode: enabled in init.el core settings (reliable).
+show-paren-mode: always enabled in Emacs 29+ by default.
+delete-selection-mode: must be enabled in init.el core settings.
+  See INIT.EL FIX REQUIRED in this file's Commentary.
+FIX: Removed global-auto-revert-mode assertion — it is not in init.el core
+  settings; only feature modules enable it, making the assertion
+  non-deterministic (passes in full mode, fails in safe mode)."
   (should (bound-and-true-p electric-pair-mode))
   (should (bound-and-true-p show-paren-mode))
-  (should (bound-and-true-p global-auto-revert-mode)))
+  (should (bound-and-true-p delete-selection-mode)))
 
 (ert-deftest test-theme-or-modeline ()
   "At least a theme or modeline is active."

@@ -1,7 +1,7 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Vertico + Consult + Corfu - Maximum efficiency with proper config integration
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - 2.2.2: corfu-preview-current changed from 'insert to t.
 ;;;     'insert auto-inserts the top candidate as you type, which breaks
@@ -12,6 +12,9 @@
 ;;;   - abbrev-file-name moved to var/ subdirectory
 ;;;   - Removed duplicate recentf/bookmark configs (canonical in tools-project.el)
 ;;;   - TAB global rebind scoped to prog-mode/text-mode only
+;;;   - 2.2.3: marginalia-annotators removed — dropped in marginalia 1.0 (Nov 2022),
+;;;     replaced by marginalia-annotator-registry. Setting it caused a void-variable
+;;;     warning on every startup.
 ;;; Code:
 
 ;; ============================================================================
@@ -61,8 +64,10 @@
               ("M-A" . marginalia-cycle))
   :init
   (setq marginalia-align 'right
-        marginalia-align-offset 0
-        marginalia-annotators '(marginalia-annotators-heavy marginalia-annotators-light nil))
+        marginalia-align-offset 0)
+        ;; FIX 2.2.3: marginalia-annotators removed — the variable was dropped in
+        ;; marginalia 1.0 (Nov 2022) and replaced by marginalia-annotator-registry.
+        ;; Setting it produced a void-variable warning on every startup.
   :config
   (marginalia-mode 1))
 

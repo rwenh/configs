@@ -1,23 +1,29 @@
 ;;; emacs-ide-security.el --- Security Hardening -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Enterprise security configuration with config integration.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - TLS load-order: with-eval-after-load 'gnutls meant gnutls-verify-error
-;;;     was never set before the first network call (package refresh, straight
-;;;     bootstrap, etc.) because gnutls only loads lazily on first TLS use.
-;;;     By then the health check and early network calls had already run with
-;;;     the default unverified settings. Fixed by requiring gnutls eagerly so
-;;;     TLS settings are applied unconditionally at startup.
-;;;   - auth-sources: local let variable assignment bug fixed in v2.2.1; retained.
+;;;   - 2.2.3: tls-program now set here (was only in early-init.el). If
+;;;     early-init is bypassed (e.g. emacs -Q followed by manual load, or
+;;;     package load during testing) the insecure openssl s_client default
+;;;     remained. Security.el is the canonical place for TLS policy.
+;;;   - 2.2.3: auth-sources: mapcar expand-file-name over a mixed list that
+;;;     may contain plists or keyword-based entries (macos-keychain-internet,
+;;;     (:source "pass:...")) would corrupt those entries.  Now only string
+;;;     entries are expanded; non-string entries are passed through unchanged.
+;;;   - 2.2.2: TLS (with-eval-after-load 'gnutls) replaced with (require
+;;;     'gnutls) so settings apply before any network call.
+;;;   - 2.2.1: auth-sources local let variable assignment bug fixed.
 ;;; Code:
 
 ;; ============================================================================
 ;; TLS CONFIGURATION
-;; FIX: Replaced (with-eval-after-load 'gnutls ...) with (require 'gnutls)
-;;      so TLS settings are active before any network call is made.
-;;      The health check was reporting TLS as unconfigured because gnutls
-;;      hadn't been loaded yet when the check ran.
+;; FIX 2.2.2: (require 'gnutls) so TLS settings are applied before any
+;;   network call. The (with-eval-after-load 'gnutls ...) form in earlier
+;;   versions meant the first network call (straight bootstrap, package
+;;   refresh) ran with Emacs's default unverified TLS settings.
+;; FIX 2.2.3: tls-program also set here (was only in early-init.el) so this
+;;   module is self-contained and correct when early-init is bypassed.
 ;; ============================================================================
 (require 'gnutls)
 
@@ -30,7 +36,9 @@
                                        (let ((sec (cdr (assoc 'security emacs-ide-config-data))))
                                          (cdr (assoc 'tls-min-prime-bits sec))))
                                   3072)
-        tls-checktrust         t))
+        tls-checktrust         t
+        ;; FIX 2.2.3: set tls-program here, not only in early-init.el
+        tls-program            '("gnutls-cli --x509cafile %t -p %p %h")))
 
 ;; ============================================================================
 ;; PACKAGE SIGNATURE CHECKING
@@ -43,15 +51,22 @@
 
 ;; ============================================================================
 ;; AUTH-SOURCE CONFIGURATION
-;; FIX: Previously `(let ((auth-sources ...)) (setq auth-sources (mapcar ...))))`
-;;      assigned to the local `let` variable, never touching the global.
-;;      Now we compute and assign to the global `auth-sources` directly.
+;; FIX 2.2.3: auth-sources may contain non-string entries such as
+;;   macos-keychain-internet, macos-keychain-generic, or plist forms like
+;;   (:source "pass:..."). Applying expand-file-name to those corrupts them
+;;   (expand-file-name coerces plists to strings via prin1-to-string, and
+;;   symbol names like macos-keychain-internet become bogus paths).
+;;   Now only string entries are expanded; all other entries pass through.
+;; FIX 2.2.1: assignment was to a local let variable, not the global.
 ;; ============================================================================
 (require 'auth-source)
 
 (setq auth-sources
       (mapcar
-       #'expand-file-name
+       (lambda (entry)
+         (if (stringp entry)
+             (expand-file-name entry)
+           entry))
        (or (and (boundp 'emacs-ide-config-data)
                 (let* ((sec (cdr (assoc 'security emacs-ide-config-data)))
                        (sources (cdr (assoc 'auth-sources sec))))
@@ -81,14 +96,24 @@
         (push "✓ TLS verification enabled" ok)
       (push "⚠️  TLS verification not enforced" warnings))
 
+    ;; Check tls-program is set to gnutls-cli (not insecure openssl default)
+    (if (and (boundp 'tls-program)
+             (listp tls-program)
+             (cl-some (lambda (p) (string-match-p "gnutls-cli" p)) tls-program))
+        (push "✓ TLS program set to gnutls-cli" ok)
+      (push "⚠️  tls-program may be using insecure openssl s_client default" warnings))
+
     ;; Check package signatures
     (if (bound-and-true-p package-check-signature)
         (push "✓ Package signatures checked" ok)
       (push "⚠️  Package signatures not checked" warnings))
 
-    ;; Check auth source (expand-file-name already applied, so compare expanded)
+    ;; Check auth source (expand-file-name already applied to string entries)
     (if (and (boundp 'auth-sources)
-             (member (expand-file-name "~/.authinfo.gpg") auth-sources))
+             (cl-some (lambda (s)
+                        (and (stringp s)
+                             (string= s (expand-file-name "~/.authinfo.gpg"))))
+                      auth-sources))
         (push "✓ Encrypted auth source available" ok)
       (push "⚠️  No encrypted auth source configured" warnings))
 

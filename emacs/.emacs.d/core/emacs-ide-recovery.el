@@ -1,16 +1,19 @@
 ;;; emacs-ide-recovery.el --- Enterprise Error Recovery System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade error recovery and safe mode.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - 2.2.2: emacs-ide-recovery-disable-package now writes atomically
-;;;     (write to .tmp then rename) matching the pattern used by all other
-;;;     log-write functions in this module. Previously it used with-temp-buffer
-;;;     + write-region directly without a temp-file, risking corruption on crash.
-;;;   - emacs-ide-recovery-log: atomic write had mismatched parens — the
-;;;     `with-temp-buffer` closed before `rename-file`, leaving rename outside
-;;;     the condition-case. Restructured so both write and rename are inside
-;;;     a single condition-case block.
+;;;   - 2.2.3: Session-stability auto-reset now only fires when no errors were
+;;;     logged this session. Previously the 5-minute idle timer unconditionally
+;;;     called emacs-ide-recovery-reset-crash-count. This meant: crash twice,
+;;;     start Emacs, wait 5 minutes, crash count silently resets to 0 before
+;;;     you hit the threshold of 3. Safe-mode was effectively unreachable for
+;;;     users with slow workflows. The timer now skips the reset if any errors
+;;;     are present in emacs-ide-recovery-errors (i.e. something went wrong
+;;;     during this session). The stable-session condition also validates that
+;;;     crash count is currently > 0 before touching the file.
+;;;   - 2.2.2: emacs-ide-recovery-disable-package: atomic write via temp-file.
+;;;   - 2.2.2: emacs-ide-recovery-log: write + rename in single condition-case.
 ;;; Code:
 
 ;; ============================================================================
@@ -82,7 +85,6 @@
 
 ;; ============================================================================
 ;; ERROR LOGGING - WITH ATOMIC WRITES
-;; FIX: write + rename in a single condition-case so rename is protected.
 ;; ============================================================================
 (defun emacs-ide-recovery-log (level message &rest args)
   "Log recovery event with LEVEL and MESSAGE atomically."
@@ -115,7 +117,6 @@
             (goto-char (point-max))
             (insert formatted-message)
             (write-region (point-min) (point-max) temp-file nil 'quiet))
-          ;; rename is INSIDE the condition-case
           (rename-file temp-file emacs-ide-recovery-log-file t))
       (error
        (warn "Failed to write recovery log: %s" (error-message-string err))))
@@ -256,16 +257,12 @@
 
 ;; ============================================================================
 ;; EMERGENCY COMMANDS
-;; FIX 2.2.2: emacs-ide-recovery-disable-package now writes atomically via
-;;   a temp-file + rename, matching the pattern used by every other log-write
-;;   function in this module. The previous direct write-region call could
-;;   corrupt the file if Emacs crashed mid-write.
 ;; ============================================================================
 (defun emacs-ide-recovery-disable-package (package)
   "Disable problematic PACKAGE safely (atomic write)."
   (interactive "sPackage to disable: ")
   (let* ((disable-file (expand-file-name "var/disabled-packages"
-                                         user-emacs-directory))
+                                          user-emacs-directory))
          (temp-file (concat disable-file ".tmp")))
     (condition-case err
         (progn
@@ -275,7 +272,6 @@
             (goto-char (point-max))
             (insert (format "%s\n" package))
             (write-region (point-min) (point-max) temp-file nil 'quiet))
-          ;; Atomic rename — consistent with the rest of this module
           (rename-file temp-file disable-file t))
       (error
        (warn "Failed to disable package: %s" (error-message-string err))
@@ -343,6 +339,17 @@
 
 ;; ============================================================================
 ;; SESSION MONITORING
+;; FIX 2.2.3: The idle timer previously called reset-crash-count
+;;   unconditionally after 5 minutes of stability. This allowed a user who
+;;   had crashed twice to have the count silently reset before hitting 3,
+;;   making safe-mode effectively unreachable for slow workflows.
+;;
+;;   Fixed: the timer now resets ONLY when:
+;;     (a) crash count is actually > 0 (no-op if already 0), AND
+;;     (b) no errors were logged during this session
+;;         (emacs-ide-recovery-errors is nil).
+;;   If any module failed to load this session, the crash count is preserved
+;;   so it can accumulate across subsequent restarts as intended.
 ;; ============================================================================
 (defvar emacs-ide-recovery-session-start-time (current-time))
 
@@ -351,13 +358,15 @@
   (float-time (time-subtract (current-time)
                              emacs-ide-recovery-session-start-time)))
 
-;; Mark successful session after 5 minutes of idle stability
 (run-with-idle-timer
  300 nil
  (lambda ()
-   (when (> (emacs-ide-recovery-session-duration) 300)
+   (when (and (> (emacs-ide-recovery-session-duration) 300)
+              ;; FIX: only reset if nothing went wrong this session
+              (null emacs-ide-recovery-errors)
+              (> emacs-ide-recovery-crash-count 0))
      (emacs-ide-recovery-reset-crash-count)
-     (emacs-ide-recovery-log 'info "Session stable for 5+ minutes"))))
+     (emacs-ide-recovery-log 'info "Session stable for 5+ minutes; crash count reset"))))
 
 ;; ============================================================================
 ;; KEYBINDINGS

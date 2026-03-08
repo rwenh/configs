@@ -6,7 +6,7 @@
 ;;; on-save toggle from emacs-ide-config-data at load time.
 ;;; Add "tools-format" to emacs-ide-feature-modules in init.el,
 ;;; placed after lang-core and before keybindings.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
 ;;;   - 2.2.2: emacs-ide-format--formatter-for had a dead branch: Elisp `null`
 ;;;     and `(eq val nil)` are identical predicates — both match nil. Since YAML
@@ -18,6 +18,11 @@
 ;;;     `emacs-ide-format--formatter-for` tests for `:absent` to mean "use
 ;;;     default" and for nil to mean "disabled by user". This correctly
 ;;;     implements the intended key-absent vs explicitly-false distinction.
+;;;   - 2.2.3: format-all-formatters entries had an extra level of list nesting.
+;;;     Each entry was (LANGUAGE (FORMATTER)) — format-all expects (LANGUAGE FORMATTER).
+;;;     (list "Python" (list f)) produced ("Python" (black)); format-all received
+;;;     an invalid formatter spec and silently skipped every language. Fixed to
+;;;     (list "Python" f) = ("Python" black).
 ;;; Code:
 
 ;; ============================================================================
@@ -69,35 +74,38 @@ FIX 2.2.2: Previously (null val) and (eq val nil) were identical tests —
   :config
   ;; Build formatter list from config, falling back to sensible defaults.
   ;; A language set to false in config is omitted entirely.
+  ;; FIX 2.2.3: Each entry must be (LANGUAGE FORMATTER), not (LANGUAGE (FORMATTER)).
+  ;; The previous (list LANG (list f)) produced (LANG (black)) — an invalid spec
+  ;; that format-all silently ignored, so no language was ever formatted.
   (let ((formatters
          (delq nil
                (list
                 (when-let ((f (emacs-ide-format--formatter-for 'python     "black")))
-                  (list "Python"     (list f)))
+                  (list "Python"     f))
                 (when-let ((f (emacs-ide-format--formatter-for 'javascript "prettier")))
-                  (list "JavaScript" (list f)))
+                  (list "JavaScript" f))
                 (when-let ((f (emacs-ide-format--formatter-for 'typescript "prettier")))
-                  (list "TypeScript" (list f)))
+                  (list "TypeScript" f))
                 (when-let ((f (emacs-ide-format--formatter-for 'html       "prettier")))
-                  (list "HTML"       (list f)))
+                  (list "HTML"       f))
                 (when-let ((f (emacs-ide-format--formatter-for 'css        "prettier")))
-                  (list "CSS"        (list f)))
+                  (list "CSS"        f))
                 (when-let ((f (emacs-ide-format--formatter-for 'json       "prettier")))
-                  (list "JSON"       (list f)))
+                  (list "JSON"       f))
                 (when-let ((f (emacs-ide-format--formatter-for 'markdown   "prettier")))
-                  (list "Markdown"   (list f)))
+                  (list "Markdown"   f))
                 (when-let ((f (emacs-ide-format--formatter-for 'yaml       "prettier")))
-                  (list "YAML"       (list f)))
+                  (list "YAML"       f))
                 (when-let ((f (emacs-ide-format--formatter-for 'rust       "rustfmt")))
-                  (list "Rust"       (list f)))
+                  (list "Rust"       f))
                 (when-let ((f (emacs-ide-format--formatter-for 'go         "gofmt")))
-                  (list "Go"         (list f)))
+                  (list "Go"         f))
                 (when-let ((f (emacs-ide-format--formatter-for 'c          "clang-format")))
-                  (list "C"          (list f)))
+                  (list "C"          f))
                 (when-let ((f (emacs-ide-format--formatter-for 'cpp        "clang-format")))
-                  (list "C++"        (list f)))
+                  (list "C++"        f))
                 (when-let ((f (emacs-ide-format--formatter-for 'shell      "shfmt")))
-                  (list "Shell"      (list f)))))))
+                  (list "Shell"      f))))))
     (setq-default format-all-formatters formatters)))
 
 ;; ============================================================================

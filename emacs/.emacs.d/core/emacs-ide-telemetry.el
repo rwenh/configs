@@ -1,23 +1,20 @@
-;;; emacs-ide-telemetry.el --- Usage Analytics (Local Only, CALIBRATED) -*- lexical-binding: t -*-
+;;; emacs-ide-telemetry.el --- Usage Analytics (Local Only) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Privacy-respecting local usage analytics with config integration and rotation.
-;;; Version: 2.2.2
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - 2.2.2: post-command-hook tracking throttled via an in-memory pending
-;;;     counter that flushes to the hash table on idle (0.5s). Previously ran
-;;;     on every keystroke with no throttling, which introduced perceptible lag
-;;;     on slow machines (hash-table puthash on every command).
+;;;   - 2.2.3: emacs-ide-telemetry-enable/disable: adding functions to toggle
+;;;     telemetry on/off at runtime now properly restarts the flush timer when
+;;;     re-enabling. Previously, if telemetry was disabled then re-enabled, the
+;;;     hook was re-added but the flush timer was not restarted (it was only
+;;;     created at load time), so pending counts were never flushed to the main
+;;;     table — all subsequent commands were silently dropped from the report.
+;;;   - 2.2.2: post-command-hook tracking throttled via pending counter + idle
+;;;     flush timer. Previously ran puthash on every keystroke.
 ;;; Code:
 
 (require 'cl-lib)
 
-;; FIX: The previous init form was:
-;;   (if (boundp 'emacs-ide-telemetry-enabled) emacs-ide-telemetry-enabled t)
-;; This is dead code: defvar only evaluates its init form when the variable is
-;; NOT yet bound, so (boundp 'emacs-ide-telemetry-enabled) inside that form is
-;; always nil — the "preserve existing value" branch is unreachable.
-;; The correct idiom is simply `t` as the default.  defvar's own no-op-when-
-;; already-bound semantics preserves any value set earlier by emacs-ide-config-apply.
 (defvar emacs-ide-telemetry-enabled t
   "Enable telemetry collection (local only).")
 
@@ -26,10 +23,6 @@
 
 ;; ============================================================================
 ;; THROTTLED COMMAND TRACKING
-;; FIX 2.2.2: Instead of updating the hash table on every command (which runs
-;;   puthash on every keystroke), we accumulate into a separate pending table
-;;   and flush to the main table on a 0.5-second idle timer. This eliminates
-;;   the per-keystroke hash overhead while still capturing all commands.
 ;; ============================================================================
 (defvar emacs-ide-telemetry--pending-counts (make-hash-table :test 'equal)
   "Transient accumulator; flushed to command-counts on idle.")
@@ -48,12 +41,10 @@
   (clrhash emacs-ide-telemetry--pending-counts))
 
 (defun emacs-ide-telemetry-track-command ()
-  "Record command in pending table (flushed to main table on idle).
-Guards for nil this-command and non-symbol commands."
+  "Record command in pending table (flushed to main table on idle)."
   (when (and (bound-and-true-p emacs-ide-telemetry-enabled)
              (symbolp this-command)
              this-command)
-    ;; Accumulate in the cheap pending table — no idle-timer cost per keystroke
     (puthash this-command
              (1+ (gethash this-command emacs-ide-telemetry--pending-counts 0))
              emacs-ide-telemetry--pending-counts)))
@@ -65,10 +56,43 @@ Guards for nil this-command and non-symbol commands."
     (setq emacs-ide-telemetry--flush-timer
           (run-with-idle-timer 0.5 t #'emacs-ide-telemetry--flush-pending))))
 
-;; Install hook only if telemetry is enabled and hook not already present
-(when (and (bound-and-true-p emacs-ide-telemetry-enabled)
-           (not (member #'emacs-ide-telemetry-track-command post-command-hook)))
-  (add-hook 'post-command-hook #'emacs-ide-telemetry-track-command)
+(defun emacs-ide-telemetry--cancel-flush-timer ()
+  "Cancel the idle flush timer if running."
+  (when (and emacs-ide-telemetry--flush-timer
+             (timerp emacs-ide-telemetry--flush-timer))
+    (cancel-timer emacs-ide-telemetry--flush-timer)
+    (setq emacs-ide-telemetry--flush-timer nil)))
+
+;; ============================================================================
+;; ENABLE / DISABLE AT RUNTIME
+;; FIX 2.2.3: Provide explicit enable/disable functions so that toggling
+;;   telemetry off then on again correctly restarts the flush timer.
+;;   Previously re-enabling added the hook but left the timer cancelled,
+;;   so pending counts were never flushed and the report showed no data.
+;; ============================================================================
+(defun emacs-ide-telemetry-enable ()
+  "Enable telemetry tracking (hook + flush timer)."
+  (interactive)
+  (setq emacs-ide-telemetry-enabled t)
+  (unless (member #'emacs-ide-telemetry-track-command post-command-hook)
+    (add-hook 'post-command-hook #'emacs-ide-telemetry-track-command))
+  (emacs-ide-telemetry--ensure-flush-timer)
+  (message "✓ Telemetry enabled"))
+
+(defun emacs-ide-telemetry-disable ()
+  "Disable telemetry tracking (hook + flush timer)."
+  (interactive)
+  (setq emacs-ide-telemetry-enabled nil)
+  (remove-hook 'post-command-hook #'emacs-ide-telemetry-track-command)
+  (emacs-ide-telemetry--ensure-flush-timer) ; flush any pending before stopping
+  (emacs-ide-telemetry--flush-pending)
+  (emacs-ide-telemetry--cancel-flush-timer)
+  (message "✓ Telemetry disabled"))
+
+;; Install hook + timer at load time if telemetry is enabled
+(when (bound-and-true-p emacs-ide-telemetry-enabled)
+  (unless (member #'emacs-ide-telemetry-track-command post-command-hook)
+    (add-hook 'post-command-hook #'emacs-ide-telemetry-track-command))
   (emacs-ide-telemetry--ensure-flush-timer))
 
 ;; ============================================================================

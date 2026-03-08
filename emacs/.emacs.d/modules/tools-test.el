@@ -30,7 +30,7 @@
 ;;; Add "tools-test" to emacs-ide-feature-modules in init.el (after lang-core,
 ;;; before keybindings).
 ;;;
-;;; Version: 1.0.2
+;;; Version: 1.0.3
 ;;; Fixes:
 ;;;   - 1.0.2: emacs-ide-test--detect-haskell used file-exists-p with "*.cabal"
 ;;;     which is a shell glob, not a valid path — always returned nil, so cabal
@@ -38,6 +38,11 @@
 ;;;   - 1.0.2: emacs-ide-test--parse-results rspec branch set :passed to the
 ;;;     total example count rather than passing count. "5 examples, 2 failures"
 ;;;     produced passed=5,failed=2 (off by 2). Fixed: passed = total - failed.
+;;;   - 1.0.3: Stale comment in keybindings section incorrectly stated
+;;;     "C-c T (uppercase) is unoccupied". tools-terminal.el binds C-c T to
+;;;     vterm-other-window. The comment below now correctly documents both
+;;;     C-c T and C-c t as taken, matching the code's actual C-c C-t/C-c C-T
+;;;     choice. No runtime behaviour changed.
 ;;; Code:
 
 (require 'cl-lib)
@@ -570,10 +575,12 @@ _a_: run all           _l_: repeat last    _q_: quit
 ;; ============================================================================
 ;; KEYBINDINGS
 ;; ============================================================================
-;; C-c t is bound to vterm by tools-terminal.el — do not use it as a prefix.
-;; C-c T (uppercase) is unoccupied and used for the test sub-map.
-;; C-c t  = vterm (tools-terminal.el) — plain command, cannot be a prefix
+;; C-c t  = vterm (tools-terminal.el)       — plain command, cannot be a prefix
 ;; C-c T  = vterm-other-window (tools-terminal.el) — also taken
+;; FIX 1.0.3: Comment previously stated "C-c T is unoccupied" — incorrect.
+;;   tools-terminal.el binds C-c T to vterm-other-window. Both lowercase and
+;;   uppercase C-c t/T are taken. Test runner uses C-c C-t (with Control held)
+;;   as its prefix, which is orthogonal to the bare C-c t/T terminal bindings.
 ;; C-c x  = free across all modules — used as the test sub-prefix
 (global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 (global-set-key (kbd "C-c C-T") 'emacs-ide-test-run-all)
