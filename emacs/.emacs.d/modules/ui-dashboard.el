@@ -4,12 +4,15 @@
 ;;; are displayed inline on startup — no M-x required to see IDE status.
 ;;; Version: 2.2.2
 ;;; Fixes:
-;;;   - 2.2.2: dashboard-item-generators registration moved from :config to
-;;;     :init so the ide-health handler exists before dashboard-items is
-;;;     processed by dashboard-setup-startup-hook. Previously the generator
-;;;     was registered in :config (after :init), so the health widget was
-;;;     missing on the first launch and only appeared after the 4-second idle
-;;;     refresh. Now works correctly on first paint.
+;;;   - 2.2.2: Fixed ide-health widget missing on first dashboard paint.
+;;;     Root cause: dashboard-items (set in :init) referenced ide-health, but
+;;;     the generator was only registered in :config — after :init. The naive
+;;;     fix of moving add-to-list to :init caused void-variable
+;;;     dashboard-item-generators because dashboard.el had not loaded yet.
+;;;     Correct fix: defvar both dashboard-item-generators and
+;;;     dashboard-item-shortcuts before the use-package block. defvar is
+;;;     idempotent so dashboard.el's own defvar preserves our value. The
+;;;     generator is now registered before dashboard-setup-startup-hook runs.
 ;;; Code:
 
 ;; ============================================================================
@@ -75,6 +78,48 @@ health check has populated emacs-ide-health-results."
 "))))))
 
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
+
+  ;; Pre-declare dashboard's registration alists before the package loads.
+  ;;
+  ;; FIX 2.2.2: The sequencing problem has two sides:
+  ;;
+  ;;   (a) `dashboard-items' in :init includes `ide-health', but the generator
+  ;;       for `ide-health' was only registered in :config — after :init.
+  ;;       Dashboard processes the items list during setup in :config, so on
+  ;;       first launch the handler was missing and the widget was silently
+  ;;       absent. Only the 4-second idle-timer refresh rescued it.
+  ;;
+  ;;   (b) Moving `add-to-list' into :init (the naive fix) causes
+  ;;       `void-variable dashboard-item-generators' because that variable is
+  ;;       defvar'd inside dashboard.el, which has not been required yet at
+  ;;       :init time.
+  ;;
+  ;; Correct fix: `defvar' both alists here, outside and before the
+  ;; `use-package' block. `defvar' is idempotent — if dashboard has somehow
+  ;; already loaded, this is a no-op and the existing bindings are kept. If
+  ;; dashboard has not loaded yet (normal case), `add-to-list' in :init now
+  ;; has a valid list to prepend to, and when dashboard.el runs its own
+  ;; `defvar' the value we set is preserved (Emacs `defvar' does not
+  ;; overwrite an existing binding). The generator is therefore registered
+  ;; before `dashboard-setup-startup-hook' processes `dashboard-items'.
+  (defvar dashboard-item-generators nil
+    "Alist of dashboard item type -> render function.
+Pre-declared by ui-dashboard.el so the ide-health entry can be
+registered before dashboard.el loads. dashboard.el's own defvar is
+idempotent and will not overwrite this value.")
+
+  (defvar dashboard-item-shortcuts nil
+    "Alist of dashboard item type -> shortcut key.
+Pre-declared by ui-dashboard.el for the same reason as
+`dashboard-item-generators'.")
+
+  ;; Register the ide-health widget now — before use-package, before
+  ;; dashboard-items is set, before dashboard-setup-startup-hook runs.
+  (add-to-list 'dashboard-item-generators
+               '(ide-health . emacs-ide-dashboard--health-section))
+  (add-to-list 'dashboard-item-shortcuts
+               '(ide-health . "h"))
+
   (use-package dashboard
     ;; FIX: Removed :defer t.
     ;; With use-package-always-defer t set globally in init.el, :defer t here was
@@ -86,17 +131,6 @@ health check has populated emacs-ide-health-results."
     ;; the absence of :defer explicitly opts out of the global always-defer default.
     :demand t
     :init
-    ;; FIX 2.2.2: Register the ide-health generator in :init, BEFORE
-    ;;   dashboard-items references it.  Previously the generator was added
-    ;;   in :config which runs after :init — dashboard processed the items
-    ;;   list during setup and found no handler for ide-health, so the health
-    ;;   widget was silently missing on the very first launch (only the 4-second
-    ;;   idle-timer refresh rescued it).  Registering here guarantees the
-    ;;   handler exists before dashboard-setup-startup-hook processes the list.
-    (add-to-list 'dashboard-item-generators
-                 '(ide-health . emacs-ide-dashboard--health-section))
-    (add-to-list 'dashboard-item-shortcuts
-                 '(ide-health . "h"))
     (setq dashboard-startup-banner 'logo
           dashboard-center-content t
           dashboard-set-heading-icons t
@@ -111,6 +145,9 @@ health check has populated emacs-ide-health-results."
           dashboard-banner-logo-title "EMACS IDE - Professional Development Environment"
           dashboard-footer-messages '("Ready to code"))
     :config
+    ;; ide-health generator and shortcut are registered above, before this
+    ;; use-package block, so they are guaranteed present when
+    ;; dashboard-setup-startup-hook processes dashboard-items below.
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
     ;; Refresh dashboard after idle health check fires (3s) so status appears
