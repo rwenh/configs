@@ -1,8 +1,19 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.2.5
+;;; Version: 2.2.7
 ;;; Fixes:
+;;;   - 2.2.7: lsp-pyright :if guard now checks both "pyright" and
+;;;     "pyright-langserver". emacs-ide-health.el v2.2.2 already handled
+;;;     both names; the use-package guard here only checked "pyright" so
+;;;     the package silently never loaded on Arch/NixOS/some pip installs
+;;;     where only "pyright-langserver" is on PATH.
+;;;   - 2.2.6: emacs-ide-lsp-status and emacs-ide-lsp-check-servers moved
+;;;     outside (when emacs-ide-lsp-enable ...) block. Previously both were
+;;;     defined only when LSP was enabled; keybindings.el unconditionally
+;;;     binds C-c L to emacs-ide-lsp-status, so with LSP disabled every
+;;;     C-c L press produced a void-function error. Both functions now live
+;;;     at the top level and check emacs-ide-lsp-enable internally.
 ;;;   - 2.2.5: lsp-idle-delay was incorrectly set to emacs-ide-completion-delay
 ;;;     (the corfu popup delay, default 0.1s). LSP idle delay governs when the
 ;;;     server is polled after inactivity — 0.1s causes server hammering on every
@@ -167,15 +178,6 @@
                                 completion-at-point-functions)))))
   (add-hook 'lsp-completion-mode-hook #'emacs-ide-lsp-setup-completion)
 
-  (defun emacs-ide-lsp-status ()
-    "Display LSP connection status."
-    (interactive)
-    (if (bound-and-true-p lsp-mode)
-        (message "LSP: %s | Workspace: %s"
-                 (if (lsp-workspaces) "✓ Connected" "✗ Disconnected")
-                 (or (lsp-workspace-root) "None"))
-      (message "LSP: Not active in this buffer")))
-
   (defun emacs-ide-lsp-restart-all ()
     "Restart all LSP workspaces."
     (interactive)
@@ -229,9 +231,16 @@
 ;; ============================================================================
 ;; LANGUAGE-SPECIFIC LSP SERVERS
 ;; ============================================================================
+;; FIX 2.2.7: lsp-pyright use-package had :if (executable-find "pyright").
+;;   Some distributions (Arch, NixOS, some pip installs) install the binary
+;;   as "pyright-langserver" rather than "pyright". emacs-ide-health.el v2.2.2
+;;   already checks both names for its health widget; the use-package :if
+;;   guard here only checked "pyright", so the package silently never loaded
+;;   on systems where only "pyright-langserver" is on PATH.
+;;   Fix: check both names via an or form.
 (use-package lsp-pyright
   :after lsp-mode
-  :if (executable-find "pyright")
+  :if (or (executable-find "pyright") (executable-find "pyright-langserver"))
   ;; FIX: Two bugs in the previous version:
   ;;
   ;; 1. LOAD ORDER: The hook lambda called (require 'lsp-pyright nil t) then
@@ -322,6 +331,61 @@
       (princ "or: M-x lsp-install-server\n"))))
 
 ) ;; end (when emacs-ide-lsp-enable ...)
+
+;; ============================================================================
+;; ALWAYS-AVAILABLE COMMANDS
+;; FIX 2.2.6: emacs-ide-lsp-status and emacs-ide-lsp-check-servers were
+;;   previously defined inside the (when emacs-ide-lsp-enable ...) block.
+;;   When LSP is disabled, keybindings.el still binds C-c L to
+;;   emacs-ide-lsp-status, calling an undefined function and signalling a
+;;   void-function error on every C-c L press.
+;;   Both functions are now defined unconditionally outside the guard.
+;;   They check (bound-and-true-p lsp-mode) / featurep internally so they
+;;   behave correctly whether or not LSP is enabled.
+;; ============================================================================
+(defun emacs-ide-lsp-status ()
+  "Display LSP connection status.
+Safe to call even when LSP is disabled — reports not-active rather
+than signalling void-function."
+  (interactive)
+  (if (not (bound-and-true-p emacs-ide-lsp-enable))
+      (message "LSP: Disabled in config (emacs-ide-lsp-enable is nil)")
+    (if (bound-and-true-p lsp-mode)
+        (message "LSP: %s | Workspace: %s"
+                 (if (and (fboundp 'lsp-workspaces) (lsp-workspaces))
+                     "✓ Connected" "✗ Disconnected")
+                 (or (and (fboundp 'lsp-workspace-root) (lsp-workspace-root))
+                     "None"))
+      (message "LSP: Not active in this buffer"))))
+
+(defun emacs-ide-lsp-check-servers ()
+  "Check and display LSP server availability.
+Safe to call even when LSP is disabled."
+  (interactive)
+  (let ((servers '(("pyright"                    . "Python")
+                   ("rust-analyzer"              . "Rust")
+                   ("gopls"                      . "Go")
+                   ("typescript-language-server" . "TypeScript/JS")
+                   ("clangd"                     . "C/C++")))
+        (available '())
+        (missing '()))
+    (dolist (server servers)
+      (if (executable-find (car server))
+          (push server available)
+        (push server missing)))
+    (with-output-to-temp-buffer "*LSP Servers*"
+      (princ "=== LSP SERVERS STATUS ===\n\n")
+      (princ (format "LSP enabled in config: %s\n\n"
+                     (if (bound-and-true-p emacs-ide-lsp-enable) "YES" "NO")))
+      (princ (format "Available: %d\n" (length available)))
+      (dolist (srv available)
+        (princ (format "  ✓ %-35s (%s)\n" (car srv) (cdr srv))))
+      (when missing
+        (princ (format "\nMissing: %d\n" (length missing)))
+        (dolist (srv missing)
+          (princ (format "  ✗ %-35s (%s)\n" (car srv) (cdr srv)))))
+      (princ "\nInstall missing servers via your system package manager\n")
+      (princ "or: M-x lsp-install-server\n"))))
 
 ;; helpful bindings (C-h f/v/k/F/C, C-c C-d) are set in keybindings.el which
 ;; loads unconditionally and always last.

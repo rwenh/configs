@@ -39,8 +39,13 @@
 ;;;                        Also binds consult commands via :bind — see note above
 ;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-c n (neotree)
 ;;;
-;;; Version: 3.0.2
-;;; Changes from 3.0.1:
+;;; Version: 3.0.3
+;;; Changes from 3.0.2:
+;;;   - C-c C-d (helpful-at-point) moved to C-h d. C-c C-<letter> keys are
+;;;     reserved by convention for major modes; the global binding silently
+;;;     lost in python-mode, haskell-mode, org-mode, and others. C-h d is
+;;;     within Emacs's own help prefix (consistent with C-h f/v/k/F/C) and
+;;;     replaces the rarely-needed describe-distribution command.
 ;;;   - C-c C-c / C-c C-r compile bindings replaced with C-c B / C-c b.
 ;;;     C-c C-c is owned by virtually every major mode; the global binding
 ;;;     was dead in 90% of buffers and surprising when it fired elsewhere.
@@ -104,10 +109,17 @@
 ;; ============================================================================
 ;; HELP — HELPFUL
 ;; Replaces C-h sub-keys with helpful equivalents — identical interface,
-;; richer output. C-c C-d is new (vanilla has no at-point help key).
+;; richer output. C-h d provides helpful-at-point (no vanilla equivalent).
 ;; NOTE: tools-lsp.el also binds these inside its use-package block so they
 ;; work when LSP is active. Defining them here ensures they work regardless
 ;; of whether tools-lsp.el loaded successfully.
+;; FIX 3.0.3: C-c C-d removed from global map. C-c C-<letter> keys are
+;;   reserved by convention for major modes; a global binding loses silently
+;;   in any mode that uses it locally (python-mode, haskell-mode, org-mode,
+;;   etc.), making it unreliable. Replaced with C-h d — a natural fit inside
+;;   Emacs's own help prefix, consistent with C-h f/v/k/F/C already here.
+;;   C-h d was previously bound to describe-distribution (rarely useful in
+;;   day-to-day work); helpful-at-point is strictly more useful.
 ;; ============================================================================
 
 (global-set-key (kbd "C-h f")   'helpful-callable)
@@ -115,7 +127,7 @@
 (global-set-key (kbd "C-h k")   'helpful-key)
 (global-set-key (kbd "C-h F")   'helpful-function)
 (global-set-key (kbd "C-h C")   'helpful-command)
-(global-set-key (kbd "C-c C-d") 'helpful-at-point)
+(global-set-key (kbd "C-h d")   'helpful-at-point)  ; was C-c C-d — see note above
 
 ;; ============================================================================
 ;; ORG MODE
@@ -222,7 +234,7 @@ VERSION CONTROL:
 
 HELP  (same C-h keys, better output via helpful):
   C-h f/v/k/F/C helpful-*
-  C-c C-d       helpful-at-point     (no vanilla equivalent)
+  C-h d         helpful-at-point     (was C-c C-d; moved off major-mode territory)
 
 ORG  (Org manual recommendations):
   C-c a         org-agenda

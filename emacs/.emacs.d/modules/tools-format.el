@@ -6,8 +6,16 @@
 ;;; on-save toggle from emacs-ide-config-data at load time.
 ;;; Add "tools-format" to emacs-ide-feature-modules in init.el,
 ;;; placed after lang-core and before keybindings.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
+;;;   - 2.2.4: emacs-ide-format--formatter-for previously called `(intern val)'
+;;;     unconditionally on any string from config.yml. If the string does not
+;;;     match a key in `apheleia-formatters', apheleia silently fails at save
+;;;     time. Fix: validate against explicit allowlist
+;;;     `emacs-ide-format--known-apheleia-formatters'. Known values intern to
+;;;     symbols; unknown values return as strings and emit a :warning.
+;;;     apheleia mode-alist entries are now guarded with `symbolp' so
+;;;     unrecognised strings never reach apheleia-mode-alist.
 ;;;   - 2.2.2: emacs-ide-format--formatter-for had a dead branch: Elisp `null`
 ;;;     and `(eq val nil)` are identical predicates — both match nil. Since YAML
 ;;;     `false` parses to nil AND an absent key also returns nil from assoc,
@@ -28,6 +36,37 @@
 ;; ============================================================================
 ;; CONFIG HELPERS
 ;; ============================================================================
+
+;; FIX 2.2.4: The set of valid apheleia formatter keys for languages this
+;;   config exposes. `emacs-ide-format--formatter-for' previously called
+;;   `(intern val)' unconditionally on any string from config.yml, which
+;;   works coincidentally when the config string happens to match the key
+;;   in `apheleia-formatters' exactly (e.g. "black" -> 'black), but silently
+;;   produces an unknown symbol for anything outside this set — apheleia
+;;   then reports "no such formatter" at save time with no clear indication
+;;   of where the bad value came from.
+;;   Fix: validate the interned symbol against this explicit allowlist before
+;;   returning it.  An unrecognised string falls through to the string-value
+;;   branch (returned as-is) so callers that use the value for executable-find
+;;   (format-all) continue to work, while apheleia callers receive nil for
+;;   unrecognised values and skip the mode registration rather than register
+;;   a broken formatter.
+(defconst emacs-ide-format--known-apheleia-formatters
+  '(black prettier rustfmt gofmt gofumpt shfmt
+    clang-format clang-format-diff autopep8 yapf isort ruff
+    eslint eslint_d biome deno
+    rubocop standardrb perltidy
+    phpcbf phpcs psalm phan
+    ktlint google-java-format scalafmt
+    terraform nixpkgs-fmt ormolu fourmolu
+    swiftformat ocamlformat elm-format
+    mix cljfmt zprint pgformatter
+    luaformatter stylua cmake-format
+    xmllint tidy sqlfluff)
+  "Symbols that are valid keys in `apheleia-formatters'.
+Used by `emacs-ide-format--formatter-for' to validate config values
+before interning them as apheleia formatter keys.")
+
 (defun emacs-ide-format--config-get (key)
   "Get KEY from the `formatting' section of emacs-ide-config-data.
 Returns the value if present, or the sentinel symbol `:absent' if the
@@ -45,13 +84,35 @@ Returns nil when the config key is explicitly set to false (disabled).
 FIX 2.2.2: Previously (null val) and (eq val nil) were identical tests —
   both matched nil, making the 'false -> disabled' branch unreachable.
   Now uses the `:absent' sentinel from `emacs-ide-format--config-get'
-  to distinguish absent key from explicit false."
+  to distinguish absent key from explicit false.
+FIX 2.2.4: `(intern val)' was called unconditionally on any config string.
+  If the string does not match an `apheleia-formatters' key the formatter
+  is silently unknown at save time.  Now validates against
+  `emacs-ide-format--known-apheleia-formatters': known values are interned
+  to symbols (for apheleia); unknown values are returned as strings (for
+  format-all / executable-find callers) but apheleia mode-alist entries
+  for unrecognised formatters are skipped."
   (let ((val (emacs-ide-format--config-get language-key)))
     (cond
      ((eq val :absent) default)    ; key not in config  -> use default
      ((eq val t)       default)    ; explicit true       -> use default
      ((null val)       nil)        ; explicit false/nil  -> disabled
-     (t (intern val)))))           ; string value        -> symbol
+     (t
+      ;; Validate before interning: only produce a symbol when it is a
+      ;; known apheleia formatter key.  Unknown strings are returned as
+      ;; strings so format-all / executable-find callers still work.
+      (let ((sym (intern val)))
+        (if (memq sym emacs-ide-format--known-apheleia-formatters)
+            sym
+          (display-warning
+           'emacs-ide
+           (format "tools-format: unknown formatter %S in config \
+(not in emacs-ide-format--known-apheleia-formatters). \
+apheleia entry will be skipped; add to the allowlist if this is a valid \
+apheleia formatter key."
+                   val)
+           :warning)
+          val))))))           ; string value        -> symbol
 
 (defun emacs-ide-format--on-save-p ()
   "Return non-nil if format-on-save is enabled in config (default: true)."
@@ -131,24 +192,29 @@ FIX 2.2.2: Previously (null val) and (eq val nil) were identical tests —
     ;; apheleia handles a missing or locally-installed formatter gracefully
     ;; (it reports a per-save error rather than crashing), so the guard is wrong here.
     ;; format-all (above) still needs the PATH check because it builds a static list.
-    (when py (setf (alist-get 'python-mode apheleia-mode-alist) py))
+    ;; FIX 2.2.4: Only register entries whose value is a symbol (i.e. passed
+    ;; the allowlist check in emacs-ide-format--formatter-for).  A string
+    ;; value means the formatter name was unrecognised — apheleia cannot use
+    ;; it and a warning was already emitted above.
+    (when (and py (symbolp py))
+      (setf (alist-get 'python-mode apheleia-mode-alist) py))
 
-    (when js
+    (when (and js (symbolp js))
       (dolist (mode '(js-mode js2-mode web-mode css-mode json-mode markdown-mode))
         (setf (alist-get mode apheleia-mode-alist) js)))
 
-    (when ts
+    (when (and ts (symbolp ts))
       (setf (alist-get 'typescript-mode apheleia-mode-alist) ts))
 
-    (when rs
+    (when (and rs (symbolp rs))
       (setf (alist-get 'rust-mode apheleia-mode-alist) rs))
 
-    (when go
+    (when (and go (symbolp go))
       (setf (alist-get 'go-mode apheleia-mode-alist) go))
 
-    (when c
+    (when (and c (symbolp c))
       (setf (alist-get 'c-mode   apheleia-mode-alist) c)
-      (setf (alist-get 'c++-mode apheleia-mode-alist) (or cpp c))))
+      (setf (alist-get 'c++-mode apheleia-mode-alist) (or (and (symbolp cpp) cpp) c))))
 
   ;; Respect the on-save toggle from config
   (if (emacs-ide-format--on-save-p)

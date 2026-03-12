@@ -2,7 +2,14 @@
 ;;; Commentary:
 ;;; Dashboard with health status widget. Health results from emacs-ide-health.el
 ;;; are displayed inline on startup — no M-x required to see IDE status.
-;;; Version: 2.2.1
+;;; Version: 2.2.2
+;;; Fixes:
+;;;   - 2.2.2: dashboard-item-generators registration moved from :config to
+;;;     :init so the ide-health handler exists before dashboard-items is
+;;;     processed by dashboard-setup-startup-hook. Previously the generator
+;;;     was registered in :config (after :init), so the health widget was
+;;;     missing on the first launch and only appeared after the 4-second idle
+;;;     refresh. Now works correctly on first paint.
 ;;; Code:
 
 ;; ============================================================================
@@ -79,6 +86,17 @@ health check has populated emacs-ide-health-results."
     ;; the absence of :defer explicitly opts out of the global always-defer default.
     :demand t
     :init
+    ;; FIX 2.2.2: Register the ide-health generator in :init, BEFORE
+    ;;   dashboard-items references it.  Previously the generator was added
+    ;;   in :config which runs after :init — dashboard processed the items
+    ;;   list during setup and found no handler for ide-health, so the health
+    ;;   widget was silently missing on the very first launch (only the 4-second
+    ;;   idle-timer refresh rescued it).  Registering here guarantees the
+    ;;   handler exists before dashboard-setup-startup-hook processes the list.
+    (add-to-list 'dashboard-item-generators
+                 '(ide-health . emacs-ide-dashboard--health-section))
+    (add-to-list 'dashboard-item-shortcuts
+                 '(ide-health . "h"))
     (setq dashboard-startup-banner 'logo
           dashboard-center-content t
           dashboard-set-heading-icons t
@@ -93,13 +111,6 @@ health check has populated emacs-ide-health-results."
           dashboard-banner-logo-title "EMACS IDE - Professional Development Environment"
           dashboard-footer-messages '("Ready to code"))
     :config
-    ;; Register the health widget
-    ;; dashboard-item-generators and dashboard-item-shortcuts are plain alists —
-    ;; add entries unconditionally, guarded only by dashboard being loaded.
-    (add-to-list 'dashboard-item-generators
-                 '(ide-health . emacs-ide-dashboard--health-section))
-    (add-to-list 'dashboard-item-shortcuts
-                 '(ide-health . "h"))
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
     ;; Refresh dashboard after idle health check fires (3s) so status appears

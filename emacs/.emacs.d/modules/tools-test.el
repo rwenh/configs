@@ -30,8 +30,20 @@
 ;;; Add "tools-test" to emacs-ide-feature-modules in init.el (after lang-core,
 ;;; before keybindings).
 ;;;
-;;; Version: 1.0.3
+;;; Version: 1.0.5
 ;;; Fixes:
+;;;   - 1.0.5: emacs-ide-test--detect-generic no longer unconditionally spawns
+;;;     a `make -qp | awk' subprocess on every detect call. Previously the
+;;;     subprocess ran even when the Makefile had no test target, adding
+;;;     latency on every C-c C-t press in any project with a Makefile.
+;;;     Fix: grep the Makefile in-process first; only confirm with `make -qp'
+;;;     when a plausible test: rule line is found (true-positive path only).
+;;;   - 1.0.4: emacs-ide-test-run-all now genuinely runs the full suite.
+;;;     Previously it was a direct alias for emacs-ide-test-run — identical
+;;;     behaviour, docstring claim of "ignoring file context" unimplemented.
+;;;     Fix: bind buffer-file-name to nil during detection so file-scoped
+;;;     detector branches (e.g. pytest on current file) are suppressed and
+;;;     the project-wide branch is chosen instead.
 ;;;   - 1.0.2: emacs-ide-test--detect-haskell used file-exists-p with "*.cabal"
 ;;;     which is a shell glob, not a valid path — always returned nil, so cabal
 ;;;     was never detected. Fixed to use directory-files with a regexp.
@@ -236,16 +248,32 @@
      (t nil))))
 
 (defun emacs-ide-test--detect-generic ()
-  "Generic fallback: Makefile test target. Returns (command . description) or nil."
-  (let ((root (emacs-ide-test--project-root)))
-    (when (file-exists-p (expand-file-name "Makefile" root))
-      ;; Check if 'test' target exists
-      (let ((targets (shell-command-to-string
-                      (format "make -C %s -qp 2>/dev/null | awk -F: '/^[a-zA-Z]/{print $1}'"
-                              (shell-quote-argument root)))))
-        (when (string-match-p "\\btest\\b" targets)
-          (cons (format "cd %s && make test 2>&1" (shell-quote-argument root))
-                "make test"))))))
+  "Generic fallback: Makefile test target. Returns (command . description) or nil.
+FIX 1.0.5: Previously always spawned a `make -qp | awk' subprocess to check
+  for a test target — even in projects with a Makefile but no test target, so
+  the subprocess cost was incurred on every detect call regardless of outcome.
+  Fix: grep the Makefile text in-process first (zero subprocess cost for the
+  common miss case). Only when a plausible `test:' rule line is found do we
+  confirm with `make -qp', since make includes may define targets not visible
+  to a plain text grep."
+  (let* ((root     (emacs-ide-test--project-root))
+         (makefile (expand-file-name "Makefile" root)))
+    (when (file-exists-p makefile)
+      ;; Cheap in-process pre-screen: rule definition starts with "test"
+      ;; followed by optional spaces and a colon.
+      (let ((plausible
+             (with-temp-buffer
+               (insert-file-contents makefile)
+               (re-search-forward "^test[[:space:]]*:" nil t))))
+        (when plausible
+          ;; Confirm via make -qp only on true positives so the subprocess
+          ;; cost is paid at most once per project, not on every C-c C-t.
+          (let ((targets (shell-command-to-string
+                          (format "make -C %s -qp 2>/dev/null | awk -F: '/^[a-zA-Z]/{print $1}'"
+                                  (shell-quote-argument root)))))
+            (when (string-match-p "\\btest\\b" targets)
+              (cons (format "cd %s && make test 2>&1" (shell-quote-argument root))
+                    "make test"))))))))
 
 ;; ============================================================================
 ;; DISPATCH TABLE
@@ -496,10 +524,27 @@ Detects the framework automatically. C-c C-t."
                (symbol-name major-mode)))))
 
 (defun emacs-ide-test-run-all ()
-  "Always run the full test suite, ignoring any file/function context.
-C-c C-T."
+  "Always run the full test suite from the project root.
+Unlike `emacs-ide-test-run', this never narrows to the current file:
+it temporarily clears `buffer-file-name' so every detector's
+file-scoped branch (e.g. \"pytest on current file\") is skipped and
+the project-wide branch is used instead.
+C-c C-T.
+FIX 1.0.4: Previously this was a direct alias for emacs-ide-test-run,
+  meaning it was identical in behaviour — the docstring's claim of
+  \"ignoring file/function context\" was not implemented. Detectors like
+  emacs-ide-test--detect-python have a file-scoped branch that fires
+  when the current buffer IS a test file; that branch is now suppressed
+  by letting buffer-file-name be nil during detection."
   (interactive)
-  (emacs-ide-test-run))
+  (let ((buffer-file-name nil))          ; suppress file-scoped detector branches
+    (let ((detected (emacs-ide-test--detect)))
+      (if detected
+          (emacs-ide-test--run-command (car detected)
+                                       (emacs-ide-test--project-root)
+                                       (concat (cdr detected) " [full suite]"))
+        (message "⚠️  No test runner detected for %s. Install pytest/cargo/go/jest/etc."
+                 (symbol-name major-mode))))))
 
 (defun emacs-ide-test-run-point ()
   "Run the single test at point, if the framework supports it.

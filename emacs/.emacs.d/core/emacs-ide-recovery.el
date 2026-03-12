@@ -1,8 +1,15 @@
 ;;; emacs-ide-recovery.el --- Enterprise Error Recovery System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade error recovery and safe mode.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
+;;;   - 2.2.4: Added forward-declaration `(defvar emacs-ide-safe-mode nil)'
+;;;     at the top of this file. Previously emacs-ide-recovery-enter-safe-mode
+;;;     used plain `setq' on a variable declared only in emacs-ide-config.el.
+;;;     When recovery loads before config (crash-count threshold path), `setq'
+;;;     on an undeclared variable produced byte-compiler warnings and was
+;;;     logically fragile. `defvar' is idempotent: no-op if config.el already
+;;;     ran; correct forward-declaration if it has not.
 ;;;   - 2.2.3: Session-stability auto-reset now only fires when no errors were
 ;;;     logged this session. Previously the 5-minute idle timer unconditionally
 ;;;     called emacs-ide-recovery-reset-crash-count. This meant: crash twice,
@@ -15,6 +22,27 @@
 ;;;   - 2.2.2: emacs-ide-recovery-disable-package: atomic write via temp-file.
 ;;;   - 2.2.2: emacs-ide-recovery-log: write + rename in single condition-case.
 ;;; Code:
+
+;; ============================================================================
+;; FORWARD DECLARATION
+;; FIX 2.2.4: emacs-ide-safe-mode is defvar'd in emacs-ide-config.el.
+;;   emacs-ide-recovery-enter-safe-mode sets it via plain `setq'.
+;;   When recovery loads before config (the exact path it exists to handle —
+;;   e.g. crash-count threshold reached before config.el finishes), `setq'
+;;   on an undeclared variable produces a byte-compiler warning AND is
+;;   logically fragile: if config.el later defvar's it the initial value
+;;   wins only if the defvar runs first, which is not guaranteed here.
+;;   Fix: defvar it here with value nil as a forward-declaration.
+;;   `defvar' is idempotent — if config.el has already loaded and declared
+;;   it, this no-ops. If config.el has not loaded yet, this ensures the
+;;   variable is properly declared before enter-safe-mode writes it.
+;; ============================================================================
+(defvar emacs-ide-safe-mode nil
+  "Non-nil when Emacs IDE is running in safe/minimal mode.
+Declared here as a forward-reference so emacs-ide-recovery.el is
+safe to load before emacs-ide-config.el (its primary declaration).
+`defvar' is idempotent: if config.el has already set this, this line
+is a no-op.")
 
 ;; ============================================================================
 ;; RECOVERY CONFIGURATION
