@@ -1,25 +1,8 @@
 -- lua/plugins/specs/advanced.lua - Advanced features
+-- NOTE: code_runner.nvim removed — core.util.runner handles file execution natively.
 
 return {
-  -- Code runner
-  {
-    "CRAG666/code_runner.nvim",
-    cmd = "RunCode",
-    opts = {
-      mode = "float",
-      filetype = {
-        python = "python3 -u",
-        rust = "cd $dir && rustc $fileName && $dir/$fileNameWithoutExt",
-        go = "go run",
-        javascript = "node",
-        typescript = "tsx",
-        lua = "lua",
-        sh = "bash",
-      },
-    },
-  },
-
-  -- Better escape (FIXED for v2.0+)
+  -- Better escape (v2.0+ API)
   {
     "max397574/better-escape.nvim",
     event = "InsertEnter",
@@ -27,25 +10,18 @@ return {
       timeout = 200,
       default_mappings = false,
       mappings = {
-        i = {
-          j = {
-            k = "<Esc>",
-          },
-          k = {
-            j = "<Esc>",
-          },
-        },
+        i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
       },
     },
   },
 
-  -- Symbol navigation
+  -- Symbol navigation (breadcrumb context in lualine/winbar)
   {
     "SmiteshP/nvim-navic",
     dependencies = "neovim/nvim-lspconfig",
     opts = {
-      separator = " > ",
-      highlight = true,
+      separator  = " > ",
+      highlight  = true,
       depth_limit = 5,
     },
   },
@@ -55,14 +31,14 @@ return {
     "NvChad/nvim-colorizer.lua",
     event = "BufReadPre",
     opts = {
-      filetypes = { "*", "! lazy" },
+      filetypes = { "*", "!lazy" },
       user_default_options = {
-        RGB = true,
-        RRGGBB = true,
+        RGB      = true,
+        RRGGBB   = true,
         RRGGBBAA = true,
-        css = true,
+        css      = true,
         tailwind = true,
-        mode = "background",
+        mode     = "background",
       },
     },
   },
@@ -73,13 +49,13 @@ return {
     event = "VeryLazy",
   },
 
-  -- Motion repeat
+  -- Motion repeat (enables '.' for plugin maps)
   {
     "tpope/vim-repeat",
     event = "VeryLazy",
   },
 
-  -- File type icon colors
+  -- File type icons
   {
     "nvim-tree/nvim-web-devicons",
     lazy = true,

@@ -1,4 +1,18 @@
--- lua/plugins/specs/ui.lua - UI plugins (all themes pre-configured, pick in core/theme.lua)
+-- lua/plugins/specs/ui.lua - UI plugins
+-- Only the ACTIVE theme loads eagerly (lazy=false). All others are lazy.
+-- To switch themes, change M.config.theme in core/theme.lua.
+
+local active = require("core.theme").config.theme
+
+local function theme_spec(plugin_name, name, extra)
+  local spec = vim.tbl_extend("force", {
+    plugin_name,
+    name     = name or nil,
+    lazy     = active ~= (name or plugin_name:match("/([^.]+)$")),
+    priority = 1000,
+  }, extra or {})
+  return spec
+end
 
 return {
 
@@ -6,16 +20,13 @@ return {
   -- │                    THEMES                            │
   -- └─────────────────────────────────────────────────────┘
 
-  { "catppuccin/nvim",            name = "catppuccin",       lazy = false, priority = 1000 },
-  { "folke/tokyonight.nvim",      lazy = false, priority = 1000,
-    opts = { style = "moon", transparent = false } },
-  { "rose-pine/neovim",           name = "rose-pine",        lazy = false, priority = 1000 },
-  { "rebelot/kanagawa.nvim",      lazy = false, priority = 1000 },
-  { "sainnhe/gruvbox-material",   lazy = false, priority = 1000,
-    init = function() vim.g.gruvbox_material_better_performance = 1 end },
-  { "maxmx03/solarized.nvim",     lazy = false, priority = 1000 },
-  { "craftzdog/solarized-osaka.nvim", lazy = false, priority = 1000,
-    opts = { transparent = false } },
+  theme_spec("catppuccin/nvim",              "catppuccin"),
+  theme_spec("folke/tokyonight.nvim",        "tokyonight",       { opts = { style = "moon", transparent = false } }),
+  theme_spec("rose-pine/neovim",             "rose-pine"),
+  theme_spec("rebelot/kanagawa.nvim",        "kanagawa"),
+  theme_spec("sainnhe/gruvbox-material",     "gruvbox-material", { init = function() vim.g.gruvbox_material_better_performance = 1 end }),
+  theme_spec("maxmx03/solarized.nvim",       "solarized"),
+  theme_spec("craftzdog/solarized-osaka.nvim","solarized-osaka", { opts = { transparent = false } }),
 
   -- ┌─────────────────────────────────────────────────────┐
   -- │                   STATUS / BUFFER                    │
@@ -109,13 +120,22 @@ return {
         { "<leader>b",  group = "buffer" },
         { "<leader>c",  group = "code" },
         { "<leader>d",  group = "debug" },
+        { "<leader>e",  group = "explorer" },
         { "<leader>f",  group = "find" },
         { "<leader>g",  group = "git" },
+        { "<leader>h",  group = "harpoon" },
         { "<leader>r",  group = "run/rust" },
-        { "<leader>s",  group = "search" },
+        { "<leader>s",  group = "split" },
         { "<leader>t",  group = "test/theme" },
         { "<leader>u",  group = "ui" },
-        { "<leader>x",  group = "trouble" },
+        { "<leader>w",  group = "window" },
+        { "<leader>x",  group = "utils" },
+        { "<leader>,",  group = "lsp" },
+        { "<leader>.",  group = "git-hunks" },
+        { "<leader>;",  group = "debug" },
+        { "<leader>'",  group = "run/test" },
+        { "<leader>/",  group = "search/replace" },
+        { "<leader>\\", group = "terminal" },
       },
     },
   },
