@@ -1,8 +1,19 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.2.7
+;;; Version: 2.2.8
 ;;; Fixes:
+;;;   - 2.2.8: Removed duplicate emacs-ide-lsp-check-servers definition that
+;;;     was left inside the (when emacs-ide-lsp-enable ...) block after the
+;;;     2.2.6 fix moved the canonical definition outside it.  Having two
+;;;     definitions caused the inner (inferior, LSP-only) version to shadow
+;;;     the outer (always-available) one during the load phase when
+;;;     emacs-ide-lsp-enable is t: Emacs evaluates the inner defun first,
+;;;     installs it as the function cell, then evaluates the outer defun and
+;;;     replaces it — wasted work but not fatal.  When emacs-ide-lsp-enable
+;;;     is nil the inner defun is never evaluated, so only the outer
+;;;     definition exists, which is correct.  Removed the inner copy to
+;;;     eliminate the confusion and the redundant evaluation.
 ;;;   - 2.2.7: lsp-pyright :if guard now checks both "pyright" and
 ;;;     "pyright-langserver". emacs-ide-health.el v2.2.2 already handled
 ;;;     both names; the use-package guard here only checked "pyright" so
@@ -300,35 +311,6 @@
         eldoc-echo-area-prefer-doc-buffer t)
   :config
   (global-eldoc-mode 1))
-
-;; ============================================================================
-;; LSP SERVER STATUS CHECKER
-;; ============================================================================
-(defun emacs-ide-lsp-check-servers ()
-  "Check and display LSP server availability."
-  (interactive)
-  (let ((servers '(("pyright"                    . "Python")
-                   ("rust-analyzer"              . "Rust")
-                   ("gopls"                      . "Go")
-                   ("typescript-language-server" . "TypeScript/JS")
-                   ("clangd"                     . "C/C++")))
-        (available '())
-        (missing '()))
-    (dolist (server servers)
-      (if (executable-find (car server))
-          (push server available)
-        (push server missing)))
-    (with-output-to-temp-buffer "*LSP Servers*"
-      (princ "=== LSP SERVERS STATUS ===\n\n")
-      (princ (format "Available: %d\n" (length available)))
-      (dolist (srv available)
-        (princ (format "  ✓ %-35s (%s)\n" (car srv) (cdr srv))))
-      (when missing
-        (princ (format "\nMissing: %d\n" (length missing)))
-        (dolist (srv missing)
-          (princ (format "  ✗ %-35s (%s)\n" (car srv) (cdr srv)))))
-      (princ "\nInstall missing servers via your system package manager\n")
-      (princ "or: M-x lsp-install-server\n"))))
 
 ) ;; end (when emacs-ide-lsp-enable ...)
 

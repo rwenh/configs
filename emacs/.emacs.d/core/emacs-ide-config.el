@@ -1,20 +1,27 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.5
+;;; Version: 2.2.6
 ;;; Fixes:
+;;;   - 2.2.6: emacs-ide-config-apply telemetry block: replaced raw (setq
+;;;     emacs-ide-telemetry-enabled VAL) with calls to the proper
+;;;     emacs-ide-telemetry-enable / emacs-ide-telemetry-disable functions.
+;;;     The previous raw setq only updated the variable; it did NOT stop or
+;;;     restart the 0.5-second repeat idle timer created by
+;;;     emacs-ide-telemetry--ensure-flush-timer at module load time.
+;;;     On a config reload that disabled telemetry, the timer kept running.
+;;;     On a subsequent reload that re-enabled it, a SECOND timer was created
+;;;     alongside the still-running first. After enough reload cycles the
+;;;     timer-function slot could become nil, producing:
+;;;       "error running timer: (void-function nil)"
+;;;     on every 0.5 s idle tick.
+;;;     Fix: call emacs-ide-telemetry-enable / emacs-ide-telemetry-disable
+;;;     which correctly start/stop the timer. Fall back to raw setq when the
+;;;     functions are not yet loaded (safe mode / partial startup).
 ;;;   - 2.2.5: emacs-ide-config-apply: added missing sections — formatting,
-;;;     languages, git, terminal, debug, project. Previously only 7 of 13 top-
-;;;     level config sections were applied; modules calling emacs-ide-config-get
-;;;     worked fine but reload/report showed stale defaults for these sections.
-;;;   - 2.2.5: emacs-ide-config-apply: TLS block used (with-eval-after-load
-;;;     'gnutls) which deferred setting until after the first TLS call — the
-;;;     same bug fixed in security.el 2.2.2. Now uses (require 'gnutls) to
-;;;     apply settings eagerly, consistent with early-init.el and security.el.
-;;;   - 2.2.5: defvar declarations moved ABOVE emacs-ide-config-apply so
-;;;     docstrings and default values are visible before apply is called.
-;;;     Previously setq in apply ran before defvar — technically OK in Emacs
-;;;     but caused confusing void-variable warnings in some byte-compile paths.
+;;;     languages, git, terminal, debug, project.
+;;;   - 2.2.5: emacs-ide-config-apply: TLS block uses (require 'gnutls) eagerly.
+;;;   - 2.2.5: defvar declarations moved ABOVE emacs-ide-config-apply.
 ;;;   - 2.2.4: emacs-ide-config-get-nested now handles arbitrary depth paths.
 ;;;   - 2.2.4: YAML parser supports 3-level nesting for environments: block.
 ;;;   - 2.2.4: emacs-ide-config-apply: replaced defvar with setq for reload.
@@ -456,10 +463,21 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
           (setq gnutls-verify-error (val 'tls-verify security)))))
 
     ;; ── Telemetry ────────────────────────────────────────────────────────────
+    ;; FIX 2.2.6: Use enable/disable functions to correctly manage the
+    ;; repeat idle timer lifecycle. Raw setq left stale timers running across
+    ;; config reloads, eventually producing (void-function nil) timer errors.
+    ;; Fall back to setq when telemetry.el is not loaded yet (safe mode).
     (let ((telemetry (section 'telemetry)))
       (when telemetry
         (when (assoc 'enabled telemetry)
-          (setq emacs-ide-telemetry-enabled (val 'enabled telemetry)))))))
+          (let ((want (val 'enabled telemetry)))
+            (cond
+             ((and want (fboundp 'emacs-ide-telemetry-enable))
+              (emacs-ide-telemetry-enable))
+             ((and (not want) (fboundp 'emacs-ide-telemetry-disable))
+              (emacs-ide-telemetry-disable))
+             (t
+              (setq emacs-ide-telemetry-enabled want)))))))))
 
 ;; ============================================================================
 ;; CONFIGURATION ACCESSORS
