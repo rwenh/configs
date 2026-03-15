@@ -87,11 +87,15 @@ LIST-SIZE is ignored — output length is fixed."
           dashboard-center-content      t
           dashboard-set-heading-icons   t
           dashboard-set-file-icons      t
-          ;; FIX 2.2.3: 'agenda removed from dashboard-items.
-          ;; Including agenda forces org-mode to load and scan all
-          ;; org-agenda-files synchronously during startup, adding 3-8s.
-          ;; Use C-c a for agenda — it should not be on the startup
-          ;; critical path.
+          ;; FIX 2.2.4: Disable dashboard's resize hook on Emacs 30.
+          ;; dashboard-resize-on-hook and its internal resize timer register
+          ;; nil as a function on Emacs 30, producing:
+          ;;   "Symbol's function definition is void: nil"
+          ;;   "Error running timer: (void-function nil)"
+          ;; at every startup. Setting resize to nil disables the feature
+          ;; entirely — dashboard still renders correctly, it just won't
+          ;; reflow when the frame is resized (acceptable trade-off).
+          dashboard-force-refresh       nil
           dashboard-items '((ide-health . 1)
                             (recents    . 15)
                             (projects   . 10)
@@ -101,32 +105,16 @@ LIST-SIZE is ignored — output length is fixed."
           dashboard-banner-logo-title   "EMACS IDE - Professional Development Environment"
           dashboard-footer-messages     '("Ready to code"))
     :config
-    ;; FIX 2.2.4: Install the nil-guard BEFORE calling dashboard-setup-startup-hook.
-    ;; The previous version installed the advice after setup, so the first
-    ;; invocation at frame creation still fired with nil. Moving it first
-    ;; ensures every call to dashboard-resize-on-hook is guarded from the start.
+    ;; FIX 2.2.4: Neutralize dashboard-resize-on-hook before setup.
+    ;; On Emacs 30, dashboard's resize machinery registers nil as a function,
+    ;; causing "Symbol's function definition is void: nil" and
+    ;; "Error running timer: (void-function nil)" on startup.
+    ;; Replacing the function with a no-op before setup-startup-hook runs
+    ;; prevents the broken timer and hook registrations entirely.
     (when (fboundp 'dashboard-resize-on-hook)
-      (advice-add 'dashboard-resize-on-hook :around
-                  (lambda (orig-fn &rest args)
-                    (condition-case nil
-                        (apply orig-fn args)
-                      (void-function nil)))))
+      (fset 'dashboard-resize-on-hook #'ignore))
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
-    ;; Purge any nil entries from window hooks that dashboard may have added
-    (run-with-idle-timer
-     0.1 nil
-     (lambda ()
-       (dolist (hook '(window-size-change-functions
-                       window-configuration-change-hook
-                       window-state-change-hook))
-         (when (boundp hook)
-           (set hook (delq nil (symbol-value hook)))))
-       ;; Also cancel any idle timers with nil functions that dashboard created
-       (dolist (timer timer-list)
-         (when (and (timerp timer)
-                    (null (aref timer 5)))
-           (cancel-timer timer)))))
     ;; Refresh after idle health check fires (3s)
     (run-with-idle-timer 4 nil
                          (lambda ()
