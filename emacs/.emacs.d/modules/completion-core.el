@@ -1,7 +1,7 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Vertico + Consult + Corfu - Maximum efficiency with proper config integration
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
 ;;;   - 2.2.2: corfu-preview-current changed from 'insert to t.
 ;;;     'insert auto-inserts the top candidate as you type, which breaks
@@ -175,13 +175,23 @@
 
 ;; ============================================================================
 ;; CAPE - COMPLETION AT POINT EXTENSION (DEFERRED)
+;; M-20 FIX: Previously added cape functions to the GLOBAL default value of
+;; completion-at-point-functions via (add-to-list ...) in :init. That pollutes
+;; every buffer's capf list — including vterm, dired, minibuffer, and
+;; compilation buffers — causing spurious corfu popups in non-code contexts
+;; and interfering with LSP's own capf setup.
+;; Fix: add cape functions buffer-locally via prog-mode and text-mode hooks
+;; only, where code/prose completion is actually wanted. cl-pushnew prevents
+;; duplicates if the hook runs more than once in a buffer.
 ;; ============================================================================
 (use-package cape
-  :init
-  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
-  (add-to-list 'completion-at-point-functions #'cape-file)
-  (add-to-list 'completion-at-point-functions #'cape-elisp-block)
-  (add-to-list 'completion-at-point-functions #'cape-keyword))
+  :config
+  (defun emacs-ide-cape-setup ()
+    "Add cape completion functions buffer-locally for code/prose buffers."
+    (dolist (fn (list #'cape-keyword #'cape-elisp-block #'cape-file #'cape-dabbrev))
+      (cl-pushnew fn completion-at-point-functions)))
+  (dolist (hook '(prog-mode-hook text-mode-hook))
+    (add-hook hook #'emacs-ide-cape-setup)))
 
 ;; ============================================================================
 ;; HIPPIE EXPAND WITH YASNIPPET INTEGRATION

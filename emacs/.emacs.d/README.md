@@ -1,6 +1,6 @@
 # Enterprise Emacs IDE
 
-**Version 2.2.3** — Production-grade Emacs configuration with LSP, DAP debugging,
+**Version 2.2.6** — Production-grade Emacs configuration with LSP, DAP debugging,
 language-aware test runner, async formatting, Git integration, and full recovery system.
 
 ---
@@ -13,6 +13,11 @@ language-aware test runner, async formatting, Git integration, and full recovery
 | Git | any | Required — health check will fail without it |
 | ripgrep (`rg`) | any | Recommended for project search |
 | `fd` | any | Recommended for file finding |
+
+> **Note on `ag` (The Silver Searcher):** The health check may warn about `ag` missing.
+> This is a low-priority warning — `ag` is only used by optional `helm-ag`/`counsel-ag`
+> packages which are not part of this config. You can safely ignore it, or install via
+> your package manager (`apt install silversearcher-ag` / `pacman -S the_silver_searcher`).
 
 **LSP servers** (install only what you use):
 
@@ -53,7 +58,17 @@ emacs --init-directory ~/.emacs.d
 ```
 
 On first launch straight.el bootstraps itself and installs all packages.
-This takes 2–5 minutes. Subsequent startups target **< 2 seconds**.
+This takes 2–5 minutes. Subsequent startups target **< 3 seconds**.
+
+> **After upgrading Emacs** (e.g. 29 → 30), always purge stale bytecode
+> before restarting — old `.elc`/`.eln` files cause all `M-x emacs-ide-*`
+> commands to silently disappear:
+> ```bash
+> find ~/.emacs.d/core ~/.emacs.d/modules -name "*.elc" -delete
+> find ~/.emacs.d/core ~/.emacs.d/modules -name "*.eln" -delete
+> rm -rf ~/.emacs.d/var/eln-cache/
+> ```
+> Or from inside Emacs: `M-x emacs-ide-purge-bytecode-cache`
 
 To boot in safe mode (minimal config, no packages):
 
@@ -94,7 +109,7 @@ emacs --safe
     tools-format.el      — Apheleia (async) + format-all + editorconfig
     tools-org.el         — Org-mode, agenda, capture, babel, export
     tools-spelling.el    — Flyspell (prose) + flyspell-prog-mode (code)
-    tools-test.el        — Language-aware test runner (NEW)
+    tools-test.el        — Language-aware test runner
     lang-core.el         — 15+ language modes + tree-sitter grammars
     debug-core.el        — DAP debugging + GDB + edebug + realgud
     keybindings.el       — All global keybindings (always loads last)
@@ -260,8 +275,8 @@ Breakdown of early-init phases. Target: under 0.5s total.
 ### Startup profiler (deep)
 
 ```
-M-x emacs-ide-profile-startup     # requires esup package
-M-x emacs-ide-profile-start       # CPU+memory profiler
+M-x emacs-ide-profile-startup     # requires esup package (install separately)
+M-x emacs-ide-profile-start       # CPU+memory profiler (built-in)
 M-x emacs-ide-profile-report      # stop and show report
 ```
 
@@ -362,10 +377,10 @@ cabal test, stack test, bats, ERT, ctest, make test.
 | `S-F7` | Step over |
 | `M-F7` | Step out |
 | `C-F7` | Continue |
-| `F9` | Toggle breakpoint |
-| `C-F9` | Conditional breakpoint |
-| `S-F9` | Log message breakpoint |
-| `C-S-F9` | Delete all breakpoints |
+| `F8` | Toggle breakpoint |
+| `C-F8` | Conditional breakpoint |
+| `S-F8` | Log message breakpoint |
+| `C-S-F8` | Delete all breakpoints |
 | `C-c d h` | Debug hydra (`n s o c b B L D u d l e U w R q`) |
 | `C-c d ?` | Debug help |
 
@@ -387,7 +402,7 @@ cabal test, stack test, bats, ERT, ctest, make test.
 | `C-c p c` | `projectile-compile-project` |
 | `C-c p k` | `projectile-kill-buffers` |
 | `F9` | Treemacs toggle |
-| `F8` | Neotree toggle |
+| `C-c n` | Neotree toggle |
 
 ### Build & Compile
 
@@ -501,7 +516,7 @@ Open a Python/Rust/Go file and confirm:
 - Syntax highlighting via tree-sitter (colors richer than font-lock alone)
 - LSP diagnostics appearing in the margin
 - `C-c C-t` runs the right test framework
-- `F9` sets a breakpoint, `F5` launches the debugger
+- `F5` launches the debugger, `F8` sets a breakpoint
 - Saving triggers async formatting (no cursor jump, no blocking)
 
 ---
@@ -532,6 +547,9 @@ features: ui-core → ui-theme → ui-modeline → ui-dashboard
 
 | Version | Notes |
 |---|---|
+| 2.2.6 | **Emacs 30 fix** — all `M-x emacs-ide-*` commands were silently undefined after upgrading from Emacs 29. Root cause: `(load file nil 'nomessage)` in both module loaders allowed Emacs to prefer stale `.elc`/`.eln` bytecode compiled under Emacs 29. On Emacs 30 the cache loaded successfully (returned `t`) but no `defun`/`defvar` forms executed. Fixed to `(load file nil nil t)` forcing `.el` source loading. Added `emacs-ide-purge-bytecode-cache` utility command |
+| 2.2.5 | **Startup fix** — 58s → <3s: `straight-check-for-modifications` changed to `find-when-checking` only (was statting every package file on startup); dashboard `agenda` item removed (was forcing org-mode + file scan at startup); `projectile-indexing-method` changed to `alien`; `beacon`, `dimmer`, `pulsar`, `which-key`, `ligature`, `undo-tree`, `all-the-icons` deferred to `after-init-hook` |
+| 2.2.4 | `init.el` v2.2.4: `straight--build-cache` fix; `electric-pair-mode` added; `make-backup-files` reconciled. `emacs-ide-config.el` v2.2.6: telemetry enable/disable timer lifecycle fix. `tools-lsp.el` v2.2.8: duplicate server definition removed |
 | 2.2.3 | `tools-test.el` added; `init.el` registers it; inline YAML comment parsing fixed |
 | 2.2.2 | Config `emacs-ide-config-apply` when-let guards fixed; `tools-lsp` lsp-idle-delay fixed; `keybindings` C-c C-c compile conflict resolved; `lang-core` duplicate org block removed |
 | 2.2.1 | warning-minimum-level restore timing fixed; horizontal-scroll-bar-mode removed; native-comp var corrected |

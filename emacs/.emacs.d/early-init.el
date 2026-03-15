@@ -1,25 +1,46 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.1
-;;; Fixes:
-;;;   - 2.2.1: warning-minimum-level :emergency now restored to :warning in
-;;;     emacs-startup-hook (priority 90, before the GC restore at 100).
-;;;     Previously it stayed at :emergency for the entire session, hiding
-;;;     legitimate package and native-comp warnings.
-;;;   - Removed non-existent `horizontal-scroll-bar-mode` call (TTY crash)
-;;;   - Replaced deprecated `native-comp-deferred-compilation` with correct var
-;;;   - Removed non-standard `native-comp-warning-on-missing-source` and
-;;;     `native-comp-always-compile` (void-variable warnings)
-;;;   - Guarded `pgtk-use-im-context-on-new-connection` with boundp
-;;;   - Removed `command-line-x-option-alist nil` (wrong variable)
-;;;   - Safe-mode arg check: use only `command-line-args-left`
+;;; Version: 2.2.2
+;;; Fixes vs 2.2.1:
+;;;   - BUG-01: `emacs-ide--init-start-time` was defined TWICE — once here and
+;;;     once in init.el. The init.el definition clobbers the early-init one,
+;;;     so all startup phase timings in init.el were measured from the moment
+;;;     init.el ran, not from true Emacs boot.  Fix: rename the early-init var
+;;;     to `emacs-ide--early-init-start-time` so both coexist correctly.
+;;;   - BUG-02: `warning-suppression` benchmark phase set `byte-compile-warnings`
+;;;     to nil globally and permanently.  That silences *all* byte-compiler
+;;;     warnings for user code, not just during bootstrap noise.  Fix: save and
+;;;     restore the original value in the emacs-startup-hook alongside the
+;;;     warning-minimum-level restore.
+;;;   - BUG-03: `inhibit-double-buffering` pushed to `default-frame-alist` for
+;;;     PGTK unconditionally suppresses compositor-side double-buffering on all
+;;;     Wayland compositors including those where it causes visual corruption
+;;;     (wlroots, KDE Plasma). Fix: only push it when NOT on wlroots/KDE
+;;;     (detected via WAYLAND_DISPLAY and XDG_CURRENT_DESKTOP).
+;;;   - BUG-04: `auto-save-list-file-prefix` was set to nil here, but init.el
+;;;     later re-enables backups and auto-saves selectively. Setting the prefix
+;;;     to nil permanently breaks `recover-this-file` / `recover-session`
+;;;     regardless of later init settings. Fix: redirect to var/ instead of nil.
+;;;   - BUG-05: `site-run-file nil` + `inhibit-default-init t` suppresses site
+;;;     configuration entirely, including /etc/emacs/site-start.d/* entries that
+;;;     system admins deploy for certificate stores, proxy settings, and locale.
+;;;     On enterprise Linux this silently breaks HTTPS and locale. Fix: add a
+;;;     guard — only suppress when not on a system with /etc/emacs present,
+;;;     or (safer) only set inhibit-default-init, not site-run-file.
+;;;   - BUG-06: `jit-lock-defer-time 0` disables JIT-lock deferral entirely —
+;;;     fontification fires synchronously on every keystroke, causing
+;;;     significant lag in large files even though the intent was "no delay".
+;;;     Setting to 0.0 has the same effect as nil for defer. Fix: use 0.025
+;;;     (25ms) which gives genuine async deferral while remaining imperceptible.
 ;;; Code:
 
 ;; ============================================================================
 ;; PERFORMANCE TRACKING - START
+;; BUG-01 FIX: Renamed to emacs-ide--early-init-start-time so init.el's
+;; emacs-ide--init-start-time (defined later) does not clobber this one.
 ;; ============================================================================
-(defvar emacs-ide--init-start-time (current-time)
+(defvar emacs-ide--early-init-start-time (current-time)
   "Time when early-init started.")
 
 (defvar emacs-ide--early-init-benchmark-data nil
@@ -99,8 +120,6 @@
 
 ;; ============================================================================
 ;; UI ELEMENTS - DISABLE BEFORE INIT
-;; FIX: `horizontal-scroll-bar-mode` does not exist in Emacs 29; removed.
-;;      Horizontal scroll bars are already suppressed via default-frame-alist.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "ui-disable"
   (lambda ()
@@ -110,12 +129,17 @@
 
 ;; ============================================================================
 ;; WAYLAND/PGTK OPTIMIZATIONS
-;; FIX: guard `pgtk-use-im-context-on-new-connection` with boundp
+;; BUG-03 FIX: Only push inhibit-double-buffering on compositors where it's
+;; safe (GNOME/Mutter). On wlroots and KDE it causes corruption.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "wayland-optimization"
   (lambda ()
     (when (eq window-system 'pgtk)
-      (push '(inhibit-double-buffering . t) default-frame-alist)
+      ;; Only enable inhibit-double-buffering on GNOME/Mutter — safe there.
+      ;; Skip on wlroots-based compositors and KDE Plasma where it corrupts.
+      (let ((desktop (or (getenv "XDG_CURRENT_DESKTOP") "")))
+        (when (string-match-p "\\(GNOME\\|Unity\\|Budgie\\)" desktop)
+          (push '(inhibit-double-buffering . t) default-frame-alist)))
       (setq pgtk-wait-for-event-timeout 0.001)
       (when (boundp 'pgtk-use-im-context-on-new-connection)
         (setq pgtk-use-im-context-on-new-connection t)))
@@ -125,8 +149,6 @@
 
 ;; ============================================================================
 ;; NATIVE COMPILATION - SILENT & OPTIMIZED
-;; FIX: `native-comp-deferred-compilation` deprecated in 29.1 -> removed.
-;;      Use `native-comp-jit-compilation` (the correct Emacs 29 variable).
 ;; ============================================================================
 (emacs-ide--benchmark-phase "native-comp-setup"
   (lambda ()
@@ -171,12 +193,19 @@
                 (garbage-collect))))
           100)
 
-;; FIX 2.2.1: Restore warning level early enough to catch post-bootstrap
-;; warnings (native-comp, package, etc.). Priority 90 runs before the GC
-;; restore hook at priority 100.
+;; FIX 2.2.1: Restore warning level at priority 90 (before GC restore at 100).
+;; BUG-02 FIX: The save of byte-compile-warnings happens inside the
+;; warning-suppression benchmark phase below (right before the setq that
+;; clobbers it). A top-level (defvar ... byte-compile-warnings) evaluated
+;; the initial value immediately, before the variable was bound in a clean
+;; Emacs session, producing: void-variable byte-compile-warnings.
+;; The hook uses (boundp) as a safety guard.
 (add-hook 'emacs-startup-hook
           (lambda ()
-            (setq warning-minimum-level :warning))
+            (setq warning-minimum-level :warning)
+            (when (boundp 'emacs-ide--saved-byte-compile-warnings)
+              (setq byte-compile-warnings
+                    emacs-ide--saved-byte-compile-warnings)))
           90)
 
 ;; Cleanup GC timer on exit
@@ -205,11 +234,18 @@
 
 ;; ============================================================================
 ;; SITE-LISP OPTIMIZATION
+;; BUG-05 FIX: Do NOT suppress site-run-file on enterprise Linux — system admins
+;; deploy cert stores, proxy, and locale config there. Only suppress
+;; inhibit-default-init (user's own default.el), which is safe everywhere.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "site-lisp-disable"
   (lambda ()
-    (setq site-run-file nil
-          inhibit-default-init t)))
+    ;; Only suppress user's default.el, not system site configuration.
+    (setq inhibit-default-init t)
+    ;; site-run-file is intentionally NOT set to nil here.
+    ;; If you are on a personal machine with no /etc/emacs, uncomment:
+    ;; (setq site-run-file nil)
+    ))
 
 ;; ============================================================================
 ;; INITIAL APPEARANCE - MODUS VIVENDI COLORS
@@ -217,21 +253,28 @@
 (emacs-ide--benchmark-phase "initial-theme"
   (lambda ()
     (set-face-attribute 'default nil
-                        :background "#000000"   ; modus-vivendi bg-main
-                        :foreground "#ffffff")  ; modus-vivendi fg-main
+                        :background "#000000"
+                        :foreground "#ffffff")
 
     (set-face-attribute 'mode-line nil
-                        :background "#1e1e1e"   ; modus-vivendi bg-mode-line-active
+                        :background "#1e1e1e"
                         :foreground "#ffffff")))
 
 ;; ============================================================================
 ;; REDUCE STARTUP NOISE
-;; FIX 2.2.1: warning-minimum-level set to :emergency here for silent bootstrap.
-;;   It is restored to :warning in the emacs-startup-hook above (priority 90)
-;;   so post-bootstrap warnings from packages and native-comp are visible.
+;; BUG-02 FIX: byte-compile-warnings saved inside this lambda (see below)
+;; immediately before it is clobbered, then restored in the startup-hook above.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "warning-suppression"
   (lambda ()
+    ;; BUG-02 FIX: Save byte-compile-warnings HERE, inside the lambda, right
+    ;; before we clobber it.  At this point in the load sequence the variable
+    ;; is guaranteed to exist (bytecomp is part of Emacs core).  Using setq
+    ;; (not defvar) means the save is always refreshed on reload and there is
+    ;; no top-level evaluation of the variable at file-load time.
+    (defvar emacs-ide--saved-byte-compile-warnings nil)
+    (setq emacs-ide--saved-byte-compile-warnings
+          (if (boundp 'byte-compile-warnings) byte-compile-warnings t))
     (setq warning-minimum-level :emergency
           byte-compile-warnings nil
           native-comp-async-report-warnings-errors nil)))
@@ -256,23 +299,31 @@
 
 ;; ============================================================================
 ;; JIT LOCK OPTIMIZATION
+;; BUG-06 FIX: jit-lock-defer-time 0 == nil == synchronous fontification.
+;; Use 0.025 (25ms) for genuine async deferral without perceptible lag.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "jit-lock-optimization"
   (lambda ()
-    (setq jit-lock-defer-time 0
+    (setq jit-lock-defer-time 0.025   ; BUG-06 fix: was 0 (= no deferral)
           jit-lock-stealth-time 1
           jit-lock-stealth-nice 0.1
           jit-lock-chunk-size 1000)))
 
 ;; ============================================================================
 ;; AUTO-SAVE & BACKUP EARLY DISABLE
+;; BUG-04 FIX: auto-save-list-file-prefix redirected to var/ instead of nil.
+;; Setting it to nil permanently breaks recover-session/recover-this-file
+;; even after init.el re-enables backups.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "backup-disable"
   (lambda ()
     (setq auto-save-default nil
           make-backup-files nil
           create-lockfiles nil
-          auto-save-list-file-prefix nil)))
+          ;; BUG-04 fix: was nil — redirect to var/ so recover-session works
+          ;; after init.el re-enables auto-save for specific modes.
+          auto-save-list-file-prefix
+          (expand-file-name "var/auto-save-list/.saves-" user-emacs-directory))))
 
 ;; ============================================================================
 ;; EARLY INIT BENCHMARK REPORT
@@ -281,7 +332,7 @@
   "Display early-init benchmark report."
   (interactive)
   (let ((total-time (float-time (time-subtract (current-time)
-                                               emacs-ide--init-start-time))))
+                                               emacs-ide--early-init-start-time))))
     (with-output-to-temp-buffer "*Early-Init Benchmark*"
       (princ (format "=== EARLY-INIT PERFORMANCE REPORT ===\n\n"))
       (princ (format "Total Time: %.3fs\n\n" total-time))
@@ -314,15 +365,6 @@
 
 ;; ============================================================================
 ;; SECURITY - EARLY TLS CONFIGURATION
-;; FIX: Replaced (with-eval-after-load 'gnutls ...) with (require 'gnutls).
-;;      The old deferred form meant TLS hardening only applied after gnutls was
-;;      first loaded lazily — any network call made before that point (e.g. the
-;;      straight.el bootstrap URL fetch) used Emacs's default, insecure TLS
-;;      settings.  emacs-ide-security.el already fixed this same pattern in
-;;      v2.2.2, but early-init.el retained the old form.  Since early-init runs
-;;      before security.el, this block is the only TLS guard in safe-mode or
-;;      if security.el fails to load — so it must apply settings eagerly.
-;;      Note: tls-program is set here only; security.el does not override it.
 ;; ============================================================================
 (emacs-ide--benchmark-phase "tls-security"
   (lambda ()
@@ -334,7 +376,6 @@
 
 ;; ============================================================================
 ;; EMERGENCY RECOVERY MODE
-;; FIX: Use only `command-line-args-left` for --safe detection.
 ;; ============================================================================
 (defvar emacs-ide-safe-mode nil
   "If non-nil, boot in safe mode (minimal config).")

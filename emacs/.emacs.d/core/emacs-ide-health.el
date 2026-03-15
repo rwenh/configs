@@ -1,56 +1,43 @@
 ;;; emacs-ide-health.el --- Enterprise Health Check System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Health monitoring and auto-recovery.
-;;; Version: 2.2.2
-;;; Fixes:
-;;;   - 2.2.2: emacs-ide-health-check-lsp-servers: pyright check corrected.
-;;;     The lsp-pyright package invokes `pyright-langserver --stdio`, not the
-;;;     `pyright` CLI. Checking `pyright` caused false "missing" reports on
-;;;     systems where only the language server binary was installed (the common
-;;;     case when installing via `npm i -g pyright`). Both binaries are now
-;;;     checked; either one satisfies the Python LSP requirement.
-;;;   - 2.2.2: emacs-ide-health-check-lsp-servers: typescript-language-server
-;;;     also requires `tsserver` (from the `typescript` npm package) at runtime.
-;;;     The server will start but immediately fail without it. Added a secondary
-;;;     check that warns if typescript-language-server is present but tsserver
-;;;     is not on PATH.
-;;;   - 2.2.1: emacs-ide-health-check-performance: phase lookup fixed via name.
-;;;   - 2.2.1: emacs-ide-health-display-results: plist details handled correctly.
-;;;   - 2.2.1: emacs-ide-health-check-packages: straight--installed-p removed.
+;;; Version: 2.2.3
+;;; Fixes vs 2.2.2:
+;;;   - C-16 (HIGH): Health check registry accumulated duplicate entries on
+;;;     every config reload. Each top-level (emacs-ide-health-register-check ...)
+;;;     call pushed onto `emacs-ide-health-checks` unconditionally. On a
+;;;     second load of this file (e.g. via M-x emacs-ide-config-reload or
+;;;     any module re-require), every check was registered twice.
+;;;     emacs-ide-health-check-all then ran each check twice, doubling the
+;;;     error/warning counts and corrupting the summary string shown in the
+;;;     modeline and dashboard.
+;;;     Fix: emacs-ide-health-register-check now checks for an existing
+;;;     entry with the same name before pushing. This makes registration
+;;;     idempotent: a second load is a no-op for already-registered checks.
+;;;   - C-17 (MEDIUM): emacs-ide-health-auto-fix was declared (interactive)
+;;;     but takes a `results` argument. When called via M-x it received nil
+;;;     for results, looped over nothing, and printed "No auto-fixable issues
+;;;     found" even when fixable issues existed. This was confusing because
+;;;     the function IS the right thing to call from the health report buffer.
+;;;     Fix: split into a worker function `emacs-ide-health--auto-fix-results`
+;;;     (takes results, not interactive) and an interactive command
+;;;     `emacs-ide-health-auto-fix` that uses the last saved results.
 ;;; Code:
 
 (require 'cl-lib)
 
-(defvar emacs-ide-health-check-on-startup t
-  "Run health check on startup.")
-
-(defvar emacs-ide-health-auto-fix t
-  "Automatically fix issues when possible.")
-
-(defvar emacs-ide-health-check-interval (* 60 60)
-  "Interval for periodic health checks (seconds).")
-
-(defvar emacs-ide-health-last-check nil
-  "Timestamp of last health check.")
-
-(defvar emacs-ide-health-results nil
-  "Results from last health check.")
-
-;; ============================================================================
-;; HEALTH SUMMARY — used by modeline, dashboard, and startup message
-;; ============================================================================
-(defvar emacs-ide-health--last-errors 0
-  "Error count from last health check.")
-
-(defvar emacs-ide-health--last-warnings 0
-  "Warning count from last health check.")
+(defvar emacs-ide-health-check-on-startup t)
+(defvar emacs-ide-health-auto-fix t)
+(defvar emacs-ide-health-check-interval (* 60 60))
+(defvar emacs-ide-health-last-check nil)
+(defvar emacs-ide-health-results nil)
+(defvar emacs-ide-health--last-errors 0)
+(defvar emacs-ide-health--last-warnings 0)
 
 (defun emacs-ide-health--summary-string ()
-  "Return a short status string for modeline/dashboard use.
-Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
+  "Return a short status string for modeline/dashboard use."
   (cond
-   ((null emacs-ide-health-last-check)
-    "? unchecked")
+   ((null emacs-ide-health-last-check) "? unchecked")
    ((> emacs-ide-health--last-errors 0)
     (format "✗ %d error%s"
             emacs-ide-health--last-errors
@@ -62,23 +49,29 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
    (t "✓ Healthy")))
 
 (defun emacs-ide-health--update-counts (errors warnings)
-  "Store ERRORS and WARNINGS counts and refresh modeline."
+  "Store ERRORS and WARNINGS and refresh modeline."
   (setq emacs-ide-health--last-errors   errors
         emacs-ide-health--last-warnings warnings)
   (force-mode-line-update t))
 
 (defvar emacs-ide-health-checks nil
-  "Registry of health check functions; populated at load time.")
+  "Registry of health check functions.")
 
 (defun emacs-ide-health-register-check (name fn)
-  "Register health check FN under NAME."
-  (push (cons name fn) emacs-ide-health-checks))
+  "Register health check FN under NAME.
+C-16 FIX: Idempotent — if a check with NAME is already registered
+it is replaced in-place rather than pushed again. This prevents
+duplicate registrations when the module is reloaded."
+  (let ((existing (assoc name emacs-ide-health-checks)))
+    (if existing
+        (setcdr existing fn)
+      (push (cons name fn) emacs-ide-health-checks))))
 
 ;; ============================================================================
 ;; INTERNAL HELPERS
 ;; ============================================================================
 (defun emacs-ide-health--find-phase (phase-name)
-  "Return elapsed time for PHASE-NAME in startup phases, or nil."
+  "Return elapsed time for PHASE-NAME, or nil."
   (when (and (boundp 'emacs-ide--startup-phases)
              emacs-ide--startup-phases)
     (cdr (assoc phase-name emacs-ide--startup-phases))))
@@ -87,7 +80,7 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
 ;; SYSTEM TOOLS CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-system-tools ()
-  "Check essential system tools and return a plist result."
+  "Check essential system tools."
   (let ((required '("git" "grep" "find"))
         (recommended '("rg" "fd" "ag"))
         (missing-required '())
@@ -117,26 +110,14 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
 
 ;; ============================================================================
 ;; LSP SERVERS CHECK
-;; FIX 2.2.2: pyright — lsp-pyright invokes `pyright-langserver --stdio`, not
-;;   the `pyright` CLI binary. Check both; either satisfies the requirement.
-;;   Previously only `pyright` was checked, so the check always showed
-;;   "missing" on systems where only pyright-langserver was installed
-;;   (the standard case after `npm install -g pyright`).
-;;
-;; FIX 2.2.2: typescript-language-server requires the `typescript` npm package
-;;   at runtime (it delegates to tsserver). If typescript-language-server is on
-;;   PATH but tsserver is not, the server starts then immediately crashes.
-;;   Added a secondary check that emits a warning in this case.
 ;; ============================================================================
 (defun emacs-ide-health--find-executable (candidates)
-  "Return the first executable in CANDIDATES list found on PATH, or nil."
+  "Return first executable in CANDIDATES found on PATH, or nil."
   (cl-some #'executable-find candidates))
 
 (defun emacs-ide-health-check-lsp-servers ()
-  "Check for LSP servers available for configured languages."
-  (let (;; Each entry: (display-name . (list-of-candidate-executables))
-        ;; Multiple candidates = any one satisfies the requirement.
-        (servers '(("Python"      . ("pyright-langserver" "pyright"))
+  "Check LSP server availability."
+  (let ((servers '(("Python"      . ("pyright-langserver" "pyright"))
                    ("Rust"        . ("rust-analyzer"))
                    ("Go"          . ("gopls"))
                    ("TypeScript"  . ("typescript-language-server"))
@@ -146,22 +127,18 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
         (secondary-warnings '()))
 
     (dolist (s servers)
-      (let ((name (car s))
-            (candidates (cdr s)))
-        (if (emacs-ide-health--find-executable candidates)
-            (push name available)
-          (push name missing))))
+      (if (emacs-ide-health--find-executable (cdr s))
+          (push (car s) available)
+        (push (car s) missing)))
 
-    ;; Secondary: typescript-language-server needs tsserver at runtime
     (when (and (executable-find "typescript-language-server")
                (not (executable-find "tsserver")))
-      (push "typescript-language-server is installed but `tsserver` (from npm package `typescript`) is missing — TS LSP will crash at startup"
+      (push "typescript-language-server present but `tsserver` (npm package `typescript`) missing — TS LSP will crash"
             secondary-warnings))
 
-    (let ((base-status (cond
-                        ((null available) 'error)
-                        (missing 'warning)
-                        (t 'ok)))
+    (let ((base-status (cond ((null available) 'error)
+                             (missing 'warning)
+                             (t 'ok)))
           (base-msg (format "%d/%d LSP servers available"
                             (length available) (length servers))))
       (if secondary-warnings
@@ -298,15 +275,12 @@ Returns one of: \"✓ Healthy\", \"⚠ N warnings\", \"✗ N errors\"."
                (or (> errors 0) (> warnings 0))
                (y-or-n-p (format "%d errors, %d warnings. Attempt auto-fix? "
                                  errors warnings)))
-      (emacs-ide-health-auto-fix results))
+      (emacs-ide-health--auto-fix-results results))
     results))
 
 (defun emacs-ide-health--format-details (details)
-  "Format DETAILS for display.
-Handles plain lists, :available/:missing/:warnings plist shapes,
-and scalar values without printing raw keyword symbols as items."
+  "Format DETAILS for display."
   (cond
-   ;; Plist with keyword keys (from LSP check)
    ((and (listp details) (keywordp (car details)))
     (let ((available (plist-get details :available))
           (missing   (plist-get details :missing))
@@ -322,10 +296,8 @@ and scalar values without printing raw keyword symbols as items."
                             missing ", ")))
        (when warnings
          (mapconcat (lambda (w) (format "      ⚠ %s\n" w)) warnings "")))))
-   ;; Plain list of strings
    ((listp details)
     (mapconcat (lambda (d) (format "    - %s\n" d)) details ""))
-   ;; Scalar
    (t (format "    - %s\n" details))))
 
 (defun emacs-ide-health-display-results (results errors warnings)
@@ -354,9 +326,14 @@ and scalar values without printing raw keyword symbols as items."
           (princ (emacs-ide-health--format-details details)))
         (princ "\n")))))
 
-(defun emacs-ide-health-auto-fix (results)
-  "Attempt auto-fix for RESULTS when possible."
-  (interactive)
+;; ============================================================================
+;; AUTO-FIX
+;; C-17 FIX: Split into worker (takes results) and interactive command
+;; (uses last saved results). Previously the single (interactive) function
+;; received nil from M-x and silently did nothing.
+;; ============================================================================
+(defun emacs-ide-health--auto-fix-results (results)
+  "Worker: attempt auto-fix for each entry in RESULTS that has :fix-function."
   (let ((fixed 0))
     (dolist (res results)
       (let ((fix-fn (plist-get (cdr res) :fix-function)))
@@ -368,6 +345,16 @@ and scalar values without printing raw keyword symbols as items."
     (if (> fixed 0)
         (message "✓ Auto-fixed %d issues" fixed)
       (message "No auto-fixable issues found"))))
+
+(defun emacs-ide-health-auto-fix ()
+  "Attempt auto-fix using the results from the last health check.
+C-17 FIX: This is now a zero-argument interactive command. It uses
+`emacs-ide-health-results` (saved by the last emacs-ide-health-check-all
+run) so M-x emacs-ide-health-auto-fix works correctly."
+  (interactive)
+  (if (null emacs-ide-health-results)
+      (message "No health check results available. Run M-x emacs-ide-health-check-all first.")
+    (emacs-ide-health--auto-fix-results emacs-ide-health-results)))
 
 ;; ============================================================================
 ;; STARTUP QUICK CHECK

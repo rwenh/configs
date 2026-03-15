@@ -1,13 +1,16 @@
 ;;; tools-terminal.el --- Terminal Integration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; VTerm, Eshell, and terminal utilities.
-;;; Version: 2.2.2
-;;; Fixes:
-;;;   - dired-listing-switches used --group-directories-first which is a
-;;;     GNU coreutils-only flag; it errors on macOS/BSD ls. Now guarded
-;;;     behind a system-type check, falling back to safe portable flags.
-;;;   - emacs-ide-colorize-compilation-buffer NOT redefined here (canonical
-;;;     definition lives in ui-core.el).
+;;; Version: 2.2.3
+;;; Fixes vs 2.2.2:
+;;;   - M-22 (HIGH): (defun eshell/e (file) ...) was defined unconditionally
+;;;     at the top level. Eshell ships its own eshell/e as a built-in alias
+;;;     for find-file. Redefining it globally replaces eshell's implementation
+;;;     for the entire session — even if this module is reloaded or removed.
+;;;     Fix: wrap the defun in (unless (fboundp 'eshell/e) ...) so it only
+;;;     defines the function when eshell hasn't already provided one. If
+;;;     eshell's built-in is preferred, simply remove the block; if the custom
+;;;     version is preferred, load it after eshell via with-eval-after-load.
 ;;; Code:
 
 ;; ============================================================================
@@ -145,13 +148,19 @@
               default-directory)))
     (eshell 'N)))
 
+;; M-22 FIX: eshell/e was defined unconditionally, permanently replacing
+;; eshell's own built-in eshell/e (find-file alias) for the whole session.
+;; Guard with unless fboundp so we only define it when eshell hasn't
+;; already provided one. To force the custom version, load after eshell:
+;;   (with-eval-after-load 'eshell (defun eshell/e (file) (find-file file)))
+(unless (fboundp 'eshell/e)
+  (defun eshell/e (file)
+    "Open FILE in Emacs from eshell."
+    (find-file file)))
+
 (defun eshell/clear ()
   "Clear the eshell buffer."
   (let ((inhibit-read-only t)) (erase-buffer)))
-
-(defun eshell/e (file)
-  "Open FILE in Emacs from eshell."
-  (find-file file))
 
 ;; ============================================================================
 ;; COMPILATION BUFFER

@@ -1,15 +1,20 @@
 ;;; emacs-ide-package.el --- Package Management Utilities -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Utilities for package load-time tracking and reporting.
-;;; Version: 2.2.1
-;;; Fixes:
-;;;   - `hash-table-to-list` does not exist in Emacs 29 — replaced with
-;;;     `cl-loop for k being the hash-keys ...` (same pattern used in telemetry)
+;;; Version: 2.2.2
+;;; Fixes vs 2.2.1:
+;;;   - C-18 (HIGH): (advice-add 'require :around ...) was called unconditionally
+;;;     at top level. Every reload of this module (via M-x emacs-ide-config-reload
+;;;     or any code that re-requires it) stacked another identical advice layer on
+;;;     `require`. After N reloads, every (require ...) call traversed N+1 advice
+;;;     wrappers, multiplying tracking overhead and writing N hash entries per
+;;;     require call.
+;;;     Fix: guard with (advice-member-p) before adding. This is the standard
+;;;     pattern for idempotent advice installation in Emacs Lisp.
 ;;; Code:
 
 (require 'cl-lib)
 
-;; Package load time tracking
 (defvar emacs-ide-package-load-times (make-hash-table :test 'equal)
   "Hash table tracking package load times.")
 
@@ -18,12 +23,8 @@
 
 (defun emacs-ide-package-track-load (orig-fun &rest args)
   "Advice to track package load time around ORIG-FUN with ARGS.
-FIX: Only records timing on the FIRST load of each feature.
-Previously always overwrote the hash entry, so a second
-\(require 'foo) — a no-op at ~0ms — silently replaced the
-real load time with near-zero, corrupting the report."
+Only records timing on the FIRST load of each feature."
   (let* ((package-name (car args))
-         ;; Snapshot loaded state BEFORE calling orig-fun
          (already-loaded (featurep package-name))
          (start-time (current-time))
          (result (apply orig-fun args))
@@ -34,13 +35,15 @@ real load time with near-zero, corrupting the report."
         (warn "Package %s took %.2fs to load" package-name elapsed)))
     result))
 
-;; Install advice
-(advice-add 'require :around #'emacs-ide-package-track-load)
+;; C-18 FIX: Guard advice installation so reloading this module does not
+;; stack additional copies of the advice on top of the existing one.
+;; (advice-member-p) returns non-nil if the function is already advised
+;; by this exact symbol, making this safe to call multiple times.
+(unless (advice-member-p #'emacs-ide-package-track-load 'require)
+  (advice-add 'require :around #'emacs-ide-package-track-load))
 
 (defun emacs-ide-package-report ()
-  "Show package load time report.
-FIX: `hash-table-to-list` does not exist in Emacs 29.
-     Use `cl-loop for k being the hash-keys` instead."
+  "Show package load time report."
   (interactive)
   (let* ((pairs (cl-loop for k being the hash-keys of emacs-ide-package-load-times
                           collect (cons k (gethash k emacs-ide-package-load-times))))

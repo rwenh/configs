@@ -1,8 +1,16 @@
 ;;; ui-modeline.el --- Modeline configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Activate a modeline package if available; do not force-load on startup.
-;;; Version: 2.2.3
-;;; Fixes:
+;;; Version: 2.2.4
+;;; Fixes vs 2.2.3:
+;;;   - M-28 (HIGH): doom-modeline-def-modeline redefines the 'main format
+;;;     unconditionally inside with-eval-after-load 'doom-modeline. Since
+;;;     with-eval-after-load bodies run immediately when the library is already
+;;;     loaded (which it is after the first startup), every M-x
+;;;     emacs-ide-config-reload rebuilds the modeline from scratch, discarding
+;;;     any user customisations to the main format made at runtime.
+;;;     Fix: guard the def-modeline call with a one-time feature flag
+;;;     'emacs-ide-modeline-installed so it only runs once per session.
 ;;;   - doom-modeline was activated both here (via after-init-hook) AND in
 ;;;     ui-core.el (also via after-init-hook after fix). Having two hooks
 ;;;     caused doom-modeline-mode to run twice on every startup.
@@ -60,24 +68,27 @@
     ""))
 
 (with-eval-after-load 'doom-modeline
-  ;; Define the segment
-  (doom-modeline-def-segment emacs-ide-health
-    "IDE health status — ✓ / ⚠N / ✗N."
-    (when (doom-modeline--active)
-      (emacs-ide-modeline--health-string)))
+  ;; M-28 FIX: Wrap in a one-time feature guard so that M-x
+  ;; emacs-ide-config-reload does not re-run def-modeline and discard any
+  ;; user customisations to the main format made after startup.
+  ;; provide/featurep is the standard Emacs idiom for a once-only block.
+  (unless (featurep 'emacs-ide-modeline-installed)
+    ;; Define the segment
+    (doom-modeline-def-segment emacs-ide-health
+      "IDE health status — ✓ / ⚠N / ✗N."
+      (when (doom-modeline--active)
+        (emacs-ide-modeline--health-string)))
 
-  ;; Define a new modeline format that is the standard main format
-  ;; plus our health segment appended.
-  ;; doom-modeline-format--main is a macro-generated symbol, not a list var —
-  ;; it cannot be modified with add-to-list. Instead we redefine the modeline.
-  (doom-modeline-def-modeline 'main
-    '(bar workspace-name window-number modals matches follow buffer-info
-      remote-host buffer-position word-count parrot selection-info)
-    '(compilation objed-state misc-info persp-name battery grip irc
-      mu4e gnus github debug repl lsp minor-modes input-method
-      indent-info buffer-encoding major-mode process vcs
-      emacs-ide-health))  ; <-- appended here, always last
-  )
+    ;; Redefine the main modeline to append our health segment
+    (doom-modeline-def-modeline 'main
+      '(bar workspace-name window-number modals matches follow buffer-info
+        remote-host buffer-position word-count parrot selection-info)
+      '(compilation objed-state misc-info persp-name battery grip irc
+        mu4e gnus github debug repl lsp minor-modes input-method
+        indent-info buffer-encoding major-mode process vcs
+        emacs-ide-health))  ; <-- appended here, always last
+
+    (provide 'emacs-ide-modeline-installed)))
 
 ;; Fallback: if doom-modeline is absent, append to the global mode string
 ;; so the health status still appears in the default modeline

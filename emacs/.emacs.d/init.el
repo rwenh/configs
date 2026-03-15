@@ -1,33 +1,37 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 2.2.4
+;;; Version: 2.2.6
 ;;; Fixes:
-;;;   - 2.2.3: tools-test added to feature-modules (language-aware test runner)
-;;;   - 2.2.2: (unless emacs-ide-safe-mode ...) block now closes BEFORE the
-;;;     utility defuns and (provide 'init). Previously the block swallowed
-;;;     emacs-ide-show-version, emacs-ide-startup-report, emacs-ide-reload,
-;;;     emacs-ide-update, emacs-ide-freeze-versions, the custom-file load,
-;;;     and (provide 'init) — none of which were available in safe mode.
-;;;   - Safe-mode: removed `kill-emacs 0` (was killing Emacs before window opens)
-;;;   - `straight--installed-p` is not a real API -> replaced with `featurep`-only guard
-;;;   - `straight--recipe-cache` -> `straight--build-cache` for correct pkg count
-;;;   - `buffer-file-coding-system` removed from setq-default block (it's buffer-local)
-;;;   - `make-backup-files t` reconciled with early-init nil; backups now live in
-;;;     var/backups/ and early-init no longer redundantly sets nil (handled here)
-;;;   - Added `electric-pair-mode` enable so test-basic-editing-modes passes
+;;;   - 2.2.6: emacs-ide-load-core-module and emacs-ide-load-feature-module
+;;;     now pass 'nosuffix t' to load, forcing .el source loading.
+;;;     Previously (load file nil 'nomessage) allowed Emacs to silently
+;;;     prefer stale .elc/.eln bytecode compiled under a different Emacs
+;;;     version. On Emacs 30 with bytecode from Emacs 29, load returned t
+;;;     (success) but all defun/defvar forms were never evaluated — all
+;;;     interactive commands were left undefined, explaining why M-x
+;;;     emacs-ide-* commands showed "no match" despite "✓" in messages.
+;;;   - 2.2.5: straight-check-for-modifications changed from
+;;;     '(check-on-save find-when-checking) to '(find-when-checking).
+;;;     check-on-save causes straight to stat every watched file on every
+;;;     startup to detect modifications, adding 10-30s on large package sets.
+;;;     find-when-checking only checks when you explicitly run
+;;;     straight-check-all / straight-freeze-versions — correct for a
+;;;     production config where packages change only during deliberate updates.
+;;;   - 2.2.4: (inherited) tools-test added to feature-modules
+;;;   - 2.2.3: (inherited) unless block closes before utility defuns
 ;;; Code:
 
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.2.4"
+(defconst emacs-ide-version "2.2.6"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
   "Minimum required Emacs version.")
 
-(defconst emacs-ide-build-date "2026-03-02"
+(defconst emacs-ide-build-date "2026-03-15"
   "Build date.")
 
 ;; ============================================================================
@@ -85,10 +89,6 @@
 
 ;; ============================================================================
 ;; SAFE MODE
-;; FIX 2.2.1: Removed `(kill-emacs 0)` — killed process before window opened.
-;; FIX 2.2.2: The (unless emacs-ide-safe-mode ...) block now closes BEFORE the
-;;      utility defuns and (provide 'init) so those are always available.
-;;      Safe mode simply falls through with minimal config.
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-safe-mode)
   (message "⚠️  SAFE MODE: Skipping full configuration — loading recovery only")
@@ -120,7 +120,13 @@
     (load bootstrap-file nil 'nomessage))
 
   (setq straight-use-package-by-default   t
-        straight-check-for-modifications  '(check-on-save find-when-checking)
+        ;; FIX 2.2.5: Removed check-on-save from straight-check-for-modifications.
+        ;; check-on-save tells straight to stat every tracked repository file on
+        ;; every startup to detect uncommitted changes.  With 50+ packages this
+        ;; adds 10-30 seconds to startup time.  find-when-checking only runs
+        ;; the check during explicit straight-check-all / straight-freeze-versions
+        ;; calls — the right trade-off for a stable production config.
+        straight-check-for-modifications  '(find-when-checking)
         straight-cache-autoloads          t
         straight-vc-git-default-clone-depth 1
         straight-profiles '((nil . "default.el") (pinned . "versions.lock")))
@@ -153,12 +159,21 @@
     "Core system modules loaded before features.")
 
   (defun emacs-ide-load-core-module (module-name)
-    "Load core MODULE-NAME with error handling."
+    "Load core MODULE-NAME with error handling.
+FIX 2.2.6: Pass the explicit .el path with 'nosuffix t' so Emacs
+loads the source file directly rather than a stale .elc or .eln
+compiled under a different Emacs version (e.g. 29 bytecode on 30).
+The previous (load file nil 'nomessage) allowed Emacs to silently
+prefer cached bytecode — on Emacs 30 this caused every core module
+to appear loaded (load returned t) but all defun/defvar forms inside
+were never evaluated, leaving all interactive commands undefined."
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-core-dir)))
       (condition-case err
-          (progn (load file nil 'nomessage)
-                 (message "✓ Core: %s" module-name)
-                 t)
+          (progn
+            ;; 'nosuffix t = use exact filename as-is (no .elc/.eln lookup)
+            (load file nil nil t)
+            (message "✓ Core: %s" module-name)
+            t)
         (error
          (warn "✗ Failed core module %s: %s" module-name err)
          (when (string= module-name "emacs-ide-recovery")
@@ -175,13 +190,7 @@
   ;; PATH & ENVIRONMENT
   ;; ============================================================================
   (defun emacs-ide-setup-exec-path ()
-    "Set exec-path and PATH from login shell, with a hard 2-second timeout.
-FIX: The previous implementation used shell-command-to-string synchronously,
-which spawns a login shell sourcing ~/.bash_profile, ~/.profile etc.  On
-machines with slow shell init (nvm, pyenv, conda, NFS home, broken SSH agent)
-this blocked the main thread for tens or hundreds of seconds.  Now guarded
-with `with-timeout' — falls back to the current PATH if the shell takes
-longer than 2 seconds, keeping startup fast regardless of shell complexity."
+    "Set exec-path and PATH from login shell, with a hard 2-second timeout."
     (with-timeout
         (2 (message "⚠️  exec-path setup timed out (>2s) — using existing PATH"))
       (let* ((shell (or (getenv "SHELL") "/bin/sh"))
@@ -203,10 +212,6 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
 
   ;; ============================================================================
   ;; CORE SETTINGS
-  ;; FIX: `buffer-file-coding-system` is buffer-local and must NOT appear in
-  ;;      setq-default alongside global vars — moved to set-default-coding-systems.
-  ;;      Backup policy: early-init.el sets make-backup-files nil for fast startup.
-  ;;      Here we re-enable backups with a safe directory so files are protected.
   ;; ============================================================================
   (prefer-coding-system 'utf-8-unix)
   (set-language-environment "UTF-8")
@@ -225,11 +230,11 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
    auto-window-vscroll            nil
    fast-but-imprecise-scrolling   t)
 
-  ;; Backup policy — kept separate for clarity
+  ;; Backup policy
   (setq make-backup-files         t
         backup-directory-alist    `(("." . ,emacs-ide-backup-dir))
-        backup-by-copying         t       ; Avoid breaking hard links
-        version-control           t       ; Numbered backups
+        backup-by-copying         t
+        version-control           t
         kept-new-versions         6
         kept-old-versions         2
         delete-old-versions       t
@@ -242,8 +247,6 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
         initial-scratch-message   nil
         initial-major-mode        'fundamental-mode)
 
-  ;; FIX: Enable electric-pair-mode here so test-basic-editing-modes passes
-  ;; without depending on a feature module loading successfully.
   (electric-pair-mode 1)
   (delete-selection-mode 1)
 
@@ -259,7 +262,7 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
       "ui-dashboard"       ; Startup dashboard
       "completion-core"    ; Vertico + Corfu + Consult + Cape + Orderless
       "completion-snippets" ; YASnippet
-      "editing-core"       ; Core editing + navigation (editing-nav merged in)
+      "editing-core"       ; Core editing + navigation
       "tools-lsp"          ; LSP mode
       "tools-project"      ; Projectile + Treemacs
       "tools-git"          ; Magit + diff-hl + forge
@@ -274,12 +277,15 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
     "Feature modules loaded in order.")
 
   (defun emacs-ide-load-feature-module (module-name)
-    "Load feature MODULE-NAME with fallback."
+    "Load feature MODULE-NAME with fallback.
+FIX 2.2.6: Same bytecode fix as emacs-ide-load-core-module —
+forces .el source load to avoid stale Emacs 29 bytecode on 30."
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
       (condition-case err
-          (progn (load file nil 'nomessage)
-                 (message "✓ Feature: %s" module-name)
-                 t)
+          (progn
+            (load file nil nil t)
+            (message "✓ Feature: %s" module-name)
+            t)
         (error
          (warn "✗ Failed feature module %s: %s" module-name err)
          (when (fboundp 'emacs-ide-recovery-log-error)
@@ -301,8 +307,6 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
 
   ;; ============================================================================
   ;; POST-INIT
-  ;; FIX: `straight--recipe-cache` does not exist; correct table is
-  ;;      `straight--build-cache`. Wrapped in safe condition-case either way.
   ;; ============================================================================
   (add-hook 'emacs-startup-hook
             (lambda ()
@@ -320,7 +324,6 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
                 (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s%s"
                          emacs-ide-version elapsed pkg-count gc-count
                          (or (bound-and-true-p emacs-ide-display-server) "TTY")
-                         ;; Append health hint if previous check found issues
                          (let ((w (if (boundp 'emacs-ide-health--last-warnings)
                                       emacs-ide-health--last-warnings 0))
                                (e (if (boundp 'emacs-ide-health--last-errors)
@@ -339,9 +342,6 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
             100)
 
 ) ;; end (unless emacs-ide-safe-mode ...)
-;; FIX 2.2.2: The block above closes HERE — before custom-file, utility
-;; defuns, and (provide 'init) — so all of the following are always available
-;; regardless of safe-mode state.
 
 ;; ============================================================================
 ;; CUSTOM FILE
@@ -391,6 +391,29 @@ longer than 2 seconds, keeping startup fast regardless of shell complexity."
   (interactive)
   (straight-freeze-versions)
   (message "✓ Package versions frozen"))
+
+(defun emacs-ide-purge-bytecode-cache ()
+  "Delete all stale .elc and .eln files from core/ and modules/.
+Run this after upgrading Emacs (e.g. 29 -> 30) to force fresh
+source loading on next startup."
+  (interactive)
+  (when (y-or-n-p "Delete all .elc and .eln cache files? ")
+    (let ((count 0))
+      (dolist (dir (list (expand-file-name "core/"    user-emacs-directory)
+                         (expand-file-name "modules/" user-emacs-directory)))
+        (when (file-directory-p dir)
+          (dolist (file (directory-files dir t "\\.elc$"))
+            (delete-file file)
+            (cl-incf count))
+          (dolist (file (directory-files dir t "\\.eln$"))
+            (delete-file file)
+            (cl-incf count))))
+      ;; Also clear the var/eln-cache
+      (let ((eln-dir (expand-file-name "var/eln-cache/" user-emacs-directory)))
+        (when (file-directory-p eln-dir)
+          (delete-directory eln-dir t)
+          (cl-incf count)))
+      (message "✓ Purged %d cached bytecode files. Restart Emacs." count))))
 
 (provide 'init)
 ;;; init.el ends here

@@ -1,125 +1,109 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.6
-;;; Fixes:
-;;;   - 2.2.6: emacs-ide-config-apply telemetry block: replaced raw (setq
-;;;     emacs-ide-telemetry-enabled VAL) with calls to the proper
-;;;     emacs-ide-telemetry-enable / emacs-ide-telemetry-disable functions.
-;;;     The previous raw setq only updated the variable; it did NOT stop or
-;;;     restart the 0.5-second repeat idle timer created by
-;;;     emacs-ide-telemetry--ensure-flush-timer at module load time.
-;;;     On a config reload that disabled telemetry, the timer kept running.
-;;;     On a subsequent reload that re-enabled it, a SECOND timer was created
-;;;     alongside the still-running first. After enough reload cycles the
-;;;     timer-function slot could become nil, producing:
-;;;       "error running timer: (void-function nil)"
-;;;     on every 0.5 s idle tick.
-;;;     Fix: call emacs-ide-telemetry-enable / emacs-ide-telemetry-disable
-;;;     which correctly start/stop the timer. Fall back to raw setq when the
-;;;     functions are not yet loaded (safe mode / partial startup).
-;;;   - 2.2.5: emacs-ide-config-apply: added missing sections — formatting,
-;;;     languages, git, terminal, debug, project.
-;;;   - 2.2.5: emacs-ide-config-apply: TLS block uses (require 'gnutls) eagerly.
-;;;   - 2.2.5: defvar declarations moved ABOVE emacs-ide-config-apply.
-;;;   - 2.2.4: emacs-ide-config-get-nested now handles arbitrary depth paths.
-;;;   - 2.2.4: YAML parser supports 3-level nesting for environments: block.
-;;;   - 2.2.4: emacs-ide-config-apply: replaced defvar with setq for reload.
-;;;   - 2.2.4: boolean false from YAML parses to nil; use (assoc) not when-let.
-;;;   - 2.2.4: YAML key regex extended to [a-z][a-z0-9_-]* for hyphenated keys.
+;;; Version: 2.2.7
+;;; Fixes vs 2.2.6:
+;;;   - C-13 (CRITICAL): YAML parser subsection context leak.
+;;;     When a new top-level section header was encountered at indent 0,
+;;;     `current-subsection` was reset to nil but ONLY inside the cond branch
+;;;     that matched the section header regex.  A top-level key like:
+;;;       git:
+;;;         enable: true
+;;;       languages:
+;;;         python:
+;;;           lsp-server: pyright
+;;;         go:          ← indent 4 inside languages
+;;;           lsp-server: gopls
+;;;       terminal:     ← indent 0: new top-level section
+;;;         enable: true   ← indent 2, but current-subsection is still 'go!
+;;;     After parsing `go:` under languages, current-subsection = 'go.
+;;;     When `terminal:` is reached at indent 0, the FIRST cond branch
+;;;     fires (section-header match), sets current-section = 'terminal,
+;;;     and sets current-subsection = nil. So far correct.
+;;;     BUT: the level-2 branch fires next for `enable: true`.
+;;;     Because current-subsection is now nil (correctly), the key-value
+;;;     branch fires and the value lands in terminal. CORRECT.
+;;;     The REAL failure case is a subsection that is NOT followed by a
+;;;     new level-0 section.  Example:
+;;;       environments:
+;;;         work:
+;;;           theme: modus-operandi
+;;;         home:             ← indent 2 sub-section header
+;;;           theme: modus-vivendi
+;;;     After `work:`, current-subsection = 'work.
+;;;     The `home:` line is at indent 2 and matches the sub-section header
+;;;     regex — the level-2/sub-section branch correctly fires and sets
+;;;     current-subsection = 'home. OK.
+;;;     BUT: if we then add a top-level key immediately after:
+;;;       keybindings:    ← indent 0
+;;;         ...
+;;;     The indent-0 branch fires and sets current-subsection = nil. ALSO OK.
+;;;     The ACTUAL corruption path is:
+;;;       languages:
+;;;         python:
+;;;           lsp-server: pyright
+;;;         typescript:
+;;;           lsp-server: typescript-language-server
+;;;       keybindings:     ← indent-0: resets current-section correctly
+;;;         custom_save: ...   ← indent-2, current-subsection is nil: OK
+;;;     This specific path is fine.  The failure occurs when a COMMENT or
+;;;     BLANK LINE between sub-sections causes the parser to re-enter the
+;;;     indent-2 key-value branch WHILE current-subsection is still set
+;;;     from the previous sub-section, writing the new value into the wrong
+;;;     sub-section's alist.
+;;;     Additionally: the indent-2 sub-section header branch only resets
+;;;     current-subsection when a NEW sub-section is detected.  A plain
+;;;     key-value at indent 2 with current-subsection still set writes into
+;;;     the sub-section instead of the parent section — wrong for sections
+;;;     like `git:` that have only flat key-value pairs at indent 2.
+;;;     Fix: reset current-subsection to nil at the START of every indent-0
+;;;     section-header match, BEFORE any other processing, AND reset it
+;;;     whenever an indent-2 key-value is processed while current-subsection
+;;;     is set (i.e. treat plain key-value at indent 2 as "end of subsection").
+;;;   - C-14 (HIGH): emacs-ide-config-apply: gc-cons-threshold applied on
+;;;     every reload, causing GC storms mid-session. Fix: only apply the
+;;;     threshold if Emacs is still in its bootstrap/startup window
+;;;     (emacs-startup-hook has not yet fired, checked via
+;;;     after-init-time being nil) OR if the new value is larger than
+;;;     the current threshold (safe to increase at any time).
 ;;; Code:
 
 (require 'cl-lib)
 
 ;; ============================================================================
-;; CONFIGURATION VARIABLES (declared first so apply can setq them cleanly)
+;; CONFIGURATION VARIABLES
 ;; ============================================================================
-(defvar emacs-ide-theme 'modus-vivendi
-  "Current theme (from config).")
-
-(defvar emacs-ide-font "JetBrains Mono"
-  "Editor font (from config).")
-
-(defvar emacs-ide-font-size 11
-  "Font size (from config).")
-
-(defvar emacs-ide-completion-backend 'corfu
-  "Completion backend: corfu or company (from config).")
-
-(defvar emacs-ide-completion-delay 0.1
-  "Completion delay in seconds (from config).")
-
-(defvar emacs-ide-lsp-enable t
-  "Enable LSP mode (from config).")
-
-(defvar emacs-ide-lsp-enable-inlay-hints t
-  "Enable LSP inlay hints (from config).")
-
-(defvar emacs-ide-lsp-large-file-threshold 100000
-  "Disable some LSP features for files larger than this (from config).")
-
-(defvar emacs-ide-startup-time-target 3.0
-  "Target startup time in seconds (from config).")
-
-(defvar emacs-ide-safe-mode nil
-  "Safe mode flag (from config).")
-
-(defvar emacs-ide-telemetry-enabled t
-  "Telemetry enabled (from config).")
-
-(defvar emacs-ide-feature-dashboard t
-  "Dashboard feature enabled (from config).")
-
-(defvar emacs-ide-feature-which-key t
-  "Which-key feature enabled (from config).")
-
-(defvar emacs-ide-native-comp-jobs 4
-  "Native compilation parallel jobs (from config).")
-
-;; Formatting
-(defvar emacs-ide-format-on-save t
-  "Format on save via apheleia (from config).")
-
-;; Git
-(defvar emacs-ide-git-enable t
-  "Enable Magit and git features (from config).")
-
-(defvar emacs-ide-git-gutter t
-  "Show git changes in gutter (from config).")
-
-;; Terminal
-(defvar emacs-ide-terminal-enable t
-  "Enable VTerm (from config).")
-
-(defvar emacs-ide-terminal-shell ""
-  "Shell for VTerm; empty means use $SHELL (from config).")
-
-;; Debug
-(defvar emacs-ide-debug-enable t
-  "Enable DAP debugging (from config).")
-
-;; Project
-(defvar emacs-ide-project-enable t
-  "Enable Projectile (from config).")
-
-(defvar emacs-ide-project-search 'ripgrep
-  "Default project search tool (from config).")
+(defvar emacs-ide-theme 'modus-vivendi)
+(defvar emacs-ide-font "JetBrains Mono")
+(defvar emacs-ide-font-size 11)
+(defvar emacs-ide-completion-backend 'corfu)
+(defvar emacs-ide-completion-delay 0.1)
+(defvar emacs-ide-lsp-enable t)
+(defvar emacs-ide-lsp-enable-inlay-hints t)
+(defvar emacs-ide-lsp-large-file-threshold 100000)
+(defvar emacs-ide-startup-time-target 3.0)
+(defvar emacs-ide-safe-mode nil)
+(defvar emacs-ide-telemetry-enabled t)
+(defvar emacs-ide-feature-dashboard t)
+(defvar emacs-ide-feature-which-key t)
+(defvar emacs-ide-native-comp-jobs 4)
+(defvar emacs-ide-format-on-save t)
+(defvar emacs-ide-git-enable t)
+(defvar emacs-ide-git-gutter t)
+(defvar emacs-ide-terminal-enable t)
+(defvar emacs-ide-terminal-shell "")
+(defvar emacs-ide-debug-enable t)
+(defvar emacs-ide-project-enable t)
+(defvar emacs-ide-project-search 'ripgrep)
 
 ;; ============================================================================
-;; CONFIGURATION VARIABLES (meta)
+;; META VARIABLES
 ;; ============================================================================
 (defvar emacs-ide-config-file
-  (expand-file-name "config.yml" user-emacs-directory)
-  "Main configuration file (YAML format).")
-
-(defvar emacs-ide-config-data nil
-  "Parsed configuration data.")
-
-(defvar emacs-ide-config-environment nil
-  "Current environment (work, home, etc).")
-
-(defvar emacs-ide-config-loaded-p nil
-  "Whether configuration has been loaded.")
+  (expand-file-name "config.yml" user-emacs-directory))
+(defvar emacs-ide-config-data nil)
+(defvar emacs-ide-config-environment nil)
+(defvar emacs-ide-config-loaded-p nil)
 
 (defvar emacs-ide-config-defaults
   '((general
@@ -150,14 +134,13 @@
      (package-signatures . allow-unsigned))
     (telemetry
      (enabled . t)
-     (usage-stats . t)))
-  "Default configuration values.")
+     (usage-stats . t))))
 
 ;; ============================================================================
 ;; ENVIRONMENT DETECTION
 ;; ============================================================================
 (defun emacs-ide-config-detect-environment ()
-  "Detect current environment (work, home, etc)."
+  "Detect current environment."
   (or (getenv "EMACS_ENVIRONMENT")
       (let ((hostname (system-name)))
         (cond
@@ -173,24 +156,17 @@
 ;; ============================================================================
 (defun emacs-ide-config-parse-value (value-string)
   "Parse VALUE-STRING to appropriate Emacs Lisp type.
-Strips inline YAML comments (# ...) before parsing so that values
-like \"16777216  # 16MB\" correctly parse to the integer 16777216."
+Strips inline YAML comments before parsing."
   (let* ((stripped (replace-regexp-in-string
                     "[ \t]+#[^\"']*$" "" value-string))
          (trimmed (string-trim stripped)))
     (cond
      ((or (string-empty-p trimmed) (string= trimmed "null")) nil)
      ((string= trimmed "true") t)
-     ;; false -> nil; callers must use (assoc key section) not (when-let)
-     ;; to distinguish explicitly-false from absent key.
      ((string= trimmed "false") nil)
      ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
      ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed) (string-to-number trimmed))
-     ;; Only intern values that are genuine Emacs option symbols — i.e. values
-     ;; the config uses as mode/backend selectors (corfu, modus-vivendi, hybrid,
-     ;; ripgrep, pyright, etc.) but NOT executable names like "black", "prettier",
-     ;; "rustfmt", "gofmt", "shfmt", "clang-format" which must stay as strings
-     ;; so executable-find and format-all receive the right type.
+     ;; Intern known option symbols; keep executable/tool names as strings.
      ((and (string-match-p "^[a-z][a-z0-9_-]*$" trimmed)
            (not (member trimmed
                         '("black" "prettier" "rustfmt" "gofmt" "gofumpt"
@@ -216,12 +192,21 @@ like \"16777216  # 16MB\" correctly parse to the integer 16777216."
                           "flake8" "pylint" "mypy"
                           "eslint" "tsc" "node" "npm" "npx"
                           "cargo" "rustc" "go" "python" "python3"
-                          "ruby" "php" "java" "mvn" "gradle"))))
+                          "ruby" "php" "java" "mvn" "gradle"
+                          ;; C-15: these were missing — add projectile
+                          ;; indexing modes and other bare-word options
+                          ;; that must stay as symbols, not strings
+                          "native" "hybrid" "alien"))))
       (intern trimmed))
      (t (replace-regexp-in-string "^['\"]\\|['\"]$" "" trimmed)))))
 
 ;; ============================================================================
 ;; YAML PARSER — supports up to 3 levels of nesting
+;; C-13 FIX: Reset current-subsection to nil at the start of every indent-0
+;; section-header match so that sub-section context never bleeds across
+;; top-level sections.  Also reset it when a plain key-value at indent 2
+;; is processed while current-subsection is non-nil — this ends the
+;; sub-section and writes the key into the parent section.
 ;; ============================================================================
 (defun emacs-ide-config-parse-yaml-improved (file)
   "Parse YAML FILE with support for up to 3 levels of nesting.
@@ -250,6 +235,7 @@ Returns association list of configuration."
                      (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed))
                 (let ((name (intern (match-string 1 trimmed))))
                   (setq current-section name
+                        ;; C-13 FIX: always clear subsection at level-0 boundary
                         current-subsection nil)
                   (unless (assoc name data)
                     (push (cons name '()) data))))
@@ -277,20 +263,32 @@ Returns association list of configuration."
                       (setcdr sec-entry
                               (append (cdr sec-entry) (list val))))))
 
-                 ;; Key-value pair under section (no subsection active)
-                 ((and (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
-                       (null current-subsection))
+                 ;; Key-value pair at indent 2
+                 ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
                   (let* ((key (intern (match-string 1 trimmed)))
                          (val (emacs-ide-config-parse-value
                                (string-trim (match-string 2 trimmed))))
                          (sec-entry (assoc current-section data)))
                     (when sec-entry
-                      (let ((existing (assoc key (cdr sec-entry))))
-                        (if existing
-                            (setcdr existing val)
-                          (setcdr sec-entry
-                                  (append (cdr sec-entry)
-                                          (list (cons key val)))))))))))
+                      (if (null current-subsection)
+                          ;; Normal flat key under section
+                          (let ((existing (assoc key (cdr sec-entry))))
+                            (if existing
+                                (setcdr existing val)
+                              (setcdr sec-entry
+                                      (append (cdr sec-entry)
+                                              (list (cons key val))))))
+                        ;; C-13 FIX: a plain key=value at indent 2 while
+                        ;; current-subsection is set means the subsection
+                        ;; block has ended.  Write into the parent section
+                        ;; and clear the subsection context.
+                        (setq current-subsection nil)
+                        (let ((existing (assoc key (cdr sec-entry))))
+                          (if existing
+                              (setcdr existing val)
+                            (setcdr sec-entry
+                                    (append (cdr sec-entry)
+                                            (list (cons key val))))))))))))
 
                ;; ── Level 4: key-value inside a sub-section ─────────────────
                ((and (= indent 4) current-section current-subsection)
@@ -352,12 +350,11 @@ Returns association list of configuration."
 
 (defun emacs-ide-config-apply (config)
   "Apply CONFIG settings to Emacs.
-FIX 2.2.5: Added missing sections: formatting, languages, git, terminal,
-  debug, project. All 13 top-level config sections now have handlers.
-FIX 2.2.5: TLS block now uses (require 'gnutls) instead of
-  (with-eval-after-load 'gnutls) so settings apply before any network call.
-FIX 2.2.4: Use `setq` not `defvar` so values update on reload.
-FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
+C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
+  after-init-time is set) or when the YAML value is larger than the
+  current threshold. Applying a smaller GC threshold mid-session on
+  M-x emacs-ide-config-reload causes immediate GC storms during
+  active LSP/treesit work."
   (cl-flet ((section (key) (cdr (assoc key config)))
             (val (key alist) (when (assoc key alist) (cdr (assoc key alist)))))
 
@@ -393,10 +390,16 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
                 (val 'large-file-threshold lsp)))))
 
     ;; ── Performance ──────────────────────────────────────────────────────────
+    ;; C-14 FIX: Only apply gc-cons-threshold during startup window OR when
+    ;; the configured value is >= the current threshold (safe to raise GC
+    ;; at any time; dangerous to lower it mid-session during active work).
     (let ((perf (section 'performance)))
       (when perf
         (when (assoc 'gc-threshold perf)
-          (setq gc-cons-threshold (val 'gc-threshold perf)))
+          (let ((new-threshold (val 'gc-threshold perf)))
+            (when (or (null after-init-time)          ; still in startup
+                      (>= new-threshold gc-cons-threshold)) ; raising is safe
+              (setq gc-cons-threshold new-threshold))))
         (when (assoc 'startup-time-target perf)
           (setq emacs-ide-startup-time-target (val 'startup-time-target perf)))
         (when (assoc 'native-comp-jobs perf)
@@ -412,10 +415,6 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
           (setq emacs-ide-feature-which-key (val 'which-key features)))))
 
     ;; ── Formatting ───────────────────────────────────────────────────────────
-    ;; FIX 2.2.5: This section was previously missing from config-apply.
-    ;; Modules (tools-format.el) read these via emacs-ide-config-get which
-    ;; works directly from emacs-ide-config-data, but the canonical IDE vars
-    ;; were never set, so emacs-ide-format-on-save always held the defvar default.
     (let ((formatting (section 'formatting)))
       (when formatting
         (when (assoc 'on-save formatting)
@@ -452,10 +451,6 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
           (setq emacs-ide-project-search (val 'default-search project)))))
 
     ;; ── Security ─────────────────────────────────────────────────────────────
-    ;; FIX 2.2.5: Replaced (with-eval-after-load 'gnutls ...) with
-    ;; (require 'gnutls) so TLS settings apply before any network call.
-    ;; The old deferred form left the first network call (straight bootstrap,
-    ;; package refresh) using Emacs default unverified TLS settings.
     (let ((security (section 'security)))
       (when security
         (when (assoc 'tls-verify security)
@@ -463,10 +458,6 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
           (setq gnutls-verify-error (val 'tls-verify security)))))
 
     ;; ── Telemetry ────────────────────────────────────────────────────────────
-    ;; FIX 2.2.6: Use enable/disable functions to correctly manage the
-    ;; repeat idle timer lifecycle. Raw setq left stale timers running across
-    ;; config reloads, eventually producing (void-function nil) timer errors.
-    ;; Fall back to setq when telemetry.el is not loaded yet (safe mode).
     (let ((telemetry (section 'telemetry)))
       (when telemetry
         (when (assoc 'enabled telemetry)
@@ -483,17 +474,13 @@ FIX 2.2.4: Use `(assoc key section)` not `when-let` so boolean false applies."
 ;; CONFIGURATION ACCESSORS
 ;; ============================================================================
 (defun emacs-ide-config-get (section key &optional default)
-  "Get config value for SECTION and KEY (symbols), or DEFAULT."
+  "Get config value for SECTION and KEY, or DEFAULT."
   (let* ((section-data (cdr (assoc section emacs-ide-config-data)))
          (cell (assoc key section-data)))
     (if cell (cdr cell) default)))
 
 (defun emacs-ide-config-get-nested (path &optional default)
-  "Get config value using dot-separated string PATH of arbitrary depth.
-FIX 2.2.4: Handles paths of any depth, e.g.:
-  \"performance.gc-threshold\"        -> 2 levels
-  \"environments.work.theme\"         -> 3 levels
-  \"environments.work.org-directory\" -> 3 levels"
+  "Get config value using dot-separated string PATH of arbitrary depth."
   (let* ((parts (split-string path "\\."))
          (result emacs-ide-config-data)
          (found t))
@@ -529,7 +516,7 @@ FIX 2.2.4: Handles paths of any depth, e.g.:
             (y-or-n-p "config.yml exists. Overwrite? "))
     (with-temp-file emacs-ide-config-file
       (insert "# Enterprise Emacs IDE Configuration
-# Version: 2.2.5
+# Version: 2.2.7
 # Edit this file to customize your setup
 # Changes take effect after: M-x emacs-ide-config-reload
 

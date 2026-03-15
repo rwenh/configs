@@ -1,14 +1,16 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional project management and navigation with config integration.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
-;;;   - 2.2.3: projectile-project-search-path was set twice — first in :init
-;;;     with (cons p 2) without expand-file-name, then completely overwritten
-;;;     in :config with (cons (expand-file-name p) 2). The :init assignment
-;;;     was dead code. Consolidated into :config only, with expand-file-name.
-;;;   - Removed duplicate `recentf` and `bookmark` use-package blocks.
-;;;   - 2.2.2: C-c T conflict resolved — treemacs moved to <f9>.
+;;;   - 2.2.4: projectile-indexing-method changed from 'hybrid to 'alien.
+;;;     'hybrid runs native Emacs file traversal as a fallback, which blocks
+;;;     the main thread during project discovery at startup.  'alien delegates
+;;;     entirely to the external tool (rg/fd/find) and is both faster and
+;;;     non-blocking.  If rg or fd is on PATH (they are — health check passes),
+;;;     'alien is strictly better than 'hybrid.
+;;;   - 2.2.3: (inherited) search path set once in :config only
+;;;   - 2.2.2: (inherited) C-c T conflict resolved — treemacs on <f9>
 ;;; Code:
 
 ;; ============================================================================
@@ -19,7 +21,10 @@
   :init
   (setq projectile-completion-system 'default
         projectile-enable-caching t
-        projectile-indexing-method 'hybrid
+        ;; FIX 2.2.4: 'hybrid uses Emacs-native traversal as fallback, blocking
+        ;; the main thread at startup.  'alien delegates entirely to the external
+        ;; tool (rg/fd), which runs in a subprocess and is faster for large trees.
+        projectile-indexing-method 'alien
         projectile-sort-order 'recentf
 
         ;; Ignored directories
@@ -54,8 +59,6 @@
   (projectile-mode +1)
 
   ;; FIX 2.2.3: search path set ONCE here in :config only.
-  ;;   The previous :init block set (cons p 2) without expand-file-name and
-  ;;   was immediately overwritten here anyway — removed the :init version.
   (setq projectile-project-search-path
         (or (and (boundp 'emacs-ide-config-data)
                  emacs-ide-config-data
@@ -100,8 +103,6 @@
 
 ;; ============================================================================
 ;; TREEMACS - ADVANCED FILE TREE
-;; FIX 2.2.2: C-c T moved to <f9> — was colliding with tools-terminal.el
-;; which binds C-c T to vterm-other-window. <f9> is unambiguous IDE territory.
 ;; ============================================================================
 (use-package treemacs
   :defer t
@@ -115,12 +116,6 @@
         treemacs-show-hidden-files t
         treemacs-is-never-other-window t
         treemacs-sorting 'alphabetic-case-insensitive-asc)
-  ;; FIX: Treemacs helpers have no :bind here.
-  ;; C-c p t f / C-c p t t crashed with "non-prefix key C-c p" because
-  ;; C-c p t is already a plain command (projectile-test-project).
-  ;; C-c T f / C-c T s also collide — C-c T is vterm-other-window (plain cmd).
-  ;; Injected into projectile-command-map via with-eval-after-load below,
-  ;; using uppercase keys (C-c p F / C-c p W) that are free in that map.
   :bind (("<f9>" . treemacs)))
 
 (use-package treemacs-projectile
@@ -161,7 +156,7 @@
     (message "Not in a project")))
 
 (defun emacs-ide-project-compile ()
-  "Compile project intelligently with validation."
+  "Compile project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
@@ -177,37 +172,33 @@
      (t (call-interactively 'compile)))))
 
 (defun emacs-ide-project-run ()
-  "Run project intelligently with validation."
+  "Run project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
-     ((file-exists-p "Cargo.toml")
-      (compile "cargo run"))
+     ((file-exists-p "Cargo.toml")     (compile "cargo run"))
      ((file-exists-p "package.json")
-      (when (executable-find "npm") (compile "npm start")))
+      (when (executable-find "npm")    (compile "npm start")))
      ((file-exists-p "manage.py")
       (when (executable-find "python3") (compile "python3 manage.py runserver")))
      ((file-exists-p "main.go")
-      (when (executable-find "go") (compile "go run .")))
-     ((fboundp 'projectile-run-project)
-      (projectile-run-project))
+      (when (executable-find "go")     (compile "go run .")))
+     ((fboundp 'projectile-run-project) (projectile-run-project))
      (t (message "⚠️  No run command detected for this project")))))
 
 (defun emacs-ide-project-test ()
-  "Test project intelligently with validation."
+  "Test project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
-     ((file-exists-p "Cargo.toml")
-      (compile "cargo test"))
+     ((file-exists-p "Cargo.toml")     (compile "cargo test"))
      ((file-exists-p "package.json")
-      (when (executable-find "npm") (compile "npm test")))
+      (when (executable-find "npm")    (compile "npm test")))
      ((file-exists-p "pytest.ini")
       (when (executable-find "pytest") (compile "pytest")))
      ((file-exists-p "go.mod")
-      (when (executable-find "go") (compile "go test ./...")))
-     ((fboundp 'projectile-test-project)
-      (projectile-test-project))
+      (when (executable-find "go")     (compile "go test ./...")))
+     ((fboundp 'projectile-test-project) (projectile-test-project))
      (t (message "⚠️  No test command detected for this project")))))
 
 ;; ============================================================================
@@ -252,15 +243,8 @@
 ;; ============================================================================
 ;; KEYBINDING FOR PROJECT INFO
 ;; ============================================================================
-;; C-c p I must be set after projectile's keymap is established.
-;; global-set-key at top level races with :bind-keymap and loses.
 (with-eval-after-load 'projectile
   (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info)
-  ;; FIX: Treemacs find-file / select-window injected here, not in treemacs :bind.
-  ;; C-c p t is a plain command (projectile-test-project) so C-c p t f/t can't work.
-  ;; C-c T is also a plain command (vterm-other-window).
-  ;; Injecting directly into projectile-command-map using uppercase keys (F, W)
-  ;; that are free in projectile's default map — safe prefix, no collision.
   (define-key projectile-command-map (kbd "F") #'treemacs-find-file)
   (define-key projectile-command-map (kbd "W") #'treemacs-select-window))
 

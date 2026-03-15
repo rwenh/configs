@@ -39,8 +39,16 @@
 ;;;                        Also binds consult commands via :bind — see note above
 ;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-c n (neotree)
 ;;;
-;;; Version: 3.0.3
-;;; Changes from 3.0.2:
+;;; Version: 3.0.4
+;;; Changes from 3.0.3:
+;;;   - M-26: Added explicit comment documenting that C-c C-t (emacs-ide-test-run)
+;;;     conflicts with org-todo in org-mode. The global binding is intentionally
+;;;     retained for all non-org buffers, but the README and cheat sheet now
+;;;     document that org-mode users should use M-x emacs-ide-test-run or
+;;;     remap the key in org-mode-map if desired. No runtime change — the
+;;;     global binding already loses to org-mode's local binding (local wins),
+;;;     so org workflow is unaffected. The inconsistency with the file's own
+;;;     "C-c C-<letter> is major-mode territory" philosophy is acknowledged.
 ;;;   - C-c C-d (helpful-at-point) moved to C-h d. C-c C-<letter> keys are
 ;;;     reserved by convention for major modes; the global binding silently
 ;;;     lost in python-mode, haskell-mode, org-mode, and others. C-h d is
@@ -162,6 +170,13 @@
 ;; Config management
 (global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
+;; M-26 NOTE: C-c C-t conflicts with org-todo in org-mode buffers.
+;; This is a known inconsistency with this file's own philosophy of keeping
+;; C-c C-<letter> as major-mode territory (see C-c C-d fix above).
+;; The global binding intentionally loses to org-mode's local binding —
+;; so org workflow is unaffected — but tools-test.el's own global-set-key
+;; call already handles this. If you want the test runner in org-mode too,
+;; add: (define-key org-mode-map (kbd "C-c C-t") nil) in your custom config.
 ;; C-c t is vterm (tools-terminal.el) — test sub-keys use C-c T prefix
 (global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
 

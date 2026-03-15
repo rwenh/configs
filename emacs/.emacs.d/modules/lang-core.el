@@ -1,17 +1,17 @@
 ;;; lang-core.el --- Professional Language Support (CALIBRATED) -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; 50+ languages with LSP, Tree-sitter, compile-and-run, debugging
-;;; Version: 2.2.3
-;;; Fixes:
-;;;   - ruby-mode: added :straight nil — it is built-in since Emacs 29.
-;;;     Without it straight.el attempted a MELPA lookup on every startup,
-;;;     producing lock-file churn and occasional warning noise.
-;;;   - 2.2.3: go-mode gofmt-before-save hook was placed in :config with LOCAL=t,
-;;;     making it buffer-local for whatever buffer was current at package-load time,
-;;;     not for every subsequent go-mode buffer. Moved into go-mode-hook.
-;;;   - 2.2.3: python-mode-map C-c C-t shadow removed. The local binding to
-;;;     emacs-ide-python-pytest shadowed the global C-c C-t (emacs-ide-test-run)
-;;;     in Python buffers, breaking the universal test runner.
+;;; Version: 2.2.4
+;;; Fixes vs 2.2.3:
+;;;   - ruby-mode: added :straight nil (built-in since Emacs 29).
+;;;   - 2.2.3: go-mode gofmt-before-save hook moved into go-mode-hook.
+;;;   - 2.2.3: python-mode-map C-c C-t shadow removed.
+;;;   - M-23 (MEDIUM): typescript-mode and web-mode both claimed "\\.tsx\\'"
+;;;     in their :mode lists. auto-mode-alist is last-write-wins; web-mode
+;;;     (defined later in the file) silently won, so TypeScript LSP never
+;;;     activated for .tsx files. Fix: remove "\\.tsx\\'" from web-mode :mode
+;;;     so typescript-mode handles .tsx exclusively (correct — it has tsx
+;;;     tree-sitter support and the TS LSP server handles .tsx natively).
 ;;; Code:
 
 ;; ============================================================================
@@ -250,7 +250,12 @@
 ;; WEB DEVELOPMENT
 ;; ============================================================================
 (use-package web-mode
-  :mode ("\\.html\\'" "\\.htm\\'" "\\.vue\\'" "\\.jsx\\'" "\\.tsx\\'")
+  ;; M-23 FIX: "\\.tsx\\'" removed from :mode list.
+  ;; typescript-mode also claims .tsx; auto-mode-alist is last-write-wins so
+  ;; web-mode (defined here, after typescript-mode) was silently overriding it.
+  ;; TypeScript LSP hooks onto typescript-mode — with web-mode winning for .tsx,
+  ;; LSP never started for those files. .tsx belongs to typescript-mode.
+  :mode ("\\.html\\'" "\\.htm\\'" "\\.vue\\'" "\\.jsx\\'")
   :init
   (setq web-mode-markup-indent-offset 2
         web-mode-css-indent-offset 2

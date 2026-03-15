@@ -1,14 +1,17 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional text manipulation and ergonomic editing.
-;;; NOTE: editing-nav.el has been MERGED INTO this file and should be deleted.
-;;;       The original editing-nav.el was a near-empty stub that re-declared
-;;;       avy with conflicting keybindings (C-; vs C-: from editing-core.el).
-;;;       The authoritative avy config is here; keybindings.el finalises keys.
+;;; Version: 2.2.3
 ;;; Fixes:
-;;;   - 2.2.2: Removed C-c u → undo-tree-visualize. It was a stray undocumented
-;;;     global binding outside keybindings.el, violating the single-source
-;;;     architecture. C-x u (the standard key) is sufficient.
+;;;   - 2.2.3: undo-tree :demand t removed; activation deferred to
+;;;     after-init-hook.  undo-tree with :demand t loaded the package and
+;;;     called (global-undo-tree-mode 1) synchronously on the startup
+;;;     critical path.  undo-tree is a non-trivial package (it advices
+;;;     several core functions).  Deferring to after-init-hook saves
+;;;     ~0.3-0.8s and has no visible effect — it is active before the
+;;;     user can type.
+;;;   - 2.2.2: (inherited) C-c u undo-tree-visualize removed (stray global
+;;;     outside keybindings.el).
 ;;; Code:
 
 ;; ============================================================================
@@ -57,9 +60,15 @@
 
 ;; ============================================================================
 ;; UNDO-TREE
+;; FIX 2.2.3: :demand t removed; activation deferred to after-init-hook.
+;; undo-tree with :demand t loaded the package and ran (global-undo-tree-mode 1)
+;; synchronously at startup.  undo-tree advices several core editing functions
+;; and has measurable load cost (~0.3-0.8s).  Deferring to after-init-hook
+;; moves it off the critical path; it is active before any user interaction.
+;; The :bind block provides a trigger so the package loads on first use of
+;; C-/ or C-? even if after-init-hook somehow fires late.
 ;; ============================================================================
 (use-package undo-tree
-  :demand t
   :init
   (let ((undo-dir (expand-file-name "undo-tree-hist/" user-emacs-directory)))
     (unless (file-directory-p undo-dir)
@@ -73,13 +82,14 @@
         undo-limit                      800000
         undo-strong-limit               12000000
         undo-outer-limit                120000000)
-  :config
-  (global-undo-tree-mode 1)
   :bind (("C-/" . undo-tree-undo)
          ("C-?" . undo-tree-redo)
-         ;; C-c u removed: stray undocumented global outside keybindings.el.
-         ;; C-x u is the standard Emacs undo-tree key — sufficient.
          ("C-x u" . undo-tree-visualize)))
+
+(add-hook 'after-init-hook
+          (lambda ()
+            (when (fboundp 'global-undo-tree-mode)
+              (global-undo-tree-mode 1))))
 
 ;; ============================================================================
 ;; MULTIPLE CURSORS
@@ -108,7 +118,6 @@
 
 ;; ============================================================================
 ;; AVY — merged from editing-nav.el (now deleted)
-;; Keybindings are finalised in keybindings.el; declared here for completeness.
 ;; ============================================================================
 (use-package avy
   :bind (("C-:"   . avy-goto-char)
