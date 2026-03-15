@@ -104,11 +104,22 @@ LIST-SIZE is ignored — output length is fixed."
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
     ;; FIX 2.2.4: Emacs 30 / dashboard void-function nil.
-    ;; dashboard-setup-startup-hook registers nil into window resize hooks,
-    ;; producing "Error muted by safe_call: (void-function nil)" on every
-    ;; window event. Purge nil entries from affected hooks after setup.
+    ;; dashboard-resize-on-hook calls an internal function that is nil on
+    ;; Emacs 30, producing repeated:
+    ;;   "Error muted by safe_call: (void-function nil)"
+    ;; on every frame/window event. Fix: advise dashboard-resize-on-hook
+    ;; to guard against nil before delegating, and also clear it from
+    ;; window-size-change-functions if the installed version is broken.
+    (when (fboundp 'dashboard-resize-on-hook)
+      (advice-add 'dashboard-resize-on-hook :around
+                  (lambda (orig-fn &rest args)
+                    (condition-case nil
+                        (apply orig-fn args)
+                      (void-function nil)))))
+    ;; Also purge any nil entries straight.el or dashboard may have
+    ;; added to window hooks during setup
     (run-with-idle-timer
-     0.5 nil
+     0.1 nil
      (lambda ()
        (dolist (hook '(window-size-change-functions
                        window-configuration-change-hook
