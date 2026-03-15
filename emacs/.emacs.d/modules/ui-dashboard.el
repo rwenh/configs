@@ -1,16 +1,16 @@
 ;;; ui-dashboard.el --- Dashboard configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Dashboard with health status widget.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
 ;;; Fixes:
-;;;   - 2.2.3: Removed '(agenda . 5)' from dashboard-items.
-;;;     The agenda item forces org-mode to load AND scan all org-agenda-files
-;;;     synchronously during dashboard rendering at startup.  On a typical
-;;;     setup with 2-3 agenda files this adds 3-8 seconds.  Agenda is
-;;;     available via C-c a at any time; it does not belong on the startup
-;;;     dashboard's critical path.
-;;;   - 2.2.2: (inherited) Fixed ide-health widget missing on first paint —
-;;;     generator registered before use-package block via pre-declared defvar.
+;;;   - 2.2.4: Emacs 30 / dashboard void-function nil fix.
+;;;     dashboard-setup-startup-hook in Emacs 30 registers nil into
+;;;     window-size-change-functions / window-configuration-change-hook,
+;;;     producing repeated "Error muted by safe_call: (void-function nil)"
+;;;     on every window resize or buffer switch. Fixed by purging nil
+;;;     entries from the relevant hooks via a 0.5s idle timer after setup.
+;;;   - 2.2.3: (inherited) Removed '(agenda . 5)' from dashboard-items.
+;;;   - 2.2.2: (inherited) Fixed ide-health widget missing on first paint.
 ;;; Code:
 
 ;; ============================================================================
@@ -103,6 +103,18 @@ LIST-SIZE is ignored — output length is fixed."
     :config
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
+    ;; FIX 2.2.4: Emacs 30 / dashboard void-function nil.
+    ;; dashboard-setup-startup-hook registers nil into window resize hooks,
+    ;; producing "Error muted by safe_call: (void-function nil)" on every
+    ;; window event. Purge nil entries from affected hooks after setup.
+    (run-with-idle-timer
+     0.5 nil
+     (lambda ()
+       (dolist (hook '(window-size-change-functions
+                       window-configuration-change-hook
+                       window-state-change-hook))
+         (when (boundp hook)
+           (set hook (delq nil (symbol-value hook)))))))
     ;; Refresh after idle health check fires (3s)
     (run-with-idle-timer 4 nil
                          (lambda ()
