@@ -1,8 +1,9 @@
 -- lua/plugins/specs/advanced.lua - Advanced features
--- NOTE: code_runner.nvim removed — core.util.runner handles file execution natively.
 
 return {
-  -- Better escape (v2.0+ API)
+  -- Escape without timeout delay (solves the timeoutlen lag on 'j' when using jk/kj mappings)
+  -- Native inoremap jk <Esc> still causes Neovim to wait `timeoutlen` ms after every 'j'.
+  -- better-escape.nvim intercepts at the Lua level and fires immediately — zero perceived lag.
   {
     "max397574/better-escape.nvim",
     event = "InsertEnter",
@@ -11,17 +12,18 @@ return {
       default_mappings = false,
       mappings = {
         i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
+        v = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
       },
     },
   },
 
-  -- Symbol navigation (breadcrumb context in lualine/winbar)
+  -- Symbol navigation (breadcrumb context in winbar)
   {
     "SmiteshP/nvim-navic",
     dependencies = "neovim/nvim-lspconfig",
     opts = {
-      separator  = " > ",
-      highlight  = true,
+      separator   = " > ",
+      highlight   = true,
       depth_limit = 5,
     },
   },

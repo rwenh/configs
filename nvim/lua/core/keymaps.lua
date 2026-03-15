@@ -8,9 +8,8 @@ local opts = { noremap = true, silent = true }
 -- BASIC EDITING
 -- ============================================================================
 
--- Quick escape from insert mode
-map("i", "jk", "<Esc>", opts)
-map("i", "kj", "<Esc>", opts)
+-- NOTE: jk/kj insert escape handled by better-escape.nvim (advanced.lua)
+-- Native mappings removed to prevent double-handling and redundant timeoutlen lag.
 
 -- Better indenting (keep selection)
 map("v", "<", "<gv", opts)

@@ -1,11 +1,17 @@
--- lua/plugins/specs/lang/sql.lua - SQL development
--- Note: LSP (sqls) is configured in lsp.lua, no need to duplicate here
+-- lua/plugins/specs/lang/sql.lua
+-- dadbod + UI are fully managed in database.lua.
+-- This file adds SQL-specific conform formatter and lint only.
 
 return {
+  -- Conform: sqlfmt formatter
   {
-    "kristijanhusak/vim-dadbod-ui",
-    dependencies = "tpope/vim-dadbod",
-    ft = "sql",
-    cmd = { "DBUI", "DBUIToggle" },
+    "stevearc/conform.nvim",
+    optional = true,
+    opts = {
+      formatters_by_ft = {
+        sql   = { "sqlfmt" },
+        mysql = { "sqlfmt" },
+      },
+    },
   },
 }

@@ -4,12 +4,12 @@ local cmd = vim.api.nvim_create_user_command
 
 -- Health check
 cmd("Health", function()
-  local health = {}
-  health.nvim = string.format("v%d.%d.%d", vim.version().major, vim.version().minor, vim.version().patch)
-  health.os = vim.uv.os_uname().sysname
+  local health  = {}
+  health.nvim   = string.format("v%d.%d.%d", vim.version().major, vim.version().minor, vim.version().patch)
+  health.os     = vim.uv.os_uname().sysname
   health.clipboard = vim.fn.has("clipboard") == 1 and "✓" or "✗"
   local lsp = vim.lsp.get_clients()
-  health.lsp = #lsp > 0 and string.format("%d active", #lsp) or "none"
+  health.lsp    = #lsp > 0 and string.format("%d active", #lsp) or "none"
   health.memory = string.format("%.1fMB", collectgarbage("count") / 1024)
   print("=== Neovim Health ===")
   for k, v in pairs(health) do
@@ -19,7 +19,9 @@ end, { desc = "Show health status" })
 
 -- Format
 cmd("Format", function(opts)
-  local range = opts.range > 0 and { start = { opts.line1, 0 }, ["end"] = { opts.line2, 0 } } or nil
+  local range = opts.range > 0
+    and { start = { opts.line1, 0 }, ["end"] = { opts.line2, 0 } }
+    or nil
   vim.lsp.buf.format({ range = range, timeout_ms = 3000 })
 end, { range = true, desc = "Format file or range" })
 
@@ -57,8 +59,7 @@ end, { desc = "Delete all other buffers" })
 -- Clean up memory
 cmd("CleanUp", function()
   collectgarbage("collect")
-  local mem = collectgarbage("count") / 1024
-  vim.notify(string.format("Memory: %.1fMB", mem))
+  vim.notify(string.format("Memory: %.1fMB", collectgarbage("count") / 1024))
 end, { desc = "Run garbage collection" })
 
 -- Toggle options
@@ -96,6 +97,7 @@ end, { desc = "Resume last telescope picker" })
 -- Install all mason packages
 cmd("MasonInstallAll", function()
   local registry = require("mason-registry")
+
   local pkgs = {
     -- LSP
     "lua-language-server",
@@ -111,20 +113,39 @@ cmd("MasonInstallAll", function()
     "elixir-ls",
     "kotlin-language-server",
     "zls",
+    "fortls",
+    "sqls",
+    "cobol-language-server",
+    "vhdl-ls",
     -- DAP
     "debugpy",
     "codelldb",
     "delve",
     "js-debug-adapter",
+    "java-debug-adapter",
+    "java-test",
+    "elixir-ls-debugger",
     -- Formatters
     "stylua",
     "prettier",
     "shfmt",
+    "black",
+    "isort",
+    "goimports",
+    "ktlint",
+    "rubocop",
+    "clang-format",
+    "fprettify",
+    -- Linters
+    "ruff",
+    "eslint_d",
+    "shellcheck",
+    "htmlhint",
+    "stylelint",
   }
-  
-  local installed = 0
-  local failed = {}
-  
+
+  local installed, failed = 0, {}
+
   for _, pkg_name in ipairs(pkgs) do
     local ok, pkg = pcall(registry.get_package, pkg_name)
     if ok then
@@ -133,25 +154,25 @@ cmd("MasonInstallAll", function()
         pkg:install():once("closed", function()
           if pkg:is_installed() then
             installed = installed + 1
-            vim.notify(pkg_name .. " installed successfully", vim.log.levels.INFO)
+            vim.notify(pkg_name .. " ✓", vim.log.levels.INFO)
           else
             table.insert(failed, pkg_name)
-            vim.notify(pkg_name .. " failed to install", vim.log.levels.ERROR)
+            vim.notify(pkg_name .. " ✗", vim.log.levels.ERROR)
           end
-          
           if installed + #failed == #pkgs then
             if #failed > 0 then
-              vim.notify("Installation complete. Failed: " .. table.concat(failed, ", "), vim.log.levels.WARN)
+              vim.notify("Done. Failed: " .. table.concat(failed, ", "), vim.log.levels.WARN)
             else
-              vim.notify("All packages installed successfully!", vim.log.levels.INFO)
+              vim.notify("All packages installed!", vim.log.levels.INFO)
             end
           end
         end)
       else
+        installed = installed + 1
         vim.notify(pkg_name .. " already installed", vim.log.levels.INFO)
       end
     else
-      vim.notify("Package not found: " .. pkg_name, vim.log.levels.WARN)
+      vim.notify("Not in registry: " .. pkg_name, vim.log.levels.WARN)
       table.insert(failed, pkg_name)
     end
   end

@@ -1,143 +1,150 @@
 -- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
--- Note: LSP (vhdl_ls) is configured in lsp.lua, no need to duplicate here
+-- LSP (vhdl_ls) is configured in lsp.lua.
+-- NOTE: <leader>vs was conflicting with Python venv selector — fixed to <leader>vhd* prefix.
 
 return {
-  -- VHDL syntax and utilities
-  {
-    "saadparwaiz1/cmp_luasnip",
-    optional = true,
-    dependencies = "L3MON4D3/LuaSnip",
-  },
-
-  -- VHDL formatter
+  -- Formatter
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = {
       formatters_by_ft = {
-        vhdl = { "vhdl-style-guide" },
+        vhdl = { "vsg" },  -- VHDL Style Guide (vsg) — more maintained than vhdl-style-guide
+      },
+      formatters = {
+        vsg = {
+          command = "vsg",
+          args    = { "--stdin", "--output", "syntastic" },
+          stdin   = true,
+        },
       },
     },
   },
 
-  -- GHDL integration (simulator)
+  -- Treesitter
+  {
+    "nvim-treesitter/nvim-treesitter",
+    optional = true,
+    opts = function(_, opts)
+      if type(opts.ensure_installed) == "table" then
+        vim.list_extend(opts.ensure_installed, { "vhdl" })
+      end
+    end,
+  },
+
+  -- GHDL build/sim integration (fixed keymap prefix)
   {
     "akinsho/toggleterm.nvim",
     optional = true,
     keys = {
       {
-        "<leader>va",
+        "<leader>vha",
         function()
           local file = vim.fn.expand("%:p")
           local Terminal = require("toggleterm.terminal").Terminal
-          local ghdl_analyze = Terminal:new({
-            cmd = string.format("ghdl -a %s", file),
-            direction = "float",
+          Terminal:new({
+            cmd           = string.format("ghdl -a %s", vim.fn.shellescape(file)),
+            direction     = "float",
             close_on_exit = false,
-          })
-          ghdl_analyze:toggle()
+          }):toggle()
         end,
         desc = "GHDL Analyze",
-        ft = "vhdl",
+        ft   = "vhdl",
       },
       {
-        "<leader>ve",
+        "<leader>vhe",
         function()
           local entity = vim.fn.input("Entity name: ")
-          if entity ~= "" then
-            local Terminal = require("toggleterm.terminal").Terminal
-            local ghdl_elab = Terminal:new({
-              cmd = string.format("ghdl -e %s", entity),
-              direction = "float",
-              close_on_exit = false,
-            })
-            ghdl_elab:toggle()
-          end
+          if entity == "" then return end
+          local Terminal = require("toggleterm.terminal").Terminal
+          Terminal:new({
+            cmd           = string.format("ghdl -e %s", entity),
+            direction     = "float",
+            close_on_exit = false,
+          }):toggle()
         end,
         desc = "GHDL Elaborate",
-        ft = "vhdl",
+        ft   = "vhdl",
       },
       {
-        "<leader>vr",
+        "<leader>vhr",
         function()
           local entity = vim.fn.input("Entity name: ")
-          if entity ~= "" then
-            local Terminal = require("toggleterm.terminal").Terminal
-            local ghdl_run = Terminal:new({
-              cmd = string.format("ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd", entity),
-              direction = "float",
-              close_on_exit = false,
-            })
-            ghdl_run:toggle()
-          end
+          if entity == "" then return end
+          local Terminal = require("toggleterm.terminal").Terminal
+          Terminal:new({
+            cmd           = string.format("ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd", entity),
+            direction     = "float",
+            close_on_exit = false,
+          }):toggle()
         end,
         desc = "GHDL Run & View",
-        ft = "vhdl",
+        ft   = "vhdl",
       },
       {
-        "<leader>vs",
+        "<leader>vhc",
         function()
           local file = vim.fn.expand("%:p")
           local Terminal = require("toggleterm.terminal").Terminal
-          local ghdl_syntax = Terminal:new({
-            cmd = string.format("ghdl -s %s", file),
-            direction = "float",
+          Terminal:new({
+            cmd           = string.format("ghdl -s %s", vim.fn.shellescape(file)),
+            direction     = "float",
             close_on_exit = false,
-          })
-          ghdl_syntax:toggle()
+          }):toggle()
         end,
         desc = "GHDL Syntax Check",
-        ft = "vhdl",
+        ft   = "vhdl",
       },
     },
   },
 
-  -- Snippets for common VHDL constructs
+  -- Snippets (proper separate snippet definitions)
   {
     "L3MON4D3/LuaSnip",
     optional = true,
     ft = "vhdl",
     config = function()
       local ls = require("luasnip")
-      local s = ls.snippet
-      local t = ls.text_node
-      local i = ls.insert_node
+      local s, t, i, d = ls.snippet, ls.text_node, ls.insert_node, ls.dynamic_node
+      local f = ls.function_node
 
       ls.add_snippets("vhdl", {
         s("entity", {
           t("entity "), i(1, "entity_name"), t(" is"),
-          t({"", "  port ("}),
-          t({"", "    "}), i(2, "signal_name"), t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
-          t({"", "  );"}),
-          t({"", "end entity "}), i(1), t(";"),
+          t({ "", "  port (" }),
+          t({ "", "    " }), i(2, "signal_name"), t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
+          t({ "", "  );" }),
+          t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
         }),
         s("arch", {
           t("architecture "), i(1, "rtl"), t(" of "), i(2, "entity_name"), t(" is"),
-          t({"", "begin"}),
-          t({"", "  "}), i(0),
-          t({"", "end architecture "}), i(1), t(";"),
+          t({ "", "begin" }),
+          t({ "", "  " }), i(0),
+          t({ "", "end architecture " }), f(function(args) return args[1] end, { 1 }), t(";"),
         }),
         s("process", {
           t("process("), i(1, "clk"), t(")"),
-          t({"", "begin"}),
-          t({"", "  if rising_edge("}), i(1), t(") then"),
-          t({"", "    "}), i(0),
-          t({"", "  end if;"}),
-          t({"", "end process;"}),
+          t({ "", "begin" }),
+          t({ "", "  if rising_edge(" }), f(function(args) return args[1] end, { 1 }), t(") then"),
+          t({ "", "    " }), i(0),
+          t({ "", "  end if;" }),
+          t({ "", "end process;" }),
+        }),
+        s("std", {
+          t({ "library ieee;", "use ieee.std_logic_1164.all;", "use ieee.numeric_std.all;", "" }),
+        }),
+        s("tb", {
+          t("entity "), i(1, "tb_name"), t(" is"),
+          t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
+          t({ "", "", "architecture sim of " }), f(function(args) return args[1] end, { 1 }), t(" is"),
+          t({ "", "begin" }),
+          t({ "", "  uut: entity work." }), i(2, "dut_name"),
+          t({ "", "    port map (" }),
+          t({ "", "      " }), i(0),
+          t({ "", "    );" }),
+          t({ "", "end architecture sim;" }),
         }),
       })
-    end,
-  },
-
-  -- File type settings
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      -- VHDL treesitter parser
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "vhdl" })
-      end
     end,
   },
 }

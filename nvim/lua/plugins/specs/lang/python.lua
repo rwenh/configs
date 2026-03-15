@@ -1,4 +1,5 @@
 -- lua/plugins/specs/lang/python.lua - Python development
+-- All Python keymaps use <leader>py* prefix consistently.
 
 return {
   -- Virtual environment selector
@@ -11,11 +12,11 @@ return {
       auto_refresh = true,
     },
     keys = {
-      { "<leader>pyv", "<cmd>VenvSelect<cr>", desc = "Select VirtualEnv" },
+      { "<leader>pyv", "<cmd>VenvSelect<cr>", desc = "Python Select Venv" },
     },
   },
 
-  -- Python debug adapter
+  -- DAP: debugpy
   {
     "mfussenegger/nvim-dap-python",
     ft           = "python",
@@ -28,7 +29,6 @@ return {
         "/usr/bin/python",
       }
 
-      -- Non-blocking debugpy check via vim.system (Nvim 0.10+)
       local function try_setup(index)
         if index > #candidates then
           vim.notify("debugpy not found. Install with: pip install debugpy", vim.log.levels.WARN)
@@ -36,7 +36,6 @@ return {
         end
         local python = candidates[index]
         if python == "" then return try_setup(index + 1) end
-
         vim.system({ python, "-c", "import debugpy" }, {}, function(result)
           vim.schedule(function()
             if result.code == 0 then
@@ -50,10 +49,9 @@ return {
 
       try_setup(1)
 
-      -- Python-specific debug keymaps
-      vim.keymap.set("n", "<leader>;pm", function() require("dap-python").test_method() end,    { desc = "Debug Python Method" })
-      vim.keymap.set("n", "<leader>;pc", function() require("dap-python").test_class() end,     { desc = "Debug Python Class" })
-      vim.keymap.set({ "n", "v" }, "<leader>;ps", function() require("dap-python").debug_selection() end, { desc = "Debug Selection" })
+      vim.keymap.set("n", "<leader>pydm", function() require("dap-python").test_method() end,         { desc = "Python Debug Method" })
+      vim.keymap.set("n", "<leader>pydc", function() require("dap-python").test_class() end,          { desc = "Python Debug Class" })
+      vim.keymap.set({ "n", "v" }, "<leader>pyds", function() require("dap-python").debug_selection() end, { desc = "Python Debug Selection" })
     end,
   },
 
@@ -68,11 +66,11 @@ return {
       },
     },
     keys = {
-      { "<leader>pyd", function() require("neogen").generate() end, desc = "Generate Docstring" },
+      { "<leader>pyd", function() require("neogen").generate() end, desc = "Python Generate Docstring" },
     },
   },
 
-  -- Python REPL (ipython via iron.nvim)
+  -- REPL via iron.nvim (ipython)
   {
     "Vigemus/iron.nvim",
     ft = "python",
@@ -89,22 +87,32 @@ return {
           repl_open_cmd = require("iron.view").bottom(20),
         },
         keymaps = {
-          send_motion  = "<leader>\\pc",
-          visual_send  = "<leader>\\pc",
-          send_line    = "<leader>\\pl",
-          cr           = "<leader>\\p<cr>",
-          interrupt    = "<leader>\\pi",
-          exit         = "<leader>\\pq",
-          clear        = "<leader>\\px",
+          send_motion  = "<leader>pyrc",
+          visual_send  = "<leader>pyrc",
+          send_line    = "<leader>pyrl",
+          cr           = "<leader>pyr<cr>",
+          interrupt    = "<leader>pyri",
+          exit         = "<leader>pyrq",
+          clear        = "<leader>pyrx",
         },
       })
     end,
     keys = {
-      { "<leader>\\ps", "<cmd>IronRepl<cr>",    desc = "Python REPL Start" },
-      { "<leader>\\pr", "<cmd>IronRestart<cr>", desc = "Python REPL Restart" },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",    desc = "Python REPL Start" },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>", desc = "Python REPL Restart" },
     },
   },
 
-  -- Better Python indentation
+  -- Better indentation
   { "Vimjas/vim-python-pep8-indent", ft = "python" },
+
+  -- Neotest adapter
+  {
+    "nvim-neotest/neotest",
+    optional = true,
+    opts = function(_, opts)
+      opts.adapters = opts.adapters or {}
+      -- neotest-python already added in test.lua; skip duplicate
+    end,
+  },
 }
