@@ -1,36 +1,45 @@
-;;; ui-theme.el --- Theme toggling integrated with Emacs IDE (CALIBRATED) -*- lexical-binding: t -*-
+;;; ui-theme.el --- Theme toggling for ef-themes -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Theme utilities that respect configuration and avoid duplicate toggles.
+;;; Replaces modus-themes toggle with ef-themes toggle.
+;;; Respects config.yml theme key. F12 calls emacs-ide-toggle-theme.
+;;; Version: 3.0.0
 ;;; Code:
 
-(defun emacs-ide--current-theme-symbol ()
-  "Return first enabled theme symbol or nil."
+(defun emacs-ide--current-theme ()
+  "Return currently enabled theme symbol or nil."
   (car (custom-enabled-themes)))
 
 (defun emacs-ide-toggle-theme ()
-  "Toggle between configured light/dark themes.
-Respects `emacs-ide-theme' if set; safe if themes missing."
+  "Toggle between dark and light ef-theme.
+Uses ef-themes-to-toggle pair if set, else defaults to ef-dark/ef-light."
   (interactive)
-  (let* ((preferred (when (boundp 'emacs-ide-theme) emacs-ide-theme))
-         (current (emacs-ide--current-theme-symbol)))
-    (cond
-     ((and preferred (eq current preferred))
-      ;; try alternate if configured
-      (let ((alternate (if (eq preferred 'modus-vivendi) 'modus-operandi 'modus-vivendi)))
-        (when (custom-theme-enabled-p preferred) (disable-theme preferred))
-        (when (ignore-errors (load-theme alternate t))
-          (message "Theme switched to %s" alternate))))
-     (t
-      ;; fallback toggle between modus themes if available
+  (if (fboundp 'ef-themes-toggle)
+      (ef-themes-toggle)
+    ;; Fallback if ef-themes not loaded yet
+    (let* ((current (emacs-ide--current-theme))
+           (dark-themes  '(ef-dark ef-night ef-duo-dark ef-trio-dark
+                           ef-cherie ef-winter ef-autumn ef-bio))
+           (light-themes '(ef-light ef-day ef-duo-light ef-trio-light
+                           ef-spring ef-summer ef-frost ef-cyprus)))
       (cond
-       ((custom-theme-enabled-p 'modus-vivendi)
-        (disable-theme 'modus-vivendi)
-        (ignore-errors (load-theme 'modus-operandi t))
-        (message "☀️ Light theme"))
+       ((memq current dark-themes)
+        (disable-theme current)
+        (load-theme 'ef-light t)
+        (message "ef-light"))
+       ((memq current light-themes)
+        (disable-theme current)
+        (load-theme 'ef-dark t)
+        (message "ef-dark"))
        (t
-        (disable-theme 'modus-operandi)
-        (ignore-errors (load-theme 'modus-vivendi t))
-        (message "🌙 Dark theme")))))))
+        (load-theme 'ef-dark t)
+        (message "ef-dark"))))))
+
+(defun emacs-ide-select-theme ()
+  "Interactively select any ef-theme by name."
+  (interactive)
+  (if (fboundp 'ef-themes-select)
+      (call-interactively #'ef-themes-select)
+    (message "ui-theme: ef-themes not loaded")))
 
 (provide 'ui-theme)
 ;;; ui-theme.el ends here

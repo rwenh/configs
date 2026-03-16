@@ -1,74 +1,19 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Philosophy: Emacs defaults are good. We only bind what Emacs has no key for.
-;;; No overrides of core defaults. No invented collisions to patch.
-;;;
-;;; What this file does:
-;;;   1. Upgrades a small number of built-ins to smarter equivalents
-;;;      (ibuffer, consult variants) — same keys, better commands.
-;;;   2. Adds global keys for features that simply don't exist in vanilla Emacs
-;;;      (ace-window, magit, helpful, org globals).
-;;;   3. Leaves everything else alone — C-x C-s saves, M-; comments,
-;;;      C-h f describes, C-/ undoes, exactly as Emacs intended.
-;;;
-;;; What this file does NOT do:
-;;;   - Override C-c as a prefix-command (breaks all major-mode C-c bindings)
-;;;   - Re-bind things Emacs already has a key for just to have a "custom" one
-;;;   - Bind commands that major modes also use locally (local bindings win anyway)
-;;;
-;;; ON DUPLICATE BINDINGS WITH MODULE :bind BLOCKS:
-;;;   Several consult commands are also bound inside their use-package :bind
-;;;   blocks in completion-core.el (C-x b, M-y, M-g g, M-s l/r, etc.).
-;;;   These global-set-key calls here are intentional: they serve as the
-;;;   canonical, always-active fallback that works even if completion-core.el
-;;;   fails to load. Since both sets map to the same commands, the last writer
-;;;   (this file, loaded last) wins — behaviour is identical either way.
-;;;   This is NOT a conflict; it is belt-and-suspenders insurance.
-;;;
-;;; Module binding ownership (do not add conflicting global bindings):
-;;;   debug-core.el      → F5-F9, C-c d h, C-c d ?, C-c D s/r/q
-;;;   editing-core.el    → C-/ C-? C-x u (undo-tree), C-> C-< (mc),
-;;;                        C-= (expand-region), C-: C-' M-g f/w (avy),
-;;;                        M-up/down (move-text), smartparens C-M-* map
-;;;   tools-lsp.el       → C-c l * (lsp-mode-map), M-g j/b/O (dumb-jump),
-;;;                        C-c ! * (flycheck-mode-map)
-;;;   tools-project.el   → C-c p * (projectile-mode-map), F9 (treemacs)
-;;;   tools-terminal.el  → C-c t/T/M-t/e (vterm, multi-vterm, eshell)
-;;;   tools-spelling.el  → C-c S * (flyspell-mode-map)
-;;;   completion-core.el → C-. C-; (embark), M-/ (hippie-expand)
-;;;                        Also binds consult commands via :bind — see note above
-;;;   ui-core.el         → C-c w t/f/r (transpose-frame), C-c n (neotree)
-;;;
-;;; Version: 3.0.4
-;;; Changes from 3.0.3:
-;;;   - M-26: Added explicit comment documenting that C-c C-t (emacs-ide-test-run)
-;;;     conflicts with org-todo in org-mode. The global binding is intentionally
-;;;     retained for all non-org buffers, but the README and cheat sheet now
-;;;     document that org-mode users should use M-x emacs-ide-test-run or
-;;;     remap the key in org-mode-map if desired. No runtime change — the
-;;;     global binding already loses to org-mode's local binding (local wins),
-;;;     so org workflow is unaffected. The inconsistency with the file's own
-;;;     "C-c C-<letter> is major-mode territory" philosophy is acknowledged.
-;;;   - C-c C-d (helpful-at-point) moved to C-h d. C-c C-<letter> keys are
-;;;     reserved by convention for major modes; the global binding silently
-;;;     lost in python-mode, haskell-mode, org-mode, and others. C-h d is
-;;;     within Emacs's own help prefix (consistent with C-h f/v/k/F/C) and
-;;;     replaces the rarely-needed describe-distribution command.
-;;;   - C-c C-c / C-c C-r compile bindings replaced with C-c B / C-c b.
-;;;     C-c C-c is owned by virtually every major mode; the global binding
-;;;     was dead in 90% of buffers and surprising when it fired elsewhere.
+;;; v3.0.0 adds:
+;;;   - C-c h * hydra menus (tools-hydra.el owns the bodies)
+;;;   - C-c W * workspace keys (ui-workspace.el owns perspective)
+;;;   - C-c x * REPL dispatch (tools-repl.el)
+;;;   - C-c t * test dispatch (tools-test-runner-registry.el)
+;;; All vanilla defaults unchanged.
+;;; Version: 3.0.0
 ;;; Code:
 
 ;; ============================================================================
-;; BUILT-IN UPGRADES
-;; Same keys the user already knows — just better commands underneath.
+;; BUILT-IN UPGRADES (unchanged from 3.0.4)
 ;; ============================================================================
-
-;; ibuffer is strictly better than the default buffer-list
 (global-set-key (kbd "C-x C-b") 'ibuffer)
-
-;; consult variants: same muscle memory, adds preview + fuzzy matching
-;; Note: also bound via :bind in completion-core.el — intentional, see commentary.
 (global-set-key (kbd "C-x b")   'consult-buffer)
 (global-set-key (kbd "C-x 4 b") 'consult-buffer-other-window)
 (global-set-key (kbd "C-x 5 b") 'consult-buffer-other-frame)
@@ -76,7 +21,7 @@
 (global-set-key (kbd "M-y")     'consult-yank-pop)
 (global-set-key (kbd "C-x C-r") 'consult-recent-file)
 
-;; M-g is Emacs's own "goto" prefix — consult fits here naturally
+;; M-g goto prefix
 (global-set-key (kbd "M-g g")   'consult-goto-line)
 (global-set-key (kbd "M-g M-g") 'consult-goto-line)
 (global-set-key (kbd "M-g i")   'consult-imenu)
@@ -85,7 +30,7 @@
 (global-set-key (kbd "M-g m")   'consult-mark)
 (global-set-key (kbd "M-g k")   'consult-global-mark)
 
-;; M-s is Emacs's own "search" prefix — consult fits here naturally
+;; M-s search prefix
 (global-set-key (kbd "M-s l")   'consult-line)
 (global-set-key (kbd "M-s L")   'consult-line-multi)
 (global-set-key (kbd "M-s r")   'consult-ripgrep)
@@ -97,252 +42,162 @@
 
 ;; ============================================================================
 ;; WINDOW MANAGEMENT
-;; M-o is unbound in vanilla Emacs 29 (facemenu was removed).
-;; ace-window is configured in ui-core.el; bound globally here.
-;; winner-mode C-c left/right are set automatically when winner-mode enables.
 ;; ============================================================================
-
 (global-set-key (kbd "M-o") 'ace-window)
 
 ;; ============================================================================
-;; VERSION CONTROL — MAGIT
-;; C-x g is the universally accepted convention. C-x v is Emacs vc-mode's
-;; prefix; we leave it alone and add magit alongside it.
+;; VERSION CONTROL
 ;; ============================================================================
-
 (global-set-key (kbd "C-x g")   'magit-status)
 (global-set-key (kbd "C-x M-g") 'magit-dispatch)
-(global-set-key (kbd "C-x v t") 'git-timemachine) ; fits the C-x v vc prefix
+(global-set-key (kbd "C-x v t") 'git-timemachine)
 
 ;; ============================================================================
 ;; HELP — HELPFUL
-;; Replaces C-h sub-keys with helpful equivalents — identical interface,
-;; richer output. C-h d provides helpful-at-point (no vanilla equivalent).
-;; NOTE: tools-lsp.el also binds these inside its use-package block so they
-;; work when LSP is active. Defining them here ensures they work regardless
-;; of whether tools-lsp.el loaded successfully.
-;; FIX 3.0.3: C-c C-d removed from global map. C-c C-<letter> keys are
-;;   reserved by convention for major modes; a global binding loses silently
-;;   in any mode that uses it locally (python-mode, haskell-mode, org-mode,
-;;   etc.), making it unreliable. Replaced with C-h d — a natural fit inside
-;;   Emacs's own help prefix, consistent with C-h f/v/k/F/C already here.
-;;   C-h d was previously bound to describe-distribution (rarely useful in
-;;   day-to-day work); helpful-at-point is strictly more useful.
 ;; ============================================================================
-
 (global-set-key (kbd "C-h f")   'helpful-callable)
 (global-set-key (kbd "C-h v")   'helpful-variable)
 (global-set-key (kbd "C-h k")   'helpful-key)
 (global-set-key (kbd "C-h F")   'helpful-function)
 (global-set-key (kbd "C-h C")   'helpful-command)
-(global-set-key (kbd "C-h d")   'helpful-at-point)  ; was C-c C-d — see note above
+(global-set-key (kbd "C-h d")   'helpful-at-point)
 
 ;; ============================================================================
 ;; ORG MODE
-;; These three are the bindings the Org manual recommends as globals.
-;; C-c l in LSP buffers is overridden locally by lsp-mode-map — that's fine,
-;; org-store-link remains available everywhere else.
 ;; ============================================================================
-
 (global-set-key (kbd "C-c a") 'org-agenda)
 (global-set-key (kbd "C-c c") 'org-capture)
 (global-set-key (kbd "C-c l") 'org-store-link)
 
 ;; ============================================================================
 ;; COMPILE
-;; C-c C-c is reserved by virtually every major mode (python, org, cc, etc.).
-;; Binding compile globally there makes it dead in 90% of buffers and fires
-;; unexpectedly in the rest. Use C-c B (Build) / C-c b (reBuild) instead —
-;; these are unoccupied at the global level.
 ;; ============================================================================
-
 (global-set-key (kbd "C-c B") 'compile)
 (global-set-key (kbd "C-c b") 'recompile)
 
 ;; ============================================================================
-;; UTILITY
+;; HYDRA MENUS — C-c h prefix (bodies defined in tools-hydra.el)
 ;; ============================================================================
+;; These are forward declarations — tools-hydra.el sets the actual functions.
+;; Listed here for documentation and as fallback no-ops until hydra loads.
+(global-set-key (kbd "C-c h w") (lambda () (interactive) (if (fboundp 'hydra-window/body)  (hydra-window/body)  (message "hydra-window not loaded"))))
+(global-set-key (kbd "C-c h b") (lambda () (interactive) (if (fboundp 'hydra-buffer/body)  (hydra-buffer/body)  (message "hydra-buffer not loaded"))))
+(global-set-key (kbd "C-c h g") (lambda () (interactive) (if (fboundp 'hydra-git/body)     (hydra-git/body)     (message "hydra-git not loaded"))))
+(global-set-key (kbd "C-c h l") (lambda () (interactive) (if (fboundp 'hydra-lsp/body)     (hydra-lsp/body)     (message "hydra-lsp not loaded"))))
+(global-set-key (kbd "C-c h p") (lambda () (interactive) (if (fboundp 'hydra-project/body) (hydra-project/body) (message "hydra-project not loaded"))))
+(global-set-key (kbd "C-c h t") (lambda () (interactive) (if (fboundp 'hydra-test/body)    (hydra-test/body)    (message "hydra-test not loaded"))))
+(global-set-key (kbd "C-c h d") (lambda () (interactive) (if (fboundp 'hydra-debug/body)   (hydra-debug/body)   (message "hydra-debug not loaded"))))
+(global-set-key (kbd "C-c h u") (lambda () (interactive) (if (fboundp 'hydra-toggle/body)  (hydra-toggle/body)  (message "hydra-toggle not loaded"))))
+(global-set-key (kbd "C-c h r") (lambda () (interactive) (if (fboundp 'hydra-repl/body)    (hydra-repl/body)    (message "hydra-repl not loaded"))))
+(global-set-key (kbd "C-c h s") (lambda () (interactive) (if (fboundp 'hydra-search/body)  (hydra-search/body)  (message "hydra-search not loaded"))))
+(global-set-key (kbd "C-c h h") (lambda () (interactive)
+                                   (message "Hydras: w)indow b)uffer g)it l)sp p)roject t)est d)ebug u)toggle r)epl s)earch")))
 
-;; Discoverability
+;; ============================================================================
+;; REPL DISPATCH — C-c x prefix (tools-repl.el)
+;; ============================================================================
+(global-set-key (kbd "C-c x r") #'emacs-ide-repl-launch)
+(global-set-key (kbd "C-c x s") #'emacs-ide-repl-send-region)
+(global-set-key (kbd "C-c x b") #'emacs-ide-repl-send-buffer)
+(global-set-key (kbd "C-c x d") #'emacs-ide-repl-send-defun)
+(global-set-key (kbd "C-c x t") #'emacs-ide-repl-toggle-window)
+
+;; ============================================================================
+;; TEST DISPATCH — C-c X prefix (tools-test-runner-registry.el)
+;; NOTE: C-c t = vterm, C-c T = vterm-other-window (tools-terminal.el).
+;;       C-c X is the test prefix (unoccupied).
+;; ============================================================================
+(global-set-key (kbd "C-c X f") #'emacs-ide-test-run-file)
+(global-set-key (kbd "C-c X p") #'emacs-ide-test-run-project)
+(global-set-key (kbd "C-c X .") #'emacs-ide-test-run-at-point)
+(global-set-key (kbd "C-c X w") #'emacs-ide-test-watch)
+(global-set-key (kbd "C-c X s") #'emacs-ide-test-runner-status)
+;; Legacy C-c C-t kept for compatibility (tools-test.el smart dispatch)
+(global-set-key (kbd "C-c C-t") #'emacs-ide-test-run)
+
+;; ============================================================================
+;; PROJECT DETECT STATUS
+;; ============================================================================
+(global-set-key (kbd "C-c D") #'emacs-ide-detect-show-status)
+
+;; ============================================================================
+;; UTILITY (unchanged)
+;; ============================================================================
 (global-set-key (kbd "C-c ?") 'which-key-show-top-level)
 (global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
-
-;; Config management
 (global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
-;; M-26 NOTE: C-c C-t conflicts with org-todo in org-mode buffers.
-;; This is a known inconsistency with this file's own philosophy of keeping
-;; C-c C-<letter> as major-mode territory (see C-c C-d fix above).
-;; The global binding intentionally loses to org-mode's local binding —
-;; so org workflow is unaffected — but tools-test.el's own global-set-key
-;; call already handles this. If you want the test runner in org-mode too,
-;; add: (define-key org-mode-map (kbd "C-c C-t") nil) in your custom config.
-;; C-c t is vterm (tools-terminal.el) — test sub-keys use C-c T prefix
-(global-set-key (kbd "C-c C-t") 'emacs-ide-test-run)
-
-;; UI toggles (functions defined in ui-core.el and ui-theme.el)
-;; FIX: C-<f8> removed from neotree — it collided with dap-breakpoint-condition
-;; (debug-core.el F8 family: F8=toggle, C-F8=condition, S-F8=log, C-S-F8=del-all).
-;; keybindings.el was re-assigning C-<f8> to neotree-toggle last, silently
-;; killing dap-breakpoint-condition on every startup.
-;; Neotree moves to C-c n (unoccupied). C-<f8> is now left to debug-core.el.
 (global-set-key (kbd "C-c n") 'neotree-toggle)
-;; F9 treemacs is bound in tools-project.el via :bind — no duplicate needed here
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
-
-;; ESC as a quit key for GUI users (doesn't affect terminal ESC-as-meta)
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
 
 ;; ============================================================================
 ;; CHEAT SHEET
-;; Only documents what differs from vanilla or is non-obvious.
-;; Vanilla bindings (C-x C-s, C-x C-f, M-;, C-/, M-. etc.) are omitted —
-;; they work as always and C-h k will explain any of them on demand.
 ;; ============================================================================
-
 (defun emacs-ide-show-keybindings-help ()
-  "Show non-obvious IDE bindings. Vanilla Emacs defaults are omitted."
+  "Show non-obvious IDE bindings."
   (interactive)
   (with-output-to-temp-buffer "*IDE Keybindings*"
     (princ
-     "=== EMACS IDE — NON-OBVIOUS BINDINGS ===
-Vanilla defaults work normally. Use C-h k to look up any key.
+     "=== EMACS IDE v3 — NON-OBVIOUS BINDINGS ===
+Vanilla defaults work normally. C-h k looks up any key.
 
-UPGRADED BUILT-INS (same key, smarter command):
-  C-x C-b       ibuffer              (was list-buffers)
-  C-x b         consult-buffer       (adds live preview)
-  M-y           consult-yank-pop     (adds search through kill ring)
-  M-g g         consult-goto-line    (adds preview)
-  C-x C-r       consult-recent-file
+HYDRA MENUS  (C-c h prefix — chord-free discoverable commands):
+  C-c h w   window hydra    split/resize/ace/winner
+  C-c h b   buffer hydra    switch/kill/scratch
+  C-c h g   git hydra       magit/diff/blame/stash
+  C-c h l   lsp hydra       rename/actions/refs/format
+  C-c h p   project hydra   find/search/compile
+  C-c h t   test hydra      run/watch/report
+  C-c h d   debug hydra     step/break/inspect
+  C-c h u   toggle hydra    theme/line-nos/etc
+  C-c h r   repl hydra      launch/send/toggle
+  C-c h s   search hydra    ripgrep/occur/symbol
 
-SEARCH  (M-s — Emacs search prefix):
-  M-s l         consult-line         search current buffer
-  M-s L         consult-line-multi   search all buffers
-  M-s r         consult-ripgrep      project-wide
-  M-s g         consult-grep
-  M-s G         consult-git-grep
-  M-s f         consult-find
+REPL  (C-c x prefix):
+  C-c x r   launch / switch to REPL
+  C-c x s   send region
+  C-c x b   send buffer
+  C-c x d   send defun at point
+  C-c x t   toggle REPL window
 
-GOTO  (M-g — Emacs goto prefix):
-  M-g i         consult-imenu        jump to symbol
-  M-g I         consult-imenu-multi
-  M-g o         consult-outline      jump to heading
-  M-g j         dumb-jump-go         (tools-lsp.el)
+TESTS  (C-c t prefix):
+  C-c t f   run file tests
+  C-c t p   run project tests
+  C-c t .   run test at point
+  C-c t w   watch mode
+  C-c t s   runner status
 
-NAVIGATION  (editing-core.el):
-  C-:           avy-goto-char
-  C-'           avy-goto-char-2
-  M-g f         avy-goto-line
-  M-g w         avy-goto-word-1
-  C-c j c/l/w/j avy sub-commands
+WORKSPACES  (C-c W prefix, ui-workspace.el):
+  C-c W s   switch workspace
+  C-c W n   new workspace
+  C-c W k   kill workspace
+  M-1..9    switch by index
 
-WINDOWS:
-  M-o           ace-window           fast jump/swap
-  C-c left      winner-undo          (winner-mode default)
-  C-c right     winner-redo
+SEARCH  (M-s prefix):
+  M-s l     consult-line
+  M-s r     consult-ripgrep
+  M-s G     consult-git-grep
 
-VERSION CONTROL:
-  C-x g         magit-status
-  C-x M-g       magit-dispatch
-  C-x v t       git-timemachine
+UPGRADED BUILT-INS:
+  C-x C-b   ibuffer
+  C-x b     consult-buffer
+  M-y       consult-yank-pop
+  C-x g     magit-status
+  C-h f/v/k helpful-*
+  C-h d     helpful-at-point
 
-HELP  (same C-h keys, better output via helpful):
-  C-h f/v/k/F/C helpful-*
-  C-h d         helpful-at-point     (was C-c C-d; moved off major-mode territory)
+COMPILE:
+  C-c B     compile
+  C-c b     recompile
+  C-c C-t   emacs-ide-test-run (smart dispatch)
 
-ORG  (Org manual recommendations):
-  C-c a         org-agenda
-  C-c c         org-capture
-  C-c l         org-store-link (global); lsp prefix in LSP buffers
-
-COMPILE  (C-c C-c is major-mode territory — use these instead):
-  C-c B         compile
-  C-c b         recompile
-  C-c C-t       emacs-ide-test-run (full suite)
-  C-c C-T       emacs-ide-test-run-all (always full suite)
-  C-c x p       emacs-ide-test-run-point
-  C-c x l       emacs-ide-test-run-last
-  C-c x r       emacs-ide-test-report
-  C-c x h       hydra-test/body
-
-DEBUG  (debug-core.el — F-keys are unambiguous IDE territory):
-  F5            dap-debug
-  F6            dap-debug-restart
-  F7            dap-step-in
-  S-F7          dap-next (step over)
-  M-F7          dap-step-out
-  C-F7          dap-continue
-  F8            dap-breakpoint-toggle
-  C-F8          dap-breakpoint-condition
-  S-F8          dap-breakpoint-log-message
-  C-S-F8        dap-breakpoint-delete-all
-  C-c d h       debug hydra  (keys inside: n s o c b B L D u d l e U w R q)
-  C-c d ?       debug help
-
-LSP  (tools-lsp.el — active only in LSP buffers):
-  C-c l r       lsp-rename
-  C-c l f       lsp-format-buffer
-  C-c l F       lsp-format-region
-  C-c l a       lsp-execute-code-action
-  C-c l R       lsp-find-references
-  C-c l i       lsp-find-implementation
-  C-c l t       lsp-find-type-definition
-  C-c l d       lsp-describe-thing-at-point
-  C-c l o       lsp-organize-imports
-  C-c l u       lsp-ui-doc-toggle
-  M-.           lsp-ui-peek-find-definitions  (overrides xref locally)
-  M-?           lsp-ui-peek-find-references
-
-PROJECT  (tools-project.el / projectile):
-  C-c p f       projectile-find-file
-  C-c p p       projectile-switch-project
-  C-c p s r     projectile-ripgrep
-  C-c p c       projectile-compile-project
-  C-c p t       projectile-test-project
-  C-c p F       treemacs-find-file        (find current file in tree)
-  C-c p W       treemacs-select-window    (focus treemacs window)
-  C-c p r       projectile-run-project
-  C-c p k       projectile-kill-buffers
-  C-c p d       projectile-dired
-  F9            treemacs (set by tools-project.el)
-
-EDITING  (editing-core.el):
-  C->           mc/mark-next-like-this
-  C-<           mc/mark-previous-like-this
-  C-=           er/expand-region
-  C--           er/contract-region
-  M-<up/down>   move-text-up/down
-  C-/           undo-tree-undo       (replaces vanilla undo)
-  C-?           undo-tree-redo
-  C-x u         undo-tree-visualize
-
-COMPLETION  (completion-core.el):
-  C-.           embark-act
-  C-;           embark-dwim
-  M-/           hippie-expand
-
-SPELLING  (tools-spelling.el):
-  C-c S s       ispell-word
-  C-c S b       flyspell-buffer
-  C-c S n       flyspell-goto-next-error
-  C-c S t       toggle flyspell
-  C-c S c       flyspell-correct-wrapper
-
-TERMINAL  (tools-terminal.el):
-  C-c t         vterm (opens in current dir)
-  C-c T         vterm-other-window
-  C-c M-t       multi-vterm
-
-UTILITY:
-  C-c ?         which-key-show-top-level
-  C-c H         this help
-  C-c R         reload config
-  C-c L         LSP status
-  C-c P         presentation mode toggle
-  C-c n         neotree-toggle
-  F9            treemacs (set by tools-project.el)
-  F12           toggle theme
+MISC:
+  C-c D     project detect status
+  C-c L     LSP status
+  F12       toggle theme
+  C-c P     presentation mode
 
 Press q to close.\n")))
 

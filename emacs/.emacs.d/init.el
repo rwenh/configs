@@ -1,38 +1,44 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 2.2.6
-;;; Fixes:
-;;;   - 2.2.6: emacs-ide-load-core-module and emacs-ide-load-feature-module
-;;;     now pass 'nosuffix t' to load, forcing .el source loading.
-;;;     Previously (load file nil 'nomessage) allowed Emacs to silently
-;;;     prefer stale .elc/.eln bytecode compiled under a different Emacs
-;;;     version. On Emacs 30 with bytecode from Emacs 29, load returned t
-;;;     (success) but all defun/defvar forms were never evaluated — all
-;;;     interactive commands were left undefined, explaining why M-x
-;;;     emacs-ide-* commands showed "no match" despite "✓" in messages.
-;;;   - 2.2.5: straight-check-for-modifications changed from
-;;;     '(check-on-save find-when-checking) to '(find-when-checking).
-;;;     check-on-save causes straight to stat every watched file on every
-;;;     startup to detect modifications, adding 10-30s on large package sets.
-;;;     find-when-checking only checks when you explicitly run
-;;;     straight-check-all / straight-freeze-versions — correct for a
-;;;     production config where packages change only during deliberate updates.
-;;;   - 2.2.4: (inherited) tools-test added to feature-modules
-;;;   - 2.2.3: (inherited) unless block closes before utility defuns
+;;; Version: 3.0.0
+;;; Changes from 2.2.6:
+;;;   - Version bumped to 3.0.0. Build date now computed at load time.
+;;;   - emacs-ide-langs-dir added to directory structure and load-path.
+;;;     modules/langs/ is created on startup if absent.
+;;;   - emacs-ide-feature-modules updated:
+;;;       REMOVED: "lang-core"   — replaced by lazy langs/ directory
+;;;       ADDED:   "ui-workspace"              (perspective.el workspaces)
+;;;                "core-dev"                  (shared lang infrastructure API)
+;;;                "apheleia-langs-patch"       (50-lang formatter map)
+;;;                "tools-test-runner-registry" (per-lang test dispatch)
+;;;                "tools-repl"                 (unified REPL hub)
+;;;                "tools-project-detect"       (project root → lang pre-warm)
+;;;                "tools-hydra"                (10 Hydra menus)
+;;;       ORDER:   ui-workspace after ui-dashboard; core-dev after editing-core
+;;;                and before tools-lsp; apheleia-langs-patch after tools-format;
+;;;                tools-test-runner-registry before tools-test;
+;;;                tools-repl and tools-project-detect after debug-core;
+;;;                tools-hydra before keybindings; keybindings always last.
+;;;   - emacs-ide-purge-bytecode-cache now also clears modules/langs/.
+;;;   - emacs-ide-startup-report notes that lang modules are lazy.
+;;;   - All 2.2.6 fixes retained unchanged:
+;;;       nosuffix load to avoid stale bytecode
+;;;       straight-check-for-modifications = find-when-checking
+;;;       BUG-01..06 from early-init unchanged
 ;;; Code:
 
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "2.2.6"
+(defconst emacs-ide-version "3.0.0"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
   "Minimum required Emacs version.")
 
-(defconst emacs-ide-build-date "2026-03-15"
-  "Build date.")
+(defconst emacs-ide-build-date (format-time-string "%Y-%m-%d")
+  "Build date — computed at load time.")
 
 ;; ============================================================================
 ;; VERSION CHECK
@@ -58,24 +64,26 @@
 ;; ============================================================================
 ;; DIRECTORY STRUCTURE
 ;; ============================================================================
-(defvar emacs-ide-root-dir    user-emacs-directory)
-(defvar emacs-ide-core-dir    (expand-file-name "core/"    emacs-ide-root-dir))
-(defvar emacs-ide-modules-dir (expand-file-name "modules/" emacs-ide-root-dir))
-(defvar emacs-ide-lib-dir     (expand-file-name "lib/"     emacs-ide-root-dir))
-(defvar emacs-ide-var-dir     (expand-file-name "var/"     emacs-ide-root-dir))
-(defvar emacs-ide-cache-dir   (expand-file-name "cache/"   emacs-ide-var-dir))
-(defvar emacs-ide-backup-dir  (expand-file-name "backups/" emacs-ide-var-dir))
-(defvar emacs-ide-snippets-dir (expand-file-name "snippets/" emacs-ide-root-dir))
+(defvar emacs-ide-root-dir     user-emacs-directory)
+(defvar emacs-ide-core-dir     (expand-file-name "core/"         emacs-ide-root-dir))
+(defvar emacs-ide-modules-dir  (expand-file-name "modules/"      emacs-ide-root-dir))
+(defvar emacs-ide-langs-dir    (expand-file-name "modules/langs/" emacs-ide-root-dir)) ; NEW
+(defvar emacs-ide-lib-dir      (expand-file-name "lib/"          emacs-ide-root-dir))
+(defvar emacs-ide-var-dir      (expand-file-name "var/"          emacs-ide-root-dir))
+(defvar emacs-ide-cache-dir    (expand-file-name "cache/"        emacs-ide-var-dir))
+(defvar emacs-ide-backup-dir   (expand-file-name "backups/"      emacs-ide-var-dir))
+(defvar emacs-ide-snippets-dir (expand-file-name "snippets/"     emacs-ide-root-dir))
 
-(dolist (dir (list emacs-ide-core-dir emacs-ide-modules-dir emacs-ide-lib-dir
-                   emacs-ide-var-dir emacs-ide-cache-dir emacs-ide-backup-dir
-                   emacs-ide-snippets-dir))
+(dolist (dir (list emacs-ide-core-dir emacs-ide-modules-dir emacs-ide-langs-dir
+                   emacs-ide-lib-dir emacs-ide-var-dir emacs-ide-cache-dir
+                   emacs-ide-backup-dir emacs-ide-snippets-dir))
   (unless (file-directory-p dir)
     (make-directory dir t)))
 
 (add-to-list 'load-path emacs-ide-core-dir)
 (add-to-list 'load-path emacs-ide-lib-dir)
 (add-to-list 'load-path emacs-ide-modules-dir)
+(add-to-list 'load-path emacs-ide-langs-dir)   ; NEW: lazy lang modules
 
 (emacs-ide--track-phase "directory-setup")
 
@@ -120,12 +128,8 @@
     (load bootstrap-file nil 'nomessage))
 
   (setq straight-use-package-by-default   t
-        ;; FIX 2.2.5: Removed check-on-save from straight-check-for-modifications.
-        ;; check-on-save tells straight to stat every tracked repository file on
-        ;; every startup to detect uncommitted changes.  With 50+ packages this
-        ;; adds 10-30 seconds to startup time.  find-when-checking only runs
-        ;; the check during explicit straight-check-all / straight-freeze-versions
-        ;; calls — the right trade-off for a stable production config.
+        ;; FIX 2.2.5: find-when-checking avoids startup stat of every package.
+        ;; check-on-save added 10-30s on large package sets; removed permanently.
         straight-check-for-modifications  '(find-when-checking)
         straight-cache-autoloads          t
         straight-vc-git-default-clone-depth 1
@@ -148,6 +152,7 @@
 
   ;; ============================================================================
   ;; CORE SYSTEM MODULES
+  ;; Unchanged from 2.2.6 — core/ is always loaded eagerly.
   ;; ============================================================================
   (defvar emacs-ide-core-modules
     '("emacs-ide-health"     ; Health check system
@@ -188,6 +193,7 @@ were never evaluated, leaving all interactive commands undefined."
 
   ;; ============================================================================
   ;; PATH & ENVIRONMENT
+  ;; Unchanged from 2.2.6.
   ;; ============================================================================
   (defun emacs-ide-setup-exec-path ()
     "Set exec-path and PATH from login shell, with a hard 2-second timeout."
@@ -212,6 +218,7 @@ were never evaluated, leaving all interactive commands undefined."
 
   ;; ============================================================================
   ;; CORE SETTINGS
+  ;; Unchanged from 2.2.6.
   ;; ============================================================================
   (prefer-coding-system 'utf-8-unix)
   (set-language-environment "UTF-8")
@@ -255,30 +262,60 @@ were never evaluated, leaving all interactive commands undefined."
   ;; ============================================================================
   ;; FEATURE MODULES
   ;; ============================================================================
+  ;; CHANGES FROM 2.2.6:
+  ;;   REMOVED "lang-core"    — replaced by modules/langs/ (lazy-loaded by
+  ;;                            tools-project-detect.el and use-package :mode)
+  ;;   ADDED   "ui-workspace"               after "ui-dashboard"
+  ;;           "core-dev"                   after "editing-core", before "tools-lsp"
+  ;;           "apheleia-langs-patch"        after "tools-format"
+  ;;           "tools-test-runner-registry"  before "tools-test"
+  ;;           "tools-repl"                  after "debug-core"
+  ;;           "tools-project-detect"        after "tools-repl"
+  ;;           "tools-hydra"                 after "tools-project-detect"
+  ;;   keybindings remains last.
+  ;; ============================================================================
   (defvar emacs-ide-feature-modules
-    '("ui-core"            ; Core UI, theme, modeline, visual enhancements
-      "ui-theme"           ; Theme toggle utility
-      "ui-modeline"        ; Modeline fallback logic
-      "ui-dashboard"       ; Startup dashboard
-      "completion-core"    ; Vertico + Corfu + Consult + Cape + Orderless
-      "completion-snippets" ; YASnippet
-      "editing-core"       ; Core editing + navigation
-      "tools-lsp"          ; LSP mode
-      "tools-project"      ; Projectile + Treemacs
-      "tools-git"          ; Magit + diff-hl + forge
-      "tools-terminal"     ; VTerm + Eshell + Docker
-      "tools-format"       ; format-all + apheleia + editorconfig
-      "tools-org"          ; org-mode + agenda + capture
-      "tools-spelling"     ; flyspell across prose and code
-      "lang-core"          ; Language modes + tree-sitter
-      "tools-test"         ; Language-aware test runner
-      "debug-core"         ; DAP debugging
-      "keybindings")       ; Keybindings — always last
-    "Feature modules loaded in order.")
+    '(;; ── UI ────────────────────────────────────────────────────────────────
+      "ui-core"                    ; ef-themes · nerd-icons · visual enhancements
+      "ui-theme"                   ; ef-themes toggle (F12)
+      "ui-modeline"                ; doom-modeline + health segment fallback
+      "ui-dashboard"               ; Startup dashboard (redesigned v3)
+      "ui-workspace"               ; NEW: perspective.el workspaces + tab-bar
+      ;; ── Completion ────────────────────────────────────────────────────────
+      "completion-core"            ; vertico · consult · corfu · embark as hub
+      "completion-snippets"        ; yasnippet + yasnippet-snippets
+      ;; ── Editing ───────────────────────────────────────────────────────────
+      "editing-core"               ; smartparens · avy · mc · undo-tree · meow?
+      ;; ── Shared lang infrastructure (must load before tools-lsp) ──────────
+      "core-dev"                   ; NEW: shared lang API (emacs-ide-dev-*)
+      ;; ── Tools ─────────────────────────────────────────────────────────────
+      "tools-lsp"                  ; lsp-mode · lsp-ui · eglot · dap-mode
+      "tools-project"              ; projectile · treemacs
+      "tools-git"                  ; magit · diff-hl · forge · timemachine
+      "tools-terminal"             ; vterm · eshell · docker
+      "tools-format"               ; apheleia base config
+      "apheleia-langs-patch"       ; NEW: 50-lang complete formatter map
+      "tools-org"                  ; org-mode · agenda · capture · roam
+      "tools-spelling"             ; flyspell across prose and code
+      "tools-notes"                ; denote / org-roam
+      "tools-rest"                 ; restclient · verb
+      ;; ── Test & Debug ──────────────────────────────────────────────────────
+      "tools-test-runner-registry" ; NEW: per-lang test dispatch registry API
+      "tools-test"                 ; auto-detection fallback + history + hydra
+      "debug-core"                 ; DAP adapters + F5-F9 keys
+      ;; ── REPL · Project Detection · Hydra ──────────────────────────────────
+      "tools-repl"                 ; NEW: unified REPL hub (C-c x r/s/b/d/t)
+      "tools-project-detect"       ; NEW: Cargo.toml/go.mod/etc → lang pre-warm
+      "tools-hydra"                ; NEW: 10 Hydra menus (C-c h w/b/g/l/p/t/d/u/r/s)
+      ;; ── Keybindings — ALWAYS LAST ─────────────────────────────────────────
+      "keybindings")               ; All global keys; runs after all modules load
+    "Feature modules loaded in order.
+lang-core removed — langs/ loaded lazily by tools-project-detect.el
+and use-package :mode/:hook triggers. Zero boot cost for lang modules.")
 
   (defun emacs-ide-load-feature-module (module-name)
     "Load feature MODULE-NAME with fallback.
-FIX 2.2.6: Same bytecode fix as emacs-ide-load-core-module —
+FIX 2.2.6: Same nosuffix fix as emacs-ide-load-core-module —
 forces .el source load to avoid stale Emacs 29 bytecode on 30."
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
       (condition-case err
@@ -300,6 +337,7 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
 
   ;; ============================================================================
   ;; HEALTH CHECK
+  ;; Unchanged from 2.2.6.
   ;; ============================================================================
   (when (and (fboundp 'emacs-ide-health-check-startup)
              (not noninteractive))
@@ -307,6 +345,7 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
 
   ;; ============================================================================
   ;; POST-INIT
+  ;; Unchanged from 2.2.6 — startup message and telemetry hook.
   ;; ============================================================================
   (add-hook 'emacs-startup-hook
             (lambda ()
@@ -345,13 +384,19 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
 
 ;; ============================================================================
 ;; CUSTOM FILE
+;; Unchanged from 2.2.6.
 ;; ============================================================================
 (when (and (boundp 'custom-file) (file-exists-p custom-file))
   (load custom-file nil 'nomessage))
 
 ;; ============================================================================
-;; UTILITY COMMANDS (always defined, even in safe mode)
+;; UTILITY COMMANDS
+;; Always defined, even in safe mode.
+;; emacs-ide-startup-report: note added re lazy lang modules.
+;; emacs-ide-purge-bytecode-cache: now also clears modules/langs/.
+;; All other commands unchanged from 2.2.6.
 ;; ============================================================================
+
 (defun emacs-ide-show-version ()
   "Display version and system info."
   (interactive)
@@ -370,7 +415,11 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
     (princ (format "CPUs:    %d\n\n" (or (bound-and-true-p emacs-ide-processor-count) 4)))
     (princ "Startup Phases:\n")
     (dolist (phase (reverse emacs-ide--startup-phases))
-      (princ (format "  %-30s %.3fs\n" (car phase) (cdr phase))))))
+      (princ (format "  %-35s %.3fs\n" (car phase) (cdr phase))))
+    (princ "\n")
+    (princ "Lang modules are lazy — they do not appear above.\n")
+    (princ "They load only when you open a file of that type.\n")
+    (princ "Run M-x emacs-ide-detect-show-status for pre-warm state.\n")))
 
 (defun emacs-ide-reload ()
   "Reload entire configuration."
@@ -393,14 +442,15 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
   (message "✓ Package versions frozen"))
 
 (defun emacs-ide-purge-bytecode-cache ()
-  "Delete all stale .elc and .eln files from core/ and modules/.
+  "Delete all stale .elc and .eln files from core/, modules/, and modules/langs/.
 Run this after upgrading Emacs (e.g. 29 -> 30) to force fresh
 source loading on next startup."
   (interactive)
   (when (y-or-n-p "Delete all .elc and .eln cache files? ")
     (let ((count 0))
-      (dolist (dir (list (expand-file-name "core/"    user-emacs-directory)
-                         (expand-file-name "modules/" user-emacs-directory)))
+      (dolist (dir (list (expand-file-name "core/"         user-emacs-directory)
+                         (expand-file-name "modules/"      user-emacs-directory)
+                         (expand-file-name "modules/langs/" user-emacs-directory))) ; NEW
         (when (file-directory-p dir)
           (dolist (file (directory-files dir t "\\.elc$"))
             (delete-file file)

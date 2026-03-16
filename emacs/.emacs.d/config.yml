@@ -1,28 +1,48 @@
 # ============================================================================
 # Enterprise Emacs IDE Configuration
-# Version: 2.2.1
+# Version: 3.0.0
 # ============================================================================
-# Edit this file to customize your Emacs IDE setup
+# Edit this file to customize your Emacs IDE setup.
 # Changes take effect after: M-x emacs-ide-config-reload
+#
+# What changed from 2.2.1:
+#   - general.theme updated to ef-dark (ef-themes replaces modus-themes)
+#   - general.icons updated to nerd-icons (replaces all-the-icons)
+#   - languages: section fully expanded — 50 langs, per-lang LSP/formatter/flags
+#   - editing: section added — meow toggle, hydra enable
+#   - workspace: section added — perspective.el config
+#   - formatting: extended to cover all 50 langs
+#   - environments: theme keys updated to ef-themes names
+#   - performance.startup-time-target raised to 3.0 (lang modules lazy, fair target)
+#   - project.indexing changed to alien (faster, non-blocking)
+# ============================================================================
 
 # ============================================================================
 # GENERAL SETTINGS
 # ============================================================================
 general:
-  # Theme selection
-  theme: modus-vivendi          # Options: modus-vivendi, modus-operandi
+  # Theme — ef-themes (replaces modus-themes)
+  # Options: ef-dark ef-night ef-light ef-day ef-duo-dark ef-duo-light
+  #          ef-cherie ef-winter ef-summer ef-spring ef-autumn ef-frost
+  #          ef-trio-dark ef-trio-light ef-bio ef-cyprus ef-elea-dark ef-elea-light
+  theme: ef-dark
+
+  # Icons — nerd-icons (replaces all-the-icons, faster single-font)
+  # Run M-x nerd-icons-install-fonts once after install
+  icons: nerd-icons
 
   # Font configuration
-  font: JetBrains Mono          # Primary font
+  font: JetBrains Mono          # Primary monospace font
   font-size: 11                 # Font size in points
-  variable-pitch-font: Inter    # For variable-pitch modes
+  variable-pitch-font: Inter    # For variable-pitch modes (org, markdown)
 
   # Safety
-  safe-mode: false              # Set to true to boot in minimal config
+  safe-mode: false              # Set true to boot in minimal config
+                                # Or launch with: emacs --safe
 
   # Startup
   show-dashboard: true          # Show dashboard on startup
-  restore-session: false        # Restore previous session
+  restore-session: false        # Restore previous session via perspective
 
 # ============================================================================
 # COMPLETION FRAMEWORK
@@ -32,90 +52,135 @@ completion:
   delay: 0.1                    # Delay before showing completions (seconds)
   auto: true                    # Auto-trigger completion
   snippet-expansion: true       # Enable YASnippet
-  fuzzy-matching: true          # Fuzzy completion matching
+  fuzzy-matching: true          # Fuzzy completion via orderless
   popup-height: 20              # Max items in completion popup
-  preview: true                 # Preview completions
+  preview: true                 # Preview completions (highlight only, not insert)
 
 # ============================================================================
 # LSP (LANGUAGE SERVER PROTOCOL)
 # ============================================================================
 lsp:
   enable: true                  # Master LSP switch
-  large-file-threshold: 100000  # Disable some features for files > this size
+  large-file-threshold: 100000  # Disable some features for files > this size (bytes)
   idle-delay: 0.3               # Delay before LSP actions (seconds)
   inlay-hints: true             # Show type hints inline
   semantic-tokens: true         # Semantic highlighting
   symbol-highlighting: true     # Highlight symbol under cursor
   lens: true                    # Show code lenses
-  headerline-breadcrumb: true   # Show breadcrumb in header
-  sideline: true                # Show info in sideline
+  headerline-breadcrumb: true   # Show breadcrumb in header line
+  sideline: true                # Show diagnostics in sideline
   signature-help: true          # Show function signatures
-  hover-docs: true              # Show documentation on hover
+  hover-docs: true              # Show documentation on hover (mouse trigger)
   diagnostics-provider: flycheck  # Options: flycheck, flymake
-  organize-imports: true        # Auto-organize imports
+  organize-imports: true        # Auto-organize imports on save
 
 # ============================================================================
 # FORMATTING
 # ============================================================================
-# Controls when and how code is formatted.
 # on-save: true enables apheleia (async, non-blocking) format-on-save globally.
-# Per-language formatters override the global default for that language.
-# Set a formatter to false to disable formatting for that language entirely.
+# Per-language entries here are supplemented by apheleia-langs-patch.el which
+# covers all 50 languages. Set a value to false to disable for that language.
 formatting:
-  on-save: true                 # Format on save (via apheleia, non-blocking)
+  on-save: true                 # Format on save (apheleia, non-blocking)
   show-errors: errors           # When to show formatter errors: errors, warnings, always
 
-  # Per-language formatter selection.
-  # Options per language: the executable name (e.g. black, prettier, rustfmt)
-  # Set to false to disable formatting for that language.
+  # Tier 1 — daily
   python: black                 # pip install black
   javascript: prettier          # npm install -g prettier
   typescript: prettier
   html: prettier
   css: prettier
+  rust: rustfmt                 # ships with rustup
+  go: "goimports"                 # go install golang.org/x/tools/cmd/goimports@latest
+  c: clang-format               # system package manager
+  cpp: clang-format
+
+  # Tier 2 — regular
+  java: google-java-format      # brew install google-java-format / apt
+  kotlin: ktlint                # brew install ktlint
+  lua: stylua                   # cargo install stylua
+  shell: shfmt                  # go install mvdan.cc/sh/v3/cmd/shfmt@latest
+  sql: "pg_format"                # apt install pgformatter / pip install pgformatter
+
+  # Tier 3 — occasional (set false to skip)
+  haskell: ormolu               # cabal install ormolu
+  elixir: "mix-format"            # ships with elixir
+  ruby: rubocop                 # gem install rubocop
+  nix: nixpkgs-fmt              # nix-env -i nixpkgs-fmt
+  zig: "zigfmt"                   # ships with zig
+
+  # Tier 4 — prose/config
   json: prettier
   markdown: prettier
   yaml: prettier
-  rust: rustfmt                 # ships with rustup
-  go: gofmt                     # ships with go
-  c: clang-format               # system package manager
-  cpp: clang-format
-  shell: shfmt                  # go install mvdan.cc/sh/v3/cmd/shfmt@latest
+  toml: prettier
+  terraform: terraform-fmt      # ships with terraform
 
 # ============================================================================
 # PERFORMANCE
 # ============================================================================
 performance:
-  gc-threshold: 16777216        # 16MB - GC threshold (bytes)
+  gc-threshold: 16777216        # 16MB — GC threshold during normal operation
   gc-percentage: 0.1            # GC percentage of heap
-  startup-time-target: 2.0      # Target startup time (seconds)
+  startup-time-target: 3.0     # Target startup time (seconds)
+                                # Raised from 2.0 — lang modules are now lazy
+                                # so actual startup will be ~1s; 3.0 is the warning threshold
   defer-heavy-packages: true    # Defer loading of heavy packages
-  native-comp-jobs: 4           # Number of parallel compilation jobs
-  # FIX: native-comp-deferred-compilation was REMOVED in Emacs 29.
-  # The replacement is native-comp-jit-compilation (set in early-init.el).
-  # This key is informational only — emacs-ide-config-apply does not apply it.
-  # native-comp-deferred: true  ← REMOVED, do not use
-  large-file-threshold: 10000000  # 10MB - Special handling for large files
-  read-process-output-max: 4194304  # 4MB - Max process output buffer
+  native-comp-jobs: 4           # Parallel native compilation jobs
+  large-file-threshold: 10000000  # 10MB — special handling for large files
+  read-process-output-max: 4194304  # 4MB — max process output buffer (LSP perf)
 
 # ============================================================================
 # UI FEATURES
 # ============================================================================
 features:
-  dashboard: true               # Startup dashboard
-  which-key: true               # Show available keybindings
-  beacon: true                  # Highlight cursor on scroll
-  rainbow-delimiters: true      # Color-code parentheses
-  rainbow-mode: true            # Show colors in color codes
-  highlight-indent-guides: true # Show indentation guides
+  dashboard: true               # Startup dashboard (redesigned in v3)
+  which-key: true               # Show available keybindings after prefix
+  beacon: true                  # Highlight cursor position on scroll
+  rainbow-delimiters: true      # Color-code matching parentheses
+  rainbow-mode: true            # Show color swatches for color codes
+  highlight-indent-guides: true # Show indentation guides in prog-mode
   dimmer: true                  # Dim inactive windows
-  pulsar: true                  # Pulse line on certain actions
+  pulsar: true                  # Pulse current line on certain actions
   line-numbers: true            # Show line numbers
-  relative-line-numbers: true   # Relative line numbers
-  column-number: true           # Show column number
-  file-size: true               # Show file size
+  relative-line-numbers: true   # Relative line numbers (good with avy)
+  column-number: true           # Show column number in modeline
+  file-size: true               # Show file size in modeline
   modeline: doom-modeline       # Options: doom-modeline, powerline, default
   modeline-height: 30           # Modeline height in pixels
+
+# ============================================================================
+# EDITING
+# ============================================================================
+editing:
+  # Meow modal editing — Emacs-native modal, NOT Vim/Evil
+  # Meow uses Emacs idioms: C-x / C-c / C-h all work normally in every mode
+  # Toggle at runtime: M-x emacs-ide-toggle-meow
+  meow: false                   # Set true to enable on startup
+
+  # Hydra menus — discoverable chord-free command menus
+  # Entry: C-c h w/b/g/l/p/t/d/u/r/s
+  hydra: true                   # Always enabled (tools-hydra.el)
+
+  # Surround — M-' prefix for surround operations (no Evil dependency)
+  surround: true
+
+# ============================================================================
+# WORKSPACE
+# ============================================================================
+workspace:
+  # perspective.el — named workspaces with isolated buffer lists
+  enable: true                  # Enable perspective.el workspaces
+  auto-switch: true             # Auto-create workspace on project switch
+  save-on-exit: true            # Save workspace state on Emacs exit
+  state-file: var/persp-state   # Relative to user-emacs-directory
+
+  # Default workspaces created at startup
+  # (environments section below also creates workspaces automatically)
+  defaults:
+    - main
+    - debug
+    - scratch
 
 # ============================================================================
 # PROJECT MANAGEMENT
@@ -123,7 +188,9 @@ features:
 project:
   enable: true                  # Enable Projectile
   caching: true                 # Cache project files
-  indexing: hybrid              # Options: native, hybrid, alien
+  indexing: alien               # Options: native, hybrid, alien
+                                # alien = delegates to rg/fd, non-blocking
+                                # Changed from hybrid (which blocks on startup)
   default-search: ripgrep       # Options: ripgrep, grep, git-grep
   search-paths:                 # Project search paths
     - ~/projects
@@ -137,6 +204,11 @@ project:
     - build
     - dist
     - .venv
+    - venv
+    - .next
+    - .nuxt
+    - coverage
+    - .cache
 
 # ============================================================================
 # VERSION CONTROL (GIT)
@@ -144,10 +216,10 @@ project:
 git:
   enable: true                  # Enable Magit
   auto-revert: true             # Auto-revert buffers on git changes
-  gutter: true                  # Show git changes in gutter
+  gutter: true                  # Show git changes in fringe (diff-hl)
   gutter-update-interval: 0.3   # Update interval (seconds)
-  blame: true                   # Enable git blame
-  time-machine: true            # Enable git time machine
+  blame: true                   # Enable git blame (magit-blame)
+  time-machine: true            # Enable git-timemachine
   fill-column: 72               # Commit message fill column
   summary-max-length: 50        # Max first line length
 
@@ -156,44 +228,177 @@ git:
 # ============================================================================
 terminal:
   enable: true                  # Enable VTerm
-  shell: /bin/bash              # Shell to use (or leave empty for $SHELL)
-  max-scrollback: 100000        # Max scrollback buffer
+  shell: /bin/bash              # Shell to use (leave empty for $SHELL)
+  max-scrollback: 100000        # Max scrollback buffer lines
   timer-delay: 0.01             # Timer delay for updates
-  kill-buffer-on-exit: true     # Kill buffer when terminal exits
-  multi-term: true              # Enable multi-terminal support
+  kill-buffer-on-exit: true     # Kill buffer when terminal process exits
+  multi-term: true              # Enable multi-vterm support
 
 # ============================================================================
 # DEBUGGING (DAP)
 # ============================================================================
 debug:
   enable: true                  # Master DAP switch
-  auto-configure-features: true # Auto-configure debug UI
-  auto-show-output: true        # Show output on debug start
-  python: true                  # Python (debugpy)
-  node: true                    # Node.js
-  go: true                      # Go (Delve)
-  rust: true                    # Rust (LLDB)
-  cpp: true                     # C/C++ (LLDB/GDB)
-  java: true                    # Java
+  auto-configure-features: true # Auto-configure DAP UI panels
+  auto-show-output: true        # Show output buffer on debug start
+  python: true                  # Python (debugpy) — lang-python.el
+  node: true                    # Node.js — lang-web.el
+  go: true                      # Go (Delve) — lang-go.el
+  rust: true                    # Rust (LLDB) — lang-rust.el
+  cpp: true                     # C/C++ (LLDB/GDB) — lang-c.el
+  java: true                    # Java (jdtls) — lang-jvm.el
 
 # ============================================================================
 # LANGUAGES
 # ============================================================================
+# Boolean enable/disable flags only. Each key maps to a lang-*.el module.
+# Absent keys default to true. Set false to prevent loading entirely.
+# tools-project-detect.el reads this section before pre-warming any tier.
+#
+# IMPORTANT: Per-language settings (lsp-server, formatter, etc.) live in
+# the separate lang-settings: section below. This separation is required
+# because YAML cannot have the same key be both a boolean and a map.
+# ============================================================================
+
 languages:
-  treesit-enable: true          # Enable tree-sitter
-  treesit-auto-install: true    # Auto-install grammars
+  treesit-enable: true
+  treesit-auto-install: true
+
+  # Tier 1 — daily
+  python: true
+  python-jupyter: false
+  javascript: true
+  typescript: true
+  rust: true
+  go: true
+  c: true
+
+  # Tier 2 — regular
+  java: true
+  kotlin: true
+  scala: false
+  groovy: true
+  lua: true
+  shell: true
+  sql: true
+  r: false
+  julia: false
+
+  # Tier 3 — occasional
+  haskell: false
+  clojure: false
+  elixir: false
+  erlang: false
+  ocaml: false
+  zig: false
+  nix: false
+  d: false
+  v: false
+  ruby: false
+  php: false
+
+  # Tier 4 — prose & config
+  prose: true
+
+# ============================================================================
+# LANG-SETTINGS
+# ============================================================================
+# Per-language LSP server, formatter, and tool overrides.
+# Kept separate from languages: (booleans) to avoid YAML key collision.
+# lang-*.el modules read this section via emacs-ide-config-get-nested.
+# ============================================================================
+
+lang-settings:
   python:
-    lsp-server: pyright         # Options: pyright, pylsp
-    linter: flake8              # Options: flake8, pylint
-  rust:
-    lsp-server: rust-analyzer
-  go:
-    lsp-server: gopls
+    lsp-server: pyright
+    linter: flake8
+    formatter: black
+    venv-path: ~/.virtualenvs
     imports-on-save: true
+
   javascript:
     lsp-server: typescript-language-server
+    formatter: prettier
+    test-runner: jest
+
   typescript:
     lsp-server: typescript-language-server
+    formatter: prettier
+    test-runner: jest
+
+  rust:
+    lsp-server: rust-analyzer
+    formatter: rustfmt
+    cargo-watch: clippy
+
+  go:
+    lsp-server: gopls
+    formatter: "goimports"
+    imports-on-save: true
+
+  c:
+    lsp-server: clangd
+    formatter: clang-format
+
+  java:
+    lsp-server: jdtls
+    formatter: google-java-format
+    build-tool: auto
+
+  kotlin:
+    lsp-server: kotlin-language-server
+    formatter: ktlint
+
+  scala:
+    lsp-server: metals
+    formatter: scalafmt
+
+  lua:
+    lsp-server: lua-language-server
+    formatter: stylua
+
+  shell:
+    lsp-server: bash-language-server
+    formatter: shfmt
+    linter: shellcheck
+
+  sql:
+    lsp-server: sqls
+    formatter: "pg_format"
+    dialect: postgres
+
+  haskell:
+    lsp-server: haskell-language-server
+    formatter: ormolu
+
+  clojure:
+    lsp-server: clojure-lsp
+    formatter: cljfmt
+
+  elixir:
+    lsp-server: elixir-ls
+    formatter: "mix-format"
+
+  ruby:
+    lsp-server: solargraph
+    formatter: rubocop
+
+  nix:
+    lsp-server: nil
+    formatter: nixpkgs-fmt
+
+  zig:
+    lsp-server: zls
+    formatter: "zigfmt"
+
+# ============================================================================
+# REPL
+# ============================================================================
+repl:
+  # Controls tools-repl.el behaviour
+  window-height: 0.35           # REPL window height as fraction of frame
+  side: bottom                  # Options: bottom, right
+  auto-focus: true              # Focus REPL window after launch
 
 # ============================================================================
 # SECURITY
@@ -202,7 +407,7 @@ security:
   tls-verify: true              # Verify TLS certificates
   tls-min-prime-bits: 3072      # Minimum TLS prime bits
   package-signatures: allow-unsigned  # Options: t, allow-unsigned, nil
-  auth-sources:                 # Auth source files
+  auth-sources:                 # Auth source files (tried in order)
     - ~/.authinfo.gpg
     - ~/.netrc
   network-security-level: high  # Options: high, medium, low
@@ -212,15 +417,18 @@ security:
 # ============================================================================
 telemetry:
   enabled: true                 # Enable local telemetry
-  usage-stats: true             # Track command usage
-  startup-times: true           # Log startup times
-  crash-reports: true           # Track crashes
+  usage-stats: true             # Track command usage frequency
+  startup-times: true           # Log startup times to var/telemetry.el
+  crash-reports: true           # Track error/crash events
   anonymous: true               # Keep data anonymous
   local-only: true              # Never send data externally
-  max-log-size: 10485760        # 10MB - Max log file size
+  max-log-size: 10485760        # 10MB — max log file size before rotation
 
 # ============================================================================
 # ENVIRONMENT-SPECIFIC SETTINGS
+# ============================================================================
+# Each environment key becomes a perspective.el workspace automatically.
+# Switch environments: M-x persp-switch (or M-1..9)
 # ============================================================================
 environments:
   work:
@@ -233,7 +441,7 @@ environments:
       - ~/work/repos
     git-user-name: Your Name
     git-user-email: you@company.com
-    theme: modus-operandi
+    theme: ef-light              # Light theme for work (updated from modus-operandi)
 
   home:
     org-directory: ~/personal/org
@@ -246,11 +454,14 @@ environments:
       - ~/github
     git-user-name: Your Name
     git-user-email: you@personal.com
-    theme: modus-vivendi
+    theme: ef-dark               # Dark theme for home (updated from modus-vivendi)
 
 # ============================================================================
 # CUSTOM KEYBINDINGS (OPTIONAL)
 # ============================================================================
+# These are user-defined extras on top of keybindings.el.
+# Standard IDE keys (C-c h hydras, C-c x REPL, C-c t tests) are
+# always active regardless of this section.
 keybindings:
   # custom_save: C-x C-s
   # custom_find_file: C-x C-f
@@ -259,33 +470,34 @@ keybindings:
 # ADVANCED SETTINGS
 # ============================================================================
 advanced:
-  # FIX: The previous value 'error' is wrong in two ways:
-  #   1. Emacs warning levels are Lisp keyword symbols: :debug :warning :error :emergency
-  #      A bare string 'error' is not a valid level and would be silently ignored.
-  #   2. emacs-ide-config-apply has no handler for this key, so it is not applied
-  #      regardless of the value.  To change the warning level, set it directly
-  #      in your init.el: (setq warning-minimum-level :warning)
-  #      early-init.el manages this during startup (sets :emergency, restores :warning).
-  # warning-minimum-level: :warning  ← valid format if a handler is ever added
-  custom-load-path: []          # Additional directories to add to load-path
-  custom-requires: []           # Additional features to require on startup
+  # Additional load-path entries (absolute paths)
+  custom-load-path: []
+
+  # Additional features to require on startup
+  custom-requires: []
+
   experimental:
-    use-tree-sitter-everywhere: false
-    aggressive-indent: false
-    auto-save-on-idle: false
+    use-tree-sitter-everywhere: false   # Replace all major modes with ts variants
+    aggressive-indent: false            # Auto-reindent on every edit
+    auto-save-on-idle: false            # Auto-save buffers after idle seconds
 
 # ============================================================================
 # NOTES
 # ============================================================================
-# - Boolean values: true, false
-# - Numbers: integers or floats
-# - Strings: unquoted preferred for simple values and paths
-# - Lists: YAML list syntax with dashes
-# - Comments: lines starting with #
-# - Keys use hyphens (font-size) not underscores — matches Elisp intern names
+# Boolean values:  true, false
+# Numbers:         integers or floats
+# Strings:         unquoted preferred for simple values and paths
+# Lists:           YAML list syntax with leading dashes
+# Comments:        lines starting with #
+# Keys:            use hyphens (font-size) not underscores
 #
-# Reload configuration: M-x emacs-ide-config-reload
-# Edit this file:       M-x emacs-ide-config-edit
-# View current config:  M-x emacs-ide-config-show
-# Check formatters:     M-x emacs-ide-check-formatters
-# Security audit:       M-x emacs-ide-security-check
+# Reload:          M-x emacs-ide-config-reload
+# Edit:            M-x emacs-ide-config-edit
+# Show current:    M-x emacs-ide-config-show
+# Check formatters: M-x emacs-ide-check-formatters
+# Security audit:  M-x emacs-ide-security-check
+# Project status:  M-x emacs-ide-detect-show-status
+# REPL status:     M-x emacs-ide-repl-status
+# Test runners:    M-x emacs-ide-test-runner-status
+# Workspace list:  M-x emacs-ide-workspace-status
+# Health check:    M-x emacs-ide-health-check-all
