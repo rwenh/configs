@@ -145,13 +145,8 @@
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore)))
 
-  ;; ── STARTUP HOOK — at top level, not inside :config ───────────────────────
-  ;; :config is deferred until dashboard loads. If this hook were inside :config
-  ;; it would never register in time. At top level it registers immediately when
-  ;; ui-dashboard.el loads, before any package is deferred.
   (add-hook 'emacs-startup-hook
             (lambda ()
-              ;; require triggers :config, resolving all dashboard autoloads
               (when (require 'dashboard nil 'noerror)
                 (condition-case err
                     (let ((buf (get-buffer-create
@@ -161,22 +156,20 @@
                         (unless (eq major-mode 'dashboard-mode)
                           (dashboard-mode))
                         (dashboard-insert-startupify-lists))
-                      (switch-to-buffer buf))
+                      (switch-to-buffer buf)
+                      ;; Cancel void timers registered by dashboard-mode
+                      (emacs-ide--cancel-void-timers))
                   (error (message "ui-dashboard: render failed: %s" err)))))
             50)
 
-  ;; Cancel void-nil timers before they fire.
-  ;; dashboard registers internal idle timers during load; if any autoload
-  ;; hasn't resolved yet the timer function is nil → "Error running timer".
-  ;; We cancel them at 0.1s idle — before any package timer fires (which
-  ;; are typically 0.5s+ idle).
-  (run-with-idle-timer
-   0.1 nil
-   (lambda ()
-     (dolist (timer (copy-sequence timer-list))
-       (when (and (timerp timer)
-                  (null (timer--function timer)))
-         (cancel-timer timer)))))
+  (defun emacs-ide--cancel-void-timers ()
+    "Cancel any timer in timer-list or timer-idle-list with a nil function."
+    (dolist (timer (append (copy-sequence timer-list)
+                           (copy-sequence timer-idle-list)))
+      (when (and (timerp timer) (null (timer--function timer)))
+        (cancel-timer timer))))
+
+  (add-hook 'emacs-startup-hook #'emacs-ide--cancel-void-timers 201)
 
   ;; Refresh after health idle timer fires
   (run-with-idle-timer 4 nil
