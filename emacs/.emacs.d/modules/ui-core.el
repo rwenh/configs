@@ -197,7 +197,8 @@
         doom-modeline-lsp                     t
         doom-modeline-env-version             t)
   :config
-  (add-hook 'after-init-hook #'doom-modeline-mode))
+  (add-hook 'after-init-hook
+            (lambda () (when (fboundp 'doom-modeline-mode) (doom-modeline-mode 1)))))
 
 (setq frame-title-format
       '((:eval (if (buffer-file-name)

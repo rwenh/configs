@@ -357,10 +357,25 @@ load-file always evaluates the exact .el source file."
                                                emacs-ide--init-start-time)))
                      (gc-count (- gcs-done emacs-ide--gc-count-start))
                      (pkg-count (condition-case nil
-                                    (if (and (fboundp 'straight--build-cache)
-                                             (hash-table-p straight--build-cache))
-                                        (hash-table-count straight--build-cache)
-                                      0)
+                                    (cond
+                                     ;; straight v2+: use recipe cache
+                                     ((and (fboundp 'straight--recipes-cached-p)
+                                           (boundp 'straight--recipe-cache)
+                                           (hash-table-p straight--recipe-cache))
+                                      (hash-table-count straight--recipe-cache))
+                                     ;; straight v1: build cache
+                                     ((and (fboundp 'straight--build-cache)
+                                           (hash-table-p straight--build-cache))
+                                      (hash-table-count straight--build-cache))
+                                     ;; fallback: count build dirs
+                                     ((file-directory-p (expand-file-name
+                                                         "straight/build"
+                                                         user-emacs-directory))
+                                      (length (directory-files
+                                               (expand-file-name "straight/build"
+                                                                  user-emacs-directory)
+                                               nil "^[^.]")))
+                                     (t 0))
                                   (error 0))))
                 (message "🚀 Emacs IDE v%s ready in %.2fs | %d packages | %d GCs | %s%s"
                          emacs-ide-version elapsed pkg-count gc-count

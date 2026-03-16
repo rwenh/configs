@@ -126,15 +126,33 @@
           (format "Emacs IDE v%s  ·  %s  ·  %d packages"
                   (or (bound-and-true-p emacs-ide-version) "?")
                   (format-time-string "%a %d %b")
-                  (if (fboundp 'straight--build-cache)
-                      (hash-table-count straight--build-cache) 0))
+                  ;; straight v2+: recipe cache; v1: build cache; fallback: dir count
+                  (condition-case nil
+                      (cond
+                       ((and (boundp 'straight--recipe-cache)
+                             (hash-table-p straight--recipe-cache))
+                        (hash-table-count straight--recipe-cache))
+                       ((and (fboundp 'straight--build-cache)
+                             (hash-table-p straight--build-cache))
+                        (hash-table-count straight--build-cache))
+                       ((file-directory-p (expand-file-name
+                                           "straight/build" user-emacs-directory))
+                        (length (directory-files
+                                 (expand-file-name "straight/build" user-emacs-directory)
+                                 nil "^[^.]")))
+                       (t 0))
+                    (error 0)))
           dashboard-footer-messages
           '("M-x butterfly  ·  C-h C  ·  M-x tetris"))
     :config
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore))
-    (when (fboundp 'dashboard-setup-startup-hook)
-      (dashboard-setup-startup-hook))
+    ;; dashboard-setup-startup-hook adds dashboard-initialize to emacs-startup-hook.
+    ;; Wrap in condition-case — if the autoload resolves to nil it fires void nil.
+    (condition-case err
+        (when (fboundp 'dashboard-setup-startup-hook)
+          (dashboard-setup-startup-hook))
+      (error (message "ui-dashboard: dashboard-setup-startup-hook failed: %s" err)))
     ;; Refresh after health check fires
     (run-with-idle-timer 4 nil
                          (lambda ()
