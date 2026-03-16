@@ -104,7 +104,10 @@
 
 (ert-deftest test-theme-or-modeline ()
   "At least a theme or modeline is active."
-  (should (or (custom-enabled-themes)
+  ;; custom-enabled-themes was removed in Emacs 30.
+  ;; Use custom-theme-enabled-p per-theme, or check doom-modeline.
+  (should (or (seq-some #'custom-theme-enabled-p
+                        (mapcar #'car (custom-available-themes)))
               (bound-and-true-p doom-modeline-mode))))
 
 (ert-deftest test-git-executable ()

@@ -91,7 +91,9 @@
 ;; CONFIGURATION
 ;; ============================================================================
 (message "📋 Loading configuration...")
-(require 'emacs-ide-config)
+;; Use load-file not require — require skips if featurep already set,
+;; which happens when native-comp loads a cached .eln on prior startups.
+(load-file (expand-file-name "core/emacs-ide-config.el" emacs-ide-root-dir))
 (emacs-ide-config-load)
 (emacs-ide--track-phase "config-load")
 
@@ -165,18 +167,17 @@
 
   (defun emacs-ide-load-core-module (module-name)
     "Load core MODULE-NAME with error handling.
-FIX 2.2.6: Pass the explicit .el path with 'nosuffix t' so Emacs
-loads the source file directly rather than a stale .elc or .eln
-compiled under a different Emacs version (e.g. 29 bytecode on 30).
-The previous (load file nil 'nomessage) allowed Emacs to silently
-prefer cached bytecode — on Emacs 30 this caused every core module
-to appear loaded (load returned t) but all defun/defvar forms inside
-were never evaluated, leaving all interactive commands undefined."
+Uses load-file instead of load to guarantee the .el source is always
+evaluated regardless of:
+  - featurep cache (load skips already-provided features)
+  - native-comp .eln cache (load uses .eln even with nosuffix=t)
+  - stale .elc bytecode from prior Emacs versions
+load-file bypasses all three — it always reads and evaluates the
+exact file path given, making all defun/defvar forms available."
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-core-dir)))
       (condition-case err
           (progn
-            ;; 'nosuffix t = use exact filename as-is (no .elc/.eln lookup)
-            (load file nil nil t)
+            (load-file file)
             (message "✓ Core: %s" module-name)
             t)
         (error
@@ -315,12 +316,13 @@ and use-package :mode/:hook triggers. Zero boot cost for lang modules.")
 
   (defun emacs-ide-load-feature-module (module-name)
     "Load feature MODULE-NAME with fallback.
-FIX 2.2.6: Same nosuffix fix as emacs-ide-load-core-module —
-forces .el source load to avoid stale Emacs 29 bytecode on 30."
+Uses load-file for the same reason as emacs-ide-load-core-module —
+bypasses featurep cache, native-comp .eln cache, and stale .elc files.
+load-file always evaluates the exact .el source file."
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
       (condition-case err
           (progn
-            (load file nil nil t)
+            (load-file file)
             (message "✓ Feature: %s" module-name)
             t)
         (error
@@ -396,6 +398,127 @@ forces .el source load to avoid stale Emacs 29 bytecode on 30."
 ;; emacs-ide-purge-bytecode-cache: now also clears modules/langs/.
 ;; All other commands unchanged from 2.2.6.
 ;; ============================================================================
+
+;; Load emacs-ide-test.el so M-x emacs-ide-run-tests is available.
+;; It lives in core/ but is not in emacs-ide-core-modules (on-demand only).
+(let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
+  (when (file-exists-p test-file)
+    (condition-case err
+        (load-file test-file)
+      (error (warn "Could not load emacs-ide-test.el: %s" err)))))
+
+;; ============================================================================
+;; MODULE DIAGNOSTIC — checks every module is alive after load
+;; ============================================================================
+(defun emacs-ide-diagnose ()
+  "Check every module loaded by init.el and report what's working.
+Shows: loaded? · feature provided? · key commands defined?
+Run this when M-x commands seem missing."
+  (interactive)
+  (with-output-to-temp-buffer "*Emacs IDE Diagnostics*"
+    (princ (format "=== EMACS IDE v%s DIAGNOSTICS ===\n" emacs-ide-version))
+    (princ (format "Emacs %s | %s\n\n" emacs-version
+                   (format-time-string "%Y-%m-%d %H:%M")))
+
+    ;; ── Core modules ──────────────────────────────────────────────────────
+    (princ "CORE MODULES:\n")
+    (dolist (entry
+             '((emacs-ide-config   . emacs-ide-config-load)
+               (emacs-ide-health   . emacs-ide-health-check-all)
+               (emacs-ide-recovery . emacs-ide-recovery-log)
+               (emacs-ide-package  . emacs-ide-package-report)
+               (emacs-ide-profiler . emacs-ide-profile-start)
+               (emacs-ide-security . emacs-ide-security-check)
+               (emacs-ide-telemetry . emacs-ide-telemetry-report)))
+      (let* ((feat (car entry))
+             (cmd  (cdr entry))
+             (provided (featurep feat))
+             (fn-ok    (fboundp cmd)))
+        (princ (format "  %s %-30s  feature:%-5s  %s\n"
+                       (if (and provided fn-ok) "✓" "✗")
+                       feat
+                       (if provided "yes" "NO")
+                       (if fn-ok
+                           (format "cmd %s: ok" cmd)
+                         (format "cmd %s: MISSING" cmd))))))
+
+    ;; ── Feature modules ───────────────────────────────────────────────────
+    (princ "\nFEATURE MODULES:\n")
+    (dolist (entry
+             '(("ui-core"                    ui-core          emacs-ide-presentation-mode)
+               ("ui-theme"                   ui-theme         emacs-ide-toggle-theme)
+               ("ui-modeline"                ui-modeline      nil)
+               ("ui-dashboard"               ui-dashboard     nil)
+               ("ui-workspace"               ui-workspace     emacs-ide-workspace-status)
+               ("completion-core"            completion-core  nil)
+               ("completion-snippets"        completion-snippets nil)
+               ("editing-core"               editing-core     nil)
+               ("core-dev"                   core-dev         emacs-ide-dev-lang-enabled-p)
+               ("tools-lsp"                  tools-lsp        emacs-ide-lsp-status)
+               ("tools-project"              tools-project    nil)
+               ("tools-project-detect"       tools-project-detect emacs-ide-detect-show-status)
+               ("tools-git"                  tools-git        nil)
+               ("tools-terminal"             tools-terminal   nil)
+               ("tools-format"               tools-format     nil)
+               ("apheleia-langs-patch"        apheleia-langs-patch nil)
+               ("tools-repl"                 tools-repl       emacs-ide-repl-status)
+               ("tools-org"                  tools-org        nil)
+               ("tools-spelling"             tools-spelling   nil)
+               ("tools-notes"                tools-notes      nil)
+               ("tools-rest"                 tools-rest       nil)
+               ("tools-test-runner-registry"  tools-test-runner-registry emacs-ide-test-runner-status)
+               ("tools-test"                 tools-test       emacs-ide-test-run)
+               ("debug-core"                 debug-core       nil)
+               ("tools-hydra"                tools-hydra      nil)
+               ("keybindings"                keybindings      emacs-ide-show-keybindings-help)))
+      (let* ((name     (nth 0 entry))
+             (feat     (nth 1 entry))
+             (cmd      (nth 2 entry))
+             (file     (expand-file-name (concat name ".el") emacs-ide-modules-dir))
+             (exists   (file-exists-p file))
+             (provided (featurep feat))
+             (fn-ok    (or (null cmd) (fboundp cmd))))
+        (princ (format "  %s %-38s  file:%-5s  feature:%-5s  %s\n"
+                       (if (and exists provided fn-ok) "✓"
+                         (if (not exists) "?" "✗"))
+                       name
+                       (if exists "yes" "NO")
+                       (if provided "yes" "NO")
+                       (cond
+                        ((not exists) "FILE MISSING")
+                        ((not provided) "NOT PROVIDED — load failed?")
+                        ((not fn-ok) (format "cmd %s MISSING" cmd))
+                        (t "ok"))))))
+
+    ;; ── Key functions spot-check ───────────────────────────────────────────
+    (princ "\nKEY FUNCTION SPOT-CHECK:\n")
+    (dolist (fn '(emacs-ide-health-check-all
+                  emacs-ide-run-tests
+                  emacs-ide-toggle-theme
+                  emacs-ide-detect-show-status
+                  emacs-ide-repl-status
+                  emacs-ide-test-runner-status
+                  emacs-ide-workspace-status
+                  emacs-ide-lsp-status
+                  emacs-ide-startup-report
+                  emacs-ide-show-version))
+      (princ (format "  %s %s\n"
+                     (if (fboundp fn) "✓" "✗")
+                     fn)))
+
+    ;; ── Modes spot-check ──────────────────────────────────────────────────
+    (princ "\nMODE STATUS:\n")
+    (dolist (mode '(electric-pair-mode
+                    show-paren-mode
+                    delete-selection-mode
+                    display-line-numbers-mode
+                    winner-mode))
+      (princ (format "  %s %s\n"
+                     (if (and (boundp mode) (symbol-value mode)) "✓" "✗")
+                     mode)))
+
+    (princ "\nRun M-x emacs-ide-run-tests for the full ERT suite.\n")
+    (princ "Any ✗ line above shows exactly what failed to load.\n")))
 
 (defun emacs-ide-show-version ()
   "Display version and system info."

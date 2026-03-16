@@ -91,7 +91,7 @@ formatting:
   html: prettier
   css: prettier
   rust: rustfmt                 # ships with rustup
-  go: "goimports"                 # go install golang.org/x/tools/cmd/goimports@latest
+  go: gofmt                 # go install golang.org/x/tools/cmd/goimports@latest
   c: clang-format               # system package manager
   cpp: clang-format
 
@@ -333,7 +333,7 @@ lang-settings:
 
   go:
     lsp-server: gopls
-    formatter: "goimports"
+    formatter: gofmt
     imports-on-save: true
 
   c:

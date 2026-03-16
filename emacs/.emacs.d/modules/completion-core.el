@@ -246,7 +246,7 @@
 ;; ELECTRIC PAIR / COMPLETION SETTINGS (unchanged)
 ;; ============================================================================
 (electric-pair-mode 1)
-(setq electric-pair-pairs '((?\" . ?\") (?{ . ?}) (?[ . ?]) (?\( . ?\)) (?` . ?`)))
+(setq electric-pair-pairs '((?\" . ?\") (?{ . ?}) (?\[ . ?\]) (?\( . ?\)) (?` . ?`)))
 
 (setq completion-cycle-threshold       3
       completion-auto-help            'always
