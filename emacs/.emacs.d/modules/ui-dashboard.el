@@ -1,13 +1,13 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Redesigned dashboard: sharp banner, workspace summary, recent projects,
-;;; health widget, quick-action buttons, keybinding cheatsheet strip.
-;;; Uses nerd-icons for file/project icons.
-;;; Version: 3.0.0
+;;; Version: 3.0.1
+;;; Fix 3.0.1: hook and initial-buffer-choice moved to top level (outside
+;;; :config) so they register immediately at load time, not when dashboard
+;;; package eventually loads. Bypasses dashboard-initialize entirely.
 ;;; Code:
 
 ;; ============================================================================
-;; HEALTH WIDGET (unchanged logic, updated icons)
+;; HEALTH WIDGET
 ;; ============================================================================
 (defun emacs-ide-dashboard--health-section (list-size)
   "Dashboard health widget. LIST-SIZE ignored."
@@ -95,7 +95,6 @@
 
   (defvar dashboard-item-generators nil)
   (defvar dashboard-item-shortcuts  nil)
-
   (add-to-list 'dashboard-item-generators
                '(ide-health    . emacs-ide-dashboard--health-section))
   (add-to-list 'dashboard-item-generators
@@ -106,7 +105,6 @@
   (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
 
   (use-package dashboard
-    :demand t
     :init
     (setq dashboard-startup-banner      'logo
           dashboard-center-content      t
@@ -126,7 +124,6 @@
           (format "Emacs IDE v%s  ·  %s  ·  %d packages"
                   (or (bound-and-true-p emacs-ide-version) "?")
                   (format-time-string "%a %d %b")
-                  ;; straight v2+: recipe cache; v1: build cache; fallback: dir count
                   (condition-case nil
                       (cond
                        ((and (boundp 'straight--recipe-cache)
@@ -146,21 +143,55 @@
           '("M-x butterfly  ·  C-h C  ·  M-x tetris"))
     :config
     (when (fboundp 'dashboard-resize-on-hook)
-      (fset 'dashboard-resize-on-hook #'ignore))
-    ;; dashboard-setup-startup-hook adds dashboard-initialize to emacs-startup-hook.
-    ;; Wrap in condition-case — if the autoload resolves to nil it fires void nil.
-    (condition-case err
-        (when (fboundp 'dashboard-setup-startup-hook)
-          (dashboard-setup-startup-hook))
-      (error (message "ui-dashboard: dashboard-setup-startup-hook failed: %s" err)))
-    ;; Refresh after health check fires
-    (run-with-idle-timer 4 nil
-                         (lambda ()
-                           (when (get-buffer "*dashboard*")
-                             (with-current-buffer "*dashboard*"
-                               (when (fboundp 'dashboard-refresh-buffer)
-                                 (dashboard-refresh-buffer))))))
-    (setq initial-buffer-choice (lambda () (get-buffer-create "*dashboard*")))))
+      (fset 'dashboard-resize-on-hook #'ignore)))
+
+  ;; ── STARTUP HOOK — at top level, not inside :config ───────────────────────
+  ;; :config is deferred until dashboard loads. If this hook were inside :config
+  ;; it would never register in time. At top level it registers immediately when
+  ;; ui-dashboard.el loads, before any package is deferred.
+  (add-hook 'emacs-startup-hook
+            (lambda ()
+              ;; require triggers :config, resolving all dashboard autoloads
+              (when (require 'dashboard nil 'noerror)
+                (condition-case err
+                    (let ((buf (get-buffer-create
+                                (or (bound-and-true-p dashboard-buffer-name)
+                                    "*dashboard*"))))
+                      (with-current-buffer buf
+                        (unless (eq major-mode 'dashboard-mode)
+                          (dashboard-mode))
+                        (dashboard-insert-startupify-lists))
+                      (switch-to-buffer buf))
+                  (error (message "ui-dashboard: render failed: %s" err)))))
+            50)
+
+  ;; Cancel void-nil timers before they fire.
+  ;; dashboard registers internal idle timers during load; if any autoload
+  ;; hasn't resolved yet the timer function is nil → "Error running timer".
+  ;; We cancel them at 0.1s idle — before any package timer fires (which
+  ;; are typically 0.5s+ idle).
+  (run-with-idle-timer
+   0.1 nil
+   (lambda ()
+     (dolist (timer (copy-sequence timer-list))
+       (when (and (timerp timer)
+                  (null (timer--function timer)))
+         (cancel-timer timer)))))
+
+  ;; Refresh after health idle timer fires
+  (run-with-idle-timer 4 nil
+                       (lambda ()
+                         (when (get-buffer "*dashboard*")
+                           (with-current-buffer "*dashboard*"
+                             (when (fboundp 'dashboard-refresh-buffer)
+                               (dashboard-refresh-buffer))))))
+
+  ;; initial-buffer-choice returns the buffer rendered by our hook above
+  (setq initial-buffer-choice
+        (lambda ()
+          (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)
+                              "*dashboard*"))
+              (get-buffer-create "*dashboard*")))))
 
 (provide 'ui-dashboard)
 ;;; ui-dashboard.el ends here

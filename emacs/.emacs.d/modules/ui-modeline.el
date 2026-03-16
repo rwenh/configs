@@ -68,38 +68,29 @@
     ""))
 
 (with-eval-after-load 'doom-modeline
-  ;; M-28 FIX: Wrap in a one-time feature guard so that M-x
-  ;; emacs-ide-config-reload does not re-run def-modeline and discard any
-  ;; user customisations to the main format made after startup.
-  ;; provide/featurep is the standard Emacs idiom for a once-only block.
   (unless (featurep 'emacs-ide-modeline-installed)
-    ;; Define the health segment — always safe, no external deps
+    ;; Define the health segment
     (doom-modeline-def-segment emacs-ide-health
       "IDE health status — ✓ / ⚠N / ✗N."
       (when (doom-modeline--active)
         (emacs-ide-modeline--health-string)))
 
-    ;; Defer the def-modeline call to a short idle timer so that all other
-    ;; segments (persp-name from perspective.el, workspace-name, etc.) are
-    ;; guaranteed to be registered before we redefine the main format.
-    ;; Without the delay, with-eval-after-load fires synchronously when
-    ;; doom-modeline-mode activates, but persp-mode may not have registered
-    ;; its segments yet — doom-modeline then calls nil for missing segments.
-    (run-with-idle-timer
-     0.5 nil
-     (lambda ()
-       (unless (featurep 'emacs-ide-modeline-installed)
-         (doom-modeline-def-modeline 'main
-           '(bar workspace-name window-number modals matches follow buffer-info
-             remote-host buffer-position word-count parrot selection-info)
-           '(compilation objed-state misc-info persp-name battery grip irc
-             mu4e gnus github debug repl lsp minor-modes input-method
-             indent-info buffer-encoding major-mode process vcs
-             emacs-ide-health))  ; <-- appended here, always last
-         (provide 'emacs-ide-modeline-installed)
-         ;; Refresh modeline to apply new format
-         (when (fboundp 'doom-modeline-refresh-bars)
-           (doom-modeline-refresh-bars))))))
+    ;; Redefine the main modeline appending our health segment.
+    ;; persp-name and workspace-name are omitted here — they are registered
+    ;; by perspective.el and doom-modeline-mode respectively, but may not
+    ;; exist at the moment with-eval-after-load fires (timing race with
+    ;; after-init-hook order). doom-modeline falls back gracefully when
+    ;; a named segment isn't registered yet, but some versions call nil
+    ;; → void-function nil. We use only segments guaranteed to exist.
+    (doom-modeline-def-modeline 'main
+      '(bar window-number modals matches follow buffer-info
+        remote-host buffer-position word-count parrot selection-info)
+      '(compilation objed-state misc-info battery grip irc
+        mu4e gnus github debug repl lsp minor-modes input-method
+        indent-info buffer-encoding major-mode process vcs
+        emacs-ide-health))
+
+    (provide 'emacs-ide-modeline-installed)))
 
 ;; Fallback: if doom-modeline is absent, append to the global mode string
 ;; so the health status still appears in the default modeline
