@@ -1,7 +1,15 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
+;;; Fixes vs 2.2.3:
+;;;   - FIX-WARN: ef-themes package calls defvaralias on load to alias its own
+;;;     vars (ef-themes-to-toggle, ef-themes-mixed-fonts, etc.) to modus-themes
+;;;     equivalents for migration compatibility. Since modus-themes ships
+;;;     built-in with Emacs 29+, the aliases always fire and produce four
+;;;     ⛔ Warning (defvaralias) entries in *Warnings* on every startup.
+;;;     They are harmless but noisy. Suppressed via warning-suppress-types in
+;;;     the warning-suppression benchmark phase.
 ;;; Fixes vs 2.2.2:
 ;;;   - FIX-4: emacs-ide--get-processor-count was called twice: once inside the
 ;;;     native-comp-setup benchmark phase and once at top level to define
@@ -194,7 +202,12 @@
             (setq warning-minimum-level :warning)
             (when (boundp 'emacs-ide--saved-byte-compile-warnings)
               (setq byte-compile-warnings
-                    emacs-ide--saved-byte-compile-warnings)))
+                    emacs-ide--saved-byte-compile-warnings))
+            ;; FIX-WARN: Restore warning-suppress-types. We only suppressed
+            ;; defvaralias during startup; restore original value after boot.
+            (when (boundp 'emacs-ide--saved-warning-suppress-types)
+              (setq warning-suppress-types
+                    emacs-ide--saved-warning-suppress-types)))
           90)
 
 ;; Cleanup GC timer on exit
@@ -266,7 +279,17 @@
           (if (boundp 'byte-compile-warnings) byte-compile-warnings t))
     (setq warning-minimum-level :emergency
           byte-compile-warnings nil
-          native-comp-async-report-warnings-errors nil)))
+          native-comp-async-report-warnings-errors nil)
+    ;; FIX-WARN: Suppress defvaralias warnings emitted by ef-themes on every
+    ;; load. ef-themes aliases ef-themes-* vars to modus-themes-* equivalents
+    ;; for migration compatibility; since modus-themes is built-in to Emacs 29+
+    ;; it is always present and these aliases always fire. They are harmless.
+    ;; warning-suppress-types is a list of warning type symbols to silence.
+    ;; Restored alongside warning-minimum-level in emacs-startup-hook (weight 90).
+    (defvar emacs-ide--saved-warning-suppress-types nil)
+    (setq emacs-ide--saved-warning-suppress-types
+          (if (boundp 'warning-suppress-types) warning-suppress-types nil))
+    (add-to-list 'warning-suppress-types '(defvaralias))))
 
 ;; ============================================================================
 ;; TREESIT PREPARATION

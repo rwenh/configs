@@ -1,7 +1,12 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.4
-;;; Fix 3.0.4: dashboard-item-generators/shortcuts registration moved inside
+;;; Version: 3.0.5
+;;; Fix 3.0.5: emacs-ide-dashboard--workspace-section had 2 extra closing
+;;;   parens — one after '(:foreground "#888888") and one after (insert " ").
+;;;   This was a pre-existing bug in the original source. The imbalance caused
+;;;   (invalid-read-syntax ) 72 22) at load time, crashing the entire module
+;;;   and blocking Emacs startup (5912s hang in the warning log).
+;;; Fix 3.0.4 (retained): dashboard-item-generators/shortcuts registration moved inside
 ;;;   the use-package :config block (FIX-7). Top-level defvar + add-to-list
 ;;;   before dashboard loaded clobbered dashboard's own variable defaults.
 ;;; Fix 3.0.3 (retained): Cancel void timers before dashboard-setup-startup-hook.
@@ -67,7 +72,7 @@
                          'follow-link t
                          'face (if active
                                    '(:foreground "#51afef" :weight bold)
-                                 '(:foreground "#888888"))))
+                                 '(:foreground "#888888")))
           (insert " ")))
       (insert "\n"))))
 
