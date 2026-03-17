@@ -14,11 +14,50 @@
 ;;;   - Extension fallback: Only triggers when NO project markers found
 ;;;     (prevents duplicate loads in mixed scenarios).
 ;;;
-;;; Version: 3.0.0 (RECALIBRATED)
+;;; Version: 3.0.1 (RECALIBRATED)
+;;; Fixes vs 3.0.0:
+;;;   - FIX-11: Added emacs-ide-detect--lang-module-overrides table to map
+;;;     lang-keys whose module name does not follow "lang-<key>" to their
+;;;     actual module. "javascript" and "typescript" both load "lang-web";
+;;;     "haskell", "clojure", "elixir", "ocaml" all load "lang-functional";
+;;;     "zig", "nix", "d" load "lang-systems"; "java", "kotlin", "scala"
+;;;     load "lang-jvm". Without this, emacs-ide-detect--prewarm-lang fell
+;;;     back to (concat "lang-" lang-key) producing e.g. "lang-javascript"
+;;;     which does not exist — pre-warming silently did nothing.
 ;;; Code:
 
 (require 'cl-lib)
 (require 'core-dev)
+
+;; ============================================================================
+;; LANG-KEY → MODULE-NAME OVERRIDE TABLE (FIX-11)
+;; Lang keys whose module does NOT follow the "lang-<key>" naming convention.
+;; emacs-ide-detect--prewarm-lang consults this before using the concat fallback.
+;; ============================================================================
+(defvar emacs-ide-detect--lang-module-overrides
+  '(("javascript" . "lang-web")
+    ("typescript" . "lang-web")
+    ("haskell"    . "lang-functional")
+    ("clojure"    . "lang-functional")
+    ("elixir"     . "lang-functional")
+    ("erlang"     . "lang-functional")
+    ("ocaml"      . "lang-functional")
+    ("java"       . "lang-jvm")
+    ("kotlin"     . "lang-jvm")
+    ("scala"      . "lang-jvm")
+    ("groovy"     . "lang-jvm")
+    ("zig"        . "lang-systems")
+    ("nix"        . "lang-systems")
+    ("d"          . "lang-systems")
+    ("v"          . "lang-systems")
+    ("r"          . "lang-data")
+    ("julia"      . "lang-data")
+    ("yaml"       . "lang-prose")
+    ("dockerfile" . "lang-prose")
+    ("terraform"  . "lang-prose")
+    ("ansible"    . "lang-prose"))
+  "Alist of (LANG-KEY . MODULE-NAME) for langs whose module name does not
+follow the standard \\\"lang-<key>\\\" pattern.")
 
 ;; ============================================================================
 ;; PROJECT MARKER DEFINITIONS
@@ -175,12 +214,17 @@ RECALIBRATED: Validates file existence before adding lang to result."
 
 (defun emacs-ide-detect--prewarm-lang (lang-key)
   "Pre-warm lang module for LANG-KEY if enabled in config and not already done.
-RECALIBRATED 3.0.0: Improved error handling and idle deferral."
+RECALIBRATED 3.0.0: Improved error handling and idle deferral.
+FIX-11 3.0.1: Consults emacs-ide-detect--lang-module-overrides before
+falling back to (concat \"lang-\" lang-key), fixing langs like \"javascript\"
+whose module is \"lang-web\" (not \"lang-javascript\")."
   (emacs-ide-detect--init-cache)
   (when (and (emacs-ide-dev-lang-enabled-p lang-key)
              (not (gethash lang-key emacs-ide-detect--pre-warmed)))
     (puthash lang-key t emacs-ide-detect--pre-warmed)
-    (let* ((module-name (or (emacs-ide-detect--module-for-lang lang-key)
+    (let* (;; FIX-11: check override table first, then fall back to concat
+           (module-name (or (cdr (assoc lang-key emacs-ide-detect--lang-module-overrides))
+                            (emacs-ide-detect--module-for-lang lang-key)
                             (concat "lang-" lang-key)))
            (module-file (expand-file-name
                          (concat "langs/" module-name ".el")

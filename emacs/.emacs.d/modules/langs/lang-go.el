@@ -1,5 +1,7 @@
 ;;; lang-go.el --- Go IDE layer -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-5: gofmt-before-save guarded against double-format with apheleia.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "go" :tier 1 :lsp-server "gopls"
@@ -15,7 +17,12 @@
     (interactive)
     (if (executable-find "go") (compile (format "go run %s" (shell-quote-argument (buffer-file-name))))
       (message "lang-go: go not found")))
-  (add-hook 'go-mode-hook (lambda () (add-hook 'before-save-hook #'gofmt-before-save nil t)))
+  (add-hook 'go-mode-hook (lambda ()
+                            ;; FIX-5: Only add gofmt-before-save when apheleia is
+                            ;; not active. apheleia-langs-patch.el maps go-mode →
+                            ;; gofmt already; both active = double format on save.
+                            (unless (bound-and-true-p apheleia-global-mode)
+                              (add-hook 'before-save-hook #'gofmt-before-save nil t))))
   (emacs-ide-dev-bind-compile go-mode-map #'emacs-ide-go-run)
   (define-key go-mode-map (kbd "C-c C-b") (lambda () (interactive) (compile "go build -v")))
   (define-key go-mode-map (kbd "C-c C-v") (lambda () (interactive) (compile "go vet ./..."))))

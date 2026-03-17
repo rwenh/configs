@@ -1,38 +1,18 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.2
-;;; Fixes vs 2.2.1:
-;;;   - BUG-01: `emacs-ide--init-start-time` was defined TWICE — once here and
-;;;     once in init.el. The init.el definition clobbers the early-init one,
-;;;     so all startup phase timings in init.el were measured from the moment
-;;;     init.el ran, not from true Emacs boot.  Fix: rename the early-init var
-;;;     to `emacs-ide--early-init-start-time` so both coexist correctly.
-;;;   - BUG-02: `warning-suppression` benchmark phase set `byte-compile-warnings`
-;;;     to nil globally and permanently.  That silences *all* byte-compiler
-;;;     warnings for user code, not just during bootstrap noise.  Fix: save and
-;;;     restore the original value in the emacs-startup-hook alongside the
-;;;     warning-minimum-level restore.
-;;;   - BUG-03: `inhibit-double-buffering` pushed to `default-frame-alist` for
-;;;     PGTK unconditionally suppresses compositor-side double-buffering on all
-;;;     Wayland compositors including those where it causes visual corruption
-;;;     (wlroots, KDE Plasma). Fix: only push it when NOT on wlroots/KDE
-;;;     (detected via WAYLAND_DISPLAY and XDG_CURRENT_DESKTOP).
-;;;   - BUG-04: `auto-save-list-file-prefix` was set to nil here, but init.el
-;;;     later re-enables backups and auto-saves selectively. Setting the prefix
-;;;     to nil permanently breaks `recover-this-file` / `recover-session`
-;;;     regardless of later init settings. Fix: redirect to var/ instead of nil.
-;;;   - BUG-05: `site-run-file nil` + `inhibit-default-init t` suppresses site
-;;;     configuration entirely, including /etc/emacs/site-start.d/* entries that
-;;;     system admins deploy for certificate stores, proxy settings, and locale.
-;;;     On enterprise Linux this silently breaks HTTPS and locale. Fix: add a
-;;;     guard — only suppress when not on a system with /etc/emacs present,
-;;;     or (safer) only set inhibit-default-init, not site-run-file.
-;;;   - BUG-06: `jit-lock-defer-time 0` disables JIT-lock deferral entirely —
-;;;     fontification fires synchronously on every keystroke, causing
-;;;     significant lag in large files even though the intent was "no delay".
-;;;     Setting to 0.0 has the same effect as nil for defer. Fix: use 0.025
-;;;     (25ms) which gives genuine async deferral while remaining imperceptible.
+;;; Version: 2.2.3
+;;; Fixes vs 2.2.2:
+;;;   - FIX-4: emacs-ide--get-processor-count was called twice: once inside the
+;;;     native-comp-setup benchmark phase and once at top level to define
+;;;     emacs-ide-processor-count. On Linux (where NUMBER_OF_PROCESSORS is not
+;;;     set) both calls fell through to shell-command-to-string "nproc ...",
+;;;     spawning a subprocess twice during the most performance-critical phase
+;;;     of startup. Fix: move emacs-ide-processor-count defvar to immediately
+;;;     after the function definition so the value is cached on first call.
+;;;     The native-comp-setup phase now references emacs-ide-processor-count
+;;;     directly instead of calling the function again.
+;;; All BUG-01..06 fixes from 2.2.2 retained unchanged.
 ;;; Code:
 
 ;; ============================================================================
@@ -73,6 +53,12 @@
             (shell-command-to-string
              "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4")))
         (error 4)))))
+
+;; FIX-4: Call once here and cache. native-comp-setup references this var
+;; directly so the shell subprocess is spawned at most once during early-init.
+(defvar emacs-ide-processor-count
+  (emacs-ide--get-processor-count)
+  "Number of CPU cores — cached at early-init time.")
 
 ;; ============================================================================
 ;; GARBAGE COLLECTION - AGGRESSIVE OPTIMIZATION
@@ -156,7 +142,10 @@
                (native-comp-available-p))
       (setq native-comp-async-report-warnings-errors nil
             native-comp-speed 2
-            native-comp-async-jobs-number (max 1 (/ (or (emacs-ide--get-processor-count) 4) 2))
+            ;; FIX-4: use emacs-ide-processor-count (already evaluated above)
+            ;; instead of calling emacs-ide--get-processor-count again, which
+            ;; would spawn a second shell subprocess on Linux.
+            native-comp-async-jobs-number (max 1 (/ (or emacs-ide-processor-count 4) 2))
             package-native-compile t)
 
       (when (boundp 'native-comp-jit-compilation)
@@ -359,9 +348,8 @@
         (t "TTY"))
   "Current display server.")
 
-(defvar emacs-ide-processor-count
-  (emacs-ide--get-processor-count)
-  "Number of CPU cores.")
+;; NOTE: emacs-ide-processor-count is defined earlier (after
+;; emacs-ide--get-processor-count) so it is available to native-comp-setup.
 
 ;; ============================================================================
 ;; SECURITY - EARLY TLS CONFIGURATION

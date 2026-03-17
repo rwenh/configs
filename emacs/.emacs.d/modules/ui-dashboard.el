@@ -1,18 +1,11 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.3
-;;; Fix 3.0.3: Cancel void timers BEFORE dashboard-setup-startup-hook fires.
-;;;   dashboard registers an internal timer during setup whose autoload doesn't
-;;;   resolve on Emacs 30, leaving a nil function slot. Previously,
-;;;   emacs-ide--find-and-cancel-void-timers ran at emacs-startup-hook priority
-;;;   201 — too late, after the void timer had already fired and printed
-;;;   "Symbol's function definition is void: nil". The fix calls the cleanup
-;;;   function immediately inside :config, before dashboard-setup-startup-hook,
-;;;   so any nil-slot timer registered during dashboard's own load is cancelled
-;;;   before it can fire.
-;;; Fix 3.0.2: Use dashboard-setup-startup-hook normally with :demand t.
-;;;   The 14s startup regression from require'ing dashboard synchronously is
-;;;   fixed by restoring :demand t.
+;;; Version: 3.0.4
+;;; Fix 3.0.4: dashboard-item-generators/shortcuts registration moved inside
+;;;   the use-package :config block (FIX-7). Top-level defvar + add-to-list
+;;;   before dashboard loaded clobbered dashboard's own variable defaults.
+;;; Fix 3.0.3 (retained): Cancel void timers before dashboard-setup-startup-hook.
+;;; Fix 3.0.2 (retained): :demand t.
 ;;; Code:
 
 ;; ============================================================================
@@ -102,17 +95,6 @@
 ;; ============================================================================
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
 
-  (defvar dashboard-item-generators nil)
-  (defvar dashboard-item-shortcuts  nil)
-  (add-to-list 'dashboard-item-generators
-               '(ide-health    . emacs-ide-dashboard--health-section))
-  (add-to-list 'dashboard-item-generators
-               '(ide-workspace . emacs-ide-dashboard--workspace-section))
-  (add-to-list 'dashboard-item-generators
-               '(ide-actions   . emacs-ide-dashboard--actions-section))
-  (add-to-list 'dashboard-item-shortcuts '(ide-health    . "h"))
-  (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
-
   (use-package dashboard
     :demand t
     :init
@@ -152,6 +134,18 @@
           dashboard-footer-messages
           '("M-x butterfly  ·  C-h C  ·  M-x tetris"))
     :config
+    ;; FIX-7: Register custom dashboard items here, inside :config, so that
+    ;; dashboard's own defvar for these variables has already run. Doing this
+    ;; at top level (before dashboard loads) created nil-valued variables that
+    ;; clobbered dashboard's defaults via defvar's no-op-if-already-bound rule.
+    (add-to-list 'dashboard-item-generators
+                 '(ide-health    . emacs-ide-dashboard--health-section))
+    (add-to-list 'dashboard-item-generators
+                 '(ide-workspace . emacs-ide-dashboard--workspace-section))
+    (add-to-list 'dashboard-item-generators
+                 '(ide-actions   . emacs-ide-dashboard--actions-section))
+    (add-to-list 'dashboard-item-shortcuts '(ide-health    . "h"))
+    (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore))
     ;; FIX 3.0.3: Cancel any void-slot timers that dashboard's own load may have

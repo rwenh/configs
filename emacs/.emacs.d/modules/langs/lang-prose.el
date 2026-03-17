@@ -1,6 +1,9 @@
 ;;; lang-prose.el --- Prose & Config IDE layer -*- lexical-binding: t -*-
-;;; Markdown · Org · YAML · TOML · JSON · Dockerfile · Terraform · Ansible · GraphQL · Proto
-;;; Version: 1.0.0
+;;; Markdown · Org · YAML · TOML · JSON · Terraform · Ansible · GraphQL · Proto
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-12: Removed duplicate dockerfile-mode (already in tools-terminal.el).
+;;;   - FIX-13: Removed duplicate restclient (already in tools-rest.el).
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "prose" :tier 4 :lsp-server nil
@@ -41,7 +44,9 @@
 (use-package csv-mode :defer t :mode "\\.csv\\'")
 
 ;; ── Dockerfile ────────────────────────────────────────────────────────────
-(use-package dockerfile-mode :defer t :mode "\\`Dockerfile")
+;; FIX-12: dockerfile-mode installed and registered in tools-terminal.el.
+;;   Duplicate use-package here caused double registration in straight's
+;;   recipe cache. Use with-eval-after-load for LSP only.
 (use-package lsp-mode :if (executable-find "docker-langserver")
   :hook (dockerfile-mode . lsp-deferred))
 
@@ -68,7 +73,8 @@
 (use-package dotenv-mode :defer t :mode "\\.env\\'")
 
 ;; ── REST (HTTP files) ─────────────────────────────────────────────────────
-(use-package restclient :defer t :mode "\\.http\\'")
+;; FIX-13: restclient installed and :mode registered in tools-rest.el.
+;;   No use-package needed here.
 
 ) (provide 'lang-prose)
 ;;; lang-prose.el ends here

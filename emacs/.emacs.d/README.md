@@ -13,7 +13,7 @@ async formatting, Git integration, and full recovery system.
 - **nerd-icons** replaces all-the-icons — single font, faster load, richer symbol coverage.
 - **Hydra menus** — 10 discoverable chord-free command menus (`C-c h w/b/g/l/p/t/d/u/r/s`). Emacs-ideology replacement for Vim leader bindings.
 - **perspective.el workspaces** — named workspaces with isolated buffer lists. Auto-creates a workspace per project. Switch with `M-1..9`.
-- **Unified REPL hub** — `C-c X r` dispatches to the right REPL for any language (Python, Node, Go, Rust, Clojure, Julia, R, Lua, Nix).
+- **Unified REPL hub** — `C-c x r` dispatches to the right REPL for any language (Python, Node, Go, Rust, Clojure, Julia, R, Lua, Nix).
 - **tools-project-detect** — reads project root markers + `config.yml` language flags, pre-warms only the lang tiers you use.
 - **Optional Meow modal editing** — Emacs-native modal mode (not Vim/Evil). Off by default; enable with `editing.meow: true` in `config.yml`.
 
@@ -104,7 +104,7 @@ emacs --init-directory ~/.emacs.d
 ```
 
 On first launch straight.el bootstraps itself and installs all packages.
-This takes 2–5 minutes. Subsequent startups target **< 2 seconds** (lang modules are lazy).
+This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in practice (lang modules are lazy). The `startup-time-target: 3.0` in `config.yml` is the warning threshold — a notification fires if startup exceeds it, not a goal in itself.
 
 > **After upgrading Emacs** (e.g. 29 → 30), always purge stale bytecode
 > before restarting — old `.elc`/`.eln` files cause all `M-x emacs-ide-*`
@@ -168,7 +168,7 @@ emacs --safe
 │   ├── tools-terminal.el      VTerm (C-c t) · Eshell · Docker
 │   ├── tools-format.el        Apheleia base config
 │   ├── apheleia-langs-patch.el 50-lang complete formatter map  [NEW]
-│   ├── tools-repl.el          Unified REPL hub · C-c X r/s/b/d/t  [NEW]
+│   ├── tools-repl.el          Unified REPL hub · C-c x r/s/b/d/t  [NEW]
 │   ├── tools-org.el           Org-mode · agenda · capture · babel · export
 │   ├── tools-spelling.el      Flyspell prose + flyspell-prog-mode code
 │   ├── tools-notes.el         Denote / org-roam
@@ -425,17 +425,17 @@ Run `C-h k` to look up any key. This lists only what is added or upgraded.
 | `C-c h s` | Search | ripgrep · occur · imenu · outline · symbol |
 | `C-c h h` | Help | list all hydra entry points |
 
-### REPL (new in v3) — C-c X prefix
+### REPL (new in v3) — C-c x prefix (lowercase x)
 
 | Key | Command |
 |---|---|
-| `C-c X r` | Launch / switch to REPL for current language |
-| `C-c X s` | Send region to REPL |
-| `C-c X b` | Send buffer to REPL |
-| `C-c X d` | Send defun at point to REPL |
-| `C-c X t` | Toggle REPL window (bottom side window) |
+| `C-c x r` | Launch / switch to REPL for current language |
+| `C-c x s` | Send region to REPL |
+| `C-c x b` | Send buffer to REPL |
+| `C-c x d` | Send defun at point to REPL |
+| `C-c x t` | Toggle REPL window (bottom side window) |
 
-### Test dispatch (updated in v3) — C-c X prefix
+### Test dispatch (updated in v3) — C-c X prefix (uppercase X)
 
 | Key | Command |
 |---|---|
@@ -444,6 +444,8 @@ Run `C-h k` to look up any key. This lists only what is added or upgraded.
 | `C-c X .` | Run test at point |
 | `C-c X w` | Watch mode |
 | `C-c X s` | Show registered runners |
+| `C-c X l` | Repeat last test run |
+| `C-c x R` | Show test report (this session) |
 | `C-c C-t` | Smart dispatch (same as before) |
 | `C-c C-T` | Force full suite |
 
@@ -597,7 +599,8 @@ cabal test · stack test · bats · ERT · ctest · make test.
 | `C-c P` | Presentation mode |
 | `C-c ?` | `which-key-show-top-level` |
 | `C-c H` | Keybinding cheat sheet |
-| `C-c R` | Reload config |
+| `C-c R` | Reload config (`emacs-ide-config-reload`) |
+| `C-c V` | REST prefix (`C-c V s` scratch · `C-c V i` insert) |
 | `C-c L` | LSP status |
 | `C-c w t/f/r` | `transpose/flip/rotate-frame` |
 
@@ -690,7 +693,7 @@ Open a Python/Rust/Go file and confirm:
 - Tree-sitter syntax highlighting active (richer colors)
 - LSP diagnostics appearing in the margin
 - `C-c X f` runs the right test framework
-- `C-c X r` opens the correct REPL
+- `C-c x r` opens the correct REPL
 - `F5` launches the debugger, `F8` sets a breakpoint
 - Saving triggers async formatting (no cursor jump)
 - `C-c h l` opens the LSP hydra menu
@@ -701,6 +704,8 @@ Open a Python/Rust/Go file and confirm:
 
 | Version | Notes |
 |---|---|
+| 3.0.2 | **Keybinding fixes** — `C-c R` void-function resolved (alias `emacs-ide-reload-config` → `emacs-ide-config-reload` added to `init.el`). REST prefix moved `C-c R` → `C-c V` (collision with reload). `split-string` omit-nulls added to `emacs-ide-setup-exec-path`. `emacs-ide--get-processor-count` double shell spawn eliminated (cached in `emacs-ide-processor-count`). Dead `treesit-enable`/`treesit-auto-install` keys removed from `config.yml languages:`. Formatter allowlist expanded: `mix-format`, `zigfmt`, `terraform-fmt`, `pg_format` (Elixir/Zig/Terraform/SQL apheleia formatting was silently skipped). README keybinding tables corrected: REPL `C-c X r` → `C-c x r`, test prefix `C-c t` → `C-c X`. |
+| 3.0.1 | **Module patch** — `core-dev.el` string→symbol key fix (lang enable/disable was always true). Double LSP start on Python removed. `gofmt-before-save` apheleia guard. `tools-test-runner-registry.el` duplicate `emacs-ide-test-run` removed. Keybinding collisions resolved: `C-c x r` (repl), `C-c h r`/`C-c h i` (hydra vs REST). `ui-dashboard.el` premature defvar fixed. `lang-prose.el` duplicate `dockerfile-mode`/`restclient` removed. `allow-unsigned` now correctly interned as symbol. `tools-project-detect.el` `javascript`→`lang-web` module lookup fixed. |
 | 3.0.0 | **50-lang lazy loading** — `lang-core.el` replaced by `modules/langs/` (13 modules, zero boot cost). **ef-themes** replaces modus-themes. **nerd-icons** replaces all-the-icons. **Hydra menus** (`tools-hydra.el`) — 10 discoverable menus. **perspective.el workspaces** (`ui-workspace.el`). **Unified REPL hub** (`tools-repl.el`). **tools-project-detect** pre-warms lang tiers from project markers. **tools-test-runner-registry** — per-lang test dispatch API. **apheleia-langs-patch** — complete 50-lang formatter map. Optional **Meow** modal editing. `init.el` v3.0.0: `langs/` added to load-path, 7 new feature modules, `lang-core` removed |
 | 2.2.6 | **Emacs 30 fix** — `M-x emacs-ide-*` commands silently undefined after 29→30 upgrade. Root cause: stale `.elc`/`.eln` bytecode. Fixed with `nosuffix` load flag. Added `emacs-ide-purge-bytecode-cache` |
 | 2.2.5 | **Startup fix** 58s → <3s: `straight-check-for-modifications` → `find-when-checking`; dashboard `agenda` item removed; `projectile-indexing-method` → `alien`; heavy packages deferred to `after-init-hook` |

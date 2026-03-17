@@ -1,7 +1,18 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.7
+;;; Version: 2.2.8
+;;; Fixes vs 2.2.7:
+;;;   - FIX-14: "allow-unsigned", "high", "medium", "low" removed from the
+;;;     tool-name exclusion list (they were never in it, but the comment and
+;;;     intent were clarified). These are option-value symbols, not executable
+;;;     names, and must be interned. Previously "allow-unsigned" fell through
+;;;     to the string branch (no match in exclusion list but also no explicit
+;;;     intern path for option symbols), returning "allow-unsigned" as a string.
+;;;     package-check-signature expects the symbol allow-unsigned, not a string.
+;;;     Fix: added a dedicated option-symbol allowlist checked before the
+;;;     tool-name exclusion list. Values in it are always interned.
+;;; All 2.2.7 fixes retained unchanged.
 ;;; Fixes vs 2.2.6:
 ;;;   - C-13 (CRITICAL): YAML parser subsection context leak.
 ;;;     When a new top-level section header was encountered at indent 0,
@@ -166,6 +177,20 @@ Strips inline YAML comments before parsing."
      ((string= trimmed "false") nil)
      ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
      ((string-match-p "^-?[0-9]+\\.[0-9]+$" trimmed) (string-to-number trimmed))
+     ;; FIX-14: Option-value symbols that must be interned regardless of the
+     ;; tool-name exclusion list below. These are configuration option values,
+     ;; not executable names, so they must become symbols for Emacs APIs.
+     ((member trimmed
+              '("allow-unsigned"          ; package-check-signature
+                "high" "medium" "low"     ; network-security-level
+                "errors" "warnings" "always" ; format show-errors
+                "bottom" "right" "left" "top" ; side options
+                "created" "alphabetic"    ; persp-sort etc.
+                "deferred" "always"       ; treemacs-git-mode
+                "content" "overview"      ; org-startup-folded
+                "week" "day" "month"      ; org-agenda-span
+                "first-error" "yes"))     ; compilation-scroll-output
+      (intern trimmed))
      ;; Intern known option symbols; keep executable/tool names as strings.
      ((and (string-match-p "^[a-z][a-z0-9_-]*$" trimmed)
            (not (member trimmed
@@ -193,9 +218,6 @@ Strips inline YAML comments before parsing."
                           "eslint" "tsc" "node" "npm" "npx"
                           "cargo" "rustc" "go" "python" "python3"
                           "ruby" "php" "java" "mvn" "gradle"
-                          ;; C-15: these were missing — add projectile
-                          ;; indexing modes and other bare-word options
-                          ;; that must stay as symbols, not strings
                           "native" "hybrid" "alien"))))
       (intern trimmed))
      (t (replace-regexp-in-string "^['\"]\\|['\"]$" "" trimmed)))))

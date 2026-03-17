@@ -6,7 +6,13 @@
 ;;; on-save toggle from emacs-ide-config-data at load time.
 ;;; Add "tools-format" to emacs-ide-feature-modules in init.el,
 ;;; placed after lang-core and before keybindings.
-;;; Version: 2.2.4
+;;; Version: 2.2.5
+;;; Fixes vs 2.2.4:
+;;;   - FIX-6: Added mix-format, zigfmt, terraform-fmt, pg_format to
+;;;     emacs-ide-format--known-apheleia-formatters. These were absent from
+;;;     the allowlist, causing emacs-ide-format--formatter-for to emit a
+;;;     warning and return them as strings — silently skipping apheleia-mode-alist
+;;;     registration for Elixir, Zig, Terraform, and SQL on every startup.
 ;;; Fixes:
 ;;;   - 2.2.4: emacs-ide-format--formatter-for previously called `(intern val)'
 ;;;     unconditionally on any string from config.yml. If the string does not
@@ -58,6 +64,12 @@
     rubocop standardrb perltidy
     phpcbf phpcs psalm phan
     ktlint google-java-format scalafmt
+    ;; FIX-6: mix-format, zigfmt, terraform-fmt, pg_format were missing.
+    ;; apheleia-langs-patch.el registers these keys and config.yml references
+    ;; them. Without this, formatter-for emitted a warning and returned them
+    ;; as strings — silently skipping apheleia-mode-alist registration for
+    ;; Elixir, Zig, Terraform, and SQL on every startup.
+    mix-format zigfmt terraform-fmt pg_format
     terraform nixpkgs-fmt ormolu fourmolu
     swiftformat ocamlformat elm-format
     mix cljfmt zprint pgformatter

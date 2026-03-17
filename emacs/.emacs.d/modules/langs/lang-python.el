@@ -20,7 +20,11 @@
 ;;; entry triggers on first .py file open; every subsequent use-package
 ;;; uses :after python or :hook python-mode.
 ;;;
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-4: Removed :hook from lsp-pyright use-package. tools-lsp.el already
+;;;     hooks python-mode to lsp-deferred and requires lsp-pyright eagerly.
+;;;     The extra hook caused LSP to start twice on every Python file.
 ;;; Code:
 
 (require 'core-dev)
@@ -87,12 +91,16 @@
 
 ;; ============================================================================
 ;; 5. LSP — PYRIGHT (preferred) or PYLSP (fallback)
+;; FIX-4: :hook removed. tools-lsp.el hooks python-mode → lsp-deferred AND
+;;   requires lsp-pyright eagerly in its :config, registering the pyright
+;;   server before any Python buffer opens. A second hook here caused LSP
+;;   to start twice. The :init vars are kept — they configure pyright before
+;;   the server is selected by lsp-mode.
 ;; ============================================================================
 (use-package lsp-pyright
   :if (or (executable-find "pyright")
           (executable-find "pyright-langserver"))
   :after python
-  :hook ((python-mode python-ts-mode) . lsp-deferred)
   :init
   (setq lsp-pyright-use-library-code-for-types  t
         lsp-pyright-auto-import-completions      t

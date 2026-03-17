@@ -6,7 +6,14 @@
 ;;;
 ;;; Add "tools-test-runner-registry" to feature-modules BEFORE "tools-test".
 ;;;
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-1: Removed duplicate emacs-ide-test-run definition. tools-test.el
+;;;     is the canonical owner; having both caused the last-loaded version to
+;;;     silently win depending on load order.
+;;;   - FIX-2: Removed stray global-set-key for C-c x r from this file.
+;;;     tools-repl.el and keybindings.el both own C-c x r → emacs-ide-repl-launch;
+;;;     the binding here clobbered that with a test function.
 ;;; Code:
 
 (require 'cl-lib)
@@ -93,25 +100,6 @@ Call from lang-*.el after-load blocks.
      (t (call-interactively #'compile)))))
 
 ;; ============================================================================
-;; UNIFIED ENTRY POINT
-;; Replaces emacs-ide-test-run in tools-test.el
-;; ============================================================================
-
-(defun emacs-ide-test-run (&optional arg)
-  "Smart test runner.
-No prefix: run file tests (or detect from project markers).
-C-u: run project tests.
-C-u C-u: run test at point."
-  (interactive "P")
-  (cond
-   ((equal arg '(16)) (emacs-ide-test-run-at-point))
-   ((equal arg '(4))  (emacs-ide-test-run-project))
-   (t
-    (let ((fn (emacs-ide-test--runner-for major-mode :file-fn)))
-      (if fn (funcall fn)
-        (emacs-ide-test--detect-and-run))))))
-
-;; ============================================================================
 ;; STATUS
 ;; ============================================================================
 
@@ -132,10 +120,11 @@ C-u C-u: run test at point."
                          (or (plist-get info :point-fn) "—"))))))))
 
 ;; ============================================================================
-;; KEYBINDINGS (supplement tools-test.el)
+;; KEYBINDINGS
 ;; C-c t = vterm (tools-terminal.el) — do not use as prefix.
 ;; C-c T = vterm-other-window — do not use.
 ;; Test dispatch uses C-c X (unoccupied prefix).
+;; C-c x r is owned by tools-repl.el (emacs-ide-repl-launch) — do NOT bind here.
 ;; ============================================================================
 
 (define-prefix-command 'emacs-ide-test-map)

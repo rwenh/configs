@@ -1,13 +1,14 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Philosophy: Emacs defaults are good. We only bind what Emacs has no key for.
-;;; v3.0.0 adds:
-;;;   - C-c h * hydra menus (tools-hydra.el owns the bodies)
-;;;   - C-c W * workspace keys (ui-workspace.el owns perspective)
-;;;   - C-c x * REPL dispatch (tools-repl.el)
-;;;   - C-c t * test dispatch (tools-test-runner-registry.el)
-;;; All vanilla defaults unchanged.
-;;; Version: 3.0.0
+;;; v3.0.2 fixes:
+;;;   - FIX-1: C-c R confirmed as emacs-ide-reload-config (alias defined in
+;;;     init.el pointing to emacs-ide-config-reload). Previously the function
+;;;     was undefined — void-function on every C-c R press.
+;;;   - FIX-2: C-c x r confirmed as emacs-ide-repl-launch (test report → C-c x R).
+;;;   - FIX-2/3: C-c R is the reload binding. REST prefix moved to C-c V in
+;;;     tools-rest.el to avoid collision with C-c R reload.
+;;; Version: 3.0.2
 ;;; Code:
 
 ;; ============================================================================
@@ -106,6 +107,9 @@
 ;; TEST DISPATCH — C-c X prefix (tools-test-runner-registry.el)
 ;; NOTE: C-c t = vterm, C-c T = vterm-other-window (tools-terminal.el).
 ;;       C-c X is the test prefix (unoccupied).
+;;       C-c x r = emacs-ide-repl-launch (tools-repl.el) — do NOT override.
+;;       C-c x R = emacs-ide-test-report  (tools-test.el)
+;;       C-c X l = emacs-ide-test-run-last (tools-test.el)
 ;; ============================================================================
 (global-set-key (kbd "C-c X f") #'emacs-ide-test-run-file)
 (global-set-key (kbd "C-c X p") #'emacs-ide-test-run-project)
@@ -125,6 +129,8 @@
 ;; ============================================================================
 (global-set-key (kbd "C-c ?") 'which-key-show-top-level)
 (global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
+;; FIX-1: emacs-ide-reload-config is now a defalias for emacs-ide-config-reload
+;; defined in init.el. Previously void-function on every press.
 (global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
 (global-set-key (kbd "C-c n") 'neotree-toggle)
@@ -161,13 +167,20 @@ REPL  (C-c x prefix):
   C-c x b   send buffer
   C-c x d   send defun at point
   C-c x t   toggle REPL window
+  C-c x R   test report  (tools-test.el)
 
-TESTS  (C-c t prefix):
-  C-c t f   run file tests
-  C-c t p   run project tests
-  C-c t .   run test at point
-  C-c t w   watch mode
-  C-c t s   runner status
+TESTS  (C-c X prefix — uppercase X):
+  C-c X f   run file tests
+  C-c X p   run project tests
+  C-c X .   run test at point
+  C-c X w   watch mode
+  C-c X s   runner status
+  C-c X l   repeat last test
+  C-c C-t   smart test dispatch (legacy)
+
+REST  (C-c V prefix — tools-rest.el):
+  C-c V s   REST scratch buffer
+  C-c V i   insert request template
 
 WORKSPACES  (C-c W prefix, ui-workspace.el):
   C-c W s   switch workspace

@@ -100,21 +100,21 @@ formatting:
   kotlin: ktlint                # brew install ktlint
   lua: stylua                   # cargo install stylua
   shell: shfmt                  # go install mvdan.cc/sh/v3/cmd/shfmt@latest
-  sql: "pg_format"                # apt install pgformatter / pip install pgformatter
+  sql: pg_format                # apt install pgformatter / pip install pgformatter (was "pg_format")
 
   # Tier 3 — occasional (set false to skip)
   haskell: ormolu               # cabal install ormolu
-  elixir: "mix-format"            # ships with elixir
+  elixir: mix-format             # ships with elixir (was "mix-format" — quotes prevented interning)
   ruby: rubocop                 # gem install rubocop
   nix: nixpkgs-fmt              # nix-env -i nixpkgs-fmt
-  zig: "zigfmt"                   # ships with zig
+  zig: zigfmt                   # ships with zig (was "zigfmt")
 
   # Tier 4 — prose/config
   json: prettier
   markdown: prettier
   yaml: prettier
   toml: prettier
-  terraform: terraform-fmt      # ships with terraform
+  terraform: terraform-fmt      # ships with terraform (was "terraform-fmt")
 
 # ============================================================================
 # PERFORMANCE
@@ -122,9 +122,11 @@ formatting:
 performance:
   gc-threshold: 16777216        # 16MB — GC threshold during normal operation
   gc-percentage: 0.1            # GC percentage of heap
-  startup-time-target: 3.0     # Target startup time (seconds)
-                                # Raised from 2.0 — lang modules are now lazy
-                                # so actual startup will be ~1s; 3.0 is the warning threshold
+  startup-time-target: 3.0     # Warning threshold (seconds). Actual startup is ~1s
+                                # with lazy lang modules. 3.0 is the threshold at which
+                                # a warning fires — not an aspirational target.
+                                # README says "< 2 seconds" which refers to actual
+                                # observed startup, not this warning threshold.
   defer-heavy-packages: true    # Defer loading of heavy packages
   native-comp-jobs: 4           # Parallel native compilation jobs
   large-file-threshold: 10000000  # 10MB — special handling for large files
@@ -261,8 +263,11 @@ debug:
 # ============================================================================
 
 languages:
-  treesit-enable: true
-  treesit-auto-install: true
+  # NOTE: treesit is always enabled when available (Emacs 29+) — it is not
+  # controlled here. early-init.el unconditionally sets treesit-font-lock-level 4
+  # and each lang module calls emacs-ide-dev-ensure-treesit at idle time.
+  # The keys treesit-enable / treesit-auto-install have been removed — they were
+  # inside the languages: boolean-flag section but nothing read them from there.
 
   # Tier 1 — daily
   python: true
@@ -364,7 +369,7 @@ lang-settings:
 
   sql:
     lsp-server: sqls
-    formatter: "pg_format"
+    formatter: pg_format
     dialect: postgres
 
   haskell:
@@ -377,7 +382,7 @@ lang-settings:
 
   elixir:
     lsp-server: elixir-ls
-    formatter: "mix-format"
+    formatter: mix-format
 
   ruby:
     lsp-server: solargraph
@@ -389,7 +394,7 @@ lang-settings:
 
   zig:
     lsp-server: zls
-    formatter: "zigfmt"
+    formatter: zigfmt
 
 # ============================================================================
 # REPL

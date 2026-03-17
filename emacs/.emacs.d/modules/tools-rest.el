@@ -16,7 +16,11 @@
 ;;;   4. Response opens in a dedicated buffer with syntax highlighting
 ;;;
 ;;; Add "tools-rest" to emacs-ide-feature-modules in init.el.
-;;; Version: 1.0.0
+;;; Version: 1.0.2
+;;; Fixes vs 1.0.1:
+;;;   - FIX-2: REST prefix moved from C-c R to C-c V. C-c R is owned by
+;;;     keybindings.el (emacs-ide-reload-config / emacs-ide-config-reload).
+;;;     C-c V (Verb) is unoccupied and semantically appropriate.
 ;;; Code:
 
 (require 'cl-lib)
@@ -96,9 +100,14 @@
 
 ;; ============================================================================
 ;; KEYBINDINGS
+;; FIX-2: Prefix moved from C-c R to C-c V.
+;;   C-c R is owned by keybindings.el (emacs-ide-reload-config).
+;;   C-c V (Verb/REST) is unoccupied.
 ;; ============================================================================
-(global-set-key (kbd "C-c h r") 'emacs-ide-rest-scratch)
-(global-set-key (kbd "C-c h i") 'emacs-ide-rest-insert-request)
+(define-prefix-command 'emacs-ide-rest-map)
+(global-set-key (kbd "C-c V") 'emacs-ide-rest-map)
+(global-set-key (kbd "C-c V s") #'emacs-ide-rest-scratch)
+(global-set-key (kbd "C-c V i") #'emacs-ide-rest-insert-request)
 
 (provide 'tools-rest)
 ;;; tools-rest.el ends here

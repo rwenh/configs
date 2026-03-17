@@ -4,7 +4,10 @@
 ;;; has registered a runner. Falls back to existing auto-detection logic
 ;;; for any language not yet registered. Zero regressions.
 ;;; All fixes from 1.0.5 retained.
-;;; Version: 3.0.0
+;;; Version: 3.0.1
+;;; Fixes vs 3.0.0:
+;;;   - FIX-2: C-c x r → C-c x R (test report). C-c x r is owned by
+;;;     tools-repl.el (emacs-ide-repl-launch). C-c x l → C-c X l.
 ;;; Code:
 
 (require 'cl-lib)
@@ -194,11 +197,13 @@ for current major-mode. Falls back to auto-detection otherwise.
 
 ;; ============================================================================
 ;; KEYBINDINGS (supplement tools-test-runner-registry.el and keybindings.el)
+;; C-c x r is owned by tools-repl.el → emacs-ide-repl-launch. Do NOT use.
+;; C-c X (uppercase) is the test prefix from tools-test-runner-registry.el.
 ;; ============================================================================
 (global-set-key (kbd "C-c C-t")   #'emacs-ide-test-run)
 (global-set-key (kbd "C-c C-T")   #'emacs-ide-test-run-all)
-(global-set-key (kbd "C-c x l")   #'emacs-ide-test-run-last)
-(global-set-key (kbd "C-c x r")   #'emacs-ide-test-report)
+(global-set-key (kbd "C-c X l")   #'emacs-ide-test-run-last)  ; was C-c x l
+(global-set-key (kbd "C-c x R")   #'emacs-ide-test-report)    ; was C-c x r (collision fixed)
 
 (provide 'tools-test)
 ;;; tools-test.el ends here

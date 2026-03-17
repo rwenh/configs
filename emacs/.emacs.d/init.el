@@ -1,7 +1,14 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 3.0.0
+;;; Version: 3.0.1
+;;; Fixes vs 3.0.0:
+;;;   - FIX-1: emacs-ide-reload-config alias added (see bottom of file).
+;;;     keybindings.el binds C-c R to this name; only emacs-ide-config-reload
+;;;     existed — every C-c R press threw void-function.
+;;;   - FIX-3: split-string in emacs-ide-setup-exec-path now passes t as the
+;;;     omit-nulls argument, preventing "" from entering exec-path when PATH
+;;;     ends with a trailing colon.
 ;;; Changes from 2.2.6:
 ;;;   - Version bumped to 3.0.0. Build date now computed at load time.
 ;;;   - emacs-ide-langs-dir added to directory structure and load-path.
@@ -210,7 +217,9 @@ exact file path given, making all defun/defvar forms available."
                 (error (getenv "PATH")))))
         (unless (string-empty-p path-str)
           (setenv "PATH" path-str)
-          (setq exec-path (split-string path-str path-separator))))))
+          ;; FIX-3: pass t (omit-nulls) to exclude empty strings produced when
+          ;; PATH ends with a trailing colon. "" in exec-path resolves to cwd.
+          (setq exec-path (split-string path-str path-separator t))))))
 
   (when (memq window-system '(mac ns x pgtk))
     (emacs-ide-setup-exec-path))
@@ -634,6 +643,17 @@ source loading on next startup."
           (delete-directory eln-dir t)
           (cl-incf count)))
       (message "✓ Purged %d cached bytecode files. Restart Emacs." count))))
+
+;; ============================================================================
+;; KEYBINDING ALIAS — FIX-1
+;; keybindings.el binds C-c R to emacs-ide-reload-config. The canonical
+;; function is emacs-ide-config-reload (defined in emacs-ide-config.el).
+;; Provide the alias here so it is always available regardless of load order.
+;; emacs-ide-reload (full restart) is intentionally kept separate.
+;; ============================================================================
+(defalias 'emacs-ide-reload-config 'emacs-ide-config-reload
+  "Reload config.yml and apply settings. Alias for `emacs-ide-config-reload'.
+Bound to C-c R by keybindings.el.")
 
 (provide 'init)
 ;;; init.el ends here

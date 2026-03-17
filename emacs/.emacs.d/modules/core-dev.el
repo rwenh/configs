@@ -6,7 +6,20 @@
 ;;; dap-mode directly.  This keeps each lang module ~60 lines and makes the
 ;;; shared behaviour easy to update in one place.
 ;;;
-;;; Version: 1.0.1 (RECALIBRATED)
+;;; Version: 1.0.3
+;;; Fixes vs 1.0.2:
+;;;   - FIX-6b: emacs-ide-dev-lang-enabled-p and emacs-ide-dev--config-lang-settings
+;;;     called (assoc lang-key ...) where lang-key is a string (e.g. "python") but
+;;;     the YAML parser interns all subsection keys as symbols ('python etc.).
+;;;     assoc with a string key against a symbol-keyed alist always returns nil:
+;;;       - emacs-ide-dev-lang-enabled-p: (null entry) always t → every lang
+;;;         treated as enabled even when set false in config.yml.
+;;;       - emacs-ide-dev--config-lang-settings: always returned nil → no
+;;;         per-language settings were ever readable from lang-settings:.
+;;;     Fix: (intern lang-key) before assoc in both functions.
+;;; Fixes vs 1.0.1:
+;;;   - FIX-6: Top-level section keys "languages"/"lang-settings" changed to
+;;;     symbols 'languages/'lang-settings (same class of bug).
 ;;;
 ;;; Public API (for lang modules):
 ;;;   (emacs-ide-dev-attach-lsp SERVER &optional EXTRA-VARS)
@@ -59,16 +72,18 @@
       (setq emacs-ide-dev--config-languages
             (condition-case nil
                 (when (boundp 'emacs-ide-config-data)
-                  (cdr (assoc "languages" emacs-ide-config-data)))
+                  (cdr (assoc 'languages emacs-ide-config-data)))
               (error nil)))))
 
 (defun emacs-ide-dev--config-lang-settings (lang-key)
   "Return the settings alist for LANG-KEY from lang-settings: section.
-This is separate from languages: (booleans) to avoid YAML key collision."
+This is separate from languages: (booleans) to avoid YAML key collision.
+FIX-6b: LANG-KEY is a string; YAML subsection keys are symbols. intern first."
   (condition-case nil
       (when (boundp 'emacs-ide-config-data)
-        (let ((ls (cdr (assoc "lang-settings" emacs-ide-config-data))))
-          (cdr (assoc lang-key ls))))
+        (let ((ls (cdr (assoc 'lang-settings emacs-ide-config-data))))
+          ;; FIX-6b: intern so string "python" matches symbol 'python in alist
+          (cdr (assoc (intern lang-key) ls))))
     (error nil)))
 
 (defun emacs-ide-dev-lang-enabled-p (lang-key)
@@ -76,9 +91,11 @@ This is separate from languages: (booleans) to avoid YAML key collision."
 LANG-KEY is a string matching the key in the languages: block, e.g. \"python\".
 languages: contains only boolean flags. Per-lang settings live in lang-settings:.
 If the languages section is absent or the key is absent, defaults to t.
-RECALIBRATED: Added nil check for config-languages before assoc."
+FIX-6b: LANG-KEY is a string; YAML subsection keys are symbols. intern before
+assoc so \"python\" correctly matches 'python in the parsed alist."
   (let* ((langs (emacs-ide-dev--config-languages))
-         (entry (and langs (assoc lang-key langs))))
+         ;; FIX-6b: intern lang-key — YAML parser produces symbol keys
+         (entry (and langs (assoc (intern lang-key) langs))))
     (if (null langs)
         t
       (if (null entry)

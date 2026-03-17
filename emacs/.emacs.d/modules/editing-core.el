@@ -1,13 +1,14 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; v3.0.0: Optional Meow modal editing (Emacs-native, not Vim-ported).
-;;; Toggle with M-x emacs-ide-toggle-meow or set editing.meow: true in config.yml.
-;;; All existing features from 2.2.3 retained unchanged.
-;;; Version: 3.0.0
+;;; v3.0.1: Fixes: removed duplicate electric-pair-mode (FIX-9) and duplicate
+;;; dumb-jump block (FIX-10). All other features from 3.0.0 unchanged.
+;;; Version: 3.0.1
 ;;; Code:
 
 ;; ============================================================================
 ;; BASIC EDITING MODES (unchanged)
+;; FIX-9: electric-pair-mode removed here — init.el core-settings block
+;;   already enables it. Calling it twice is harmless but redundant.
 ;; ============================================================================
 (delete-selection-mode 1)
 (global-auto-revert-mode 1)
@@ -234,14 +235,12 @@
   :init (setq wgrep-auto-save-buffer t))
 
 ;; ============================================================================
-;; DUMB-JUMP — DEFINITION JUMPING WITHOUT LSP (unchanged)
+;; DUMB-JUMP — definition jumping without LSP
+;; FIX-10: Block removed. tools-lsp.el is the canonical owner of dumb-jump
+;;   (it is an LSP fallback). Having it here AND in tools-lsp.el caused
+;;   dumb-jump-xref-activate to be added to xref-backend-functions twice,
+;;   running on every xref lookup twice. Configure dumb-jump in tools-lsp.el.
 ;; ============================================================================
-(use-package dumb-jump
-  :init
-  (setq dumb-jump-prefer-searcher 'rg
-        dumb-jump-force-searcher  'rg)
-  :config
-  (add-hook 'xref-backend-functions #'dumb-jump-xref-activate))
 
 (provide 'editing-core)
 ;;; editing-core.el ends here
