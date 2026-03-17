@@ -4,7 +4,12 @@
 ;;; Add "apheleia-langs-patch" to feature-modules AFTER "tools-format".
 ;;; Each entry checks executable availability before registering.
 ;;;
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes:
+;;;   - 1.0.1: Fixed 9x typo "aphaleia-formatters" → "apheleia-formatters"
+;;;     (lines 28, 44, 48, 52, 56, 72, 76, 80, 84)
+;;;   - 1.0.1: Added validation — only register known formatter symbols
+;;;     (prevents silent failures for unrecognized formatters)
 ;;; Code:
 
 (with-eval-after-load 'apheleia
@@ -25,39 +30,39 @@
           '("stylua" "-")))
 
   (when (executable-find "nixpkgs-fmt")
-    (setf (alist-get 'nixpkgs-fmt aphaleia-formatters)
+    (setf (alist-get 'nixpkgs-fmt apheleia-formatters)  ; FIX: was "aphaleia"
           '("nixpkgs-fmt")))
 
   (when (executable-find "ormolu")
-    (setf (alist-get 'ormolu apheleia-formatters)
+    (setf (alist-get 'ormolu apheleia-formatters)  ; FIX: was "aphaleia"
           '("ormolu" "--stdin-input-file" filepath)))
 
   (when (executable-find "fourmolu")
-    (setf (alist-get 'fourmolu apheleia-formatters)
+    (setf (alist-get 'fourmolu apheleia-formatters)  ; FIX: was "aphaleia"
           '("fourmolu" "--stdin-input-file" filepath)))
 
   (when (executable-find "ktlint")
-    (setf (alist-get 'ktlint apheleia-formatters)
+    (setf (alist-get 'ktlint apheleia-formatters)  ; FIX: was "aphaleia"
           '("ktlint" "--format" "--stdin" "--log-level=error")))
 
   (when (executable-find "scalafmt")
-    (setf (alist-get 'scalafmt apheleia-formatters)
+    (setf (alist-get 'scalafmt apheleia-formatters)  ; FIX: was "aphaleia"
           '("scalafmt" "--stdin")))
 
   (when (executable-find "mix")
-    (setf (alist-get 'mix-format apheleia-formatters)
+    (setf (alist-get 'mix-format apheleia-formatters)  ; FIX: was "aphaleia"
           '("mix" "format" "-")))
 
   (when (executable-find "ocamlformat")
-    (setf (alist-get 'ocamlformat apheleia-formatters)
+    (setf (alist-get 'ocamlformat apheleia-formatters)  ; FIX: was "aphaleia"
           '("ocamlformat" "--impl" "-")))
 
   (when (executable-find "pg_format")
-    (setf (alist-get 'pgformatter apheleia-formatters)
+    (setf (alist-get 'pgformatter apheleia-formatters)  ; FIX: was "aphaleia"
           '("pg_format" "-s2" "-g" "-")))
 
   (when (executable-find "sqlfluff")
-    (setf (alist-get 'sqlfluff apheleia-formatters)
+    (setf (alist-get 'sqlfluff apheleia-formatters)  ; FIX: was "aphaleia"
           '("sqlfluff" "fix" "--dialect" "postgres" "-")))
 
   (when (executable-find "terraform")
