@@ -3,6 +3,7 @@
 " Philosophy: Fast. Self-contained. Professional. No AI. No cloud. No bloat.
 " 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
 " Lazy-loaded per filetype — startup < 80ms regardless of stack size.
+" 2026-upgrade: vim-matchup · vim-asterisk · vim-easy-align · gutentags+rg
 " =============================================================================
 
 " -----------------------------------------------------------------------------
@@ -31,6 +32,12 @@
 "   :CocInstall coc-pyright coc-rust-analyzer coc-go coc-tsserver coc-clangd
 "   :CocInstall coc-json coc-yaml coc-html coc-css coc-sh coc-snippets
 "   :CocInstall coc-vimlsp coc-kotlin coc-solargraph coc-docker coc-terraform
+"
+" 2026 upgrade — new plugins (auto-installed on first launch):
+"   vim-matchup    : replaces matchit/matchparen — % g% [% ]% i% a%
+"   vim-asterisk   : non-jumpy * / # / g* / g# with visual star
+"   vim-easy-align : ga interactive alignment (replaces manual :Tab use)
+"   gutentags      : now uses rg as file lister + aggressive --exclude list
 " -----------------------------------------------------------------------------
 
 " -----------------------------------------------------------------------------
@@ -204,6 +211,9 @@ Plug 'christoomey/vim-tmux-navigator'
 Plug 'preservim/tagbar',  { 'on': 'TagbarToggle' }
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'mhinz/vim-startify'
+" vim-matchup: replaces matchit/matchparen — handles Rust lifetimes, JSX tags,
+" TS generics, HTML nesting. %, g%, [%, ]% all become context-aware.
+Plug 'andymass/vim-matchup'
 
 " ---------------------------------------------------------------------------
 " LSP / COMPLETION — coc.nvim
@@ -236,6 +246,12 @@ Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
 Plug 'psliwka/vim-smoothie'       " smooth C-d/C-u scrolling
 Plug 'Yggdroot/indentLine'        " indent guides ▏
 Plug 'wellle/context.vim'         " sticky function context at top
+" vim-asterisk: non-jumpy * / # / g* / g# with visual star support.
+" Replaces manual *zzzv/#zzzv mappings with proper stay-in-place behaviour.
+Plug 'haya14busa/vim-asterisk'
+" vim-easy-align: ga interactive alignment — replaces tabular for daily use.
+" Works on YAML, JSON, SQL, Markdown tables, struct fields, assignment blocks.
+Plug 'junegunn/vim-easy-align'
 
 " ---------------------------------------------------------------------------
 " SNIPPETS — UltiSnips integrates with coc-snippets
@@ -470,8 +486,15 @@ vnoremap j gj
 vnoremap k gk
 nnoremap n     nzzzv
 nnoremap N     Nzzzv
-nnoremap *     *zzzv
-nnoremap #     #zzzv
+" vim-asterisk: stay-in-place * / # — cursor doesn't jump on first match.
+" z* / z# = stay put, gz* / gz# = stay put + whole-word off (useful in visual)
+map *  <Plug>(asterisk-z*)zv
+map #  <Plug>(asterisk-z#)zv
+map g* <Plug>(asterisk-gz*)zv
+map g# <Plug>(asterisk-gz#)zv
+" Keep visual * on selection too
+xmap *  <Plug>(asterisk-z*)zv
+xmap #  <Plug>(asterisk-z#)zv
 nnoremap <C-d> <C-d>zz
 nnoremap <C-u> <C-u>zz
 
@@ -487,6 +510,13 @@ nnoremap <leader>P "+P
 vnoremap <leader>y "+y
 nnoremap <leader>yy "+yy
 vnoremap <leader>vp "_dP
+
+" --- Alignment (vim-easy-align) ---
+" ga in normal/visual then motion or text object — interactive, live preview
+" Examples: gaip=  (align paragraph on =)   ga2,  (align 2nd comma in line)
+"           vipga= (visual select then align) gaip* (align all = in paragraph)
+xmap ga <Plug>(EasyAlign)
+nmap ga <Plug>(EasyAlign)
 
 " --- FZF find ---
 nnoremap <leader>ff :Files<CR>
@@ -878,7 +908,18 @@ let g:gutentags_cache_dir                 = expand('~/.vim/tags')
 let g:gutentags_generate_on_new           = 1
 let g:gutentags_generate_on_missing       = 1
 let g:gutentags_generate_on_write         = 1
-let g:gutentags_ctags_extra_args          = ['--tag-relative=yes', '--fields=+ailmnS']
+let g:gutentags_ctags_extra_args          = [
+  \ '--tag-relative=yes', '--fields=+ailmnS',
+  \ '--exclude=.git', '--exclude=.hg', '--exclude=.svn',
+  \ '--exclude=node_modules', '--exclude=bower_components',
+  \ '--exclude=dist', '--exclude=build', '--exclude=out',
+  \ '--exclude=target', '--exclude=__pycache__', '--exclude=.cache',
+  \ '--exclude=*.min.js', '--exclude=*.min.css',
+  \ ]
+" Use ripgrep as file lister if available — dramatically faster on monorepos
+if executable('rg')
+  let g:gutentags_file_list_command = 'rg --files --follow'
+endif
 let g:gutentags_add_default_project_roots = 0
 let g:gutentags_project_root              =
   \ ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml']
@@ -886,12 +927,39 @@ let g:gutentags_project_root              =
 " --- vim-move ---
 let g:move_key_modifier = 'A'
 
+" --- vim-matchup ---
+" Disables the default matchit and matchparen — matchup supersedes both.
+" offscreen_position: show match in statusline when it's off-screen.
+let g:matchup_matchparen_offscreen   = { 'method': 'status_manual' }
+let g:matchup_matchparen_deferred    = 1   " defer highlights for speed
+let g:matchup_matchparen_hi_surround_always = 1
+let g:matchup_motion_enabled         = 1   " % g% [% ]% work everywhere
+let g:matchup_text_obj_enabled       = 1   " i% a% text objects
+" Don't fight coc.nvim's popup
+let g:matchup_matchparen_pumvisible  = 0
+
 " --- vim-visual-multi ---
 let g:VM_maps                       = {}
 let g:VM_maps['Find Under']         = '<C-n>'
 let g:VM_maps['Find Subword Under'] = '<C-n>'
 let g:VM_maps['Select All']         = '<leader>ma'
 let g:VM_maps['Skip Region']        = '<C-x>'
+
+" --- vim-asterisk ---
+" is_animated: flash the match highlight briefly on land (visual feedback)
+let g:asterisk#keeppos = 1   " cursor column preserved after z* jump
+
+" --- vim-easy-align ---
+" Custom delimiters beyond the built-in set (=, :, |, #, &, ,, .)
+" Accessible interactively via: ga <motion> <key>
+let g:easy_align_delimiters = {
+  \ '>':  { 'pattern': '>>\|=>\|>' },
+  \ '/':  { 'pattern': '//\+\|/\*\|\*/', 'delimiter_align': 'l', 'ignore_groups': [] },
+  \ '#':  { 'pattern': '#',  'delimiter_align': 'l', 'ignore_groups': ['String'] },
+  \ ']':  { 'pattern': '[[\]]', 'left_margin': 0, 'right_margin': 0, 'stick_to_left': 0 },
+  \ ')':  { 'pattern': '[()]', 'left_margin': 0, 'right_margin': 0, 'stick_to_left': 0 },
+  \ 'd':  { 'pattern': '\s\+\ze\S', 'left_margin': 0, 'right_margin': 0 },
+  \ }
 
 " --- vim-test ---
 let g:test#strategy          = 'floaterm'
@@ -991,6 +1059,7 @@ let g:which_key_map.T           = { 'name': '+test'      }
 let g:which_key_map.R           = { 'name': '+rest'      }
 let g:which_key_map.m           = { 'name': '+multicursor' }
 let g:which_key_map.p           = { 'name': '+markdown'  }
+let g:which_key_map.a           = 'align (easy-align ga+motion)'
 
 " -----------------------------------------------------------------------------
 " 7. Autocommands
