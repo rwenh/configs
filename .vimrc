@@ -1,8 +1,8 @@
 " =============================================================================
-" VIM FULL-SCALE IDE — Vim 8.2+ / openSUSE
+" VIM FULL-SCALE IDE — Vim 9+ / openSUSE — 2026 edition
 " Philosophy: Fast. Self-contained. Professional. No AI. No cloud. No bloat.
-" 40+ languages | LSP | DAP | Git | REST | SQL | Markdown | tmux-native
-" Lazy-loaded per filetype — startup stays under 80ms regardless of stack size.
+" 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
+" Lazy-loaded per filetype — startup < 80ms regardless of stack size.
 " =============================================================================
 
 " -----------------------------------------------------------------------------
@@ -22,8 +22,15 @@
 "   let g:loaded_netrwSettings=1 | let g:loaded_netrwFileHandlers=1
 "   EOF
 "
-" Also remove old LSP plugin dirs if they still exist:
+" Migration from vim-lsp: remove old plugin dirs once coc.nvim is installed:
 "   rm -rf ~/.vim/plugged/vim-lsp ~/.vim/plugged/vim-lsp-settings
+"   rm -rf ~/.vim/plugged/asyncomplete.vim ~/.vim/plugged/asyncomplete-lsp.vim
+"   rm -rf ~/.vim/plugged/asyncomplete-ultisnips.vim ~/.vim/plugged/auto-pairs
+"
+" coc.nvim requires Node.js >= 18. Install extensions once with:
+"   :CocInstall coc-pyright coc-rust-analyzer coc-go coc-tsserver coc-clangd
+"   :CocInstall coc-json coc-yaml coc-html coc-css coc-sh coc-snippets
+"   :CocInstall coc-vimlsp coc-kotlin coc-solargraph coc-docker coc-terraform
 " -----------------------------------------------------------------------------
 
 " -----------------------------------------------------------------------------
@@ -35,24 +42,16 @@ if has('vim_starting')
 endif
 scriptencoding utf-8
 
-set nomodeline
-set modelines=0
-set secure
+set nomodeline modelines=0 secure
 
 " -----------------------------------------------------------------------------
 " 1. Performance
 " -----------------------------------------------------------------------------
-set regexpengine=0
-set synmaxcol=300
-set lazyredraw
-set updatetime=150
-set redrawtime=1500
-set ttimeoutlen=10
-set timeoutlen=500
+set regexpengine=0 synmaxcol=300 lazyredraw
+set updatetime=150 redrawtime=1500
+set ttimeoutlen=10 timeoutlen=500
 
-if has('mouse_sgr')
-  set ttymouse=sgr
-endif
+if has('mouse_sgr') | set ttymouse=sgr | endif
 set mouse=a
 
 " -----------------------------------------------------------------------------
@@ -64,127 +63,75 @@ syntax enable
 set fileencodings=utf-8,ucs-bom,latin1
 
 " Editing
-set backspace=indent,eol,start
-set history=5000
-set undolevels=2000
-set undoreload=10000
-set nrformats-=octal
-set virtualedit=block
-set nojoinspaces
+set backspace=indent,eol,start history=5000 undolevels=2000 undoreload=10000
+set nrformats-=octal virtualedit=block nojoinspaces
 
 " Display
-set number
-set relativenumber
-set cursorline
-set laststatus=2
-set scrolloff=8
-set sidescrolloff=5
-set showcmd
-set ruler
-set showmatch
-set matchtime=2
-set display+=lastline
-set signcolumn=yes
-set pumheight=14
-set cmdheight=1
-set noshowmode
-set shortmess+=acFI
+set number relativenumber cursorline laststatus=2 scrolloff=8 sidescrolloff=5
+set showcmd ruler showmatch matchtime=2 display+=lastline
+set signcolumn=yes pumheight=14 cmdheight=1 noshowmode shortmess+=acFI
 
 " Search
-set incsearch
-set hlsearch
-set ignorecase
-set smartcase
-set wrapscan
+set incsearch hlsearch ignorecase smartcase wrapscan
 if executable('rg')
-  set grepprg=rg\ --vimgrep\ --smart-case\ --follow
-  set grepformat=%f:%l:%c:%m
+  set grepprg=rg\ --vimgrep\ --smart-case\ --follow grepformat=%f:%l:%c:%m
 endif
 
-" Indentation defaults
-set autoindent
-set expandtab
-set tabstop=4
-set softtabstop=4
-set shiftwidth=4
-set shiftround
-set smarttab
+" Indentation defaults (vim-sleuth overrides per project)
+set autoindent expandtab tabstop=4 softtabstop=4 shiftwidth=4 shiftround smarttab
 
-" formatoptions
+" No auto-continuation of comment leaders
 augroup FormatOptions
   autocmd!
   autocmd FileType * setlocal formatoptions-=cro
 augroup END
 
-" Buffers and windows
-set hidden
-set switchbuf=useopen,usetab
-set splitbelow
-set splitright
-set winminheight=0
-set winminwidth=0
+" Buffers / windows
+set hidden switchbuf=useopen,usetab splitbelow splitright winminheight=0 winminwidth=0
 
-" Completion
-set wildmenu
-set wildmode=longest:full,full
+" Command-line completion
+set wildmenu wildmode=longest:full,full
 set wildignore+=*.o,*~,*.pyc,*.class,*.jar
-set wildignore+=*/.git/*,*/.hg/*,*/.svn/*
-set wildignore+=*/node_modules/*,*/bower_components/*
+set wildignore+=*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_components/*
 set wildignore+=*.DS_Store,*.log,*.tmp
+
+" coc.nvim owns completion — keep native opts minimal
 set completeopt=menuone,noselect,noinsert
 
-" File handling
-if !isdirectory(expand('~/.vim/swap'))
-  call mkdir(expand('~/.vim/swap'), 'p', 0700)
-endif
-set swapfile
-set directory=~/.vim/swap//
+" Directories
+for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui']
+  if !isdirectory(expand('~/.vim/' . s:d))
+    call mkdir(expand('~/.vim/' . s:d), 'p', 0700)
+  endif
+endfor
 
-if !isdirectory(expand('~/.vim/backup'))
-  call mkdir(expand('~/.vim/backup'), 'p', 0700)
-endif
-set backup
-set nowritebackup
-set backupdir=~/.vim/backup//
-
+set swapfile   directory=~/.vim/swap//
+set backup     nowritebackup backupdir=~/.vim/backup//
 set autoread
 
-" Folding
-set foldmethod=indent
-set foldlevel=99
-set foldlevelstart=99
+" Persistent undo
+if has('persistent_undo')
+  set undofile undodir=~/.vim/undo
+endif
+
+" Folding (coc-based folding off; using indent folding at 99 = open by default)
+set foldmethod=indent foldlevel=99 foldlevelstart=99
 
 " Visible whitespace
-set list
-set listchars=tab:▸\ ,trail:·,extends:→,precedes:←,nbsp:⦸
+set list listchars=tab:▸\ ,trail:·,extends:→,precedes:←,nbsp:⦸
 set fillchars=vert:│,fold:─
 
 " Spell
 set spelllang=en_us
 
 " True colour
-if has('termguicolors') && ($COLORTERM ==# 'truecolor' || $COLORTERM ==# '24bit')
+if has('termguicolors') && ($COLORTERM =~# 'truecolor\|24bit')
   set termguicolors
 endif
 
 " GUI
 if has('gui_running')
-  set guifont=JetBrainsMono\ Nerd\ Font\ Mono:h12
-  set guioptions=ac
-  set columns=120
-  set lines=35
-endif
-
-" Persistent undo
-if has('persistent_undo')
-  let s:undodir = expand('~/.vim/undo')
-  if !isdirectory(s:undodir)
-    call mkdir(s:undodir, 'p', 0700)
-  endif
-  if isdirectory(s:undodir)
-    set undofile
-    let &undodir = s:undodir
-  endif
+  set guifont=JetBrainsMono\ Nerd\ Font\ Mono:h12 guioptions=ac columns=120 lines=35
 endif
 
 " Clipboard
@@ -199,7 +146,7 @@ if has('wsl') && executable('clip.exe')
 endif
 
 " -----------------------------------------------------------------------------
-" 3. Plugin Manager — vim-plug
+" 3. Plugin Manager — vim-plug (robust bootstrap: curl → wget → abort)
 " -----------------------------------------------------------------------------
 function! s:EnsureVimPlug()
   let l:path = expand('~/.vim/autoload/plug.vim')
@@ -216,9 +163,7 @@ function! s:EnsureVimPlug()
     if v:shell_error != 0 | throw 'download failed (exit ' . v:shell_error . ')' | endif
     return 1
   catch
-    echohl ErrorMsg
-    echom 'vim-plug bootstrap failed: ' . v:exception
-    echohl None
+    echohl ErrorMsg | echom 'vim-plug bootstrap failed: ' . v:exception | echohl None
     return 0
   endtry
 endfunction
@@ -229,100 +174,97 @@ call plug#begin(expand('~/.vim/plugged'))
 
 " ---------------------------------------------------------------------------
 " APPEARANCE
-" Modern themes — set $VIM_THEME in shell or ~/.vimrc.local
+" Set $VIM_THEME in shell or ~/.vimrc.local
+" Options: catppuccin_mocha | catppuccin_frappe | gruvbox | onedark
 " ---------------------------------------------------------------------------
-Plug 'catppuccin/vim', { 'as': 'catppuccin' }        " Mocha = default (recommended)
-Plug 'rebelot/kanagawa.nvim'                          " deep ink-dark
-Plug 'EdenEast/nightfox.nvim'                         " carbonfox variant
-Plug 'morhetz/gruvbox'                                " fallback classic
-Plug 'joshdick/onedark.vim'                           " fallback classic
+Plug 'catppuccin/vim', { 'as': 'catppuccin' }
+Plug 'morhetz/gruvbox'
+Plug 'joshdick/onedark.vim'
 
-" Statusline — lightline is 3× faster than airline, cleaner look
 Plug 'itchyny/lightline.vim'
 Plug 'mengelbrecht/lightline-bufferline'
-Plug 'ryanoasis/vim-devicons'                         " filetype icons everywhere
+Plug 'ryanoasis/vim-devicons'
 
 " ---------------------------------------------------------------------------
-" FILE EXPLORER — fern (Vim 8 native, async, full-featured)
-" Replaces NERDTree completely. Lazy — only loads when invoked.
+" FILE EXPLORER — fern (async, Vim 9 native, replaces netrw silently)
 " ---------------------------------------------------------------------------
-Plug 'lambdalisue/fern.vim',                    { 'on': ['Fern'] }
-Plug 'lambdalisue/fern-git-status.vim',         { 'on': ['Fern'] }
-Plug 'lambdalisue/nerdfont.vim',                { 'on': ['Fern'] }
-Plug 'lambdalisue/fern-renderer-nerdfont.vim',  { 'on': ['Fern'] }
-Plug 'LumaKernel/fern-mapping-fzf.vim',         { 'on': ['Fern'] }
-Plug 'lambdalisue/vim-fern-hijack'              " replaces netrw silently
+Plug 'lambdalisue/fern.vim',                   { 'on': 'Fern' }
+Plug 'lambdalisue/fern-git-status.vim',        { 'on': 'Fern' }
+Plug 'lambdalisue/nerdfont.vim',               { 'on': 'Fern' }
+Plug 'lambdalisue/fern-renderer-nerdfont.vim', { 'on': 'Fern' }
+Plug 'LumaKernel/fern-mapping-fzf.vim',        { 'on': 'Fern' }
+Plug 'lambdalisue/vim-fern-hijack'
 
 " ---------------------------------------------------------------------------
 " NAVIGATION
 " ---------------------------------------------------------------------------
-Plug 'junegunn/fzf',     { 'dir': '~/.fzf', 'do': './install --all' }
+Plug 'junegunn/fzf',    { 'dir': '~/.fzf', 'do': './install --all' }
 Plug 'junegunn/fzf.vim'
-Plug 'christoomey/vim-tmux-navigator'           " C-h/j/k/l crosses tmux panes
+Plug 'christoomey/vim-tmux-navigator'
 Plug 'preservim/tagbar',  { 'on': 'TagbarToggle' }
-Plug 'ludovicchabant/vim-gutentags'             " ctags auto-regeneration
-Plug 'mhinz/vim-startify'                       " project dashboard
+Plug 'ludovicchabant/vim-gutentags'
+Plug 'mhinz/vim-startify'
 
 " ---------------------------------------------------------------------------
-" LSP — full language intelligence on Vim 8
+" LSP / COMPLETION — coc.nvim
+" Replaces: vim-lsp, vim-lsp-settings, asyncomplete, asyncomplete-lsp,
+"           asyncomplete-ultisnips. One plugin, Node-powered, battle-tested.
 " ---------------------------------------------------------------------------
-Plug 'prabirshrestha/vim-lsp'
-Plug 'mattn/vim-lsp-settings'
-Plug 'prabirshrestha/asyncomplete.vim'
-Plug 'prabirshrestha/asyncomplete-lsp.vim'
+Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 
 " ---------------------------------------------------------------------------
-" DAP — debugger protocol for Vim 8
-" vimspector supports: Python, JS/TS, Go, C/C++, Rust, Java, Kotlin, Ruby
-" Config lives in .vimspector.json at project root (see docs)
+" DAP — vimspector
+" Config lives in .vimspector.json at project root.
+" Gadgets: debugpy | vscode-go | CodeLLDB | vscode-node | java/kotlin adapters
 " ---------------------------------------------------------------------------
 Plug 'puremourning/vimspector'
 
 " ---------------------------------------------------------------------------
 " EDITING — core power tools
 " ---------------------------------------------------------------------------
-Plug 'tpope/vim-commentary'                     " gc to comment
-Plug 'tpope/vim-surround'                       " cs/ds/ys surround motions
-Plug 'tpope/vim-repeat'                         " . repeats plugin actions
-Plug 'tpope/vim-unimpaired'                     " [b ]b [q ]q bracket pairs
-Plug 'tpope/vim-sleuth'                         " auto-detect indent
-Plug 'jiangmiao/auto-pairs'                     " bracket/quote auto-close
-Plug 'wellle/targets.vim'                       " extra text objects (cin, da,)
-Plug 'matze/vim-move'                           " Alt+j/k move lines/blocks
-Plug 'mbbill/undotree',   { 'on': 'UndotreeToggle' }
-Plug 'jdhao/better-escape.vim'                  " jk/kj to escape insert mode
-Plug 'mg979/vim-visual-multi'                   " MULTI-CURSOR (Ctrl+N)
-Plug 'psliwka/vim-smoothie'                     " smooth C-d/C-u scrolling
-Plug 'Yggdroot/indentLine'                      " indent guides ▏
-Plug 'wellle/context.vim'                       " sticky function context at top
+Plug 'tpope/vim-commentary'       " gc to comment
+Plug 'tpope/vim-surround'         " cs/ds/ys surround motions
+Plug 'tpope/vim-repeat'           " . repeats plugin actions
+Plug 'tpope/vim-unimpaired'       " [b ]b [q ]q and friends
+Plug 'tpope/vim-sleuth'           " auto-detect indent per project
+Plug 'cohama/lexima.vim'          " bracket/quote auto-close (replaces auto-pairs)
+Plug 'wellle/targets.vim'         " extra text objects: cin, da,
+Plug 'matze/vim-move'             " Alt+j/k move lines/blocks
+Plug 'mbbill/undotree',           { 'on': 'UndotreeToggle' }
+Plug 'jdhao/better-escape.vim'    " jk/kj → Esc in insert mode
+Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
+Plug 'psliwka/vim-smoothie'       " smooth C-d/C-u scrolling
+Plug 'Yggdroot/indentLine'        " indent guides ▏
+Plug 'wellle/context.vim'         " sticky function context at top
 
 " ---------------------------------------------------------------------------
-" LINTING / FORMATTING
+" SNIPPETS — UltiSnips integrates with coc-snippets
+" ---------------------------------------------------------------------------
+Plug 'SirVer/ultisnips'
+Plug 'honza/vim-snippets'
+
+" ---------------------------------------------------------------------------
+" LINTING / FORMATTING — ALE kept for linters-only
+" coc.nvim handles: diagnostics, signature help, inlay hints, formatting
+" ALE handles: shellcheck (sh), vint (vim) — no LSP equivalent available
+" ALE fixers: black/isort/prettier/shfmt/rustfmt/gofmt/clang-format etc.
 " ---------------------------------------------------------------------------
 Plug 'dense-analysis/ale'
 
 " ---------------------------------------------------------------------------
-" SNIPPETS
-" ---------------------------------------------------------------------------
-Plug 'SirVer/ultisnips'
-Plug 'honza/vim-snippets'
-Plug 'prabirshrestha/asyncomplete-ultisnips.vim'
-
-" ---------------------------------------------------------------------------
 " GIT
 " ---------------------------------------------------------------------------
-Plug 'tpope/vim-fugitive'                       " :Git everything
-Plug 'tpope/vim-rhubarb'                        " GitHub integration
-Plug 'airblade/vim-gitgutter'                   " live hunk signs
-Plug 'junegunn/gv.vim'                          " beautiful git log graph (:GV)
-Plug 'whiteinge/diffconflicts'                  " 2-way merge conflict resolution
+Plug 'tpope/vim-fugitive'         " :Git everything
+Plug 'tpope/vim-rhubarb'          " GitHub :GBrowse
+Plug 'airblade/vim-gitgutter'     " live hunk signs
+Plug 'junegunn/gv.vim'            " beautiful git log :GV
+Plug 'whiteinge/diffconflicts'    " 2-way merge conflict resolution
 
 " ---------------------------------------------------------------------------
 " LANGUAGE SUPPORT — lazy by filetype
-" vim-polyglot covers ~70 languages syntax/indent in one bundle.
-" Individual plugins fill gaps or provide deeper support.
+" vim-polyglot covers ~70 languages; individual plugins fill gaps.
 " ---------------------------------------------------------------------------
-Plug 'sheerun/vim-polyglot'                     " base: 70+ languages
+Plug 'sheerun/vim-polyglot'
 
 " Systems / compiled
 Plug 'rust-lang/rust.vim',        { 'for': 'rust' }
@@ -331,22 +273,21 @@ Plug 'rhysd/vim-llvm',            { 'for': ['c', 'cpp'] }
 Plug 'ziglang/zig.vim',           { 'for': 'zig' }
 
 " Web
-Plug 'pangloss/vim-javascript',   { 'for': ['javascript', 'javascriptreact'] }
-Plug 'leafgarland/typescript-vim', { 'for': ['typescript', 'typescriptreact'] }
-Plug 'maxmellon/vim-jsx-pretty',  { 'for': ['javascriptreact', 'typescriptreact'] }
-Plug 'jparise/vim-graphql',       { 'for': 'graphql' }
+Plug 'pangloss/vim-javascript',       { 'for': ['javascript', 'javascriptreact'] }
+Plug 'leafgarland/typescript-vim',    { 'for': ['typescript', 'typescriptreact'] }
+Plug 'maxmellon/vim-jsx-pretty',      { 'for': ['javascriptreact', 'typescriptreact'] }
+Plug 'jparise/vim-graphql',           { 'for': 'graphql' }
 Plug 'mustache/vim-mustache-handlebars', { 'for': ['html.handlebars', 'mustache'] }
 
 " Data / scripting
 Plug 'Vimjas/vim-python-pep8-indent', { 'for': 'python' }
-Plug 'vim-ruby/vim-ruby',         { 'for': 'ruby' }
-Plug 'tpope/vim-rails',           { 'for': 'ruby' }
-Plug 'udalov/kotlin-vim',         { 'for': 'kotlin' }
+Plug 'vim-ruby/vim-ruby',             { 'for': 'ruby' }
+Plug 'tpope/vim-rails',               { 'for': 'ruby' }
+Plug 'udalov/kotlin-vim',             { 'for': 'kotlin' }
 
 " Legacy / scientific
 Plug 'vim-scripts/fortran.vim',   { 'for': 'fortran' }
 Plug 'suoto/vim-hdl',             { 'for': ['vhdl', 'verilog'] }
-" cobol — covered by vim-polyglot, vim-scripts/cobol.vim repo is dead
 
 " DevOps / config
 Plug 'hashivim/vim-terraform',    { 'for': 'terraform' }
@@ -361,13 +302,11 @@ Plug 'elzr/vim-json',             { 'for': 'json' }
 Plug 'cespare/vim-toml',          { 'for': 'toml' }
 Plug 'stephpy/vim-yaml',          { 'for': 'yaml' }
 Plug 'chrisbra/csv.vim',          { 'for': 'csv' }
-Plug 'gennaro-tedesco/nvim-jqx',  { 'for': 'json' }  " JSON explorer :JqxList
 
 " Markup / docs
 Plug 'godlygeek/tabular'
 Plug 'preservim/vim-markdown',    { 'for': 'markdown' }
-Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown',
-  \ 'do': { -> mkdp#util#install() } }             " :MarkdownPreview in browser
+Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown', 'do': { -> mkdp#util#install() } }
 Plug 'lervag/vimtex',             { 'for': 'tex' }
 Plug 'vim-scripts/xml.vim',       { 'for': ['xml', 'html'] }
 
@@ -379,59 +318,57 @@ Plug 'kristijanhusak/vim-dadbod-completion'
 " ---------------------------------------------------------------------------
 " TERMINAL
 " ---------------------------------------------------------------------------
-Plug 'voldikss/vim-floaterm'                    " floating terminal overlay
+Plug 'voldikss/vim-floaterm'
 
 " ---------------------------------------------------------------------------
-" REST CLIENT — :Http / RestConsole in a buffer
+" REST CLIENT
 " ---------------------------------------------------------------------------
-Plug 'diepm/vim-rest-console'                   " .rest files with REST calls
-Plug 'baverman/vial-http',        { 'for': 'http' }
+Plug 'diepm/vim-rest-console'
+Plug 'baverman/vial-http', { 'for': 'http' }
 
 " ---------------------------------------------------------------------------
 " TEST RUNNER
 " ---------------------------------------------------------------------------
-Plug 'vim-test/vim-test'                        " :TestNearest :TestFile :TestSuite
-Plug 'tpope/vim-dispatch'                       " async test dispatch backend
+Plug 'vim-test/vim-test'
+Plug 'tpope/vim-dispatch'
 
 " ---------------------------------------------------------------------------
 " SESSION / UTILITIES
 " ---------------------------------------------------------------------------
-Plug 'tpope/vim-obsession'                      " session persistence
-Plug 'editorconfig/editorconfig-vim'            " respect .editorconfig
-Plug 'liuchengxu/vim-which-key'                 " leader key popup hints
-Plug 'liuchengxu/vim-clap',       { 'do': ':Clap install-binary' } " universal picker
-Plug 'szw/vim-maximizer',         { 'on': 'MaximizerToggle' }      " zoom a window
-Plug 'tpope/vim-eunuch'                         " :Rename :Move :SudoWrite etc.
+Plug 'tpope/vim-obsession'
+Plug 'editorconfig/editorconfig-vim'
+Plug 'liuchengxu/vim-which-key'
+Plug 'liuchengxu/vim-clap', { 'do': ':Clap install-binary' }
+Plug 'szw/vim-maximizer',   { 'on': 'MaximizerToggle' }
+Plug 'tpope/vim-eunuch'
 
 call plug#end()
 
-" Auto-install missing plugins on startup
-function! s:PlugAutoInstall()
-  let l:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)')
-  if len(l:missing) > 0
-    echom len(l:missing) . ' plugin(s) missing — installing... restart Vim when done.'
-    PlugInstall --sync
-  endif
-endfunction
+" Auto-install any missing plugins on startup (catches newly added entries)
 augroup PlugAutoInstall
   autocmd!
-  autocmd VimEnter * call s:PlugAutoInstall()
+  autocmd VimEnter *
+    \ let s:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)') |
+    \ if len(s:missing) |
+    \   echom len(s:missing) . ' plugin(s) missing — installing…' |
+    \   PlugInstall --sync |
+    \ endif
 augroup END
 
 " -----------------------------------------------------------------------------
 " 4. Colorscheme
 " -----------------------------------------------------------------------------
 " Set $VIM_THEME in shell or ~/.vimrc.local
-" Available: catppuccin_mocha | catppuccin_frappe | kanagawa | carbonfox | gruvbox | onedark
+" Available: catppuccin_mocha | catppuccin_frappe | gruvbox | onedark
 let s:theme = !empty($VIM_THEME) ? $VIM_THEME : 'catppuccin_mocha'
 
 function! s:ApplyTheme()
+  set background=dark
   try
-    set background=dark
     execute 'colorscheme ' . s:theme
   catch
     colorscheme desert
-    echom 'Theme "' . s:theme . '" not found — falling back to desert'
+    echom 'Theme "' . s:theme . '" not found — fell back to desert'
   endtry
 endfunction
 
@@ -499,14 +436,15 @@ function! s:SafeBprev()
   endif
   bprevious
 endfunction
+
 nnoremap <silent> <Tab>   :call <SID>SafeBnext()<CR>
 nnoremap <silent> <S-Tab> :call <SID>SafeBprev()<CR>
 nnoremap <leader><Tab> <C-^>
-nnoremap <leader>bd   :bdelete<CR>
-nnoremap <leader>bD   :bdelete!<CR>
-nnoremap <leader>bn   :bnext<CR>
-nnoremap <leader>bp   :bprevious<CR>
-nnoremap <leader>bC   :CleanBuffers<CR>
+nnoremap <leader>bd    :bdelete<CR>
+nnoremap <leader>bD    :bdelete!<CR>
+nnoremap <leader>bn    :bnext<CR>
+nnoremap <leader>bp    :bprevious<CR>
+nnoremap <leader>bC    :CleanBuffers<CR>
 
 " --- Search ---
 nnoremap <leader>sc :nohlsearch<CR>
@@ -543,10 +481,10 @@ vnoremap > >gv
 vnoremap . :norm .<CR>
 
 " --- Yank / paste ---
-nnoremap Y          y$
-nnoremap <leader>p  "+p
-nnoremap <leader>P  "+P
-vnoremap <leader>y  "+y
+nnoremap Y         y$
+nnoremap <leader>p "+p
+nnoremap <leader>P "+P
+vnoremap <leader>y "+y
 nnoremap <leader>yy "+yy
 vnoremap <leader>vp "_dP
 
@@ -583,35 +521,54 @@ nmap     ]h         <Plug>(GitGutterNextHunk)
 nmap     [h         <Plug>(GitGutterPrevHunk)
 
 " --- File explorer (fern) ---
-nnoremap <silent> <leader>e  :Fern . -drawer -reveal=% -toggle<CR>
-nnoremap <silent> <leader>E  :Fern . -drawer -reveal=%<CR>
+nnoremap <silent> <leader>e :Fern . -drawer -reveal=% -toggle<CR>
+nnoremap <silent> <leader>E :Fern . -drawer -reveal=%<CR>
 
 " --- Terminal ---
-nnoremap <silent> <C-\>     :FloatermToggle<CR>
-tnoremap <silent> <C-\>     <C-\><C-n>:FloatermToggle<CR>
+nnoremap <silent> <C-\>  :FloatermToggle<CR>
+tnoremap <silent> <C-\>  <C-\><C-n>:FloatermToggle<CR>
 nnoremap <leader>tn :FloatermNew<CR>
 nnoremap <leader>tk :FloatermKill<CR>
 nnoremap <leader>tl :FloatermNext<CR>
 nnoremap <leader>th :FloatermPrev<CR>
-" Send selection to terminal
 vnoremap <leader>ts :FloatermSend<CR>
 
-" --- LSP ---
-nnoremap <silent> gd        :LspDefinition<CR>
-nnoremap <silent> gD        :LspDeclaration<CR>
-nnoremap <silent> gr        :LspReferences<CR>
-nnoremap <silent> gi        :LspImplementation<CR>
-nnoremap <silent> gt        :LspTypeDefinition<CR>
-nnoremap <silent> K         :LspHover<CR>
-nnoremap <silent> <leader>rn :LspRename<CR>
-nnoremap <silent> <leader>ca :LspCodeAction<CR>
-nnoremap <silent> <leader>cf :LspDocumentFormat<CR>
-nnoremap <silent> <leader>cs :LspDocumentSymbol<CR>
-nnoremap <silent> <leader>cS :LspWorkspaceSymbol<CR>
-nnoremap <silent> ]e        :LspNextError<CR>
-nnoremap <silent> [e        :LspPreviousError<CR>
-nnoremap <silent> ]w        :LspNextWarning<CR>
-nnoremap <silent> [w        :LspPreviousWarning<CR>
+" --- coc.nvim LSP ---
+" TAB: cycle completion popup forward; trigger refresh if cursor follows a word
+inoremap <silent><expr> <TAB>
+  \ coc#pum#visible() ? coc#pum#next(1) :
+  \ col('.') > 1 && getline('.')[col('.')-2] !~# '\s' ? coc#refresh() : "\<Tab>"
+inoremap <expr><S-TAB> coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"
+" CR confirms selection without adding an extra undo break
+inoremap <silent><expr> <CR>
+  \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
+" Force refresh (replaces asyncomplete_force_refresh)
+inoremap <silent><expr> <C-Space> coc#refresh()
+
+" Navigation
+nmap <silent> gd <Plug>(coc-definition)
+nmap <silent> gD <Plug>(coc-declaration)
+nmap <silent> gy <Plug>(coc-type-definition)
+nmap <silent> gi <Plug>(coc-implementation)
+nmap <silent> gr <Plug>(coc-references)
+" Hover (K) — show docs or fallback to keywordprg
+nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+
+" LSP actions
+nmap <silent> <leader>rn <Plug>(coc-rename)
+nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
+nmap <silent> <leader>cf <Plug>(coc-format)
+nmap <silent> <leader>cs :CocList outline<CR>
+nmap <silent> <leader>cS :CocList -I symbols<CR>
+" Diagnostics (replaces ]e [e ]w [w from vim-lsp)
+nmap <silent> ]g <Plug>(coc-diagnostic-next)
+nmap <silent> [g <Plug>(coc-diagnostic-prev)
+nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
+nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
+" Diagnostic list
+nnoremap <silent> <leader>cd :CocList diagnostics<CR>
+" Signature help in insert mode
+inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
 
 " --- DAP / Vimspector ---
 nnoremap <silent> <F1>  :call vimspector#Continue()<CR>
@@ -672,7 +629,7 @@ nnoremap <leader>vi :VimInfo<CR>
 nnoremap <leader>PR :FindProjectRoot<CR>
 nnoremap <leader>wZ :MaximizerToggle<CR>
 
-" which-key popup — must be last leader mapping
+" which-key popup — keep last among leader mappings
 nnoremap <silent> <leader> :<c-u>WhichKey '<Space>'<CR>
 
 " Run / compile / build / test — F5–F9
@@ -693,18 +650,21 @@ let g:better_escape_interval = 200
 let s:ll_theme_map = {
   \ 'catppuccin_mocha':  'catppuccin_mocha',
   \ 'catppuccin_frappe': 'catppuccin_frappe',
-  \ 'kanagawa':          'one',
-  \ 'carbonfox':         'one',
   \ 'gruvbox':           'gruvbox',
   \ 'onedark':           'onedark',
   \ }
+
+function! LightlineCocStatus() abort
+  return get(g:, 'coc_status', '')
+endfunction
+
 let g:lightline = {
   \ 'colorscheme': get(s:ll_theme_map, s:theme, 'one'),
   \ 'active': {
-  \   'left':  [['mode','paste'],
-  \             ['gitbranch','readonly','filename','modified']],
+  \   'left':  [['mode', 'paste'],
+  \             ['gitbranch', 'readonly', 'filename', 'modified']],
   \   'right': [['lineinfo'], ['percent'],
-  \             ['lsp_status', 'filetype', 'fileencoding']]
+  \             ['coc_status', 'filetype', 'fileencoding']]
   \ },
   \ 'tabline': {
   \   'left':  [['buffers']],
@@ -712,24 +672,54 @@ let g:lightline = {
   \ },
   \ 'component_expand':   { 'buffers': 'lightline#bufferline#buffers' },
   \ 'component_type':     { 'buffers': 'tabsel' },
-  \ 'component_function': { 'gitbranch': 'FugitiveHead' },
+  \ 'component_function': {
+  \   'gitbranch':  'FugitiveHead',
+  \   'coc_status': 'LightlineCocStatus',
+  \ },
   \ 'separator':    { 'left': '', 'right': '' },
   \ 'subseparator': { 'left': '', 'right': '' },
   \ }
+
 set showtabline=2
-let g:lightline#bufferline#show_number      = 1
-let g:lightline#bufferline#unicode_symbols  = 1
-let g:lightline#bufferline#enable_devicons  = 1
+let g:lightline#bufferline#show_number     = 1
+let g:lightline#bufferline#unicode_symbols = 1
+let g:lightline#bufferline#enable_devicons = 1
+
+" Refresh lightline when coc status changes
+augroup LightlineCoc
+  autocmd!
+  autocmd User CocStatusChange,CocDiagnosticChange
+    \ silent call lightline#update()
+augroup END
+
+" --- coc.nvim ---
+" Diagnostic signs (matches former vim-lsp sign set)
+call coc#config('diagnostic.errorSign',       '󰅚 ')
+call coc#config('diagnostic.warningSign',     '󰀪 ')
+call coc#config('diagnostic.infoSign',        '󰋽 ')
+call coc#config('diagnostic.hintSign',        '󰌶 ')
+call coc#config('diagnostic.virtualText',     v:false)
+call coc#config('diagnostic.displayByAle',    v:false)
+call coc#config('signature.enable',           v:true)
+call coc#config('hover.autoHide',             v:true)
+" UltiSnips integration
+call coc#config('snippets.ultisnips.enable',  v:true)
+" Format on save (coc handles the languages ALE used to fix)
+call coc#config('coc.preferences.formatOnSaveFiletypes', [
+  \ 'python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact',
+  \ 'go', 'rust', 'sh', 'c', 'cpp', 'kotlin', 'ruby',
+  \ 'yaml', 'json', 'html', 'css', 'scss', 'zig',
+  \ ])
 
 " --- Fern ---
-let g:fern#renderer                         = 'nerdfont'
-let g:fern#default_hidden                   = 1
+let g:fern#renderer       = 'nerdfont'
+let g:fern#default_hidden = 1
 let g:fern#default_exclude =
   \ '^\%(\.git\|__pycache__\|node_modules\|\.DS_Store\|\.cache\|dist\|build\)$'
 
-let g:fern_git_status#disable_ignored      = 1
-let g:fern_git_status#disable_untracked    = 0
-let g:fern_git_status#disable_submodules   = 1
+let g:fern_git_status#disable_ignored   = 1
+let g:fern_git_status#disable_untracked = 0
+let g:fern_git_status#disable_submodules = 1
 
 function! s:FernInit() abort
   nmap <buffer> <C-f> <Plug>(fern-mapping-fzf-select)
@@ -755,80 +745,22 @@ augroup FernEvents
 augroup END
 
 " --- FZF ---
-" Floating popup layout — feels like VS Code command palette
-let g:fzf_layout = {
-  \ 'window': { 'width': 0.92, 'height': 0.88, 'rounded': v:true }
-  \ }
+let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'rounded': v:true } }
 let g:fzf_history_dir = expand('~/.vim/fzf-history')
 
-" Catppuccin Mocha colour palette for FZF
+" Catppuccin Mocha palette
 let $FZF_DEFAULT_OPTS =
   \ '--layout=reverse --border=rounded --info=inline ' .
   \ '--color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8 ' .
   \ '--color=fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc ' .
   \ '--color=marker:#f5e0dc,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8'
 
-" Use bat for syntax-highlighted preview (install: sudo zypper in bat)
 if executable('bat')
   let $FZF_DEFAULT_OPTS .= ' --preview "bat --style=numbers --color=always {}"'
 endif
 
-" --- vim-lsp ---
-let g:lsp_diagnostics_signs_error         = { 'text': '󰅚 ' }
-let g:lsp_diagnostics_signs_warning       = { 'text': '󰀪 ' }
-let g:lsp_diagnostics_signs_information   = { 'text': '󰋽 ' }
-let g:lsp_diagnostics_signs_hint          = { 'text': '󰌶 ' }
-let g:lsp_diagnostics_virtual_text_enabled = 0
-let g:lsp_document_highlight_enabled      = 1
-let g:lsp_signature_help_enabled          = 1
-let g:lsp_completion_documentation_delay  = 0
-let g:lsp_fold_enabled                    = 0
-let g:lsp_log_verbose                     = 0
-let g:lsp_log_file                        = expand('~/.vim/vim-lsp.log')
-let g:lsp_settings_servers_dir            = expand('~/.local/share/vim-lsp-settings/servers')
-
-" Language server bindings — all lazy, auto-installed by vim-lsp-settings
-let g:lsp_settings_filetype_go            = ['gopls']
-let g:lsp_settings_filetype_rust          = ['rust-analyzer']
-let g:lsp_settings_filetype_python        = ['pylsp']
-let g:lsp_settings_filetype_typescript    = ['typescript-language-server']
-let g:lsp_settings_filetype_javascript    = ['typescript-language-server']
-let g:lsp_settings_filetype_lua           = ['sumneko-lua-language-server']
-let g:lsp_settings_filetype_vim           = ['vim-language-server']
-let g:lsp_settings_filetype_sh            = ['bash-language-server']
-let g:lsp_settings_filetype_c             = ['clangd']
-let g:lsp_settings_filetype_cpp           = ['clangd']
-let g:lsp_settings_filetype_kotlin        = ['kotlin-language-server']
-let g:lsp_settings_filetype_ruby          = ['solargraph']
-let g:lsp_settings_filetype_yaml          = ['yaml-language-server']
-let g:lsp_settings_filetype_json          = ['json-languageserver']
-let g:lsp_settings_filetype_html          = ['html-languageserver']
-let g:lsp_settings_filetype_css           = ['css-languageserver']
-let g:lsp_settings_filetype_dockerfile    = ['dockerfile-language-server']
-let g:lsp_settings_filetype_terraform     = ['terraform-ls']
-let g:lsp_settings_filetype_zig           = ['zls']
-
-" --- asyncomplete ---
-inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
-inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
-inoremap <expr> <CR>    pumvisible() ? asyncomplete#close_popup() : "\<CR>"
-imap <C-Space> <Plug>(asyncomplete_force_refresh)
-let g:asyncomplete_auto_popup       = 1
-let g:asyncomplete_auto_completeopt = 0
-let g:asyncomplete_popup_delay      = 50
-
-augroup AsyncompleteUltisnips
-  autocmd!
-  autocmd User asyncomplete_setup
-    \ call asyncomplete#register_source(
-    \   asyncomplete#sources#ultisnips#get_source_options({
-    \     'name':      'ultisnips',
-    \     'whitelist': ['*'],
-    \     'completor': function('asyncomplete#sources#ultisnips#completor'),
-    \ }))
-augroup END
-
-" --- ALE ---
+" --- ALE (linters-only — coc.nvim owns diagnostics for LSP languages) ---
+let g:ale_disable_lsp          = 1   " critical: no LSP conflict with coc
 let g:ale_linters_explicit     = 1
 let g:ale_linters = {
   \ 'python':     ['ruff', 'mypy'],
@@ -841,6 +773,9 @@ let g:ale_linters = {
   \ 'c':          [],
   \ 'cpp':        [],
   \ }
+" ALE fixers: run on save for all languages coc format-on-save also covers.
+" They are complementary — coc formats via LSP, ALE fixes via CLI tools.
+" If you see double-formatting, disable the fixers for that filetype here.
 let g:ale_fixers = {
   \ '*':          ['remove_trailing_lines', 'trim_whitespace'],
   \ 'python':     ['black', 'isort'],
@@ -867,38 +802,40 @@ let g:ale_sign_error           = '󰅚 '
 let g:ale_sign_warning         = '󰀪 '
 let g:ale_echo_msg_format      = '[%linter%] %s [%severity%]'
 let g:ale_virtualtext_cursor   = 'disabled'
-let g:ale_disable_lsp          = 1
 
 " --- Vimspector (DAP) ---
-" Layout: code top-left, terminal right, variables bottom-left, watches bottom-right
-let g:vimspector_enable_mappings = 'NONE'   " we use custom bindings above
+let g:vimspector_enable_mappings = 'NONE'
 let g:vimspector_sign_priority = {
-  \ 'vimspectorBP':          20,
-  \ 'vimspectorBPCond':      19,
-  \ 'vimspectorBPDisabled':  18,
-  \ 'vimspectorPC':          999,
+  \ 'vimspectorBP':         20,
+  \ 'vimspectorBPCond':     19,
+  \ 'vimspectorBPDisabled': 18,
+  \ 'vimspectorPC':         999,
   \ }
-" Gadgets auto-install per filetype — :VimspectorInstall <gadget>
-" Supported: debugpy(python) vscode-go(go) CodeLLDB(c/cpp/rust)
-"            vscode-node(js/ts) java-debug-adapter kotlin-debug-adapter
-
-" --- vim-go ---
-let g:go_fmt_command          = 'goimports'
-let g:go_highlight_types      = 1
-let g:go_highlight_fields     = 1
-let g:go_highlight_functions  = 1
-let g:go_highlight_operators  = 1
-let g:go_def_mapping_enabled  = 0   " let vim-lsp handle gd
-let g:go_doc_keywordprg_enabled = 0 " let vim-lsp handle K
-
-" --- rust.vim ---
-let g:rustfmt_autosave = 0   " ALE handles formatting
 
 " --- UltiSnips ---
 let g:UltiSnipsExpandTrigger       = '<C-e>'
 let g:UltiSnipsJumpForwardTrigger  = '<C-l>'
 let g:UltiSnipsJumpBackwardTrigger = '<C-b>'
 let g:UltiSnipsEditSplit           = 'vertical'
+
+" --- vim-go ---
+let g:go_fmt_command            = 'goimports'
+let g:go_highlight_types        = 1
+let g:go_highlight_fields       = 1
+let g:go_highlight_functions    = 1
+let g:go_highlight_operators    = 1
+let g:go_def_mapping_enabled    = 0   " coc handles gd
+let g:go_doc_keywordprg_enabled = 0   " coc handles K
+
+" --- rust.vim ---
+let g:rustfmt_autosave = 0   " ALE/coc handles formatting
+
+" --- lexima.vim ---
+" Works out of the box. The one rule to add: don't double-close inside coc popup.
+" lexima is rule-based and does not fight CR/TAB the way auto-pairs did.
+let g:lexima_enable_basic_rules   = 1
+let g:lexima_enable_newline_rules = 1
+let g:lexima_enable_endwise_rules = 1
 
 " --- Floaterm ---
 let g:floaterm_width       = 0.88
@@ -910,20 +847,19 @@ let g:floaterm_title       = '  terminal ($1/$2) '
 let g:floaterm_wintype     = 'float'
 
 " --- vim-tmux-navigator ---
-" Disable Vim→tmux navigation when zoomed (tmux zoom stays intact)
 let g:tmux_navigator_disable_when_zoomed = 1
-let g:tmux_navigator_save_on_switch      = 2  " :update before switching
+let g:tmux_navigator_save_on_switch      = 2
 
 " --- vim-smoothie ---
 let g:smoothie_speed_constant_factor = 30
 let g:smoothie_speed_linear_factor   = 30
 
 " --- indentLine ---
-let g:indentLine_char                   = '▏'
-let g:indentLine_first_char             = '▏'
-let g:indentLine_showFirstIndentLevel   = 1
-let g:indentLine_fileTypeExclude        = ['startify', 'help', 'fern', 'dbui', 'json']
-let g:indentLine_bufTypeExclude         = ['terminal']
+let g:indentLine_char                 = '▏'
+let g:indentLine_first_char           = '▏'
+let g:indentLine_showFirstIndentLevel = 1
+let g:indentLine_fileTypeExclude      = ['startify', 'help', 'fern', 'dbui', 'json']
+let g:indentLine_bufTypeExclude       = ['terminal']
 
 " --- context.vim (sticky scroll) ---
 let g:context_enabled          = 1
@@ -931,11 +867,11 @@ let g:context_max_height       = 5
 let g:context_filetype_exclude = ['fern', 'startify', 'help', 'dbui']
 
 " --- Gitgutter ---
-let g:gitgutter_enabled        = 1
-let g:gitgutter_map_keys       = 0
-let g:gitgutter_sign_added     = '▎'
-let g:gitgutter_sign_modified  = '▎'
-let g:gitgutter_sign_removed   = '▎'
+let g:gitgutter_enabled       = 1
+let g:gitgutter_map_keys      = 0
+let g:gitgutter_sign_added    = '▎'
+let g:gitgutter_sign_modified = '▎'
+let g:gitgutter_sign_removed  = '▎'
 
 " --- Gutentags ---
 let g:gutentags_cache_dir                 = expand('~/.vim/tags')
@@ -950,7 +886,7 @@ let g:gutentags_project_root              =
 " --- vim-move ---
 let g:move_key_modifier = 'A'
 
-" --- vim-visual-multi (multi-cursor) ---
+" --- vim-visual-multi ---
 let g:VM_maps                       = {}
 let g:VM_maps['Find Under']         = '<C-n>'
 let g:VM_maps['Find Subword Under'] = '<C-n>'
@@ -958,18 +894,18 @@ let g:VM_maps['Select All']         = '<leader>ma'
 let g:VM_maps['Skip Region']        = '<C-x>'
 
 " --- vim-test ---
-let g:test#strategy            = 'floaterm'
-let g:test#python#runner       = 'pytest'
-let g:test#javascript#runner   = 'jest'
-let g:test#go#runner           = 'gotest'
-let g:test#rust#runner         = 'cargotest'
+let g:test#strategy          = 'floaterm'
+let g:test#python#runner     = 'pytest'
+let g:test#javascript#runner = 'jest'
+let g:test#go#runner         = 'gotest'
+let g:test#rust#runner       = 'cargotest'
 
 " --- REST console ---
 let g:vrc_curl_opts = {
-  \ '--include':     '',
-  \ '--location':    '',
-  \ '--show-error':  '',
-  \ '--silent':      '',
+  \ '--include':    '',
+  \ '--location':   '',
+  \ '--show-error': '',
+  \ '--silent':     '',
   \ }
 let g:vrc_auto_format_response_patterns = {
   \ 'json': 'python3 -m json.tool',
@@ -988,9 +924,9 @@ let g:vim_markdown_fenced_languages = [
   \ ]
 
 " --- MarkdownPreview ---
-let g:mkdp_auto_close  = 1
-let g:mkdp_theme       = 'dark'
-let g:mkdp_browser     = ''  " use system default
+let g:mkdp_auto_close = 1
+let g:mkdp_theme      = 'dark'
+let g:mkdp_browser    = ''
 
 " --- Database ---
 let g:db_ui_use_nerd_fonts = 1
@@ -1017,10 +953,10 @@ let g:startify_custom_header = startify#pad([
   \ '           your ide. your rules.',
   \ ])
 let g:startify_lists = [
-  \ { 'type': 'sessions',  'header': ['   Sessions']        },
-  \ { 'type': 'files',     'header': ['   Recent files']    },
-  \ { 'type': 'dir',       'header': ['   ' . getcwd()]     },
-  \ { 'type': 'bookmarks', 'header': ['   Bookmarks']       },
+  \ { 'type': 'sessions',  'header': ['   Sessions']     },
+  \ { 'type': 'files',     'header': ['   Recent files'] },
+  \ { 'type': 'dir',       'header': ['   ' . getcwd()]  },
+  \ { 'type': 'bookmarks', 'header': ['   Bookmarks']    },
   \ ]
 let g:startify_bookmarks = [
   \ { 'v': '~/.vimrc'  },
@@ -1030,43 +966,39 @@ let g:startify_bookmarks = [
 
 " --- which-key ---
 call which_key#register('<Space>', "g:which_key_map")
-let g:which_key_map                  = {}
-let g:which_key_map['<CR>']          = 'reload config'
-let g:which_key_map['<Tab>']         = 'last buffer'
-let g:which_key_map.e                = 'file explorer'
-let g:which_key_map.E                = 'reveal in tree'
-let g:which_key_map.U                = 'undo tree'
-let g:which_key_map.w                = { 'name': '+window'    }
-let g:which_key_map.b                = { 'name': '+buffer'    }
-let g:which_key_map.f                = { 'name': '+find/fzf'  }
-let g:which_key_map.g                = { 'name': '+git'       }
-let g:which_key_map.h                = { 'name': '+hunk'      }
-let g:which_key_map.t                = { 'name': '+terminal'  }
-let g:which_key_map.a                = { 'name': '+ale'       }
-let g:which_key_map.u                = { 'name': '+toggle'    }
-let g:which_key_map.s                = { 'name': '+search'    }
-let g:which_key_map.y                = { 'name': '+yank'      }
-let g:which_key_map.c                = { 'name': '+lsp/qf'    }
-let g:which_key_map.l                = { 'name': '+loclist'   }
-let g:which_key_map.r                = { 'name': '+lsp'       }
-let g:which_key_map.d                = { 'name': '+debug/dap' }
-let g:which_key_map.D                = { 'name': '+database'  }
-let g:which_key_map.S                = { 'name': '+session'   }
-let g:which_key_map.T                = { 'name': '+test'      }
-let g:which_key_map.R                = { 'name': '+rest'      }
-let g:which_key_map.m                = { 'name': '+multicursor'}
-let g:which_key_map.p                = { 'name': '+markdown'  }
+let g:which_key_map             = {}
+let g:which_key_map['<CR>']     = 'reload config'
+let g:which_key_map['<Tab>']    = 'last buffer'
+let g:which_key_map.e           = 'file explorer'
+let g:which_key_map.E           = 'reveal in tree'
+let g:which_key_map.U           = 'undo tree'
+let g:which_key_map.w           = { 'name': '+window'    }
+let g:which_key_map.b           = { 'name': '+buffer'    }
+let g:which_key_map.f           = { 'name': '+find/fzf'  }
+let g:which_key_map.g           = { 'name': '+git'       }
+let g:which_key_map.h           = { 'name': '+hunk'      }
+let g:which_key_map.t           = { 'name': '+terminal'  }
+let g:which_key_map.u           = { 'name': '+toggle'    }
+let g:which_key_map.s           = { 'name': '+search'    }
+let g:which_key_map.y           = { 'name': '+yank'      }
+let g:which_key_map.c           = { 'name': '+lsp/coc'   }
+let g:which_key_map.l           = { 'name': '+loclist'   }
+let g:which_key_map.r           = { 'name': '+rename'    }
+let g:which_key_map.d           = { 'name': '+debug/dap' }
+let g:which_key_map.D           = { 'name': '+database'  }
+let g:which_key_map.S           = { 'name': '+session'   }
+let g:which_key_map.T           = { 'name': '+test'      }
+let g:which_key_map.R           = { 'name': '+rest'      }
+let g:which_key_map.m           = { 'name': '+multicursor' }
+let g:which_key_map.p           = { 'name': '+markdown'  }
 
 " -----------------------------------------------------------------------------
 " 7. Autocommands
 " -----------------------------------------------------------------------------
 function! s:HandleLargeFile()
   if getfsize(expand('%')) > 10485760
-    setlocal eventignore+=FileType
-    setlocal bufhidden=unload
-    setlocal undolevels=-1
-    setlocal noundofile noswapfile
-    setlocal syntax=off nowrap nocursorline norelativenumber
+    setlocal eventignore+=FileType bufhidden=unload undolevels=-1
+    setlocal noundofile noswapfile syntax=off nowrap nocursorline norelativenumber
     echom 'Large file: performance mode active'
   endif
 endfunction
@@ -1103,15 +1035,15 @@ endfunction
 
 augroup VimrcEvents
   autocmd!
-  autocmd BufReadPre   * call s:HandleLargeFile()
-  autocmd BufWritePre  * call s:StripTrailing()
-  autocmd BufWritePre  * call s:MkdirOnSave()
-  autocmd BufReadPost  * call s:RestoreCursor()
-  autocmd TextYankPost * silent! call s:FlashYank()
+  autocmd BufReadPre          * call s:HandleLargeFile()
+  autocmd BufWritePre         * call s:StripTrailing()
+  autocmd BufWritePre         * call s:MkdirOnSave()
+  autocmd BufReadPost         * call s:RestoreCursor()
+  autocmd TextYankPost        * silent! call s:FlashYank()
   autocmd FocusGained,BufEnter * silent! checktime
-  autocmd VimResized           * wincmd =
-  autocmd TerminalOpen         * setlocal nonumber norelativenumber signcolumn=no
-  autocmd FileType sql         setlocal omnifunc=vim_dadbod_completion#omni
+  autocmd VimResized          * wincmd =
+  autocmd TerminalOpen        * setlocal nonumber norelativenumber signcolumn=no
+  autocmd FileType sql        setlocal omnifunc=vim_dadbod_completion#omni
 augroup END
 
 " -----------------------------------------------------------------------------
@@ -1120,75 +1052,76 @@ augroup END
 augroup FileTypeIndent
   autocmd!
   " Python
-  autocmd FileType python                  setlocal ts=4 sw=4 expandtab
+  autocmd FileType python                           setlocal ts=4 sw=4 expandtab
   " Web
-  autocmd FileType javascript,typescript   setlocal ts=2 sw=2 expandtab
-  autocmd FileType javascriptreact,typescriptreact setlocal ts=2 sw=2 expandtab
-  autocmd FileType html,css,scss,sass,less setlocal ts=2 sw=2 expandtab
-  autocmd FileType json,jsonc              setlocal ts=2 sw=2 expandtab
-  autocmd FileType graphql                 setlocal ts=2 sw=2 expandtab
+  autocmd FileType javascript,typescript            setlocal ts=2 sw=2 expandtab
+  autocmd FileType javascriptreact,typescriptreact  setlocal ts=2 sw=2 expandtab
+  autocmd FileType html,css,scss,sass,less          setlocal ts=2 sw=2 expandtab
+  autocmd FileType json,jsonc                       setlocal ts=2 sw=2 expandtab
+  autocmd FileType graphql                          setlocal ts=2 sw=2 expandtab
   " Systems
-  autocmd FileType go,make                 setlocal ts=4 sw=4 noexpandtab
-  autocmd FileType c,cpp                   setlocal ts=4 sw=4 expandtab
-  autocmd FileType rust                    setlocal ts=4 sw=4 expandtab
-  autocmd FileType zig                     setlocal ts=4 sw=4 expandtab
-  autocmd FileType java,kotlin             setlocal ts=4 sw=4 expandtab
+  autocmd FileType go,make                          setlocal ts=4 sw=4 noexpandtab
+  autocmd FileType c,cpp                            setlocal ts=4 sw=4 expandtab
+  autocmd FileType rust                             setlocal ts=4 sw=4 expandtab
+  autocmd FileType zig                              setlocal ts=4 sw=4 expandtab
+  autocmd FileType java,kotlin                      setlocal ts=4 sw=4 expandtab
   " Scripting
-  autocmd FileType lua,vim,ruby            setlocal ts=2 sw=2 expandtab
-  autocmd FileType sh,zsh,bash,fish        setlocal ts=2 sw=2 expandtab
-  autocmd FileType perl,php                setlocal ts=4 sw=4 expandtab
-  autocmd FileType elixir,erlang           setlocal ts=2 sw=2 expandtab
-  autocmd FileType haskell,ocaml,elm       setlocal ts=2 sw=2 expandtab
-  autocmd FileType scala,clojure,lisp      setlocal ts=2 sw=2 expandtab
-  autocmd FileType fsharp,csharp           setlocal ts=4 sw=4 expandtab
+  autocmd FileType lua,vim,ruby                     setlocal ts=2 sw=2 expandtab
+  autocmd FileType sh,zsh,bash,fish                 setlocal ts=2 sw=2 expandtab
+  autocmd FileType perl,php                         setlocal ts=4 sw=4 expandtab
+  autocmd FileType elixir,erlang                    setlocal ts=2 sw=2 expandtab
+  autocmd FileType haskell,ocaml,elm                setlocal ts=2 sw=2 expandtab
+  autocmd FileType scala,clojure,lisp               setlocal ts=2 sw=2 expandtab
+  autocmd FileType fsharp,csharp                    setlocal ts=4 sw=4 expandtab
   " Data / config
-  autocmd FileType yaml,toml               setlocal ts=2 sw=2 expandtab
-  autocmd FileType xml,xhtml               setlocal ts=2 sw=2 expandtab
-  autocmd FileType sql                     setlocal ts=2 sw=2 expandtab
-  autocmd FileType csv                     setlocal ts=4 sw=4 noexpandtab
-  autocmd FileType terraform               setlocal ts=2 sw=2 expandtab
-  autocmd FileType dockerfile              setlocal ts=2 sw=2 expandtab
+  autocmd FileType yaml,toml                        setlocal ts=2 sw=2 expandtab
+  autocmd FileType xml,xhtml                        setlocal ts=2 sw=2 expandtab
+  autocmd FileType sql                              setlocal ts=2 sw=2 expandtab
+  autocmd FileType csv                              setlocal ts=4 sw=4 noexpandtab
+  autocmd FileType terraform                        setlocal ts=2 sw=2 expandtab
+  autocmd FileType dockerfile                       setlocal ts=2 sw=2 expandtab
   " Legacy / scientific
-  autocmd FileType fortran                 setlocal ts=3 sw=3 expandtab
-  autocmd FileType cobol                   setlocal ts=4 sw=4 noexpandtab
-  autocmd FileType vhdl,verilog            setlocal ts=2 sw=2 expandtab
+  autocmd FileType fortran                          setlocal ts=3 sw=3 expandtab
+  autocmd FileType cobol                            setlocal ts=4 sw=4 noexpandtab
+  autocmd FileType vhdl,verilog                     setlocal ts=2 sw=2 expandtab
   " Docs
-  autocmd FileType markdown,text           setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
-  autocmd FileType gitcommit               setlocal spell textwidth=72
-  autocmd FileType tex                     setlocal ts=2 sw=2 expandtab spell
-  autocmd FileType rst                     setlocal ts=3 sw=3 expandtab spell
+  autocmd FileType markdown,text
+    \ setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
+  autocmd FileType gitcommit                        setlocal spell textwidth=72
+  autocmd FileType tex                              setlocal ts=2 sw=2 expandtab spell
+  autocmd FileType rst                              setlocal ts=3 sw=3 expandtab spell
   " Niche but commonly needed
-  autocmd FileType swift                   setlocal ts=4 sw=4 expandtab
-  autocmd FileType dart                    setlocal ts=2 sw=2 expandtab
-  autocmd FileType r,rmd                   setlocal ts=2 sw=2 expandtab
-  autocmd FileType julia                   setlocal ts=4 sw=4 expandtab
-  autocmd FileType nim                     setlocal ts=2 sw=2 expandtab
-  autocmd FileType crystal                 setlocal ts=2 sw=2 expandtab
-  autocmd FileType d                       setlocal ts=4 sw=4 expandtab
+  autocmd FileType swift                            setlocal ts=4 sw=4 expandtab
+  autocmd FileType dart                             setlocal ts=2 sw=2 expandtab
+  autocmd FileType r,rmd                            setlocal ts=2 sw=2 expandtab
+  autocmd FileType julia                            setlocal ts=4 sw=4 expandtab
+  autocmd FileType nim                              setlocal ts=2 sw=2 expandtab
+  autocmd FileType crystal                          setlocal ts=2 sw=2 expandtab
+  autocmd FileType d                                setlocal ts=4 sw=4 expandtab
 augroup END
 
 " -----------------------------------------------------------------------------
 " 9. Terminal execution — F5/F6/F7/F9 run/compile/build/test
 " -----------------------------------------------------------------------------
 let s:runners = {
-  \ 'python':     { 'run': 'python3 "{filepath}"',        'test': 'python3 -m pytest "{dirname}"' },
-  \ 'javascript': { 'run': 'node "{filepath}"',            'test': 'npm test' },
-  \ 'typescript': { 'run': 'ts-node "{filepath}"',         'test': 'npm test', 'compile': 'tsc "{filepath}"' },
-  \ 'go':         { 'run': 'go run "{filepath}"',          'test': 'go test ./...', 'build': 'go build -o "{basename}" "{filepath}"' },
-  \ 'rust':       { 'run': './{basename}',                 'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc "{filepath}"' },
-  \ 'c':          { 'run': './{basename}',                 'compile': 'gcc -Wall -O2 -g "{filepath}" -o "{basename}" -lm' },
-  \ 'cpp':        { 'run': './{basename}',                 'compile': 'g++ -Wall -O2 -g -std=c++17 "{filepath}" -o "{basename}" -lm' },
-  \ 'zig':        { 'run': 'zig run "{filepath}"',         'build': 'zig build', 'test': 'zig test "{filepath}"' },
+  \ 'python':     { 'run': 'python3 "{filepath}"',       'test': 'python3 -m pytest "{dirname}"' },
+  \ 'javascript': { 'run': 'node "{filepath}"',           'test': 'npm test' },
+  \ 'typescript': { 'run': 'ts-node "{filepath}"',        'test': 'npm test', 'compile': 'tsc "{filepath}"' },
+  \ 'go':         { 'run': 'go run "{filepath}"',         'test': 'go test ./...', 'build': 'go build -o "{basename}" "{filepath}"' },
+  \ 'rust':       { 'run': './{basename}',                'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc "{filepath}"' },
+  \ 'c':          { 'run': './{basename}',                'compile': 'gcc -Wall -O2 -g "{filepath}" -o "{basename}" -lm' },
+  \ 'cpp':        { 'run': './{basename}',                'compile': 'g++ -Wall -O2 -g -std=c++17 "{filepath}" -o "{basename}" -lm' },
+  \ 'zig':        { 'run': 'zig run "{filepath}"',        'build': 'zig build', 'test': 'zig test "{filepath}"' },
   \ 'kotlin':     { 'compile': 'kotlinc "{filepath}" -include-runtime -d "{basename}.jar"', 'run': 'java -jar "{basename}.jar"' },
   \ 'sh':         { 'run': 'bash "{filepath}"' },
   \ 'lua':        { 'run': 'lua "{filepath}"' },
-  \ 'ruby':       { 'run': 'ruby "{filepath}"',            'test': 'ruby -Itest "{filepath}"' },
+  \ 'ruby':       { 'run': 'ruby "{filepath}"',           'test': 'ruby -Itest "{filepath}"' },
   \ 'fortran':    { 'compile': 'gfortran -O2 "{filepath}" -o "{basename}"', 'run': './{basename}' },
-  \ 'cobol':      { 'compile': 'cobc -x "{filepath}" -o "{basename}"',      'run': './{basename}' },
+  \ 'cobol':      { 'compile': 'cobc -x "{filepath}" -o "{basename}"',     'run': './{basename}' },
   \ 'julia':      { 'run': 'julia "{filepath}"' },
   \ 'r':          { 'run': 'Rscript "{filepath}"' },
-  \ 'nim':        { 'run': 'nim c -r "{filepath}"',        'build': 'nim c -d:release "{filepath}"' },
-  \ 'crystal':    { 'run': 'crystal run "{filepath}"',     'build': 'crystal build --release "{filepath}"' },
+  \ 'nim':        { 'run': 'nim c -r "{filepath}"',       'build': 'nim c -d:release "{filepath}"' },
+  \ 'crystal':    { 'run': 'crystal run "{filepath}"',    'build': 'crystal build --release "{filepath}"' },
   \ 'd':          { 'compile': 'dmd "{filepath}" -of="{basename}"', 'run': './{basename}' },
   \ }
 
@@ -1204,7 +1137,7 @@ function! s:RunAction(action)
     echohl WarningMsg | echom 'No ' . a:action . ' for filetype: ' . l:ft | echohl None | return
   endif
   let l:vars = {
-    \ 'filepath': l:fp,         'dirname':  fnamemodify(l:fp, ':h'),
+    \ 'filepath': l:fp,        'dirname':  fnamemodify(l:fp, ':h'),
     \ 'filename': expand('%:t'), 'basename': expand('%:t:r'),
     \ }
   let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:vars, submatch(1), submatch(0))', 'g')
@@ -1221,19 +1154,19 @@ function! s:VimInfo()
   echo 'Filetype : ' . &filetype
   echo 'Theme    : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
   echo '$VIM_THEME: ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set → catppuccin_mocha)')
-  echo 'Python3  : ' . (executable('python3') ? trim(system('python3 --version')) : 'not found')
+  echo 'coc.nvim : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
   echo 'Node     : ' . (executable('node')    ? trim(system('node --version'))    : 'not found')
+  echo 'Python3  : ' . (executable('python3') ? trim(system('python3 --version')) : 'not found')
   echo 'Git      : ' . (executable('git')     ? trim(system('git --version'))     : 'not found')
   echo 'rg       : ' . (executable('rg')      ? trim(system('rg --version | head -1')) : 'not found')
-  echo 'bat      : ' . (executable('bat')     ? trim(system('bat --version'))     : 'not found (optional, for FZF preview)')
+  echo 'bat      : ' . (executable('bat')     ? trim(system('bat --version'))     : 'not found (optional, FZF preview)')
   echo 'gopls    : ' . (executable('gopls')   ? 'found' : 'not found')
   echo 'tmux     : ' . (executable('tmux')    ? trim(system('tmux -V'))           : 'not found')
-  echo 'LSP log  : ' . expand('~/.vim/vim-lsp.log')
   echo '=================================='
 endfunction
 
 function! s:CleanBuffers()
-  let l:cur = bufnr('%')
+  let l:cur   = bufnr('%')
   let l:count = 0
   for i in range(1, bufnr('$'))
     if buflisted(i) && i != l:cur
@@ -1280,12 +1213,10 @@ command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
 " -----------------------------------------------------------------------------
 " 11. tmux integration
 " -----------------------------------------------------------------------------
-" Automatically rename tmux window to current filename
 if exists('$TMUX')
   augroup TmuxRename
     autocmd!
-    autocmd BufEnter * call system(
-      \ "tmux rename-window '" . expand('%:t') . "'")
+    autocmd BufEnter * call system("tmux rename-window '" . expand('%:t') . "'")
     autocmd VimLeave * call system('tmux set-window-option automatic-rename on')
   augroup END
 endif
@@ -1294,10 +1225,11 @@ endif
 " 12. Machine-local overrides
 " -----------------------------------------------------------------------------
 " Place per-machine settings in ~/.vimrc.local, e.g.:
-"   export VIM_THEME=gruvbox          (in shell rc)
-"   let g:lsp_settings_filetype_python = ['pyright']
+"   export VIM_THEME=gruvbox              (in shell rc)
 "   let g:dbs['mydb'] = 'postgresql://...'
 "   let g:vimspector_configurations = {...}
+"   " Override a coc extension for a filetype:
+"   call coc#config('python.pythonPath', '/usr/local/bin/python3')
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
