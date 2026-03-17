@@ -346,6 +346,38 @@ load-file always evaluates the exact .el source file."
     (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
 
   ;; ============================================================================
+  ;; TIMER VOID-NIL CLEANUP (Emacs 30 — timers are vectors, slot 5 = function)
+  ;; ============================================================================
+  (defun emacs-ide--find-and-cancel-void-timers ()
+    "Find and cancel any timer whose function slot is nil.
+In Emacs 30, timers are vectors — use aref slot 5, not car/cdr."
+    (let ((cancelled 0))
+      (dolist (timer (append (copy-sequence timer-list)
+                             (copy-sequence timer-idle-list)))
+        (when (and (vectorp timer)
+                   (> (length timer) 5)
+                   (null (aref timer 5)))
+          (message "emacs-ide: cancelling void timer: %S" timer)
+          (cancel-timer timer)
+          (cl-incf cancelled)))
+      (when (> cancelled 0)
+        (message "emacs-ide: cancelled %d void timer(s)" cancelled))))
+
+  ;; Run at weight 99 — before our startup message (weight 100)
+  ;; and before after-init-hook packages register additional timers.
+  ;; Also run at weight 201 to catch any registered after weight 100.
+  (add-hook 'emacs-startup-hook #'emacs-ide--find-and-cancel-void-timers 99)
+  (add-hook 'emacs-startup-hook #'emacs-ide--find-and-cancel-void-timers 201)
+  ;; window-setup-hook fires AFTER emacs-startup-hook fully completes.
+  ;; dashboard-initialize (via dashboard-setup-startup-hook) may use a weight
+  ;; higher than 201 and register a void timer after our startup cleanup.
+  ;; window-setup-hook is the last chance to cancel before first idle fires.
+  (add-hook 'window-setup-hook #'emacs-ide--find-and-cancel-void-timers 99)
+
+  ;; 20s idle scan — identifies any void timer that slips through all hooks.
+  (run-with-idle-timer 20 nil #'emacs-ide--find-and-cancel-void-timers)
+
+  ;; ============================================================================
   ;; POST-INIT
   ;; Unchanged from 2.2.6 — startup message and telemetry hook.
   ;; ============================================================================

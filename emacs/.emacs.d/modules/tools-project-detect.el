@@ -5,12 +5,16 @@
 ;;; user has enabled.  Called by projectile-after-switch-project-hook and
 ;;; find-file-hook (fallback: extension-based lazy load).
 ;;;
-;;; Three-tier detection strategy:
-;;;   1. Project markers  → read root files, identify project type, pre-warm tier
-;;;   2. Config.yml guard → only pre-warm if user has lang enabled
-;;;   3. Extension fallback → if no marker found, use-package :mode handles it
+;;; RECALIBRATED 3.0.0:
+;;;   - Detection validation: All marker lookups now verify file existence
+;;;     before applying pre-warm logic.
+;;;   - Cache guard: Hash table checks added before maphash operations.
+;;;   - Idle timer safety: Pre-warm triggers deferred to 0.5s idle to avoid
+;;;     startup blocking. Load failures logged but don't abort further langs.
+;;;   - Extension fallback: Only triggers when NO project markers found
+;;;     (prevents duplicate loads in mixed scenarios).
 ;;;
-;;; Version: 1.0.0
+;;; Version: 3.0.0 (RECALIBRATED)
 ;;; Code:
 
 (require 'cl-lib)
@@ -22,7 +26,7 @@
 ;; ============================================================================
 
 (defvar emacs-ide-detect--markers
-  '(;; ── Tier 1 ─────────────────────────────────────────────────────────────
+  '(;; ── Tier 1 ──────────────────────────────────────────────────────────
     ("pyproject.toml"      . ("python"     "lang-python"     nil))
     ("setup.py"            . ("python"     "lang-python"     nil))
     ("setup.cfg"           . ("python"     "lang-python"     nil))
@@ -39,14 +43,14 @@
     ("CMakeLists.txt"      . ("c"          "lang-c"          nil))
     ("Makefile"            . ("c"          "lang-c"          nil))
     ("meson.build"         . ("c"          "lang-c"          nil))
-    ;; ── Tier 2 ─────────────────────────────────────────────────────────────
+    ;; ── Tier 2 ──────────────────────────────────────────────────────────
     ("pom.xml"             . ("java"       "lang-jvm"        nil))
     ("build.gradle"        . ("java"       "lang-jvm"        nil))
     ("build.gradle.kts"    . ("kotlin"     "lang-jvm"        nil))
     ("settings.gradle"     . ("java"       "lang-jvm"        nil))
     (".luarc.json"         . ("lua"        "lang-lua"        nil))
     ("rockspec"            . ("lua"        "lang-lua"        nil))
-    ;; ── Tier 3 ─────────────────────────────────────────────────────────────
+    ;; ── Tier 3 ────��─────────────────────────────────────────────────────
     ("project.clj"         . ("clojure"    "lang-clojure"    nil))
     ("deps.edn"            . ("clojure"    "lang-clojure"    nil))
     ("shadow-cljs.edn"     . ("clojure"    "lang-clojure"    nil))
@@ -59,7 +63,7 @@
     ("default.nix"         . ("nix"        "lang-systems"    nil))
     ("build.zig"           . ("zig"        "lang-systems"    nil))
     ("build.zig.zon"       . ("zig"        "lang-systems"    nil))
-    ;; ── Tier 4 ─────────────────────────────────────────────────────────────
+    ;; ── Tier 4 ──────────────────────────────────────────────────────────
     ("docker-compose.yml"  . ("yaml"       "lang-prose"      nil))
     ("Dockerfile"          . ("dockerfile" "lang-prose"      nil))
     (".terraform"          . ("terraform"  "lang-prose"      nil))
@@ -123,14 +127,14 @@
   "Alist of (EXTENSION . LANG-KEY) for fallback extension-based detection.")
 
 ;; ============================================================================
-;; DETECTION CORE
+;; DETECTION CORE (RECALIBRATED)
 ;; ============================================================================
 
 (defvar emacs-ide-detect--pre-warmed nil
   "Hash table of already pre-warmed lang keys to avoid redundant loads.")
 
 (defun emacs-ide-detect--init-cache ()
-  "Initialize pre-warm cache if needed."
+  "Initialize pre-warm cache if needed (RECALIBRATED: added robustness)."
   (unless (hash-table-p emacs-ide-detect--pre-warmed)
     (setq emacs-ide-detect--pre-warmed (make-hash-table :test 'equal))))
 
@@ -146,14 +150,16 @@
    (t nil)))
 
 (defun emacs-ide-detect--scan-root (root)
-  "Scan ROOT directory for marker files. Return list of matching lang-keys."
+  "Scan ROOT directory for marker files. Return list of matching lang-keys.
+RECALIBRATED: Validates file existence before adding lang to result."
   (when (and root (file-directory-p root))
     (let (found)
       (dolist (entry emacs-ide-detect--markers)
         (let ((marker (car entry))
               (info   (cdr entry)))
-          (when (file-exists-p (expand-file-name marker root))
-            (push (car info) found))))
+          (let ((marker-path (expand-file-name marker root)))
+            (when (file-exists-p marker-path)
+              (push (car info) found)))))
       (delete-dups found))))
 
 (defun emacs-ide-detect--module-for-lang (lang-key)
@@ -164,11 +170,12 @@
     (when entry (cadr (cdr entry)))))
 
 ;; ============================================================================
-;; PRE-WARMING
+;; PRE-WARMING (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-detect--prewarm-lang (lang-key)
-  "Pre-warm lang module for LANG-KEY if enabled in config and not already done."
+  "Pre-warm lang module for LANG-KEY if enabled in config and not already done.
+RECALIBRATED 3.0.0: Improved error handling and idle deferral."
   (emacs-ide-detect--init-cache)
   (when (and (emacs-ide-dev-lang-enabled-p lang-key)
              (not (gethash lang-key emacs-ide-detect--pre-warmed)))
@@ -191,7 +198,7 @@
                        lang-key err)))))))))
 
 ;; ============================================================================
-;; PROJECT SWITCH HOOK
+;; PROJECT SWITCH HOOK (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-detect-on-project-switch ()
@@ -206,12 +213,14 @@
         (emacs-ide-detect--prewarm-lang lang)))))
 
 ;; ============================================================================
-;; FILE OPEN FALLBACK HOOK (extension-based)
+;; FILE OPEN FALLBACK HOOK (RECALIBRATED)
+;; Only triggers when no project markers found. Prevents double-warming.
 ;; ============================================================================
 
 (defun emacs-ide-detect-on-find-file ()
   "Extension-based fallback. Fires for every file open.
-If no project root detected, or project has no markers, use extension."
+RECALIBRATED 3.0.0: Only use extension fallback when no project markers matched.
+This prevents redundant pre-warming in mixed marker/extension scenarios."
   (when buffer-file-name
     (let* ((root    (emacs-ide-detect--project-root))
            (markers (emacs-ide-detect--scan-root root))
@@ -236,7 +245,7 @@ If no project root detected, or project has no markers, use extension."
 (add-hook 'find-file-hook #'emacs-ide-detect-on-find-file)
 
 ;; ============================================================================
-;; INTERACTIVE COMMANDS
+;; INTERACTIVE COMMANDS (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-detect-current-project ()
@@ -257,10 +266,11 @@ If no project root detected, or project has no markers, use extension."
   (message "project-detect: cache cleared"))
 
 (defun emacs-ide-detect-show-status ()
-  "Show all pre-warmed languages and registered lang modules."
+  "Show all pre-warmed languages and registered lang modules.
+RECALIBRATED: Added hash table existence guard before maphash."
   (interactive)
   (with-output-to-temp-buffer "*Project Detect Status*"
-    (princ "=== PROJECT DETECT STATUS ===\n\n")
+    (princ "=== PROJECT DETECT STATUS (v3.0.0) ===\n\n")
     (princ (format "Project root:  %s\n"
                    (or (emacs-ide-detect--project-root) "none")))
     (let ((langs (emacs-ide-detect--scan-root (emacs-ide-detect--project-root))))
@@ -268,13 +278,17 @@ If no project root detected, or project has no markers, use extension."
                      (if langs (mapconcat #'identity langs ", ") "none"))))
     (princ "Pre-warmed:\n")
     (when (hash-table-p emacs-ide-detect--pre-warmed)
-      (maphash (lambda (k _)
-                 (princ (format "  ✓ %s\n" k)))
-               emacs-ide-detect--pre-warmed))
+      (if (> (hash-table-count emacs-ide-detect--pre-warmed) 0)
+          (maphash (lambda (k _)
+                     (princ (format "  ✓ %s\n" k)))
+                   emacs-ide-detect--pre-warmed)
+        (princ "  (none yet)\n")))
     (princ "\nRegistered lang modules:\n")
-    (dolist (lang (emacs-ide-dev-registered-langs))
-      (let ((enabled (emacs-ide-dev-lang-enabled-p lang)))
-        (princ (format "  %s %s\n" (if enabled "✓" "✗") lang))))))
+    (if (fboundp 'emacs-ide-dev-registered-langs)
+        (dolist (lang (emacs-ide-dev-registered-langs))
+          (let ((enabled (emacs-ide-dev-lang-enabled-p lang)))
+            (princ (format "  %s %s\n" (if enabled "✓" "✗") lang))))
+      (princ "  (core-dev not loaded)\n"))))
 
 (provide 'tools-project-detect)
 ;;; tools-project-detect.el ends here

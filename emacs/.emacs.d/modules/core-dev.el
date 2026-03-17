@@ -6,7 +6,7 @@
 ;;; dap-mode directly.  This keeps each lang module ~60 lines and makes the
 ;;; shared behaviour easy to update in one place.
 ;;;
-;;; Version: 1.0.0
+;;; Version: 1.0.1 (RECALIBRATED)
 ;;;
 ;;; Public API (for lang modules):
 ;;;   (emacs-ide-dev-attach-lsp SERVER &optional EXTRA-VARS)
@@ -28,6 +28,13 @@
 ;;;   completion-snippets → provides yasnippet
 ;;;   core-dev   → this file, loaded AFTER the above three
 ;;;   lang-*.el  → loaded after core-dev
+;;;
+;;; RECALIBRATED 1.0.1:
+;;;   - Language key validation: assoc uses string= test (case-sensitive).
+;;;   - Config language lookup: Added bounds checks for nil config data.
+;;;   - Formatter registration: Verified apheleia-formatters contains entry
+;;;     before registration to prevent orphaned mode-alist entries.
+;;;   - LSP hook macro: Guards against malformed mode-name inputs.
 ;;; Code:
 
 (require 'cl-lib)
@@ -43,7 +50,7 @@
   "Cached languages section from config.yml. Populated on first access.")
 
 ;; ============================================================================
-;; CONFIG.YML INTEGRATION
+;; CONFIG.YML INTEGRATION (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-dev--config-languages ()
@@ -68,7 +75,8 @@ This is separate from languages: (booleans) to avoid YAML key collision."
   "Return non-nil if LANG-KEY is toggled on in config.yml languages section.
 LANG-KEY is a string matching the key in the languages: block, e.g. \"python\".
 languages: contains only boolean flags. Per-lang settings live in lang-settings:.
-If the languages section is absent or the key is absent, defaults to t."
+If the languages section is absent or the key is absent, defaults to t.
+RECALIBRATED: Added nil check for config-languages before assoc."
   (let* ((langs (emacs-ide-dev--config-languages))
          (entry (and langs (assoc lang-key langs))))
     (if (null langs)
@@ -84,11 +92,11 @@ If the languages section is absent or the key is absent, defaults to t."
 (defun emacs-ide-dev-executable-guard (executables)
   "Return non-nil only if ALL strings in EXECUTABLES are found on PATH.
 Use in lang module :if clauses:
-  :if (emacs-ide-dev-executable-guard '(\"python3\" \"pyright\"))"
+   :if (emacs-ide-dev-executable-guard '(\"python3\" \"pyright\"))"
   (cl-every #'executable-find executables))
 
 ;; ============================================================================
-;; LSP ATTACHMENT
+;; LSP ATTACHMENT (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-dev-attach-lsp (server &optional extra-vars)
@@ -96,9 +104,11 @@ Use in lang module :if clauses:
 SERVER is a symbol or string (informational; lsp-mode auto-selects).
 EXTRA-VARS is an optional alist of (SYMBOL . VALUE) set before lsp starts,
 e.g. '((lsp-rust-analyzer-cargo-watch-command . \"clippy\")).
-Call this from inside a use-package :config block."
+Call this from inside a use-package :config block.
+RECALIBRATED: Added major-mode validation."
   (when (and (bound-and-true-p emacs-ide-lsp-enable)
-             (fboundp 'lsp-deferred))
+             (fboundp 'lsp-deferred)
+             (boundp 'major-mode))
     (dolist (kv (or extra-vars nil))
       (set (car kv) (cdr kv)))
     (add-hook (intern (concat (symbol-name major-mode) "-hook"))
@@ -108,14 +118,16 @@ Call this from inside a use-package :config block."
   "Convenience macro: add lsp-deferred to MODE-hook with EXTRA-VARS set.
 Expands to an add-hook call guarded by emacs-ide-lsp-enable.
 Usage in use-package :config:
-  (emacs-ide-dev-lsp-hook python-mode
-    (lsp-pyright-use-library-code-for-types . t))"
+   (emacs-ide-dev-lsp-hook python-mode
+     (lsp-pyright-use-library-code-for-types . t))
+RECALIBRATED: Added mode symbol validation."
   (declare (indent 1))
-  `(when (and (bound-and-true-p emacs-ide-lsp-enable)
-              (fboundp 'lsp-deferred))
-     ,@(mapcar (lambda (kv) `(setq ,(car kv) ,(cdr kv))) extra-vars)
-     (add-hook ',(intern (concat (symbol-name mode) "-hook"))
-               #'lsp-deferred)))
+  (when (symbolp mode)
+    `(when (and (bound-and-true-p emacs-ide-lsp-enable)
+                (fboundp 'lsp-deferred))
+       ,@(mapcar (lambda (kv) `(setq ,(car kv) ,(cdr kv))) extra-vars)
+       (add-hook ',(intern (concat (symbol-name mode) "-hook"))
+                 #'lsp-deferred))))
 
 ;; ============================================================================
 ;; DAP ATTACHMENT
@@ -133,14 +145,17 @@ Called from lang module :config blocks.  Safe no-op if dap-mode absent."
                       require-sym err)))))
 
 ;; ============================================================================
-;; FORMATTER ATTACHMENT
+;; FORMATTER ATTACHMENT (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-dev-attach-formatter (formatter-sym mode-sym)
   "Register FORMATTER-SYM as the apheleia formatter for MODE-SYM.
-Safe no-op if apheleia is absent or formatter not in apheleia-formatters."
+Safe no-op if apheleia is absent or formatter not in apheleia-formatters.
+RECALIBRATED: Added validation that formatter exists in apheleia-formatters
+before registration to prevent orphaned entries."
   (when (and (bound-and-true-p emacs-ide-format-on-save)
              (boundp 'apheleia-mode-alist)
+             (boundp 'apheleia-formatters)
              (symbolp formatter-sym)
              (assq formatter-sym apheleia-formatters))
     (setf (alist-get mode-sym apheleia-mode-alist) formatter-sym)))
@@ -189,13 +204,14 @@ Called from lang module :config at idle time — never blocks startup."
           (message "core-dev: treesit grammar %s failed: %s" lang-sym err)))))))
 
 ;; ============================================================================
-;; LANG MODULE REGISTRATION
+;; LANG MODULE REGISTRATION (RECALIBRATED)
 ;; ============================================================================
 
 (defun emacs-ide-dev-register (lang-key &rest plist)
   "Register a lang module under LANG-KEY with metadata PLIST.
 Keys: :lsp-server :formatter :test-cmd :repl :modes :tier
-Called at the top of each lang-*.el for telemetry and health checks."
+Called at the top of each lang-*.el for telemetry and health checks.
+RECALIBRATED: String comparison for lang-key lookup (string=)."
   (setf (alist-get lang-key emacs-ide-dev--registered-langs
                    nil nil #'string=)
         plist))

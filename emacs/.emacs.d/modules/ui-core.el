@@ -1,17 +1,7 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Replaces modus-themes with ef-themes (sharper, more opinionated).
-;;; Replaces all-the-icons with nerd-icons (faster, single-font).
-;;; Adds Hydra menus for discoverable chord-free commands.
-;;; Keeps all existing visual enhancements from v2.2.5.
-;;; Version: 3.0.0
-;;; Changes from 2.2.5:
-;;;   - ef-themes replaces modus-themes (config.yml theme key updated)
-;;;   - nerd-icons replaces all-the-icons (faster load, single font)
-;;;   - Hydra menus added (window, buffer, toggle) — tools-hydra.el owns big ones
-;;;   - Embark wired as default C-. action hub in all contexts
-;;;   - pixel-scroll-precision-mode enabled unconditionally on Emacs 29+
-;;;   - All existing beacon/dimmer/pulsar/which-key deferred hooks kept
+;;; RECALIBRATED 3.0.1: nerd-icons demand flag added + font installation check
+;;; Version: 3.0.1
 ;;; Code:
 
 ;; ============================================================================
@@ -33,10 +23,6 @@
 
 ;; ============================================================================
 ;; THEME — EF-THEMES (replaces modus-themes)
-;; ef-themes are by the same author (Protesilaos) but sharper and more
-;; opinionated — exactly the "office" aesthetic we want.
-;; config.yml: theme: ef-dark  (options: ef-dark ef-light ef-duo-dark ef-night
-;;              ef-cherie ef-winter ef-summer ef-spring ef-trio-dark ef-frost)
 ;; ============================================================================
 (use-package ef-themes
   :demand t
@@ -53,8 +39,6 @@
           (t . (variable-pitch regular 1.0))))
   :config
   (let* ((raw   (bound-and-true-p emacs-ide-theme))
-         ;; emacs-ide-theme may be a symbol ('modus-vivendi) or string ("ef-dark")
-         ;; Convert to symbol, then map any modus-* symbol to ef equivalent
          (theme (cond
                  ((stringp raw)  (intern raw))
                  ((symbolp raw)  raw)
@@ -64,8 +48,6 @@
                         'ef-light
                       'ef-dark)
                   theme)))
-    ;; Use load-theme directly — ef-themes-select is interactive (0 args)
-    ;; and crashes when called programmatically with an argument.
     (condition-case err
         (load-theme theme t)
       (error
@@ -74,15 +56,19 @@
        (load-theme 'ef-dark t)))))
 
 ;; ============================================================================
-;; ICONS — NERD-ICONS (replaces all-the-icons)
-;; Single font, faster load, better coverage.
-;; Run M-x nerd-icons-install-fonts once after first install.
+;; ICONS — NERD-ICONS (RECALIBRATED 3.0.1)
+;; CRITICAL FIX: Changed :defer t to :demand t so nerd-icons loads BEFORE
+;; dashboard attempts to render. Dashboard startup banner needs icons available.
+;; Also removed :if (display-graphic-p) from main package (kept in extensions).
 ;; ============================================================================
 (use-package nerd-icons
-  :defer t
-  :if (display-graphic-p)
+  :demand t  ;; RECALIBRATED: Was :defer t, changed to :demand t
   :init
-  (setq nerd-icons-font-family "Symbols Nerd Font Mono"))
+  (setq nerd-icons-font-family "Symbols Nerd Font Mono")
+  :config
+  ;; Check if fonts are installed; suggest installation if missing
+  (unless (member "Symbols Nerd Font Mono" (font-family-list))
+    (message "⚠️  nerd-icons: 'Symbols Nerd Font Mono' not found. Run: M-x nerd-icons-install-fonts")))
 
 (use-package nerd-icons-dired
   :if (display-graphic-p)

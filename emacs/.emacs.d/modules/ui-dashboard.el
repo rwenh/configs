@@ -1,9 +1,18 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.1
-;;; Fix 3.0.1: hook and initial-buffer-choice moved to top level (outside
-;;; :config) so they register immediately at load time, not when dashboard
-;;; package eventually loads. Bypasses dashboard-initialize entirely.
+;;; Version: 3.0.3
+;;; Fix 3.0.3: Cancel void timers BEFORE dashboard-setup-startup-hook fires.
+;;;   dashboard registers an internal timer during setup whose autoload doesn't
+;;;   resolve on Emacs 30, leaving a nil function slot. Previously,
+;;;   emacs-ide--find-and-cancel-void-timers ran at emacs-startup-hook priority
+;;;   201 — too late, after the void timer had already fired and printed
+;;;   "Symbol's function definition is void: nil". The fix calls the cleanup
+;;;   function immediately inside :config, before dashboard-setup-startup-hook,
+;;;   so any nil-slot timer registered during dashboard's own load is cancelled
+;;;   before it can fire.
+;;; Fix 3.0.2: Use dashboard-setup-startup-hook normally with :demand t.
+;;;   The 14s startup regression from require'ing dashboard synchronously is
+;;;   fixed by restoring :demand t.
 ;;; Code:
 
 ;; ============================================================================
@@ -65,7 +74,7 @@
                          'follow-link t
                          'face (if active
                                    '(:foreground "#51afef" :weight bold)
-                                 '(:foreground "#888888")))
+                                 '(:foreground "#888888"))))
           (insert " ")))
       (insert "\n"))))
 
@@ -105,6 +114,7 @@
   (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
 
   (use-package dashboard
+    :demand t
     :init
     (setq dashboard-startup-banner      'logo
           dashboard-center-content      t
@@ -143,48 +153,31 @@
           '("M-x butterfly  ·  C-h C  ·  M-x tetris"))
     :config
     (when (fboundp 'dashboard-resize-on-hook)
-      (fset 'dashboard-resize-on-hook #'ignore)))
-
-  (add-hook 'emacs-startup-hook
-            (lambda ()
-              (when (require 'dashboard nil 'noerror)
-                (condition-case err
-                    (let ((buf (get-buffer-create
-                                (or (bound-and-true-p dashboard-buffer-name)
-                                    "*dashboard*"))))
-                      (with-current-buffer buf
-                        (unless (eq major-mode 'dashboard-mode)
-                          (dashboard-mode))
-                        (dashboard-insert-startupify-lists))
-                      (switch-to-buffer buf)
-                      ;; Cancel void timers registered by dashboard-mode
-                      (emacs-ide--cancel-void-timers))
-                  (error (message "ui-dashboard: render failed: %s" err)))))
-            50)
-
-  (defun emacs-ide--cancel-void-timers ()
-    "Cancel any timer in timer-list or timer-idle-list with a nil function."
-    (dolist (timer (append (copy-sequence timer-list)
-                           (copy-sequence timer-idle-list)))
-      (when (and (timerp timer) (null (timer--function timer)))
-        (cancel-timer timer))))
-
-  (add-hook 'emacs-startup-hook #'emacs-ide--cancel-void-timers 201)
-
-  ;; Refresh after health idle timer fires
-  (run-with-idle-timer 4 nil
-                       (lambda ()
-                         (when (get-buffer "*dashboard*")
-                           (with-current-buffer "*dashboard*"
-                             (when (fboundp 'dashboard-refresh-buffer)
-                               (dashboard-refresh-buffer))))))
-
-  ;; initial-buffer-choice returns the buffer rendered by our hook above
-  (setq initial-buffer-choice
-        (lambda ()
-          (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)
-                              "*dashboard*"))
-              (get-buffer-create "*dashboard*")))))
+      (fset 'dashboard-resize-on-hook #'ignore))
+    ;; FIX 3.0.3: Cancel any void-slot timers that dashboard's own load may have
+    ;; registered BEFORE calling dashboard-setup-startup-hook, which registers
+    ;; more. Running this here fires the cleanup synchronously, before any of
+    ;; dashboard's deferred timers can execute and print "void: nil".
+    (when (fboundp 'emacs-ide--find-and-cancel-void-timers)
+      (emacs-ide--find-and-cancel-void-timers))
+    (when (fboundp 'dashboard-setup-startup-hook)
+      (dashboard-setup-startup-hook))
+    ;; Second cleanup pass after dashboard-setup-startup-hook, which may itself
+    ;; register additional timers. Both passes together cover the full window.
+    (when (fboundp 'emacs-ide--find-and-cancel-void-timers)
+      (emacs-ide--find-and-cancel-void-timers))
+    ;; Refresh after health check fires
+    (run-with-idle-timer 4 nil
+                         (lambda ()
+                           (when (get-buffer "*dashboard*")
+                             (with-current-buffer "*dashboard*"
+                               (when (fboundp 'dashboard-refresh-buffer)
+                                 (dashboard-refresh-buffer))))))
+    (setq initial-buffer-choice
+          (lambda ()
+            (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)
+                                "*dashboard*"))
+                (get-buffer-create "*dashboard*"))))))
 
 (provide 'ui-dashboard)
 ;;; ui-dashboard.el ends here
