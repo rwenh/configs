@@ -1,29 +1,40 @@
 -- lua/plugins/specs/lang/css.lua - CSS development
+-- cssmodules_ls is registered via nvim-lspconfig optional override,
+-- consistent with the unified vim.lsp.config pattern in lsp.lua.
 
 return {
-  -- CSS variables / custom property completion
+  -- cssmodules LSP (CSS Modules intellisense)
   {
-    "antonk52/cssmodules-language-server",
-    ft = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+    "neovim/nvim-lspconfig",
+    optional = true,
     config = function()
-      require("lspconfig").cssmodules_ls.setup({
-        init_options = { isCSSModules = true },
-      })
+      -- Only enable if binary is present (installed via npm: cssmodules-language-server)
+      if vim.fn.executable("cssmodules-language-server") == 1 then
+        vim.lsp.config("cssmodules_ls", {
+          init_options = { isCSSModules = true },
+          filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+        })
+        vim.lsp.enable("cssmodules_ls")
+      end
     end,
   },
 
   -- Tailwind CSS intellisense
   {
     "luckasRanarison/tailwind-tools.nvim",
-    ft = { "html", "css", "javascript", "typescript", "jsx", "tsx", "typescriptreact", "javascriptreact", "svelte", "vue" },
+    ft = {
+      "html", "css", "javascript", "typescript",
+      "jsx", "tsx", "typescriptreact", "javascriptreact",
+      "svelte", "vue",
+    },
     dependencies = { "nvim-treesitter/nvim-treesitter" },
     opts = {
       document_color = { enabled = true, kind = "inline" },
-      conceal = { enabled = false },
+      conceal        = { enabled = false },
     },
   },
 
-  -- PostCSS / SCSS syntax via treesitter
+  -- Treesitter: CSS / SCSS parsers
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -34,7 +45,7 @@ return {
     end,
   },
 
-  -- Conform: add CSS formatters
+  -- Conform: CSS formatters
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -47,7 +58,7 @@ return {
     },
   },
 
-  -- Lint: stylelint for CSS/SCSS
+  -- Lint: stylelint for CSS / SCSS
   {
     "mfussenegger/nvim-lint",
     optional = true,
