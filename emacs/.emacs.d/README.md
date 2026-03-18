@@ -129,13 +129,13 @@ emacs --safe
 ## Directory Structure
 
 ```
-~/.emacs.d/                                     50 .el files + 1 .yml = 51 total
+~/.emacs.d/                                     51 .el files + 1 .yml = 52 total
 │
 ├── early-init.el              GC · frame · native-comp · JIT · TLS (before init)
 ├── init.el                    Bootstrap · module loader · startup tracking (v3.0.0)
 ├── config.yml                 All user config — edit this, not the .el files
 │
-├── core/                      8 files — infrastructure, always loaded at boot
+├── core/                      9 files — infrastructure, always loaded at boot
 │   ├── emacs-ide-config.el    YAML loader; (require)'d first, before core loop
 │   ├── emacs-ide-health.el    Health check system                    ┐
 │   ├── emacs-ide-package.el   Package load-time tracking             │
@@ -143,8 +143,10 @@ emacs --safe
 │   ├── emacs-ide-recovery.el  Crash tracking · safe mode · backup    │
 │   ├── emacs-ide-security.el  TLS · auth-source · network security   │
 │   ├── emacs-ide-telemetry.el Local usage analytics                  ┘
-│   └── emacs-ide-test.el      ERT integration tests (M-x emacs-ide-run-tests)
-│                              on load-path, not auto-loaded at startup
+│   ├── emacs-ide-test.el      ERT integration tests (M-x emacs-ide-run-tests)
+│   └── emacs-ide-spot-check.el Command · keybinding · feature integrity check
+│                              (M-x emacs-ide-spot-check)
+│                              Both on load-path, not auto-loaded at startup
 │
 ├── modules/                   26 files — feature modules, loaded eagerly in order
 │   │
@@ -211,10 +213,10 @@ emacs --safe
 | Location | Files | How loaded |
 |---|---|---|
 | root | 3 | `early-init.el` at startup · `init.el` bootstraps · `config.yml` via require |
-| `core/` | 8 | `emacs-ide-config.el` first via require · 6 via core loop · `emacs-ide-test.el` on-demand |
+| `core/` | 9 | `emacs-ide-config.el` first via require · 6 via core loop · `emacs-ide-test.el` and `emacs-ide-spot-check.el` on-demand |
 | `modules/` | 26 | Eagerly in order at startup via `emacs-ide-feature-modules` list |
 | `modules/langs/` | 13 | Lazily on file open or project switch via `tools-project-detect.el` |
-| **Total** | **50** | |
+| **Total** | **51** | |
 
 `var/` and `snippets/` are created automatically — never commit them.
 
@@ -299,10 +301,11 @@ Run these when something feels wrong — start from the top.
 ### Quick status commands (new in v3)
 
 ```
-M-x emacs-ide-detect-show-status    — project detect state + pre-warmed langs
-M-x emacs-ide-repl-status           — which REPLs are live
-M-x emacs-ide-test-runner-status    — which test runners are registered
-M-x emacs-ide-workspace-status      — perspective workspaces + buffer counts
+M-x emacs-ide-spot-check         — command · keybinding · feature integrity check  [NEW in core/]
+M-x emacs-ide-detect-show-status — project detect state + pre-warmed langs
+M-x emacs-ide-repl-status        — which REPLs are live
+M-x emacs-ide-test-runner-status — which test runners are registered
+M-x emacs-ide-workspace-status   — perspective workspaces + buffer counts
 ```
 
 ### Full system check
@@ -680,12 +683,13 @@ modules can call `emacs-ide-dev-attach-lsp` safely.
 Run after any significant change:
 
 ```
-M-x emacs-ide-run-tests              ← all green?
-M-x emacs-ide-health-check-all       ← no errors?
-M-x emacs-ide-startup-report         ← all phases present?
-M-x emacs-ide-config-show            ← gc-threshold = 16777216?
-M-x emacs-ide-security-check         ← TLS verified?
-M-x emacs-ide-detect-show-status     ← project detect working?
+M-x emacs-ide-spot-check            ← all ✓? (commands + keys + features)
+M-x emacs-ide-run-tests             ← all green?
+M-x emacs-ide-health-check-all      ← no errors?
+M-x emacs-ide-startup-report        ← all phases present?
+M-x emacs-ide-config-show           ← gc-threshold = 16777216?
+M-x emacs-ide-security-check        ← TLS verified?
+M-x emacs-ide-detect-show-status    ← project detect working?
 ```
 
 Open a Python/Rust/Go file and confirm:
@@ -704,6 +708,7 @@ Open a Python/Rust/Go file and confirm:
 
 | Version | Notes |
 |---|---|
+| 3.0.3 | **`emacs-ide-spot-check.el` added to `core/`** — command·keybinding·feature integrity check, always available via `M-x emacs-ide-spot-check`. `emacs-ide-test.el` fixed for Emacs 30 (`custom-available-themes` removed). `init.el` v3.0.3 loads both test and spot-check from `core/` at startup with forward declarations. File count: 51 `.el` + 1 `.yml`. |
 | 3.0.2 | **Keybinding fixes** — `C-c R` void-function resolved (alias `emacs-ide-reload-config` → `emacs-ide-config-reload` added to `init.el`). REST prefix moved `C-c R` → `C-c V` (collision with reload). `split-string` omit-nulls added to `emacs-ide-setup-exec-path`. `emacs-ide--get-processor-count` double shell spawn eliminated (cached in `emacs-ide-processor-count`). Dead `treesit-enable`/`treesit-auto-install` keys removed from `config.yml languages:`. Formatter allowlist expanded: `mix-format`, `zigfmt`, `terraform-fmt`, `pg_format` (Elixir/Zig/Terraform/SQL apheleia formatting was silently skipped). README keybinding tables corrected: REPL `C-c X r` → `C-c x r`, test prefix `C-c t` → `C-c X`. |
 | 3.0.1 | **Module patch** — `core-dev.el` string→symbol key fix (lang enable/disable was always true). Double LSP start on Python removed. `gofmt-before-save` apheleia guard. `tools-test-runner-registry.el` duplicate `emacs-ide-test-run` removed. Keybinding collisions resolved: `C-c x r` (repl), `C-c h r`/`C-c h i` (hydra vs REST). `ui-dashboard.el` premature defvar fixed. `lang-prose.el` duplicate `dockerfile-mode`/`restclient` removed. `allow-unsigned` now correctly interned as symbol. `tools-project-detect.el` `javascript`→`lang-web` module lookup fixed. |
 | 3.0.0 | **50-lang lazy loading** — `lang-core.el` replaced by `modules/langs/` (13 modules, zero boot cost). **ef-themes** replaces modus-themes. **nerd-icons** replaces all-the-icons. **Hydra menus** (`tools-hydra.el`) — 10 discoverable menus. **perspective.el workspaces** (`ui-workspace.el`). **Unified REPL hub** (`tools-repl.el`). **tools-project-detect** pre-warms lang tiers from project markers. **tools-test-runner-registry** — per-lang test dispatch API. **apheleia-langs-patch** — complete 50-lang formatter map. Optional **Meow** modal editing. `init.el` v3.0.0: `langs/` added to load-path, 7 new feature modules, `lang-core` removed |
