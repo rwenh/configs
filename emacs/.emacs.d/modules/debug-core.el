@@ -1,7 +1,12 @@
 ;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
-;;; Version: 2.2.5 (RECALIBRATED)
+;;; Version: 2.2.6
+;;; Fixes vs 2.2.5:
+;;;   - FIX-CCC-D: C-c D s/r/q (profiler) documented as part of the C-c D
+;;;     diagnostics prefix. keybindings.el previously bound bare C-c D to
+;;;     emacs-ide-detect-show-status, which shadowed this prefix entirely.
+;;;     detect-show-status moved to C-c D d in keybindings.el.
 ;;; Fixes:
 ;;;   - 2.2.5: Key binding validation: checked for collisions with tools-project.el
 ;;;     F9 collision resolved. Breakpoint bindings stable across magit versions.
@@ -317,6 +322,10 @@ _q_: quit                                               _R_: repl
         (esup)
       (message "⚠️  esup not installed."))))
 
+;; C-c D prefix: s=profiler-start, r=profiler-report, q=profiler-stop
+;; C-c D o = docker (tools-terminal.el), C-c D d = detect-status (keybindings.el)
+;; FIX-CCC-D: keybindings.el previously bound bare C-c D as a command,
+;; shadowing this entire prefix. Now fixed — C-c D is a clean prefix.
 (use-package profiler
   :straight nil
   :bind (("C-c D s" . profiler-start)
