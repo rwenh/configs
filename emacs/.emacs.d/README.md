@@ -1,6 +1,6 @@
 # Enterprise Emacs IDE
 
-**Version 3.0.0** — Production-grade Emacs configuration with lazy-loaded 50-language support,
+**Version 3.0.4** — Production-grade Emacs configuration with lazy-loaded 50-language support,
 LSP, DAP debugging, Hydra menus, unified REPL hub, perspective workspaces, ef-themes,
 async formatting, Git integration, and full recovery system.
 
@@ -107,15 +107,13 @@ On first launch straight.el bootstraps itself and installs all packages.
 This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in practice (lang modules are lazy). The `startup-time-target: 3.0` in `config.yml` is the warning threshold — a notification fires if startup exceeds it, not a goal in itself.
 
 > **After upgrading Emacs** (e.g. 29 → 30), always purge stale bytecode
-> before restarting — old `.elc`/`.eln` files cause all `M-x emacs-ide-*`
-> commands to silently disappear:
+> before restarting — old `.elc`/`.eln` files cause `M-x emacs-ide-*`
+> commands to silently disappear. The simplest way:
 > ```bash
-> find ~/.emacs.d/core ~/.emacs.d/modules -name "*.elc" -delete
-> find ~/.emacs.d/core ~/.emacs.d/modules -name "*.eln" -delete
-> rm -rf ~/.emacs.d/var/eln-cache/
+> find ~/.emacs.d -name "*.elc" -delete
 > ```
-> Or from inside Emacs: `M-x emacs-ide-purge-bytecode-cache`
-> This now also clears `modules/langs/` automatically.
+> Then restart Emacs. Or from inside Emacs: `M-x emacs-ide-purge-bytecode-cache`
+> (covers `core/`, `modules/`, `modules/langs/`, and `var/eln-cache/` automatically).
 
 To boot in safe mode (minimal config, no packages):
 
@@ -708,6 +706,8 @@ Open a Python/Rust/Go file and confirm:
 
 | Version | Notes |
 |---|---|
+| 3.0.4 | **`init.el` crash fixes** — two bugs caused all 8 utility commands (`emacs-ide-diagnose`, `emacs-ide-show-version`, `emacs-ide-startup-report`, `emacs-ide-reload`, `emacs-ide-purge-bytecode-cache`, `emacs-ide-reload-config`, `emacs-ide-run-tests`, `emacs-ide-early-init-report`) to be silently undefined on every startup. **FIX-CUSTOM**: `(boundp 'custom-file)` always returns `t` — `custom-file` is a built-in variable defaulting to `nil`, so `(file-exists-p nil)` threw `wrong-type-argument` and aborted `init.el` before the utility commands section. Fixed to `(stringp custom-file)`. **FIX-RECURSE**: `emacs-ide-run-tests` forward declaration called `(call-interactively #'emacs-ide-run-tests)` after `load-file`, re-entering itself and hitting `max-lisp-eval-depth` in Emacs 30. Fixed to check `(featurep 'emacs-ide-test)` and call `ert-run-tests-batch` directly. |
+| 2.2.7 | **`early-init.el` crash fixes** — two bugs aborted `early-init.el` before `emacs-ide-early-init-report` was defined, making it permanently missing from the spot-check. **FIX-TOOLBAR**: `tool-bar-mode` and `scroll-bar-mode` are absent in TTY/batch mode and some Emacs builds; calling them unconditionally threw `void-function`. Fixed with `(when (fboundp ...))` guards. **FIX-WARNLIST**: `add-to-list` on `warning-suppress-log-types` threw `void-variable` when the variable was not pre-bound. Fixed by ensuring it exists with `defvar` before use. |
 | 3.0.3 | **`emacs-ide-spot-check.el` added to `core/`** — command·keybinding·feature integrity check, always available via `M-x emacs-ide-spot-check`. `emacs-ide-test.el` fixed for Emacs 30 (`custom-available-themes` removed). `init.el` v3.0.3 loads both test and spot-check from `core/` at startup with forward declarations. File count: 51 `.el` + 1 `.yml`. |
 | 3.0.2 | **Keybinding fixes** — `C-c R` void-function resolved (alias `emacs-ide-reload-config` → `emacs-ide-config-reload` added to `init.el`). REST prefix moved `C-c R` → `C-c V` (collision with reload). `split-string` omit-nulls added to `emacs-ide-setup-exec-path`. `emacs-ide--get-processor-count` double shell spawn eliminated (cached in `emacs-ide-processor-count`). Dead `treesit-enable`/`treesit-auto-install` keys removed from `config.yml languages:`. Formatter allowlist expanded: `mix-format`, `zigfmt`, `terraform-fmt`, `pg_format` (Elixir/Zig/Terraform/SQL apheleia formatting was silently skipped). README keybinding tables corrected: REPL `C-c X r` → `C-c x r`, test prefix `C-c t` → `C-c X`. |
 | 3.0.1 | **Module patch** — `core-dev.el` string→symbol key fix (lang enable/disable was always true). Double LSP start on Python removed. `gofmt-before-save` apheleia guard. `tools-test-runner-registry.el` duplicate `emacs-ide-test-run` removed. Keybinding collisions resolved: `C-c x r` (repl), `C-c h r`/`C-c h i` (hydra vs REST). `ui-dashboard.el` premature defvar fixed. `lang-prose.el` duplicate `dockerfile-mode`/`restclient` removed. `allow-unsigned` now correctly interned as symbol. `tools-project-detect.el` `javascript`→`lang-web` module lookup fixed. |
