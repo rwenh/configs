@@ -5,7 +5,11 @@
 ;;; consult-lsp added for symbol search across workspace.
 ;;; nerd-icons-completion adds icons to marginalia annotations.
 ;;; All existing fixes from 2.2.4 retained.
-;;; Version: 3.0.0
+;;; Version: 3.0.1
+;;; Fixes vs 3.0.0:
+;;;   - FIX-DEDUP: Removed (electric-pair-mode 1) call. init.el core-settings
+;;;     block already enables it. This was the third redundant call
+;;;     (init.el + editing-core.el fix + this file).
 ;;; Code:
 
 ;; ============================================================================
@@ -245,7 +249,8 @@
 ;; ============================================================================
 ;; ELECTRIC PAIR / COMPLETION SETTINGS (unchanged)
 ;; ============================================================================
-(electric-pair-mode 1)
+;; FIX-DEDUP: electric-pair-mode call removed — init.el already enables it
+;; in the core-settings block. Calling it a third time is redundant.
 (setq electric-pair-pairs '((?\" . ?\") (?{ . ?}) (?\[ . ?\]) (?\( . ?\)) (?` . ?`)))
 
 (setq completion-cycle-threshold       3
