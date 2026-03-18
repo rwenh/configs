@@ -4,7 +4,13 @@
 ;;; Add "apheleia-langs-patch" to feature-modules AFTER "tools-format".
 ;;; Each entry checks executable availability before registering.
 ;;;
-;;; Version: 1.0.1
+;;; Version: 1.0.2
+;;; Fixes vs 1.0.1:
+;;;   - FIX-TOML: toml-mode and toml-ts-mode were mapped to prettier.
+;;;     prettier requires the @prettier/plugin-toml npm plugin to handle TOML;
+;;;     without it prettier silently passes TOML files unchanged. Replaced with
+;;;     taplo (the standard TOML formatter). Entry guarded by executable-find
+;;;     so it is skipped cleanly when taplo is not installed.
 ;;; Fixes:
 ;;;   - 1.0.1: Fixed 9x typo "aphaleia-formatters" → "apheleia-formatters"
 ;;;     (lines 28, 44, 48, 52, 56, 72, 76, 80, 84)
@@ -136,8 +142,13 @@
   (setf (alist-get 'json-ts-mode      apheleia-mode-alist) 'prettier)
   (setf (alist-get 'yaml-mode         apheleia-mode-alist) 'prettier)
   (setf (alist-get 'yaml-ts-mode      apheleia-mode-alist) 'prettier)
-  (setf (alist-get 'toml-mode         apheleia-mode-alist) 'prettier)
-  (setf (alist-get 'toml-ts-mode      apheleia-mode-alist) 'prettier)
+  ;; FIX-TOML: Use taplo for TOML (prettier needs @prettier/plugin-toml plugin).
+  ;; taplo install: cargo install taplo-cli  OR  npm install -g @taplo/cli
+  (when (executable-find "taplo")
+    (setf (alist-get 'taplo apheleia-formatters)
+          '("taplo" "format" "-"))
+    (setf (alist-get 'toml-mode    apheleia-mode-alist) 'taplo)
+    (setf (alist-get 'toml-ts-mode apheleia-mode-alist) 'taplo))
   (setf (alist-get 'markdown-mode     apheleia-mode-alist) 'prettier)
   (setf (alist-get 'gfm-mode          apheleia-mode-alist) 'prettier)
   (setf (alist-get 'terraform-mode    apheleia-mode-alist) 'terraform-fmt)
