@@ -1,8 +1,11 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 3.0.2
-;;; Fixes vs 3.0.1:
+;;; Version: 3.0.3
+;;; Fixes vs 3.0.2:
+;;;   - emacs-ide-spot-check.el added to core/ and loaded at startup alongside
+;;;     emacs-ide-test.el. M-x emacs-ide-spot-check is always available.
+;;;     Like emacs-ide-test.el it is on-demand only (not in core-modules loop).
 ;;;   - FIX-TEST-LOAD: emacs-ide-test.el load now warns visibly when the file
 ;;;     is missing (not just when load fails). Also logs success/failure to
 ;;;     *Messages* so emacs-ide-spot-check can detect why emacs-ide-run-tests
@@ -493,6 +496,31 @@ Check: M-x emacs-ide-recovery-view-log  or  M-x load-file core/emacs-ide-test.el
           (message "✓ emacs-ide-test loaded"))
       (error
        (warn "⚠️  Could not load emacs-ide-test.el: %s" (error-message-string err))))))
+
+;; ============================================================================
+;; EMACS-IDE-SPOT-CHECK — load so M-x emacs-ide-spot-check is always available.
+;; Lives in core/ alongside emacs-ide-test.el. On-demand only — not in the
+;; core-modules loop. Provides a fast surface-level integrity check for all
+;; commands, keybindings, and module features.
+;; ============================================================================
+(defun emacs-ide-spot-check ()
+  "Spot-check all IDE commands and keybindings.
+If this message appears, emacs-ide-spot-check.el failed to load.
+Check: M-x emacs-ide-recovery-view-log"
+  (interactive)
+  (let ((f (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
+    (if (file-exists-p f)
+        (progn (load-file f) (call-interactively #'emacs-ide-spot-check))
+      (message "✗ emacs-ide-spot-check.el not found: %s" f))))
+
+(let ((sc-file (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
+  (if (not (file-exists-p sc-file))
+      (warn "⚠️  emacs-ide-spot-check.el not found — M-x emacs-ide-spot-check unavailable")
+    (condition-case err
+        (progn (load-file sc-file) (message "✓ emacs-ide-spot-check loaded"))
+      (error
+       (warn "⚠️  Could not load emacs-ide-spot-check.el: %s"
+             (error-message-string err))))))
 
 ;; ============================================================================
 ;; MODULE DIAGNOSTIC — checks every module is alive after load
