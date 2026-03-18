@@ -1,4 +1,4 @@
--- lua/plugins/specs/lang/java.lua - Java development (SAFE KEYMAPS)
+-- lua/plugins/specs/lang/java.lua - Java development (cross-platform)
 
 return {
   {
@@ -6,18 +6,35 @@ return {
     ft = "java",
     dependencies = { "mfussenegger/nvim-dap", "williamboman/mason.nvim" },
     config = function()
-      local jdtls = require("jdtls")
-      local root_dir = require("jdtls.setup").find_root({ ".git", "mvnw", "gradlew", "pom.xml", "build.gradle" })
-      local workspace_dir = vim.fn.stdpath("data") .. "/jdtls-workspace/" .. vim.fn.fnamemodify(root_dir, ":p:h:t")
-      
-      -- Path to java-debug
+      local jdtls     = require("jdtls")
+      local root_dir  = require("jdtls.setup").find_root({ ".git", "mvnw", "gradlew", "pom.xml", "build.gradle" })
+      local data_dir  = vim.fn.stdpath("data")
+      local workspace = data_dir .. "/jdtls-workspace/" .. vim.fn.fnamemodify(root_dir, ":p:h:t")
+
+      -- Cross-platform OS detection
+      local os_map = { Linux = "linux", Darwin = "mac", Windows_NT = "win" }
+      local os_key = os_map[vim.uv.os_uname().sysname] or "linux"
+      local config_dir = data_dir .. "/mason/packages/jdtls/config_" .. os_key
+
+      -- java-debug bundles
       local bundles = {
-        vim.fn.glob(vim.fn.stdpath("data") .. "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar", 1)
+        vim.fn.glob(data_dir .. "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar", 1),
       }
-      
-      -- Path to java-test
-      vim.list_extend(bundles, vim.split(vim.fn.glob(vim.fn.stdpath("data") .. "/mason/packages/java-test/extension/server/*.jar", 1), "\n"))
-      
+
+      -- java-test bundles
+      vim.list_extend(bundles, vim.split(
+        vim.fn.glob(data_dir .. "/mason/packages/java-test/extension/server/*.jar", 1), "\n"
+      ))
+      -- Remove empty strings from glob misses
+      bundles = vim.tbl_filter(function(b) return b ~= "" end, bundles)
+
+      local launcher = vim.fn.glob(data_dir .. "/mason/packages/jdtls/plugins/org.eclipse.equinox.launcher_*.jar")
+
+      if launcher == "" then
+        vim.notify("[java] jdtls launcher not found — run :MasonInstall jdtls", vim.log.levels.ERROR)
+        return
+      end
+
       local config = {
         cmd = {
           "java",
@@ -30,41 +47,46 @@ return {
           "--add-modules=ALL-SYSTEM",
           "--add-opens", "java.base/java.util=ALL-UNNAMED",
           "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-          "-jar", vim.fn.glob(vim.fn.stdpath("data") .. "/mason/packages/jdtls/plugins/org.eclipse.equinox.launcher_*.jar"),
-          "-configuration", vim.fn.stdpath("data") .. "/mason/packages/jdtls/config_linux",
-          "-data", workspace_dir,
+          "-jar",        launcher,
+          "-configuration", config_dir,
+          "-data",       workspace,
         },
         root_dir = root_dir,
         settings = {
           java = {
             signatureHelp = { enabled = true },
-            completion = { enabled = true },
+            completion    = { enabled = true },
+            format        = { enabled = true },
           },
         },
         init_options = {
           bundles = bundles,
         },
-        on_attach = function(client, bufnr)
+        on_attach = function(_, bufnr)
           -- Setup DAP
           jdtls.setup_dap({ hotcodereplace = "auto" })
           jdtls.setup.add_commands()
-          
-          -- Setup test support
-          require("jdtls.dap").setup_dap_main_class_configs()
-          
-          -- Keymaps (using 'jv' for Java prefix - safe)
-          local opts = { buffer = bufnr }
-          vim.keymap.set("n", "<leader>jvo", "<cmd>lua require'jdtls'.organize_imports()<cr>", { buffer = bufnr, desc = "Java Organize Imports" })
-          vim.keymap.set("n", "<leader>jvv", "<cmd>lua require'jdtls'.extract_variable()<cr>", { buffer = bufnr, desc = "Java Extract Variable" })
-          vim.keymap.set("v", "<leader>jvv", "<esc><cmd>lua require'jdtls'.extract_variable(true)<cr>", { buffer = bufnr, desc = "Java Extract Variable" })
-          vim.keymap.set("n", "<leader>jvc", "<cmd>lua require'jdtls'.extract_constant()<cr>", { buffer = bufnr, desc = "Java Extract Constant" })
-          vim.keymap.set("v", "<leader>jvc", "<esc><cmd>lua require'jdtls'.extract_constant(true)<cr>", { buffer = bufnr, desc = "Java Extract Constant" })
-          vim.keymap.set("v", "<leader>jvm", "<esc><cmd>lua require'jdtls'.extract_method(true)<cr>", { buffer = bufnr, desc = "Java Extract Method" })
-          vim.keymap.set("n", "<leader>jvt", "<cmd>lua require'jdtls'.test_class()<cr>", { buffer = bufnr, desc = "Java Test Class" })
-          vim.keymap.set("n", "<leader>jvn", "<cmd>lua require'jdtls'.test_nearest_method()<cr>", { buffer = bufnr, desc = "Java Test Nearest Method" })
+          pcall(function() require("jdtls.dap").setup_dap_main_class_configs() end)
+
+          -- Keymaps
+          local function map(lhs, rhs, desc)
+            vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc })
+          end
+          local function mapv(lhs, rhs, desc)
+            vim.keymap.set("v", lhs, rhs, { buffer = bufnr, desc = desc })
+          end
+
+          map("<leader>jvo", function() jdtls.organize_imports() end,            "Java Organize Imports")
+          map("<leader>jvv", function() jdtls.extract_variable() end,            "Java Extract Variable")
+          map("<leader>jvc", function() jdtls.extract_constant() end,            "Java Extract Constant")
+          map("<leader>jvt", function() jdtls.test_class() end,                  "Java Test Class")
+          map("<leader>jvn", function() jdtls.test_nearest_method() end,         "Java Test Nearest Method")
+          mapv("<leader>jvv", function() jdtls.extract_variable(true) end,       "Java Extract Variable")
+          mapv("<leader>jvc", function() jdtls.extract_constant(true) end,       "Java Extract Constant")
+          mapv("<leader>jvm", function() jdtls.extract_method(true) end,         "Java Extract Method")
         end,
       }
-      
+
       jdtls.start_or_attach(config)
     end,
   },
