@@ -1,6 +1,10 @@
 ;;; lang-web.el --- Web IDE layer (JS/TS/HTML/CSS/Vue/JSX) -*- lexical-binding: t -*-
 ;;; Commentary: Follows canonical lang-python.el template.
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP: Removed lsp-deferred :hook for js2-mode and typescript-mode.
+;;;     tools-lsp.el already hooks both to emacs-ide-lsp-deferred-optimized.
+;;;     web-mode and css-mode hooks kept (tools-lsp does not own them).
 ;;; Code:
 
 (require 'core-dev)
@@ -88,7 +92,8 @@
 
 ;; 5. LSP — typescript-language-server handles JS + TS + TSX
 (use-package lsp-mode
-  :hook ((js2-mode typescript-mode web-mode css-mode) . lsp-deferred)
+  ;; FIX-LSP: js2-mode and typescript-mode hooks removed — tools-lsp.el owns them.
+  :hook ((web-mode css-mode) . lsp-deferred)
   :init
   (setq lsp-javascript-display-inlay-hints         t
         lsp-typescript-display-inlay-hints          t
