@@ -1,8 +1,13 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 3.0.1
-;;; Fixes vs 3.0.0:
+;;; Version: 3.0.2
+;;; Fixes vs 3.0.1:
+;;;   - FIX-TEST-LOAD: emacs-ide-test.el load now warns visibly when the file
+;;;     is missing (not just when load fails). Also logs success/failure to
+;;;     *Messages* so emacs-ide-spot-check can detect why emacs-ide-run-tests
+;;;     is absent. Added emacs-ide-run-tests forward-declaration so the command
+;;;     exists even if test file fails — it then prompts to reload.
 ;;;   - FIX-1: emacs-ide-reload-config alias added (see bottom of file).
 ;;;     keybindings.el binds C-c R to this name; only emacs-ide-config-reload
 ;;;     existed — every C-c R press threw void-function.
@@ -455,13 +460,39 @@ In Emacs 30, timers are vectors — use aref slot 5, not car/cdr."
 ;; All other commands unchanged from 2.2.6.
 ;; ============================================================================
 
-;; Load emacs-ide-test.el so M-x emacs-ide-run-tests is available.
-;; It lives in core/ but is not in emacs-ide-core-modules (on-demand only).
+;; ============================================================================
+;; EMACS-IDE-TEST — load so M-x emacs-ide-run-tests is available on-demand.
+;; FIX-TEST-LOAD: Log success/failure clearly. Forward-declare emacs-ide-run-tests
+;; so the command always exists — it prompts to reload if the file failed.
+;; ============================================================================
+
+;; Forward declaration: emacs-ide-run-tests always exists as a command.
+;; If the test file loaded successfully this is immediately overwritten.
+;; If it failed, calling this tells the user what to do.
+(defun emacs-ide-run-tests ()
+  "Run Enterprise Emacs IDE tests.
+If this message appears, emacs-ide-test.el failed to load at startup.
+Check: M-x emacs-ide-recovery-view-log  or  M-x load-file core/emacs-ide-test.el"
+  (interactive)
+  (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
+    (if (file-exists-p test-file)
+        (progn
+          (load-file test-file)
+          (if (fboundp 'emacs-ide-run-tests)
+              (call-interactively #'emacs-ide-run-tests)
+            (message "✗ emacs-ide-test.el loaded but emacs-ide-run-tests not defined")))
+      (message "✗ Test file not found: %s" test-file))))
+
 (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
-  (when (file-exists-p test-file)
+  (if (not (file-exists-p test-file))
+      (warn "⚠️  emacs-ide-test.el not found at %s — M-x emacs-ide-run-tests unavailable"
+            test-file)
     (condition-case err
-        (load-file test-file)
-      (error (warn "Could not load emacs-ide-test.el: %s" err)))))
+        (progn
+          (load-file test-file)
+          (message "✓ emacs-ide-test loaded"))
+      (error
+       (warn "⚠️  Could not load emacs-ide-test.el: %s" (error-message-string err))))))
 
 ;; ============================================================================
 ;; MODULE DIAGNOSTIC — checks every module is alive after load
