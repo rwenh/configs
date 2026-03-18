@@ -1,6 +1,10 @@
 ;;; lang-rust.el --- Rust IDE layer -*- lexical-binding: t -*-
 ;;; Commentary: Follows canonical lang-python.el template exactly.
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP: Removed lsp-deferred :hook for rust-mode from lsp-mode
+;;;     use-package. tools-lsp.el already hooks rust-mode to
+;;;     emacs-ide-lsp-deferred-optimized. rust-ts-mode hook kept.
 ;;; Code:
 
 (require 'core-dev)
@@ -40,7 +44,8 @@
 ;; 5. LSP — rust-analyzer
 (use-package lsp-mode
   :after rust-mode
-  :hook ((rust-mode rust-ts-mode) . lsp-deferred)
+  ;; FIX-LSP: rust-mode hook removed — tools-lsp.el owns it.
+  :hook (rust-ts-mode . lsp-deferred)
   :init
   (setq lsp-rust-analyzer-cargo-watch-command       "clippy"
         lsp-rust-analyzer-display-inlay-hints        t
