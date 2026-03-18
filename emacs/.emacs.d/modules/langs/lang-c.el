@@ -1,5 +1,10 @@
 ;;; lang-c.el --- C / C++ / CUDA / CMake IDE layer -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP: Removed lsp-deferred :hook from cc-mode use-package.
+;;;     tools-lsp.el already hooks c-mode and c++-mode to
+;;;     emacs-ide-lsp-deferred-optimized. The extra hook here caused LSP
+;;;     to start twice in every C/C++ buffer.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "c" :tier 1 :lsp-server "clangd"
@@ -31,7 +36,9 @@
   (emacs-ide-dev-bind-compile c-mode-map   #'emacs-ide-c-run)
   (emacs-ide-dev-bind-compile c++-mode-map #'emacs-ide-cpp-run))
 (use-package lsp-mode
-  :hook ((c-mode c++-mode c-ts-mode c++-ts-mode) . lsp-deferred)
+  ;; FIX-LSP: :hook removed for c-mode and c++-mode — tools-lsp.el already
+  ;; hooks those. c-ts-mode and c++-ts-mode hooks kept (tools-lsp does not own them).
+  :hook ((c-ts-mode c++-ts-mode) . lsp-deferred)
   :init (setq lsp-clangd-binary-path       (or (executable-find "clangd") "clangd")
               lsp-clients-clangd-args      '("--background-index" "--clang-tidy"
                                              "--header-insertion=iwyu" "--completion-style=detailed"
