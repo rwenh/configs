@@ -1,7 +1,11 @@
 ;;; tools-terminal.el --- Terminal Integration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; VTerm, Eshell, and terminal utilities.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
+;;; Fixes vs 2.2.3:
+;;;   - FIX-CCC-D: C-c D o (docker) already correct. keybindings.el previously
+;;;     bound bare C-c D as a command, shadowing C-c D o. Now fixed in
+;;;     keybindings.el — C-c D is a clean prefix, C-c D o works as intended.
 ;;; Fixes vs 2.2.2:
 ;;;   - M-22 (HIGH): (defun eshell/e (file) ...) was defined unconditionally
 ;;;     at the top level. Eshell ships its own eshell/e as a built-in alias
