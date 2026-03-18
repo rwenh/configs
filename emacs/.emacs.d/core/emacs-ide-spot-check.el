@@ -1,6 +1,6 @@
 ;;; emacs-ide-spot-check.el --- Spot-check commands and keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 1.0.2
+;;; Version: 1.0.3
 ;;; Fixes vs 1.0.0:
 ;;;   - FIX-FBOUNDP: Uses commandp as primary test for interactive commands.
 ;;;     fboundp returns nil for defalias targets in Emacs 30 compiled states
@@ -21,10 +21,19 @@
 ;;; Code:
 
 (defun emacs-ide-spot-check--command-ok-p (fn)
-  "Return non-nil if FN is callable.
-Uses commandp as the primary test — it correctly resolves defalias chains
-in Emacs 30 where fboundp may return nil for aliases to defined functions."
-  (or (commandp fn) (fboundp fn)))
+  "Return non-nil if FN is defined and callable.
+Uses fboundp as the primary test — it checks the function cell directly
+and is immune to Emacs 30 native-compilation state (unlike commandp, which
+returns nil for interactive functions whose .eln is not yet compiled).
+
+Also handles defalias: (indirect-function fn) resolves the full alias chain
+so emacs-ide-reload-config → emacs-ide-config-reload is detected correctly
+even if the alias was created after the aliased function was defined."
+  (or (fboundp fn)
+      ;; Handle aliases pointing to not-yet-loaded functions
+      (condition-case nil
+          (and (indirect-function fn) t)
+        (error nil))))
 
 (defun emacs-ide-spot-check--binding-ok-p (actual expected)
   "Return non-nil if ACTUAL binding satisfies EXPECTED.
