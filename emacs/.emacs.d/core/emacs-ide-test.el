@@ -1,7 +1,15 @@
 ;;; emacs-ide-test.el --- Enterprise Test Suite -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; ERT-based tests adapted to calibrated module names and robust guards.
-;;; Version: 2.2.3
+;;; Version: 2.2.4
+;;; Fixes vs 2.2.3:
+;;;   - FIX-EMACS30: custom-available-themes was removed in Emacs 30.
+;;;     test-theme-or-modeline called (custom-available-themes) which throws
+;;;     void-function in Emacs 30, preventing the entire test file from loading
+;;;     and causing (provide 'emacs-ide-test) to never run. This made
+;;;     emacs-ide-run-tests silently unavailable on Emacs 30+.
+;;;     Fix: use (custom-enabled-themes) — the variable that lists currently
+;;;     active themes — which exists in both Emacs 29 and 30.
 ;;; Fixes vs 2.2.2:
 ;;;   - C-19 (MEDIUM): test-health-check-runs called emacs-ide-health-check-all
 ;;;     which is the full interactive runner. It has side-effects:
@@ -104,10 +112,11 @@
 
 (ert-deftest test-theme-or-modeline ()
   "At least a theme or modeline is active."
-  ;; custom-enabled-themes was removed in Emacs 30.
-  ;; Use custom-theme-enabled-p per-theme, or check doom-modeline.
-  (should (or (seq-some #'custom-theme-enabled-p
-                        (mapcar #'car (custom-available-themes)))
+  ;; FIX-EMACS30: custom-available-themes was removed in Emacs 30.
+  ;; custom-enabled-themes is a variable (not a function) that lists active themes.
+  ;; It exists in both Emacs 29 and 30. Doom-modeline is checked as a fallback.
+  (should (or (and (boundp 'custom-enabled-themes)
+                   (consp custom-enabled-themes))
               (bound-and-true-p doom-modeline-mode))))
 
 (ert-deftest test-git-executable ()
