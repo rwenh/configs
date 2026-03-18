@@ -8,7 +8,7 @@
 ;;;   - FIX-2: C-c x r confirmed as emacs-ide-repl-launch (test report → C-c x R).
 ;;;   - FIX-2/3: C-c R is the reload binding. REST prefix moved to C-c V in
 ;;;     tools-rest.el to avoid collision with C-c R reload.
-;;; Version: 3.0.2
+;;; Version: 3.0.3
 ;;; Code:
 
 ;; ============================================================================
@@ -122,7 +122,9 @@
 ;; ============================================================================
 ;; PROJECT DETECT STATUS
 ;; ============================================================================
-(global-set-key (kbd "C-c D") #'emacs-ide-detect-show-status)
+;; FIX-CCC-D: C-c D is a prefix (C-c D s/r/q=profiler, C-c D o=docker).
+;; detect-show-status moved to C-c D d to avoid command-vs-prefix conflict.
+(global-set-key (kbd "C-c D d") #'emacs-ide-detect-show-status)
 
 ;; ============================================================================
 ;; UTILITY (unchanged)
@@ -207,7 +209,7 @@ COMPILE:
   C-c C-t   emacs-ide-test-run (smart dispatch)
 
 MISC:
-  C-c D     project detect status
+  C-c D d   project detect status  (C-c D prefix: Ds=profiler Do=docker)
   C-c L     LSP status
   F12       toggle theme
   C-c P     presentation mode
