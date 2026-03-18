@@ -1,7 +1,14 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.8
+;;; Version: 2.2.9
+;;; Fixes vs 2.2.8:
+;;;   - FIX-CONFIG: emacs-ide-config-apply now wires projectile settings from
+;;;     config.yml to the actual Projectile variables. Previously the project:
+;;;     section set emacs-ide-project-enable and emacs-ide-project-search but
+;;;     tools-project.el never read them — projectile was always on and always
+;;;     used 'alien regardless of config. Now sets projectile-indexing-method
+;;;     from config.yml project.indexing key.
 ;;; Fixes vs 2.2.7:
 ;;;   - FIX-14: "allow-unsigned", "high", "medium", "low" removed from the
 ;;;     tool-name exclusion list (they were never in it, but the comment and
@@ -470,7 +477,15 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'enable project)
           (setq emacs-ide-project-enable (val 'enable project)))
         (when (assoc 'default-search project)
-          (setq emacs-ide-project-search (val 'default-search project)))))
+          (setq emacs-ide-project-search (val 'default-search project)))
+        ;; FIX-CONFIG: Wire projectile-indexing-method from config.yml
+        ;; project.indexing (native/hybrid/alien). tools-project.el reads
+        ;; emacs-ide-project-search but previously never set the actual
+        ;; projectile var. Set it here so it is ready before projectile loads.
+        (when (assoc 'indexing project)
+          (let ((method (val 'indexing project)))
+            (when (memq method '(native hybrid alien))
+              (setq projectile-indexing-method method))))))
 
     ;; ── Security ─────────────────────────────────────────────────────────────
     (let ((security (section 'security)))
