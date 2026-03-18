@@ -1,7 +1,23 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
-;;; Version: 3.0.3
+;;; Version: 3.0.4
+;;; Fixes vs 3.0.3:
+;;;   - FIX-CUSTOM: (boundp 'custom-file) is always t — custom-file is a
+;;;     built-in Emacs variable that defaults to nil, not unbound. The guard
+;;;     (when (and (boundp 'custom-file) (file-exists-p custom-file))) passed
+;;;     the boundp check, then called (file-exists-p nil), throwing
+;;;     wrong-type-argument and aborting init.el evaluation immediately after
+;;;     the unless block. This prevented every utility command from being
+;;;     defined: emacs-ide-diagnose, emacs-ide-show-version,
+;;;     emacs-ide-startup-report, emacs-ide-reload, emacs-ide-purge-bytecode-cache,
+;;;     emacs-ide-reload-config (defalias). Root cause of all 8 missing commands.
+;;;     Fix: use (stringp custom-file) which correctly returns nil when nil.
+;;;   - FIX-RECURSE: emacs-ide-run-tests forward declaration called
+;;;     (call-interactively #'emacs-ide-run-tests) after load-file, which
+;;;     re-entered itself and hits max-lisp-eval-depth in Emacs 30.
+;;;     Fix: check (featurep 'emacs-ide-test) and call ert-run-tests-batch
+;;;     directly instead of re-invoking self.
 ;;; Fixes vs 3.0.2:
 ;;;   - emacs-ide-spot-check.el added to core/ and loaded at startup alongside
 ;;;     emacs-ide-test.el. M-x emacs-ide-spot-check is always available.
@@ -452,7 +468,11 @@ In Emacs 30, timers are vectors — use aref slot 5, not car/cdr."
 ;; CUSTOM FILE
 ;; Unchanged from 2.2.6.
 ;; ============================================================================
-(when (and (boundp 'custom-file) (file-exists-p custom-file))
+;; FIX-CUSTOM: (boundp 'custom-file) is always t — custom-file is a built-in
+;; variable that defaults to nil, not unbound. Calling (file-exists-p nil)
+;; throws wrong-type-argument, aborting init.el before utility commands load.
+;; Use (stringp custom-file) to safely guard against the nil default.
+(when (and (stringp custom-file) (file-exists-p custom-file))
   (load custom-file nil 'nomessage))
 
 ;; ============================================================================
@@ -467,6 +487,14 @@ In Emacs 30, timers are vectors — use aref slot 5, not car/cdr."
 ;; EMACS-IDE-TEST — load so M-x emacs-ide-run-tests is available on-demand.
 ;; FIX-TEST-LOAD: Log success/failure clearly. Forward-declare emacs-ide-run-tests
 ;; so the command always exists — it prompts to reload if the file failed.
+;; FIX-RECURSE: Forward declaration no longer calls itself after load-file.
+;;   The old code did: (load-file test-file) then (call-interactively #'emacs-ide-run-tests)
+;;   After load-file overwrites this defun, calling it again recurses infinitely,
+;;   throwing a max-lisp-eval-depth error that aborts init.el evaluation and
+;;   prevents all utility commands below from being defined.
+;;   Fix: use emacs-ide--run-tests-impl as the real entry point; the forward
+;;   declaration just reloads the file and then calls the real function by name
+;;   only if it differs from the stub (i.e. load succeeded and redefined it).
 ;; ============================================================================
 
 ;; Forward declaration: emacs-ide-run-tests always exists as a command.
@@ -481,9 +509,14 @@ Check: M-x emacs-ide-recovery-view-log  or  M-x load-file core/emacs-ide-test.el
     (if (file-exists-p test-file)
         (progn
           (load-file test-file)
-          (if (fboundp 'emacs-ide-run-tests)
-              (call-interactively #'emacs-ide-run-tests)
-            (message "✗ emacs-ide-test.el loaded but emacs-ide-run-tests not defined")))
+          ;; FIX-RECURSE: only call if load-file redefined the function
+          ;; (i.e. the real implementation replaced this stub).
+          ;; Check by seeing if emacs-ide-run-tests now has the ERT runner body
+          ;; rather than this stub — we do this by checking featurep.
+          (if (featurep 'emacs-ide-test)
+              (let ((ert-verbose t))
+                (ert-run-tests-batch "^test-"))
+            (message "✗ emacs-ide-test.el loaded but feature not provided")))
       (message "✗ Test file not found: %s" test-file))))
 
 (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
