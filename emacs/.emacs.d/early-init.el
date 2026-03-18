@@ -1,7 +1,17 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.6
+;;; Version: 2.2.7
+;;; Fixes vs 2.2.6:
+;;;   - FIX-TOOLBAR: tool-bar-mode and scroll-bar-mode called unconditionally
+;;;     in the ui-disable benchmark phase. Both are absent in TTY/batch mode
+;;;     and some Emacs builds without GUI support. The void-function error
+;;;     aborted early-init.el before emacs-ide-early-init-report was defined,
+;;;     making the command permanently missing from the spot-check.
+;;;     Fix: guard both with (when (fboundp ...)).
+;;;   - FIX-WARNLIST: add-to-list on warning-suppress-log-types crashed with
+;;;     void-variable in batch mode where the variable is not pre-bound.
+;;;     Fix: ensure the variable exists with defvar before adding to it.
 ;;; Fixes vs 2.2.5:
 ;;;   - FIX-ORDER: file-handler-disable moved to LAST benchmark phase. Previously
 ;;;     it ran at position 7 of 17, leaving tls-security, treesit-setup,
@@ -139,8 +149,11 @@
 (emacs-ide--benchmark-phase "ui-disable"
   (lambda ()
     (menu-bar-mode -1)
-    (tool-bar-mode -1)
-    (scroll-bar-mode -1)))
+    ;; FIX-TOOLBAR: tool-bar-mode and scroll-bar-mode are absent in TTY/batch
+    ;; and some Emacs builds. Calling them unconditionally throws void-function,
+    ;; aborting early-init.el before emacs-ide-early-init-report is defined.
+    (when (fboundp 'tool-bar-mode)   (tool-bar-mode -1))
+    (when (fboundp 'scroll-bar-mode) (scroll-bar-mode -1))))
 
 ;; ============================================================================
 ;; WAYLAND/PGTK OPTIMIZATIONS
@@ -180,6 +193,10 @@
     ;; FIX-WARN2: warning-suppress-log-types suppresses both popup AND log.
     (setq emacs-ide--saved-warning-suppress-log-types
           (if (boundp 'warning-suppress-log-types) warning-suppress-log-types nil))
+    ;; FIX-WARNLIST: add-to-list crashes if warning-suppress-log-types is void.
+    ;; Ensure it exists before adding to it.
+    (unless (boundp 'warning-suppress-log-types)
+      (defvar warning-suppress-log-types nil))
     (add-to-list 'warning-suppress-log-types '(defvaralias))))
 ;; ============================================================================
 ;; NATIVE COMPILATION - SILENT & OPTIMIZED
