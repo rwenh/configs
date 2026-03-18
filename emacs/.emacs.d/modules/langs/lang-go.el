@@ -1,5 +1,9 @@
 ;;; lang-go.el --- Go IDE layer -*- lexical-binding: t -*-
-;;; Version: 1.0.1
+;;; Version: 1.0.2
+;;; Fixes vs 1.0.1:
+;;;   - FIX-LSP: Removed go-mode :hook from lsp-mode use-package.
+;;;     tools-lsp.el already hooks go-mode to emacs-ide-lsp-deferred-optimized.
+;;;     go-ts-mode hook kept.
 ;;; Fixes vs 1.0.0:
 ;;;   - FIX-5: gofmt-before-save guarded against double-format with apheleia.
 ;;; Code:
@@ -26,7 +30,8 @@
   (emacs-ide-dev-bind-compile go-mode-map #'emacs-ide-go-run)
   (define-key go-mode-map (kbd "C-c C-b") (lambda () (interactive) (compile "go build -v")))
   (define-key go-mode-map (kbd "C-c C-v") (lambda () (interactive) (compile "go vet ./..."))))
-(use-package lsp-mode :hook ((go-mode go-ts-mode) . lsp-deferred)
+(use-package lsp-mode ;; FIX-LSP: go-mode hook removed — tools-lsp.el owns it.
+  :hook (go-ts-mode . lsp-deferred)
   :init (setq lsp-go-analyses '((shadow . t) (staticcheck . t))
               lsp-go-use-gofumpt t))
 (with-eval-after-load 'apheleia
