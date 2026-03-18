@@ -1,5 +1,9 @@
 ;;; lang-jvm.el --- JVM IDE layer (Java / Kotlin / Scala / Groovy) -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP: Removed lsp-deferred :hook for java-mode from lsp-java.
+;;;     tools-lsp.el already hooks java-mode to emacs-ide-lsp-deferred-optimized.
+;;;     java-ts-mode hook kept.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "java" :tier 2 :lsp-server "jdtls"
@@ -15,7 +19,8 @@
 (use-package lsp-java
   :if (emacs-ide-dev-lang-enabled-p "java")
   :defer t
-  :hook ((java-mode java-ts-mode) . lsp-deferred)
+  ;; FIX-LSP: java-mode hook removed — tools-lsp.el owns it.
+  :hook (java-ts-mode . lsp-deferred)
   :init
   (setq lsp-java-format-settings-url
         "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml"
