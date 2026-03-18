@@ -1,7 +1,14 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional project management and navigation with config integration.
-;;; Version: 2.2.4
+;;; Version: 2.2.5
+;;; Fixes vs 2.2.4:
+;;;   - FIX-CONFIG: emacs-ide-project-enable and emacs-ide-project-search are set
+;;;     by emacs-ide-config-apply from config.yml but tools-project.el never read
+;;;     them — projectile was always enabled and always used 'alien regardless of
+;;;     config. Fixed: projectile-mode only activates when emacs-ide-project-enable
+;;;     is non-nil; projectile-use-git-grep and projectile-generic-command respect
+;;;     emacs-ide-project-search.
 ;;; Fixes:
 ;;;   - 2.2.4: projectile-indexing-method changed from 'hybrid to 'alien.
 ;;;     'hybrid runs native Emacs file traversal as a fallback, which blocks
@@ -16,6 +23,8 @@
 ;; ============================================================================
 ;; PROJECTILE - PROJECT MANAGEMENT
 ;; ============================================================================
+(when (bound-and-true-p emacs-ide-project-enable)
+
 (use-package projectile
   :demand t
   :init
@@ -47,11 +56,15 @@
         projectile-require-project-root nil
         projectile-track-known-projects-automatically t
 
-        ;; Use ripgrep if available, fallback to git grep
-        projectile-use-git-grep (not (executable-find "rg"))
+        ;; FIX-CONFIG: Respect emacs-ide-project-search from config.yml
+        ;; (ripgrep, grep, git-grep). Falls back to executable availability.
+        projectile-use-git-grep
+        (eq (bound-and-true-p emacs-ide-project-search) 'git-grep)
         projectile-generic-command
         (cond
-         ((executable-find "rg") "rg --files --hidden --follow --glob '!.git'")
+         ((and (not (eq (bound-and-true-p emacs-ide-project-search) 'grep))
+               (executable-find "rg"))
+          "rg --files --hidden --follow --glob '!.git'")
          ((executable-find "fd") "fd . -0 -H -E .git")
          (t "find . -type f -print0")))
 
@@ -247,6 +260,8 @@
   (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info)
   (define-key projectile-command-map (kbd "F") #'treemacs-find-file)
   (define-key projectile-command-map (kbd "W") #'treemacs-select-window))
+
+) ;; end (when emacs-ide-project-enable)
 
 (provide 'tools-project)
 ;;; tools-project.el ends here
