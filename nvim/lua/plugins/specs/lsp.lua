@@ -30,25 +30,36 @@ return {
     event        = { "BufReadPre", "BufNewFile" },
     dependencies = { "mason-lspconfig.nvim", "saghen/blink.cmp" },
     config = function()
-      -- blink.cmp provides capabilities (set globally in completion.lua)
-      -- No need to manually inject here
+      -- Inject blink.cmp capabilities globally (Nvim 0.11+ pattern)
+      vim.lsp.config("*", {
+        capabilities = require("blink.cmp").get_lsp_capabilities(),
+      })
 
       -- Shared on_attach keymaps
       vim.api.nvim_create_autocmd("LspAttach", {
-        group = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
+        group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
           local map = function(keys, fn, desc)
             vim.keymap.set("n", keys, fn, { buffer = e.buf, desc = "LSP: " .. desc })
           end
-          map("gd",         vim.lsp.buf.definition,    "Go to Definition")
-          map("gD",         vim.lsp.buf.declaration,   "Go to Declaration")
-          map("gi",         vim.lsp.buf.implementation,"Go to Implementation")
-          map("gr",         vim.lsp.buf.references,    "References")
-          map("K",          vim.lsp.buf.hover,         "Hover Docs")
-          map("<leader>rn", vim.lsp.buf.rename,        "Rename")
-          map("<leader>ca", vim.lsp.buf.code_action,   "Code Action")
+          map("gd",         vim.lsp.buf.definition,      "Go to Definition")
+          map("gD",         vim.lsp.buf.declaration,     "Go to Declaration")
+          map("gi",         vim.lsp.buf.implementation,  "Go to Implementation")
+          map("gr",         vim.lsp.buf.references,      "References")
+          map("K",          vim.lsp.buf.hover,           "Hover Docs")
+          map("<leader>k",  vim.lsp.buf.signature_help,  "Signature Help")
+          map("<leader>,r", vim.lsp.buf.rename,          "Rename")
+          map("<leader>,a", vim.lsp.buf.code_action,     "Code Action")
+          map("<leader>,f", function() vim.lsp.buf.format({ timeout_ms = 3000 }) end, "Format")
+          map("<leader>,d", vim.diagnostic.open_float,   "Diagnostic Float")
+          map("<leader>,l", vim.diagnostic.setloclist,   "Diagnostic List")
           map("<leader>td", vim.lsp.buf.type_definition, "Type Definition")
-          vim.keymap.set("v", "<leader>ca", vim.lsp.buf.code_action, { buffer = e.buf })
+          map("]d",         vim.diagnostic.goto_next,    "Next Diagnostic")
+          map("[d",         vim.diagnostic.goto_prev,    "Prev Diagnostic")
+          vim.keymap.set("v", "<leader>,a", vim.lsp.buf.code_action, { buffer = e.buf, desc = "LSP: Code Action" })
+          vim.keymap.set("v", "<leader>,f", function()
+            vim.lsp.buf.format({ timeout_ms = 3000, range = true })
+          end, { buffer = e.buf, desc = "LSP: Format Range" })
         end,
       })
 
@@ -57,9 +68,9 @@ return {
         lua_ls = {
           settings = {
             Lua = {
-              diagnostics    = { globals = { "vim" } },
-              workspace      = { checkThirdParty = false },
-              telemetry      = { enable = false },
+              diagnostics   = { globals = { "vim" } },
+              workspace     = { checkThirdParty = false },
+              telemetry     = { enable = false },
             },
           },
         },
@@ -76,9 +87,9 @@ return {
         gopls = {
           settings = {
             gopls = {
-              analyses     = { unusedparams = true },
-              staticcheck  = true,
-              gofumpt      = true,
+              analyses    = { unusedparams = true },
+              staticcheck = true,
+              gofumpt     = true,
             },
           },
         },
@@ -103,34 +114,47 @@ return {
         vim.lsp.enable(server)
       end
 
-      -- Optional servers (only if binary present)
+      -- Optional servers: explicit binary checks (no gsub heuristics)
       local optional = {
-        vhdl_ls  = { filetypes = { "vhdl", "vhd" } },
-        fortls   = {},
-        sqls     = {},
-        cobol_ls = {
-          filetypes = { "cobol" },
-          settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
+        {
+          name   = "vhdl_ls",
+          binary = "vhdl_ls",
+          config = { filetypes = { "vhdl", "vhd" } },
+        },
+        {
+          name   = "fortls",
+          binary = "fortls",
+          config = {},
+        },
+        {
+          name   = "sqls",
+          binary = "sqls",
+          config = {},
+        },
+        {
+          name   = "cobol_ls",
+          binary = "cobol-language-server",
+          config = {
+            filetypes = { "cobol" },
+            settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
+          },
         },
       }
 
-      for server, config in pairs(optional) do
-        local bin = server:gsub("_ls$", "_ls"):gsub("_language_server$", "")
-        local exe = vim.fn.executable(server) == 1 and server
-                 or vim.fn.executable(bin) == 1 and bin
-        if exe then
-          vim.lsp.config(server, config)
-          vim.lsp.enable(server)
+      for _, entry in ipairs(optional) do
+        if vim.fn.executable(entry.binary) == 1 then
+          vim.lsp.config(entry.name, entry.config)
+          vim.lsp.enable(entry.name)
         end
       end
 
       -- Diagnostics UI
       vim.diagnostic.config({
-        virtual_text   = { prefix = "●", spacing = 4 },
-        signs          = { text = { Error = " ", Warn = " ", Hint = " ", Info = " " } },
-        underline      = true,
-        severity_sort  = true,
-        float          = { border = "rounded", source = "always" },
+        virtual_text     = { prefix = "●", spacing = 4 },
+        signs            = { text = { Error = " ", Warn = " ", Hint = " ", Info = " " } },
+        underline        = true,
+        severity_sort    = true,
+        float            = { border = "rounded", source = "always" },
         update_in_insert = false,
       })
     end,
@@ -150,7 +174,7 @@ return {
     opts  = { notification = { window = { winblend = 0 } } },
   },
 
-  -- Formatting (conform handles autoformat; removed duplicate from autocmds.lua)
+  -- Formatting
   {
     "stevearc/conform.nvim",
     event = "BufWritePre",
@@ -169,8 +193,8 @@ return {
         elixir     = { "mix" },
       },
       format_on_save = {
-        timeout_ms  = 500,
-        lsp_format  = "fallback",
+        timeout_ms = 500,
+        lsp_format = "fallback",
       },
     },
   },
@@ -178,11 +202,12 @@ return {
   -- Linting
   {
     "mfussenegger/nvim-lint",
-    event = "BufReadPre",
+    event  = "BufReadPre",
     config = function()
       require("lint").linters_by_ft = {
         python     = { "ruff" },
         javascript = { "eslint_d" },
+        typescript = { "eslint_d" },
         sh         = { "shellcheck" },
         ruby       = { "rubocop" },
       }
