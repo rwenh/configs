@@ -1,26 +1,18 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.4
+;;; Version: 2.2.5
+;;; Fixes vs 2.2.4:
+;;;   - FIX-WARN2: Previous fix used warning-suppress-types, which only
+;;;     suppresses the popup notification — the warnings still appear in
+;;;     *Warnings* and in the log. The correct variable is
+;;;     warning-suppress-log-types (Emacs 28+), which suppresses both the
+;;;     popup AND the log entry. Changed both the set and restore to use
+;;;     warning-suppress-log-types so the four ef-themes defvaralias lines
+;;;     are completely absent from the warnings buffer.
 ;;; Fixes vs 2.2.3:
-;;;   - FIX-WARN: ef-themes package calls defvaralias on load to alias its own
-;;;     vars (ef-themes-to-toggle, ef-themes-mixed-fonts, etc.) to modus-themes
-;;;     equivalents for migration compatibility. Since modus-themes ships
-;;;     built-in with Emacs 29+, the aliases always fire and produce four
-;;;     ⛔ Warning (defvaralias) entries in *Warnings* on every startup.
-;;;     They are harmless but noisy. Suppressed via warning-suppress-types in
-;;;     the warning-suppression benchmark phase.
-;;; Fixes vs 2.2.2:
-;;;   - FIX-4: emacs-ide--get-processor-count was called twice: once inside the
-;;;     native-comp-setup benchmark phase and once at top level to define
-;;;     emacs-ide-processor-count. On Linux (where NUMBER_OF_PROCESSORS is not
-;;;     set) both calls fell through to shell-command-to-string "nproc ...",
-;;;     spawning a subprocess twice during the most performance-critical phase
-;;;     of startup. Fix: move emacs-ide-processor-count defvar to immediately
-;;;     after the function definition so the value is cached on first call.
-;;;     The native-comp-setup phase now references emacs-ide-processor-count
-;;;     directly instead of calling the function again.
-;;; All BUG-01..06 fixes from 2.2.2 retained unchanged.
+;;;   - FIX-WARN: (now superseded by FIX-WARN2)
+;;;   - FIX-4: emacs-ide--get-processor-count called twice — cached in defvar.
 ;;; Code:
 
 ;; ============================================================================
@@ -203,11 +195,10 @@
             (when (boundp 'emacs-ide--saved-byte-compile-warnings)
               (setq byte-compile-warnings
                     emacs-ide--saved-byte-compile-warnings))
-            ;; FIX-WARN: Restore warning-suppress-types. We only suppressed
-            ;; defvaralias during startup; restore original value after boot.
-            (when (boundp 'emacs-ide--saved-warning-suppress-types)
-              (setq warning-suppress-types
-                    emacs-ide--saved-warning-suppress-types)))
+            ;; FIX-WARN2: Restore warning-suppress-log-types after startup.
+            (when (boundp 'emacs-ide--saved-warning-suppress-log-types)
+              (setq warning-suppress-log-types
+                    emacs-ide--saved-warning-suppress-log-types)))
           90)
 
 ;; Cleanup GC timer on exit
@@ -284,12 +275,15 @@
     ;; load. ef-themes aliases ef-themes-* vars to modus-themes-* equivalents
     ;; for migration compatibility; since modus-themes is built-in to Emacs 29+
     ;; it is always present and these aliases always fire. They are harmless.
-    ;; warning-suppress-types is a list of warning type symbols to silence.
-    ;; Restored alongside warning-minimum-level in emacs-startup-hook (weight 90).
-    (defvar emacs-ide--saved-warning-suppress-types nil)
-    (setq emacs-ide--saved-warning-suppress-types
-          (if (boundp 'warning-suppress-types) warning-suppress-types nil))
-    (add-to-list 'warning-suppress-types '(defvaralias))))
+    ;; FIX-WARN2: Use warning-suppress-log-types (not warning-suppress-types).
+    ;; warning-suppress-types only hides the popup; the entries still appear in
+    ;; *Warnings*. warning-suppress-log-types (Emacs 28+) suppresses both the
+    ;; popup and the log, making the warnings completely invisible.
+    ;; This eliminates the four ef-themes defvaralias lines on every startup.
+    (defvar emacs-ide--saved-warning-suppress-log-types nil)
+    (setq emacs-ide--saved-warning-suppress-log-types
+          (if (boundp 'warning-suppress-log-types) warning-suppress-log-types nil))
+    (add-to-list 'warning-suppress-log-types '(defvaralias))))
 
 ;; ============================================================================
 ;; TREESIT PREPARATION
