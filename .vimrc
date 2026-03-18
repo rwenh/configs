@@ -4,6 +4,7 @@
 " 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
 " Lazy-loaded per filetype — startup < 80ms regardless of stack size.
 " 2026-upgrade: vim-matchup · vim-asterisk · vim-easy-align · gutentags+rg
+" 2026-final:   vim-indent-guides (replaces indentLine) · vim-textobj-user/indent/comment
 " =============================================================================
 
 " -----------------------------------------------------------------------------
@@ -34,10 +35,15 @@
 "   :CocInstall coc-vimlsp coc-kotlin coc-solargraph coc-docker coc-terraform
 "
 " 2026 upgrade — new plugins (auto-installed on first launch):
-"   vim-matchup    : replaces matchit/matchparen — % g% [% ]% i% a%
-"   vim-asterisk   : non-jumpy * / # / g* / g# with visual star
-"   vim-easy-align : ga interactive alignment (replaces manual :Tab use)
-"   gutentags      : now uses rg as file lister + aggressive --exclude list
+"   vim-matchup        : replaces matchit/matchparen — % g% [% ]% i% a%
+"   vim-asterisk       : non-jumpy * / # / g* / g# with visual star
+"   vim-easy-align     : ga interactive alignment (replaces manual :Tab use)
+"   gutentags          : now uses rg as file lister + aggressive --exclude list
+" 2026 final upgrade:
+"   vim-indent-guides  : replaces indentLine — highlight-based, no conceal issues
+"   vim-textobj-user   : base for custom text objects
+"   vim-textobj-indent : ii/ai — operate on indent block (dii, vii, cai, etc.)
+"   vim-textobj-comment: ic/ac — operate on comment block (dic, vac, etc.)
 " -----------------------------------------------------------------------------
 
 " -----------------------------------------------------------------------------
@@ -239,12 +245,15 @@ Plug 'tpope/vim-unimpaired'       " [b ]b [q ]q and friends
 Plug 'tpope/vim-sleuth'           " auto-detect indent per project
 Plug 'cohama/lexima.vim'          " bracket/quote auto-close (replaces auto-pairs)
 Plug 'wellle/targets.vim'         " extra text objects: cin, da,
+Plug 'kana/vim-textobj-user'                " required base for custom text objects
+Plug 'kana/vim-textobj-indent'             " ii/ai — indent-level text objects
+Plug 'glts/vim-textobj-comment'            " ic/ac — comment text objects
 Plug 'matze/vim-move'             " Alt+j/k move lines/blocks
 Plug 'mbbill/undotree',           { 'on': 'UndotreeToggle' }
 Plug 'jdhao/better-escape.vim'    " jk/kj → Esc in insert mode
 Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
 Plug 'psliwka/vim-smoothie'       " smooth C-d/C-u scrolling
-Plug 'Yggdroot/indentLine'        " indent guides ▏
+Plug 'nathanaelkane/vim-indent-guides'  " indent guides — no conceal tricks
 Plug 'wellle/context.vim'         " sticky function context at top
 " vim-asterisk: non-jumpy * / # / g* / g# with visual star support.
 " Replaces manual *zzzv/#zzzv mappings with proper stay-in-place behaviour.
@@ -640,7 +649,7 @@ nnoremap <leader>uh :set hlsearch!<CR>
 nnoremap <leader>ub :call ToggleBackground()<CR>
 nnoremap <leader>uc :set cursorline!<CR>
 nnoremap <leader>ul :set list!<CR>
-nnoremap <leader>ui :IndentLinesToggle<CR>
+nnoremap <leader>ui :IndentGuidesToggle<CR>
 nnoremap <leader>ux :ContextToggle<CR>
 
 " --- Tools ---
@@ -884,12 +893,20 @@ let g:tmux_navigator_save_on_switch      = 2
 let g:smoothie_speed_constant_factor = 30
 let g:smoothie_speed_linear_factor   = 30
 
-" --- indentLine ---
-let g:indentLine_char                 = '▏'
-let g:indentLine_first_char           = '▏'
-let g:indentLine_showFirstIndentLevel = 1
-let g:indentLine_fileTypeExclude      = ['startify', 'help', 'fern', 'dbui', 'json']
-let g:indentLine_bufTypeExclude       = ['terminal']
+" --- vim-indent-guides ---
+" Uses actual highlight groups — no conceal tricks, no slowdown on large files.
+" Even columns get a subtle alternate background; odd columns stay as-is.
+let g:indent_guides_enable_on_vim_startup = 1
+let g:indent_guides_start_level           = 2
+let g:indent_guides_guide_size            = 1
+let g:indent_guides_auto_colors           = 0
+let g:indent_guides_exclude_filetypes     = ['startify', 'help', 'fern', 'dbui', 'json', 'terminal']
+augroup IndentGuideColors
+  autocmd!
+  autocmd VimEnter,Colorscheme *
+    \ highlight IndentGuidesOdd  ctermbg=235 guibg=#2a2a37 |
+    \ highlight IndentGuidesEven ctermbg=236 guibg=#313244
+augroup END
 
 " --- context.vim (sticky scroll) ---
 let g:context_enabled          = 1
@@ -948,6 +965,12 @@ let g:VM_maps['Skip Region']        = '<C-x>'
 " --- vim-asterisk ---
 " is_animated: flash the match highlight briefly on land (visual feedback)
 let g:asterisk#keeppos = 1   " cursor column preserved after z* jump
+
+" --- vim-textobj-user / vim-textobj-indent / vim-textobj-comment ---
+" Provided text objects (all work with d/c/y/v operators):
+"   ii / ai  — inner / around indent block (same level / including blank lines)
+"   ic / ac  — inner / around comment (line or block comment)
+" No config required — vim-textobj-user wires them automatically on load.
 
 " --- vim-easy-align ---
 " Custom delimiters beyond the built-in set (=, :, |, #, &, ,, .)
