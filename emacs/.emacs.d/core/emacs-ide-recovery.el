@@ -1,8 +1,41 @@
 ;;; emacs-ide-recovery.el --- Enterprise Error Recovery System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade error recovery and safe mode.
-;;; Version: 2.2.4
-;;; Fixes:
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 2.2.4 to 3.0.4.
+;;;   - FIX-TOOLBAR: emacs-ide-recovery-mode now guards tool-bar-mode and
+;;;     scroll-bar-mode with (fboundp) — both are absent in TTY/batch builds,
+;;;     throwing void-function at the worst possible time (during recovery).
+;;;     Mirrors FIX-TOOLBAR from early-init.el v2.2.6.
+;;;   - FIX-LOG-APPEND: emacs-ide-recovery-log now appends directly to the
+;;;     log file via write-region rather than reading the entire file into
+;;;     a temp buffer on every call. The old approach read up to 10MB and
+;;;     rewrote it on every module-load failure during a bad startup.
+;;;   - FIX-BACKUP-CONFIG: emacs-ide-recovery-backup-config now includes
+;;;     config.yml in the backup. It was missing despite being the primary
+;;;     user-facing configuration file.
+;;;   - FIX-RESTORE-CONFIG: emacs-ide-recovery-restore-config now restores
+;;;     config.yml alongside init.el and early-init.el.
+;;;   - FIX-ROTATION: Log rotation now uses a timestamp suffix instead of
+;;;     a fixed .old suffix — prevents each rotation from silently
+;;;     discarding the previous backup.
+;;;   - FIX-TIMER-IDEMPOTENT: Session idle timer now stored in a defvar
+;;;     handle and cancelled before re-registration on reload, preventing
+;;;     timer accumulation on M-x emacs-ide-config-reload.
+;;;   - FIX-FALLBACK-ERR: emacs-ide-recovery-try-fallback now uses
+;;;     error-message-string on fallback-error for consistent readable
+;;;     messages, matching emacs-ide-recovery-log-error.
+;;;   - FIX-CRASH-WARN: emacs-ide-recovery-load-crash-history now warns
+;;;     when the crash history file cannot be parsed (previously swallowed
+;;;     all errors silently via condition-case nil).
+;;;   - FIX-RECENT-ERRORS: emacs-ide-recovery-report now shows the 10 most
+;;;     recent errors (newest first) instead of the 10 oldest.
+;;;   - FIX-SAFE-MSG: emacs-ide-recovery-enter-safe-mode recovery
+;;;     instructions now reference M-x emacs-ide-recovery-view-log
+;;;     instead of the nonexistent buffer name *Recovery Log*.
+;;; Fixes vs 2.2.4 (retained):
 ;;;   - 2.2.4: Added forward-declaration `(defvar emacs-ide-safe-mode nil)'
 ;;;     at the top of this file. Previously emacs-ide-recovery-enter-safe-mode
 ;;;     used plain `setq' on a variable declared only in emacs-ide-config.el.
@@ -71,14 +104,20 @@ is a no-op.")
 ;; CRASH TRACKING - WITH ATOMIC WRITES
 ;; ============================================================================
 (defun emacs-ide-recovery-load-crash-history ()
-  "Load crash history from file safely."
+  "Load crash history from file safely.
+FIX-CRASH-WARN: Now warns when the file cannot be parsed rather than
+swallowing all errors silently. Preserves the 0-floor guard."
   (when (file-exists-p emacs-ide-recovery-crash-history-file)
-    (condition-case nil
+    (condition-case err
         (with-temp-buffer
           (insert-file-contents emacs-ide-recovery-crash-history-file)
-          (setq emacs-ide-recovery-crash-count
-                (max 0 (string-to-number (string-trim (buffer-string))))))
-      (error nil))))
+          (let ((n (string-to-number (string-trim (buffer-string)))))
+            (if (and (numberp n) (>= n 0))
+                (setq emacs-ide-recovery-crash-count (max 0 n))
+              (warn "emacs-ide-recovery: crash history file has unexpected content — resetting to 0"))))
+      (error
+       (warn "emacs-ide-recovery: could not read crash history (%s) — resetting to 0"
+             (error-message-string err))))))
 
 (defun emacs-ide-recovery-save-crash-history ()
   "Save crash history to file atomically."
@@ -115,37 +154,36 @@ is a no-op.")
 ;; ERROR LOGGING - WITH ATOMIC WRITES
 ;; ============================================================================
 (defun emacs-ide-recovery-log (level message &rest args)
-  "Log recovery event with LEVEL and MESSAGE atomically."
+  "Log recovery event with LEVEL and MESSAGE.
+FIX-LOG-APPEND: Appends directly to the log file via write-region
+rather than reading the full file into memory on every call.
+FIX-ROTATION: Rotates to a timestamped file to preserve prior backups."
   (let ((formatted-message
          (format "[%s] [%s] %s\n"
                  (format-time-string "%Y-%m-%d %H:%M:%S")
                  (upcase (symbol-name level))
                  (apply #'format message args))))
 
-    ;; Ensure directory exists
-    (let ((log-dir (file-name-directory emacs-ide-recovery-log-file)))
-      (unless (file-directory-p log-dir)
-        (make-directory log-dir t)))
-
-    ;; Rotate log if too large
+    ;; FIX-ROTATION: Use timestamp suffix so each rotation preserves the
+    ;; prior backup rather than overwriting a fixed .old file.
     (when (and (file-exists-p emacs-ide-recovery-log-file)
                (> (or (nth 7 (file-attributes emacs-ide-recovery-log-file)) 0)
                   emacs-ide-recovery-max-log-size))
       (ignore-errors
         (rename-file emacs-ide-recovery-log-file
-                     (concat emacs-ide-recovery-log-file ".old")
+                     (concat emacs-ide-recovery-log-file
+                             "." (format-time-string "%Y%m%d-%H%M%S"))
                      t)))
 
-    ;; write + rename in a single condition-case so rename is protected
+    ;; FIX-LOG-APPEND: Append directly to the log file instead of reading
+    ;; the entire file into a temp buffer and rewriting it.
     (condition-case err
-        (let ((temp-file (concat emacs-ide-recovery-log-file ".tmp")))
-          (with-temp-buffer
-            (when (file-exists-p emacs-ide-recovery-log-file)
-              (insert-file-contents emacs-ide-recovery-log-file))
-            (goto-char (point-max))
-            (insert formatted-message)
-            (write-region (point-min) (point-max) temp-file nil 'quiet))
-          (rename-file temp-file emacs-ide-recovery-log-file t))
+        (progn
+          (let ((log-dir (file-name-directory emacs-ide-recovery-log-file)))
+            (unless (file-directory-p log-dir)
+              (make-directory log-dir t)))
+          (write-region formatted-message nil emacs-ide-recovery-log-file
+                        'append 'quiet))
       (error
        (warn "Failed to write recovery log: %s" (error-message-string err))))
 
@@ -189,8 +227,10 @@ is a no-op.")
               (emacs-ide-recovery-log 'info "Successfully loaded fallback %s" fallback)
               t)
           (error
+           ;; FIX-FALLBACK-ERR: use error-message-string for readable output
            (emacs-ide-recovery-log 'error "Fallback %s also failed: %s"
-                                   fallback fallback-error)
+                                   fallback
+                                   (error-message-string fallback-error))
            nil)))
     (emacs-ide-recovery-log 'error "No fallback available for %s" package)
     nil))
@@ -210,18 +250,21 @@ is a no-op.")
                    emacs-ide-recovery-crash-count))
     (princ "Booting in safe mode with minimal configuration.\n\n")
     (princ "To recover:\n")
-    (princ "  1. Check *Recovery Log* for errors\n")
+    (princ "  1. Run M-x emacs-ide-recovery-view-log to find the error\n")
     (princ "  2. Fix configuration issues\n")
     (princ "  3. Run: M-x emacs-ide-recovery-reset-crash-count\n")
     (princ "  4. Restart Emacs\n\n")
     (princ "To force normal mode: emacs --eval \"(setq emacs-ide-safe-mode nil)\"\n")))
 
 (defun emacs-ide-recovery-mode ()
-  "Activate recovery mode with minimal features."
+  "Activate recovery mode with minimal features.
+FIX-TOOLBAR: tool-bar-mode and scroll-bar-mode guarded with fboundp —
+both are absent in TTY/batch builds and throw void-function otherwise.
+This mirrors FIX-TOOLBAR from early-init.el."
   (interactive)
   (menu-bar-mode -1)
-  (tool-bar-mode -1)
-  (scroll-bar-mode -1)
+  (when (fboundp 'tool-bar-mode)   (tool-bar-mode -1))
+  (when (fboundp 'scroll-bar-mode) (scroll-bar-mode -1))
   (electric-pair-mode 1)
   (show-paren-mode 1)
   (global-hl-line-mode 1)
@@ -235,7 +278,10 @@ is a no-op.")
 ;; CONFIGURATION BACKUP
 ;; ============================================================================
 (defun emacs-ide-recovery-backup-config ()
-  "Create backup of current configuration."
+  "Create backup of current configuration.
+FIX-BACKUP-CONFIG: Now includes config.yml alongside init.el and
+early-init.el — it was missing despite being the primary user-facing
+configuration file."
   (interactive)
   (let* ((timestamp (format-time-string "%Y%m%d-%H%M%S"))
          (backup-dir (expand-file-name
@@ -244,7 +290,8 @@ is a no-op.")
     (condition-case err
         (progn
           (make-directory backup-dir t)
-          (dolist (file '("init.el" "early-init.el"))
+          ;; FIX-BACKUP-CONFIG: config.yml added to the file list
+          (dolist (file '("init.el" "early-init.el" "config.yml"))
             (let ((source (expand-file-name file user-emacs-directory))
                   (dest   (expand-file-name file backup-dir)))
               (when (file-exists-p source)
@@ -262,12 +309,15 @@ is a no-op.")
        nil))))
 
 (defun emacs-ide-recovery-restore-config (backup-dir)
-  "Restore configuration from BACKUP-DIR with confirmation."
+  "Restore configuration from BACKUP-DIR with confirmation.
+FIX-RESTORE-CONFIG: Now restores config.yml alongside init.el and
+early-init.el — it was missing from the restore operation."
   (interactive "DBackup directory: ")
   (when (y-or-n-p (format "Restore configuration from %s? This cannot be undone! " backup-dir))
     (condition-case err
         (progn
-          (dolist (file '("init.el" "early-init.el"))
+          ;; FIX-RESTORE-CONFIG: config.yml added to the file list
+          (dolist (file '("init.el" "early-init.el" "config.yml"))
             (let ((source (expand-file-name file backup-dir))
                   (dest   (expand-file-name file user-emacs-directory)))
               (when (file-exists-p source)
@@ -336,8 +386,11 @@ is a no-op.")
                    (if (bound-and-true-p emacs-ide-safe-mode) "YES" "NO")))
     (princ (format "Errors This Session:  %d\n\n" (length emacs-ide-recovery-errors)))
     (when emacs-ide-recovery-errors
-      (princ "Recent Errors:\n")
-      (dolist (err (reverse (last emacs-ide-recovery-errors 10)))
+      (princ "Recent Errors (newest first):\n")
+      ;; FIX-RECENT-ERRORS: emacs-ide-recovery-errors is built with push
+      ;; so it is already newest-first. seq-take gives the 10 most recent.
+      ;; The old (reverse (last ... 10)) showed the 10 oldest errors.
+      (dolist (err (seq-take emacs-ide-recovery-errors 10))
         (princ (format "\n[%s] %s\n"
                        (format-time-string "%H:%M:%S" (plist-get err :time))
                        (plist-get err :context)))
@@ -386,15 +439,27 @@ is a no-op.")
   (float-time (time-subtract (current-time)
                              emacs-ide-recovery-session-start-time)))
 
-(run-with-idle-timer
- 300 nil
- (lambda ()
-   (when (and (> (emacs-ide-recovery-session-duration) 300)
-              ;; FIX: only reset if nothing went wrong this session
-              (null emacs-ide-recovery-errors)
-              (> emacs-ide-recovery-crash-count 0))
-     (emacs-ide-recovery-reset-crash-count)
-     (emacs-ide-recovery-log 'info "Session stable for 5+ minutes; crash count reset"))))
+;; FIX-TIMER-IDEMPOTENT: Store timer handle so reloading this module cancels
+;; the old timer before registering a new one. Previously each reload stacked
+;; an additional 300-second idle timer, multiplying reset attempts.
+(defvar emacs-ide-recovery--session-timer nil
+  "Handle for the session-stability idle timer.")
+
+(when emacs-ide-recovery--session-timer
+  (cancel-timer emacs-ide-recovery--session-timer)
+  (setq emacs-ide-recovery--session-timer nil))
+
+(setq emacs-ide-recovery--session-timer
+      (run-with-idle-timer
+       300 nil
+       (lambda ()
+         (when (and (> (emacs-ide-recovery-session-duration) 300)
+                    ;; FIX: only reset if nothing went wrong this session
+                    (null emacs-ide-recovery-errors)
+                    (> emacs-ide-recovery-crash-count 0))
+           (emacs-ide-recovery-reset-crash-count)
+           (emacs-ide-recovery-log 'info
+             "Session stable for 5+ minutes; crash count reset")))))
 
 ;; ============================================================================
 ;; KEYBINDINGS
