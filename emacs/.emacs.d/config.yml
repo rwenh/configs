@@ -1,11 +1,26 @@
 # ============================================================================
 # Enterprise Emacs IDE Configuration
-# Version: 3.0.0
+# Version: 3.0.4
 # ============================================================================
 # Edit this file to customize your Emacs IDE setup.
 # Changes take effect after: M-x emacs-ide-config-reload
 #
-# What changed from 2.2.1:
+# What changed in 3.0.4 (audit fixes):
+#   - Version header updated from 3.0.0 to 3.0.4
+#   - go formatter comment corrected: was "goimports@latest", now "ships with Go"
+#   - clojure: scalafmt added to formatting: section (was in lang-settings only)
+#   - scala: scalafmt added to formatting: section (was in lang-settings only)
+#   - lang-settings: stubs added for groovy, r, julia (enabled or commonly toggled)
+#   - environments: git credentials marked REQUIRED to prevent placeholder commits
+#   - terminal.shell: defaulted to empty string (uses $SHELL); /bin/bash documented
+#     as an example. Avoids old bash on macOS and wrong path on NixOS.
+#   - package-signatures: allow-unsigned comment expanded to explain why
+#   - workspace.state-file: comment added noting path is expanded relative to
+#     user-emacs-directory; verify ui-workspace.el uses expand-file-name.
+#   - keybinding examples changed from underscores to hyphens per the NOTES rule
+#   - advanced.experimental keys given side-effect warning comments
+#
+# What changed from 2.2.1 (v3.0.0):
 #   - general.theme updated to ef-dark (ef-themes replaces modus-themes)
 #   - general.icons updated to nerd-icons (replaces all-the-icons)
 #   - languages: section fully expanded — 50 langs, per-lang LSP/formatter/flags
@@ -38,7 +53,8 @@ general:
 
   # Safety
   safe-mode: false              # Set true to boot in minimal config
-                                # Or launch with: emacs --safe
+                                # Or launch with: emacs --emacs-ide-safe
+                                # (not --safe — that is Emacs's own built-in flag)
 
   # Startup
   show-dashboard: true          # Show dashboard on startup
@@ -91,7 +107,7 @@ formatting:
   html: prettier
   css: prettier
   rust: rustfmt                 # ships with rustup
-  go: gofmt                 # go install golang.org/x/tools/cmd/goimports@latest
+  go: gofmt                     # ships with Go (gofmt is part of the Go toolchain)
   c: clang-format               # system package manager
   cpp: clang-format
 
@@ -100,21 +116,23 @@ formatting:
   kotlin: ktlint                # brew install ktlint
   lua: stylua                   # cargo install stylua
   shell: shfmt                  # go install mvdan.cc/sh/v3/cmd/shfmt@latest
-  sql: pg_format                # apt install pgformatter / pip install pgformatter (was "pg_format")
+  sql: pg_format                # apt install pgformatter / pip install pgformatter
 
   # Tier 3 — occasional (set false to skip)
   haskell: ormolu               # cabal install ormolu
-  elixir: mix-format             # ships with elixir (was "mix-format" — quotes prevented interning)
+  elixir: mix-format            # ships with elixir
   ruby: rubocop                 # gem install rubocop
   nix: nixpkgs-fmt              # nix-env -i nixpkgs-fmt
-  zig: zigfmt                   # ships with zig (was "zigfmt")
+  zig: zigfmt                   # ships with zig
+  clojure: cljfmt               # FIX: was in lang-settings only; added here for apheleia
+  scala: scalafmt               # FIX: was in lang-settings only; added here for apheleia
 
   # Tier 4 — prose/config
   json: prettier
   markdown: prettier
   yaml: prettier
   toml: prettier
-  terraform: terraform-fmt      # ships with terraform (was "terraform-fmt")
+  terraform: terraform-fmt      # ships with terraform
 
 # ============================================================================
 # PERFORMANCE
@@ -175,7 +193,10 @@ workspace:
   enable: true                  # Enable perspective.el workspaces
   auto-switch: true             # Auto-create workspace on project switch
   save-on-exit: true            # Save workspace state on Emacs exit
-  state-file: var/persp-state   # Relative to user-emacs-directory
+  state-file: var/persp-state   # Relative to user-emacs-directory.
+                                # IMPORTANT: ui-workspace.el must expand this
+                                # with (expand-file-name ... user-emacs-directory)
+                                # before passing to persp-state-default-file.
 
   # Default workspaces created at startup
   # (environments section below also creates workspaces automatically)
@@ -230,7 +251,10 @@ git:
 # ============================================================================
 terminal:
   enable: true                  # Enable VTerm
-  shell: /bin/bash              # Shell to use (leave empty for $SHELL)
+  shell:                        # Shell to use. Leave empty to inherit $SHELL.
+                                # Example: /bin/bash (but note: macOS ships old
+                                # bash 3.x; NixOS may not have bash at /bin/bash)
+                                # Leaving empty is the safest default.
   max-scrollback: 100000        # Max scrollback buffer lines
   timer-delay: 0.01             # Timer delay for updates
   kill-buffer-on-exit: true     # Kill buffer when terminal process exits
@@ -247,7 +271,7 @@ debug:
   node: true                    # Node.js — lang-web.el
   go: true                      # Go (Delve) — lang-go.el
   rust: true                    # Rust (LLDB) — lang-rust.el
-  cpp: true                     # C/C++ (LLDB/GDB) — lang-c.el
+  cpp: true                     # C/C++ (LLDB/GDB) — lang-c.el (covers both c and cpp)
   java: true                    # Java (jdtls) — lang-jvm.el
 
 # ============================================================================
@@ -358,6 +382,13 @@ lang-settings:
     lsp-server: metals
     formatter: scalafmt
 
+  # FIX: groovy stub added — was enabled in languages: but had no lang-settings
+  # entry. Absent entries cause emacs-ide-config-get-nested to return nil
+  # silently. Add settings here if/when a groovy LSP is available.
+  groovy:
+    lsp-server: ~               # No widely available groovy LSP yet
+    formatter: ~                # No standard groovy formatter yet
+
   lua:
     lsp-server: lua-language-server
     formatter: stylua
@@ -396,6 +427,16 @@ lang-settings:
     lsp-server: zls
     formatter: zigfmt
 
+  # FIX: r and julia stubs added — disabled by default but users enabling them
+  # need settings entries to avoid silent nil returns from config-get-nested.
+  r:
+    lsp-server: r-languageserver   # install.packages("languageserver")
+    formatter: ~                   # No standard R formatter yet
+
+  julia:
+    lsp-server: julia-language-server  # julia -e 'using LanguageServer'
+    formatter: ~                       # No standard Julia formatter yet
+
 # ============================================================================
 # REPL
 # ============================================================================
@@ -411,6 +452,10 @@ repl:
 security:
   tls-verify: true              # Verify TLS certificates
   tls-min-prime-bits: 3072      # Minimum TLS prime bits
+  # allow-unsigned: straight.el recipes may not have GPG signatures for all
+  # packages. Setting to t would block installation of unsigned packages.
+  # allow-unsigned permits installation while still verifying signed ones.
+  # Review periodically — consider t for production/enterprise deployments.
   package-signatures: allow-unsigned  # Options: t, allow-unsigned, nil
   auth-sources:                 # Auth source files (tried in order)
     - ~/.authinfo.gpg
@@ -444,6 +489,7 @@ environments:
     project-search-paths:
       - ~/work/projects
       - ~/work/repos
+    # REQUIRED: replace both values before first use to avoid placeholder commits
     git-user-name: Your Name
     git-user-email: you@company.com
     theme: ef-light              # Light theme for work (updated from modus-operandi)
@@ -457,6 +503,7 @@ environments:
       - ~/code
       - ~/projects
       - ~/github
+    # REQUIRED: replace both values before first use to avoid placeholder commits
     git-user-name: Your Name
     git-user-email: you@personal.com
     theme: ef-dark               # Dark theme for home (updated from modus-vivendi)
@@ -467,9 +514,10 @@ environments:
 # These are user-defined extras on top of keybindings.el.
 # Standard IDE keys (C-c h hydras, C-c x REPL, C-c t tests) are
 # always active regardless of this section.
+# FIX: Examples now use hyphens (not underscores) per the NOTES rule below.
 keybindings:
-  # custom_save: C-x C-s
-  # custom_find_file: C-x C-f
+  # custom-save: C-x C-s
+  # custom-find-file: C-x C-f
 
 # ============================================================================
 # ADVANCED SETTINGS
@@ -482,9 +530,15 @@ advanced:
   custom-requires: []
 
   experimental:
-    use-tree-sitter-everywhere: false   # Replace all major modes with ts variants
-    aggressive-indent: false            # Auto-reindent on every edit
-    auto-save-on-idle: false            # Auto-save buffers after idle seconds
+    # WARNING: may cause instability with major modes lacking tree-sitter grammars.
+    # Only enable if all languages you use have ts-* mode variants available.
+    use-tree-sitter-everywhere: false
+
+    # WARNING: can be slow and disruptive in large files — re-indents on every edit.
+    aggressive-indent: false
+
+    # Auto-saves all file-visiting buffers after idle seconds.
+    auto-save-on-idle: false
 
 # ============================================================================
 # NOTES

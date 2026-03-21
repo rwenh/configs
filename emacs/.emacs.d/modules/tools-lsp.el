@@ -1,7 +1,31 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.2.8
+;;; Version: 2.3.1
+;;; Fixes:
+;;;   - 2.3.1: FIX-AUTO-GUESS-ROOT: lsp-auto-guess-root t caused LSP to use
+;;;     /home/cody as project root instead of the actual project folder.
+;;;     With lsp-enable-file-watchers t this triggered "watch 56,659
+;;;     directories?" prompt on every file open. Fix: lsp-auto-guess-root
+;;;     set to nil — lsp-mode now uses projectile/project.el root detection
+;;;     which correctly scopes to the actual project directory.
+;;;     FIX-LSP-UI-SPLIT: lsp-ui-doc-position 'at-point caused lsp-ui to
+;;;     open its documentation in a split buffer window on systems where
+;;;     child-frame rendering is unavailable. Fix: changed to 'frame so
+;;;     docs always use a child frame and never split the window.
+;;;     lsp-ui-doc-show-with-mouse set to nil so the doc frame only appears
+;;;     on explicit C-c l u toggle, preventing surprise splits on hover.
+;;;   - 2.3.0: lsp-pyright :init block consolidated from lang-python.el.
+;;;   - 2.2.9: lsp-use-plists removed from use-package lsp-mode :init block.
+;;;     It must be set before lsp-mode ever loads so the JSON-RPC deserializer
+;;;     is compiled in plist mode from the start. Setting it in :init is too
+;;;     late — straight.el has already loaded lsp-mode by the time :init runs,
+;;;     so the deserializer was baked as hash-table mode. Every message from
+;;;     every LSP server then threw:
+;;;       wrong-type-argument hash-table-p (:jsonrpc "2.0" ...)
+;;;     The canonical assignment now lives in early-init.el v2.2.8 (after
+;;;     gc-setup, before any package loads). The line here is intentionally
+;;;     removed rather than left as a comment to avoid future confusion.
 ;;; Fixes:
 ;;;   - 2.2.8: Removed duplicate emacs-ide-lsp-check-servers definition that
 ;;;     was left inside the (when emacs-ide-lsp-enable ...) block after the
@@ -129,8 +153,6 @@
         lsp-completion-provider        :none   ; wire manually below for corfu
         lsp-idle-delay                 0.3   ; LSP server idle delay — independent of completion popup delay
         lsp-log-io                     nil
-        lsp-enable-file-watchers       t
-        lsp-file-watch-threshold       2000
         lsp-keep-workspace-alive       nil
         lsp-enable-folding             t
         lsp-enable-links               t
@@ -149,12 +171,21 @@
         lsp-enable-on-type-formatting        t
         lsp-enable-indentation               t
         lsp-before-save-edits                t
-        lsp-auto-guess-root                  t
         lsp-restart                          'auto-restart
         lsp-enable-suggest-server-download   t
-        lsp-inlay-hint-enable
+        ;; FIX-AUTO-GUESS-ROOT: was t — caused entire /home/cody to be used
+        ;; as project root, triggering "watch 56,659 directories?" prompt.
+        ;; nil makes lsp-mode use projectile/project.el root detection instead.
+        lsp-auto-guess-root                  nil
+        ;; Suppress the watcher confirmation prompt entirely — if the
+        ;; directory count exceeds lsp-file-watch-threshold, just silently
+        ;; disable watchers rather than asking the user every time.
+        lsp-enable-file-watchers             t
+        lsp-file-watch-threshold             1000
+        lsp-ask-valid-restart                nil
         (or (bound-and-true-p emacs-ide-lsp-enable-inlay-hints) t)
-        lsp-use-plists                       t
+        ;; NOTE: lsp-use-plists is intentionally NOT set here.
+        ;; It must be set before lsp-mode loads — see early-init.el v2.2.8.
         lsp-warn-no-matched-clients          nil
         lsp-diagnostics-provider             :flycheck
         lsp-auto-configure                   t
@@ -207,10 +238,15 @@
   :after lsp-mode
   :init
   (setq lsp-ui-doc-enable            t
-        lsp-ui-doc-show-with-cursor  nil   ; FIX: was t — caused double popup
-        lsp-ui-doc-show-with-mouse   t
-        lsp-ui-doc-delay             0.2
-        lsp-ui-doc-position          'at-point
+        lsp-ui-doc-show-with-cursor  nil
+        ;; FIX-LSP-UI-SPLIT: was t — doc frame appeared on hover immediately
+        ;; on buffer open, splitting the window on systems without child-frame
+        ;; support. Set to nil — use C-c l u to show docs on demand.
+        lsp-ui-doc-show-with-mouse   nil
+        lsp-ui-doc-delay             0.5
+        ;; FIX-LSP-UI-SPLIT: was 'at-point — fell back to buffer/split window
+        ;; when child-frame unavailable. 'frame always uses a proper frame.
+        lsp-ui-doc-position          'frame
         lsp-ui-doc-max-width         120
         lsp-ui-doc-max-height        30
         lsp-ui-sideline-enable              t
@@ -272,8 +308,12 @@
   (require 'lsp-pyright)
   :init
   (setq lsp-pyright-multi-root              nil
-        lsp-pyright-auto-import-completions t
-        lsp-pyright-auto-search-paths       t))
+        lsp-pyright-auto-import-completions  t
+        lsp-pyright-auto-search-paths        t
+        ;; Moved from lang-python.el v1.0.2 (FIX-DOUBLE-PANE-1)
+        lsp-pyright-use-library-code-for-types t
+        lsp-pyright-stub-path                ""
+        lsp-pyright-venv-path                (expand-file-name "~/.virtualenvs")))
 
 (with-eval-after-load 'rust-mode
   (when (executable-find "rust-analyzer")

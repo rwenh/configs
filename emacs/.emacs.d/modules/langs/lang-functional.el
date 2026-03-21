@@ -1,6 +1,10 @@
 ;;; lang-functional.el --- Functional Languages IDE layer -*- lexical-binding: t -*-
 ;;; Haskell · Clojure · Elixir · Erlang · OCaml
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP-GUARD: All four lsp-deferred hooks (haskell, clojure, elixir,
+;;;     OCaml) were unguarded — fired even when emacs-ide-lsp-enable is nil.
+;;;     Added (bound-and-true-p emacs-ide-lsp-enable) :if guard to each.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "haskell" :tier 3 :lsp-server "haskell-language-server"
@@ -21,7 +25,9 @@
   :config
   (emacs-ide-dev-bind-compile haskell-mode-map
     (lambda () (interactive) (compile (format "runhaskell %s" (shell-quote-argument (buffer-file-name)))))))
-(use-package lsp-haskell :if (emacs-ide-dev-lang-enabled-p "haskell")
+(use-package lsp-haskell
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "haskell"))
   :hook (haskell-mode . lsp-deferred)
   :init (setq lsp-haskell-formatting-provider "ormolu"))
 (with-eval-after-load 'apheleia
@@ -44,14 +50,19 @@
   :init (setq cider-repl-display-help-banner nil cider-repl-use-pretty-printing t))
 (use-package clj-refactor :after clojure-mode
   :hook (clojure-mode . clj-refactor-mode))
-(use-package lsp-mode :if (executable-find "clojure-lsp")
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (executable-find "clojure-lsp"))
   :hook (clojure-mode . lsp-deferred))
 
 ;; ── Elixir ────────────────────────────────────────────────────────────────
 (use-package elixir-mode
   :if (and (emacs-ide-dev-lang-enabled-p "elixir") (executable-find "elixir"))
   :defer t :mode (("\\.ex\\'" . elixir-mode) ("\\.exs\\'" . elixir-mode)))
-(use-package lsp-mode :if (and (emacs-ide-dev-lang-enabled-p "elixir") (executable-find "elixir-ls"))
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "elixir")
+           (executable-find "elixir-ls"))
   :hook (elixir-mode . lsp-deferred))
 (use-package alchemist :if (emacs-ide-dev-lang-enabled-p "elixir") :after elixir-mode)
 
@@ -59,7 +70,10 @@
 (use-package tuareg
   :if (and (emacs-ide-dev-lang-enabled-p "ocaml") (executable-find "ocaml"))
   :defer t :mode (("\\.ml\\'" . tuareg-mode) ("\\.mli\\'" . tuareg-mode)))
-(use-package lsp-mode :if (and (emacs-ide-dev-lang-enabled-p "ocaml") (executable-find "ocamllsp"))
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "ocaml")
+           (executable-find "ocamllsp"))
   :hook (tuareg-mode . lsp-deferred))
 
 ;; ── Erlang ────────────────────────────────────────────────────────────────

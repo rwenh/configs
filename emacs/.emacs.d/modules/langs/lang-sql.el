@@ -1,5 +1,9 @@
 ;;; lang-sql.el --- SQL IDE layer -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP-GUARD: sql-mode lsp-deferred hook was unguarded — fired even
+;;;     when emacs-ide-lsp-enable is nil in config.yml.
+;;;     Added (bound-and-true-p emacs-ide-lsp-enable) :if guard.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "sql" :tier 2 :lsp-server "sqls"
@@ -8,7 +12,9 @@
 (use-package sql :straight nil :defer t
   :mode "\\.sql\\'"
   :init (setq sql-product 'postgres))
-(use-package lsp-mode :if (executable-find "sqls")
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (executable-find "sqls"))
   :hook (sql-mode . lsp-deferred))
 (use-package sqlformat :if (executable-find "pg_format")
   :hook (sql-mode . sqlformat-on-save-mode)

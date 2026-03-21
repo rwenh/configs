@@ -1,8 +1,17 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; v3.0.1: Fixes: removed duplicate electric-pair-mode (FIX-9) and duplicate
-;;; dumb-jump block (FIX-10). All other features from 3.0.0 unchanged.
-;;; Version: 3.0.1
+;;; v3.0.2 fixes:
+;;;   - FIX-MEOW-KEY: (assoc "editing" emacs-ide-config-data) used string keys
+;;;     but the YAML parser interns all top-level keys as symbols. assoc with a
+;;;     string against a symbol-keyed alist always returns nil — Meow was never
+;;;     auto-enabled from config.yml even when editing.meow: true was set.
+;;;     This is the same class of bug fixed in core-dev.el as FIX-6b.
+;;;     Fix: changed both assoc calls to use the symbol 'editing and 'meow,
+;;;     matching the keys as actually produced by the YAML parser.
+;;; v3.0.1 fixes:
+;;;   - FIX-9: removed duplicate electric-pair-mode (init.el already enables it).
+;;;   - FIX-10: removed duplicate dumb-jump block (tools-lsp.el owns dumb-jump).
+;;; Version: 3.0.2
 ;;; Code:
 
 ;; ============================================================================
@@ -103,10 +112,13 @@
     (message "Meow installed. Run M-x emacs-ide-toggle-meow to enable.")))
 
 ;; Auto-enable Meow if config.yml has editing.meow: true
+;; FIX-MEOW-KEY: YAML parser interns keys as symbols, not strings.
+;; Changed (assoc "editing" ...) → (assoc 'editing ...) and
+;;         (assoc "meow" ...)    → (assoc 'meow ...) in both places.
 (with-eval-after-load 'emacs-ide-config
   (when (and (boundp 'emacs-ide-config-data)
-             (let ((editing (cdr (assoc "editing" emacs-ide-config-data))))
-               (and editing (cdr (assoc "meow" editing)))))
+             (let ((editing (cdr (assoc 'editing emacs-ide-config-data))))
+               (and editing (cdr (assoc 'meow editing)))))
     (add-hook 'after-init-hook
               (lambda ()
                 (when (require 'meow nil 'noerror)
@@ -117,8 +129,8 @@
 (use-package meow
   :if (or emacs-ide-meow-enabled
           (and (boundp 'emacs-ide-config-data)
-               (let ((e (cdr (assoc "editing" emacs-ide-config-data))))
-                 (and e (cdr (assoc "meow" e))))))
+               (let ((e (cdr (assoc 'editing emacs-ide-config-data))))
+                 (and e (cdr (assoc 'meow e))))))
   :defer t)
 
 ;; ============================================================================

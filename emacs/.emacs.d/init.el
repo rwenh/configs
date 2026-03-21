@@ -2,6 +2,33 @@
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
 ;;; Version: 3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION-CONST: emacs-ide-version constant updated from "3.0.0"
+;;;     to "3.0.4". Previously all user-visible commands (emacs-ide-show-version,
+;;;     emacs-ide-startup-report, emacs-ide-diagnose) displayed "v3.0.0".
+;;;   - FIX-RECURSE-SPOT: emacs-ide-spot-check stub now uses the same featurep
+;;;     guard pattern introduced for emacs-ide-run-tests in v3.0.4. Previously
+;;;     the stub called (call-interactively #'emacs-ide-spot-check) after
+;;;     load-file unconditionally, risking infinite recursion if the file loaded
+;;;     but did not provide the feature.
+;;;   - FIX-DIAG-ORDER: emacs-ide-diagnose feature module table reordered to
+;;;     mirror emacs-ide-feature-modules load order exactly. tools-project-detect
+;;;     was listed after tools-project but actually loads after debug-core.
+;;;   - FIX-DIAGNOSE: emacs-ide-test and emacs-ide-spot-check added to the
+;;;     core module section of emacs-ide-diagnose — previously absent despite
+;;;     being loaded at startup.
+;;;   - FIX-FSET: (fset 'yes-or-no-p 'y-or-n-p) replaced with
+;;;     (setq use-short-answers t) on Emacs 28+, with fset as a fallback for
+;;;     Emacs < 28. fset on a built-in generates a byte-compiler note in 29+.
+;;;   - FIX-PURGE-RECURSIVE: emacs-ide-purge-bytecode-cache now uses
+;;;     directory-files-recursively for source dirs. The previous
+;;;     directory-files was non-recursive and would miss .elc/.eln files
+;;;     in any nested subdirectories.
+;;;   - FIX-RELOAD-DOC: emacs-ide-reload docstring corrected — it only reloads
+;;;     init.el, not early-init.el. Docstring previously said "entire config".
+;;;   - FIX-SESSION-DATE: emacs-ide-build-date renamed to emacs-ide-session-date.
+;;;     "Build date" implied a timestamp fixed at install time; this constant is
+;;;     recomputed every session. Deprecated alias emacs-ide-build-date retained.
 ;;; Fixes vs 3.0.3:
 ;;;   - FIX-CUSTOM: (boundp 'custom-file) is always t — custom-file is a
 ;;;     built-in Emacs variable that defaults to nil, not unbound. The guard
@@ -62,14 +89,21 @@
 ;; ============================================================================
 ;; ENTERPRISE METADATA
 ;; ============================================================================
-(defconst emacs-ide-version "3.0.0"
+(defconst emacs-ide-version "3.0.4"
   "Enterprise Emacs IDE version.")
 
 (defconst emacs-ide-minimum-emacs-version "29.1"
   "Minimum required Emacs version.")
 
-(defconst emacs-ide-build-date (format-time-string "%Y-%m-%d")
-  "Build date — computed at load time.")
+;; FIX-BUILD-DATE: Renamed from emacs-ide-build-date — "build date" implies
+;; a timestamp stamped once at install time, but this is recomputed every
+;; startup. emacs-ide-session-date is accurate. The old name is kept as a
+;; deprecated alias for any code that may reference it.
+(defconst emacs-ide-session-date (format-time-string "%Y-%m-%d")
+  "Date of the current Emacs session — computed at load time.")
+
+(define-obsolete-variable-alias
+  'emacs-ide-build-date 'emacs-ide-session-date "3.0.4")
 
 ;; ============================================================================
 ;; VERSION CHECK
@@ -281,7 +315,12 @@ exact file path given, making all defun/defvar forms available."
         delete-old-versions       t
         create-lockfiles          nil)
 
-  (fset 'yes-or-no-p 'y-or-n-p)
+  ;; FIX-FSET: (fset 'yes-or-no-p 'y-or-n-p) is deprecated in Emacs 28+.
+  ;; The idiomatic replacement is use-short-answers, which is cleaner and
+  ;; avoids aliasing a built-in via fset.
+  (if (boundp 'use-short-answers)
+      (setq use-short-answers t)
+    (fset 'yes-or-no-p 'y-or-n-p))  ; fallback for Emacs < 28
 
   (setq inhibit-startup-screen    t
         inhibit-startup-message   t
@@ -543,7 +582,18 @@ Check: M-x emacs-ide-recovery-view-log"
   (interactive)
   (let ((f (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
     (if (file-exists-p f)
-        (progn (load-file f) (call-interactively #'emacs-ide-spot-check))
+        (progn
+          (load-file f)
+          ;; FIX-RECURSE (spot-check): Mirror the same fix applied to
+          ;; emacs-ide-run-tests in v3.0.4. If load-file succeeded and
+          ;; emacs-ide-spot-check.el provided its feature, the real function
+          ;; has replaced this stub — call it. If featurep is not set, the
+          ;; file loaded but did not provide the feature; calling
+          ;; (call-interactively #'emacs-ide-spot-check) would re-enter this
+          ;; stub and recurse infinitely.
+          (if (featurep 'emacs-ide-spot-check)
+              (call-interactively #'emacs-ide-spot-check)
+            (message "✗ emacs-ide-spot-check.el loaded but feature not provided")))
       (message "✗ emacs-ide-spot-check.el not found: %s" f))))
 
 (let ((sc-file (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
@@ -577,7 +627,12 @@ Run this when M-x commands seem missing."
                (emacs-ide-package  . emacs-ide-package-report)
                (emacs-ide-profiler . emacs-ide-profile-start)
                (emacs-ide-security . emacs-ide-security-check)
-               (emacs-ide-telemetry . emacs-ide-telemetry-report)))
+               (emacs-ide-telemetry . emacs-ide-telemetry-report)
+               ;; FIX-DIAGNOSE: emacs-ide-test and emacs-ide-spot-check are
+               ;; loaded outside the core-modules loop — include them here so
+               ;; M-x emacs-ide-diagnose shows their status.
+               (emacs-ide-test       . emacs-ide-run-tests)
+               (emacs-ide-spot-check . emacs-ide-spot-check)))
       (let* ((feat (car entry))
              (cmd  (cdr entry))
              (provided (featurep feat))
@@ -593,6 +648,10 @@ Run this when M-x commands seem missing."
     ;; ── Feature modules ───────────────────────────────────────────────────
     (princ "\nFEATURE MODULES:\n")
     (dolist (entry
+             ;; FIX-DIAG-ORDER: Table order now mirrors emacs-ide-feature-modules
+             ;; load order exactly. Previously tools-project-detect appeared after
+             ;; tools-project (before tools-git), but it actually loads after
+             ;; debug-core. Mismatched order confused readers comparing the two.
              '(("ui-core"                    ui-core          emacs-ide-presentation-mode)
                ("ui-theme"                   ui-theme         emacs-ide-toggle-theme)
                ("ui-modeline"                ui-modeline      nil)
@@ -604,12 +663,10 @@ Run this when M-x commands seem missing."
                ("core-dev"                   core-dev         emacs-ide-dev-lang-enabled-p)
                ("tools-lsp"                  tools-lsp        emacs-ide-lsp-status)
                ("tools-project"              tools-project    nil)
-               ("tools-project-detect"       tools-project-detect emacs-ide-detect-show-status)
                ("tools-git"                  tools-git        nil)
                ("tools-terminal"             tools-terminal   nil)
                ("tools-format"               tools-format     nil)
                ("apheleia-langs-patch"        apheleia-langs-patch nil)
-               ("tools-repl"                 tools-repl       emacs-ide-repl-status)
                ("tools-org"                  tools-org        nil)
                ("tools-spelling"             tools-spelling   nil)
                ("tools-notes"                tools-notes      nil)
@@ -617,6 +674,8 @@ Run this when M-x commands seem missing."
                ("tools-test-runner-registry"  tools-test-runner-registry emacs-ide-test-runner-status)
                ("tools-test"                 tools-test       emacs-ide-test-run)
                ("debug-core"                 debug-core       nil)
+               ("tools-repl"                 tools-repl       emacs-ide-repl-status)
+               ("tools-project-detect"       tools-project-detect emacs-ide-detect-show-status)
                ("tools-hydra"                tools-hydra      nil)
                ("keybindings"                keybindings      emacs-ide-show-keybindings-help)))
       (let* ((name     (nth 0 entry))
@@ -671,10 +730,10 @@ Run this when M-x commands seem missing."
 (defun emacs-ide-show-version ()
   "Display version and system info."
   (interactive)
-  (message "Emacs IDE v%s | Emacs %s | %s | Build: %s"
+  (message "Emacs IDE v%s | Emacs %s | %s | Session: %s"
            emacs-ide-version emacs-version
            (or (bound-and-true-p emacs-ide-display-server) "TTY")
-           emacs-ide-build-date))
+           emacs-ide-session-date))
 
 (defun emacs-ide-startup-report ()
   "Display detailed startup report."
@@ -683,7 +742,8 @@ Run this when M-x commands seem missing."
     (princ (format "=== EMACS IDE v%s STARTUP REPORT ===\n\n" emacs-ide-version))
     (princ (format "Emacs:   %s\n" emacs-version))
     (princ (format "Display: %s\n" (or (bound-and-true-p emacs-ide-display-server) "TTY")))
-    (princ (format "CPUs:    %d\n\n" (or (bound-and-true-p emacs-ide-processor-count) 4)))
+    (princ (format "CPUs:    %d\n" (or (bound-and-true-p emacs-ide-processor-count) 4)))
+    (princ (format "Session: %s\n\n" emacs-ide-session-date))
     (princ "Startup Phases:\n")
     (dolist (phase (reverse emacs-ide--startup-phases))
       (princ (format "  %-35s %.3fs\n" (car phase) (cdr phase))))
@@ -693,9 +753,12 @@ Run this when M-x commands seem missing."
     (princ "Run M-x emacs-ide-detect-show-status for pre-warm state.\n")))
 
 (defun emacs-ide-reload ()
-  "Reload entire configuration."
+  "Reload init.el configuration.
+NOTE: This reloads init.el only — early-init.el settings (GC thresholds,
+frame parameters, LSP plist env var, file-name-handler-alist) are NOT
+re-applied. For a full reset, restart Emacs."
   (interactive)
-  (when (y-or-n-p "Reload entire configuration? ")
+  (when (y-or-n-p "Reload init.el configuration? ")
     (load-file user-init-file)
     (message "✓ Configuration reloaded")))
 
@@ -715,7 +778,8 @@ Run this when M-x commands seem missing."
 (defun emacs-ide-purge-bytecode-cache ()
   "Delete all stale .elc and .eln files from core/, modules/, and modules/langs/.
 Run this after upgrading Emacs (e.g. 29 -> 30) to force fresh
-source loading on next startup."
+source loading on next startup.
+Uses directory-files-recursively so nested subdirectories are also covered."
   (interactive)
   (when (y-or-n-p "Delete all .elc and .eln cache files? ")
     (let ((count 0))
@@ -723,10 +787,13 @@ source loading on next startup."
                          (expand-file-name "modules/"      user-emacs-directory)
                          (expand-file-name "modules/langs/" user-emacs-directory))) ; NEW
         (when (file-directory-p dir)
-          (dolist (file (directory-files dir t "\\.elc$"))
+          ;; FIX-RECURSIVE: Use directory-files-recursively so any nested
+          ;; subdirectories are also scanned. The previous directory-files call
+          ;; was non-recursive and would miss .elc files in subdirs.
+          (dolist (file (directory-files-recursively dir "\\.elc$"))
             (delete-file file)
             (cl-incf count))
-          (dolist (file (directory-files dir t "\\.eln$"))
+          (dolist (file (directory-files-recursively dir "\\.eln$"))
             (delete-file file)
             (cl-incf count))))
       ;; Also clear the var/eln-cache

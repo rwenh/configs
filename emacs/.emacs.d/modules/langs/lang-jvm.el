@@ -1,5 +1,9 @@
 ;;; lang-jvm.el --- JVM IDE layer (Java / Kotlin / Scala / Groovy) -*- lexical-binding: t -*-
-;;; Version: 1.0.1
+;;; Version: 1.0.2
+;;; Fixes vs 1.0.1:
+;;;   - FIX-LSP-GUARD: kotlin-mode and scala-mode lsp-deferred hooks were
+;;;     unguarded — fired even when emacs-ide-lsp-enable is nil.
+;;;     Added (bound-and-true-p emacs-ide-lsp-enable) :hook guard to both.
 ;;; Fixes vs 1.0.0:
 ;;;   - FIX-LSP: Removed lsp-deferred :hook for java-mode from lsp-java.
 ;;;     tools-lsp.el already hooks java-mode to emacs-ide-lsp-deferred-optimized.
@@ -56,7 +60,9 @@
 (use-package kotlin-mode
   :if (emacs-ide-dev-lang-enabled-p "kotlin")
   :defer t :mode (("\\.kt\\'" . kotlin-mode) ("\\.kts\\'" . kotlin-mode))
-  :hook (kotlin-mode . lsp-deferred))
+  :hook (kotlin-mode . (lambda ()
+          (when (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+            (lsp-deferred)))))
 
 (with-eval-after-load 'apheleia
   (when (emacs-ide-dev-lang-enabled-p "kotlin")
@@ -66,7 +72,9 @@
 (use-package scala-mode
   :if (emacs-ide-dev-lang-enabled-p "scala")
   :defer t :mode "\\.\\(scala\\|sbt\\|sc\\)\\'"
-  :hook (scala-mode . lsp-deferred))
+  :hook (scala-mode . (lambda ()
+          (when (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+            (lsp-deferred)))))
 
 (use-package lsp-metals
   :if (and (emacs-ide-dev-lang-enabled-p "scala")

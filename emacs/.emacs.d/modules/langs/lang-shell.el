@@ -1,5 +1,9 @@
 ;;; lang-shell.el --- Shell IDE layer (Bash/Zsh/Fish/POSIX) -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP-GUARD: lsp-mode :hook (sh-mode . lsp-deferred) was unguarded.
+;;;     Fired even when emacs-ide-lsp-enable is nil, attempting to start LSP
+;;;     on every shell file. Added (bound-and-true-p emacs-ide-lsp-enable) guard.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "shell" :tier 2 :lsp-server "bash-language-server"
@@ -21,7 +25,9 @@
       (if interp (compile (format "%s %s" interp (shell-quote-argument (buffer-file-name))))
         (message "lang-shell: no interpreter found"))))
   (emacs-ide-dev-bind-compile sh-mode-map #'emacs-ide-shell-run))
-(use-package lsp-mode :hook (sh-mode . lsp-deferred))
+(use-package lsp-mode
+  :if (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+  :hook (sh-mode . lsp-deferred))
 (use-package flymake-shellcheck :if (executable-find "shellcheck")
   :hook (sh-mode . flymake-shellcheck-auto))
 (with-eval-after-load 'apheleia

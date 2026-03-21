@@ -1,5 +1,9 @@
 ;;; lang-systems.el --- Systems Languages IDE layer (Zig / Nix / D / V) -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP-GUARD: zig-mode and nix-mode lsp-deferred hooks were unguarded
+;;;     — fired even when emacs-ide-lsp-enable is nil in config.yml.
+;;;     Added (bound-and-true-p emacs-ide-lsp-enable) :if guard to both.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "zig" :tier 3 :lsp-server "zls" :formatter "zig fmt"
@@ -19,7 +23,10 @@
   :config
   (emacs-ide-dev-bind-compile zig-mode-map
     (lambda () (interactive) (compile "zig build"))))
-(use-package lsp-mode :if (and (emacs-ide-dev-lang-enabled-p "zig") (executable-find "zls"))
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "zig")
+           (executable-find "zls"))
   :hook (zig-mode . lsp-deferred))
 (with-eval-after-load 'dap-mode
   (when (emacs-ide-dev-lang-enabled-p "zig")
@@ -35,7 +42,10 @@
     (if (executable-find "nix") (progn (require 'comint) (make-comint "nix-repl" "nix" nil "repl") (switch-to-buffer "*nix-repl*"))
       (message "lang-systems: nix not found")))
   (emacs-ide-dev-attach-repl nix-mode-map #'emacs-ide-nix-repl))
-(use-package lsp-mode :if (and (emacs-ide-dev-lang-enabled-p "nix") (executable-find "nil"))
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "nix")
+           (executable-find "nil"))
   :hook (nix-mode . lsp-deferred))
 (with-eval-after-load 'apheleia
   (when (and (emacs-ide-dev-lang-enabled-p "nix") (executable-find "nixpkgs-fmt"))

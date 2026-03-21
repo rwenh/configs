@@ -1,6 +1,14 @@
 ;;; lang-c.el --- C / C++ / CUDA / CMake IDE layer -*- lexical-binding: t -*-
-;;; Version: 1.0.1
-;;; Fixes vs 1.0.0:
+;;; Version: 1.0.3
+;;; Fixes vs 1.0.2:
+;;;   - FIX-TREESIT-CPP-NAME: Reverted (emacs-ide-dev-ensure-treesit 'c++) back
+;;;     to (emacs-ide-dev-ensure-treesit 'cpp). The treesit recipe key for C++
+;;;     is 'cpp — matching the shared library name libtree-sitter-cpp.so and the
+;;;     convention in treesit-language-source-alist. Using 'c++ failed because
+;;;     Emacs looks up the symbol directly as the alist key. The real fix is in
+;;;     core-dev.el v1.0.4 which populates treesit-language-source-alist with
+;;;     the source URL before calling treesit-install-language-grammar.
+;;; Fixes vs 1.0.1:
 ;;;   - FIX-LSP: Removed lsp-deferred :hook from cc-mode use-package.
 ;;;     tools-lsp.el already hooks c-mode and c++-mode to
 ;;;     emacs-ide-lsp-deferred-optimized. The extra hook here caused LSP
@@ -11,7 +19,7 @@
   :formatter "clang-format" :test-cmd "ctest" :repl nil :modes '(c-mode c++-mode c-ts-mode c++-ts-mode))
 (when (emacs-ide-dev-lang-enabled-p "c")
 (emacs-ide-dev-ensure-treesit 'c)
-(emacs-ide-dev-ensure-treesit 'cpp)
+(emacs-ide-dev-ensure-treesit 'cpp)   ; FIX-TREESIT-CPP-NAME: 'cpp is correct recipe key
 (use-package cc-mode
   :straight nil :defer t
   :mode (("\\.c\\'" . c-mode) ("\\.h\\'" . c-mode)

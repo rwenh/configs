@@ -1,11 +1,17 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.5
-;;; Fix 3.0.5: emacs-ide-dashboard--workspace-section had 2 extra closing
-;;;   parens — one after '(:foreground "#888888") and one after (insert " ").
-;;;   This was a pre-existing bug in the original source. The imbalance caused
-;;;   (invalid-read-syntax ) 72 22) at load time, crashing the entire module
-;;;   and blocking Emacs startup (5912s hang in the warning log).
+;;; Version: 3.0.6
+;;; Fix 3.0.6: FIX-DASHBOARD-SPLIT: When initial-buffer-choice returns the
+;;;   dashboard buffer, Emacs shows dashboard in window 1 and any subsequently
+;;;   opened file in window 2 — producing a permanent horizontal split every
+;;;   time a .py, .c, or any file is opened. Two fixes applied:
+;;;   1. Added emacs-ide-dashboard--kill-on-file-open: a find-file-hook that
+;;;      deletes the dashboard window and kills the dashboard buffer the moment
+;;;      a real file is opened, leaving only the file in a single full window.
+;;;   2. Set dashboard-buffer-last-window-pos to nil after setup so dashboard
+;;;      does not try to restore its own window layout on the next redisplay.
+;;;   Together these ensure the dashboard is a true splash screen: visible at
+;;;   startup, gone the instant you open anything real.
 ;;; Fix 3.0.4 (retained): dashboard-item-generators/shortcuts registration moved inside
 ;;;   the use-package :config block (FIX-7). Top-level defvar + add-to-list
 ;;;   before dashboard loaded clobbered dashboard's own variable defaults.
@@ -172,6 +178,30 @@
                              (with-current-buffer "*dashboard*"
                                (when (fboundp 'dashboard-refresh-buffer)
                                  (dashboard-refresh-buffer))))))
+
+    ;; ── FIX-DASHBOARD-SPLIT ──────────────────────────────────────────────
+    ;; Kill dashboard window+buffer the instant a real file is opened.
+    ;; Without this, dashboard stays in window 1 and the file opens in
+    ;; window 2 producing a permanent horizontal split on every file open.
+    (defun emacs-ide-dashboard--kill-on-file-open ()
+      "Close dashboard window and kill its buffer when a real file opens.
+Removes itself from `find-file-hook' after first run so it only fires once."
+      (when (and buffer-file-name
+                 (not (string= (buffer-name) "*dashboard*")))
+        (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
+                                      "*dashboard*"))))
+          (when db-buf
+            ;; Delete the window showing dashboard if it exists
+            (let ((db-win (get-buffer-window db-buf)))
+              (when (and db-win (not (one-window-p)))
+                (delete-window db-win)))
+            ;; Kill the buffer itself so it doesn't linger
+            (kill-buffer db-buf)))
+        ;; Self-removing — only needs to run once per session
+        (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)))
+
+    (add-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)
+
     (setq initial-buffer-choice
           (lambda ()
             (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)

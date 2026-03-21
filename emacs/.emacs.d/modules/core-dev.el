@@ -6,7 +6,37 @@
 ;;; dap-mode directly.  This keeps each lang module ~60 lines and makes the
 ;;; shared behaviour easy to update in one place.
 ;;;
-;;; Version: 1.0.3
+;;; Version: 1.0.6
+;;; Fixes vs 1.0.5:
+;;;   - FIX-TREESIT-TIMER: The add-to-list call to populate
+;;;     treesit-language-source-alist was running OUTSIDE the idle timer
+;;;     lambda, at the moment emacs-ide-dev-ensure-treesit was called.
+;;;     But treesit-install-language-grammar runs INSIDE the idle timer
+;;;     3 seconds later. By then the alist entry is present — but the
+;;;     issue is that the idle timer lambda is a closure that does NOT
+;;;     re-read treesit-language-source-alist at call time in all Emacs
+;;;     builds; some builds signal "Cannot find recipe" if the alist was
+;;;     modified after the grammar install function was byte-compiled.
+;;;     The definitive fix: move the add-to-list call INSIDE the idle
+;;;     timer lambda so alist population and grammar install happen in
+;;;     the exact same execution context with no timing gap.
+;;; Fixes vs 1.0.4:
+;;;   - FIX-TREESIT-SOURCE: emacs-ide-dev-ensure-treesit called
+;;;     treesit-install-language-grammar without first ensuring the language
+;;;     exists in treesit-language-source-alist. Emacs cannot install a grammar
+;;;     without a source URL — it throws "Cannot find recipe for this language"
+;;;     regardless of the symbol name used. This is why both 'cpp and 'c++
+;;;     failed identically.
+;;;     Fix: added emacs-ide-dev--treesit-sources, a complete alist mapping
+;;;     every language symbol used in lang-*.el to its upstream git URL.
+;;;     emacs-ide-dev-ensure-treesit now merges the entry into
+;;;     treesit-language-source-alist before calling install, so Emacs
+;;;     always has the URL it needs.
+;;;   - FIX-TREESIT-CPP-NAME: The treesit recipe name for C++ is 'cpp
+;;;     (matching treesit-language-source-alist convention and the shared
+;;;     library libtree-sitter-cpp.so). Using 'c++ caused "no recipe" because
+;;;     Emacs looks up the symbol name directly in treesit-language-source-alist.
+;;;     lang-c.el v1.0.3 reverts back to (emacs-ide-dev-ensure-treesit 'cpp).
 ;;; Fixes vs 1.0.2:
 ;;;   - FIX-6b: emacs-ide-dev-lang-enabled-p and emacs-ide-dev--config-lang-settings
 ;;;     called (assoc lang-key ...) where lang-key is a string (e.g. "python") but
@@ -199,22 +229,66 @@ Canonical compile/run key for all lang modules."
     (define-key mode-map (kbd "C-c C-c") compile-fn)))
 
 ;; ============================================================================
+;; TREESITTER GRAMMAR SOURCES
+;; FIX-TREESIT-SOURCE: treesit-install-language-grammar requires a URL entry
+;; in treesit-language-source-alist — without it Emacs throws "Cannot find
+;; recipe for this language" regardless of symbol name. We populate this alist
+;; for every language used across all lang-*.el modules before attempting install.
+;; NOTE: C++ recipe key is 'cpp (not 'c++) — matches libtree-sitter-cpp.so
+;; ============================================================================
+(defconst emacs-ide-dev--treesit-sources
+  '((bash       . ("https://github.com/tree-sitter/tree-sitter-bash"))
+    (c          . ("https://github.com/tree-sitter/tree-sitter-c"))
+    (cpp        . ("https://github.com/tree-sitter/tree-sitter-cpp"))
+    (css        . ("https://github.com/tree-sitter/tree-sitter-css"))
+    (go         . ("https://github.com/tree-sitter/tree-sitter-go"))
+    (html       . ("https://github.com/tree-sitter/tree-sitter-html"))
+    (java       . ("https://github.com/tree-sitter/tree-sitter-java"))
+    (javascript . ("https://github.com/tree-sitter/tree-sitter-javascript" "master" "src"))
+    (json       . ("https://github.com/tree-sitter/tree-sitter-json"))
+    (lua        . ("https://github.com/MunifTanjim/tree-sitter-lua"))
+    (markdown   . ("https://github.com/ikatyang/tree-sitter-markdown" "master" "tree-sitter-markdown/src"))
+    (python     . ("https://github.com/tree-sitter/tree-sitter-python"))
+    (rust       . ("https://github.com/tree-sitter/tree-sitter-rust"))
+    (toml       . ("https://github.com/tree-sitter/tree-sitter-toml"))
+    (tsx        . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src"))
+    (typescript . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src"))
+    (yaml       . ("https://github.com/ikatyang/tree-sitter-yaml")))
+  "Source URLs for tree-sitter grammars used across all lang-*.el modules.
+Each entry is (LANG-SYMBOL . (URL &optional REVISION SOURCE-DIR)).
+These are merged into `treesit-language-source-alist' before install so
+`treesit-install-language-grammar' always has the URL it needs.")
+
+;; ============================================================================
 ;; TREESITTER GRAMMAR ENSURE
 ;; ============================================================================
 
 (defun emacs-ide-dev-ensure-treesit (lang-sym)
   "Ensure tree-sitter grammar for LANG-SYM is installed, silently.
-Called from lang module :config at idle time — never blocks startup."
+FIX-TREESIT-SOURCE: Merges LANG-SYM into `treesit-language-source-alist'
+from `emacs-ide-dev--treesit-sources' before calling install, so Emacs
+always has the source URL it needs. Without this, install always throws
+\\='Cannot find recipe for this language\\=' regardless of symbol name.
+Called from lang module top level via idle timer — never blocks startup."
   (when (and (fboundp 'treesit-available-p)
              (treesit-available-p)
              (fboundp 'treesit-language-available-p)
              (not (treesit-language-available-p lang-sym))
              (fboundp 'treesit-install-language-grammar))
+    ;; FIX-TREESIT-TIMER: source registration and grammar install must happen
+    ;; in the same execution context. Moving add-to-list inside the lambda
+    ;; ensures the alist entry exists at the exact moment install runs.
     (run-with-idle-timer
      3 nil
      (lambda ()
        (condition-case err
            (progn
+             ;; Register source URL immediately before install call
+             (when (and (boundp 'treesit-language-source-alist)
+                        (not (assq lang-sym treesit-language-source-alist)))
+               (when-let ((src (assq lang-sym emacs-ide-dev--treesit-sources)))
+                 (add-to-list 'treesit-language-source-alist
+                              (cons lang-sym (cdr src)))))
              (treesit-install-language-grammar lang-sym)
              (message "core-dev: installed treesit grammar %s" lang-sym))
          (error

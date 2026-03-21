@@ -1,5 +1,9 @@
 ;;; lang-data.el --- Data Science IDE layer (R / Julia / Notebooks) -*- lexical-binding: t -*-
-;;; Version: 1.0.0
+;;; Version: 1.0.1
+;;; Fixes vs 1.0.0:
+;;;   - FIX-LSP-GUARD: ess-r-mode and julia-mode lsp-deferred hooks were
+;;;     unguarded — fired even when emacs-ide-lsp-enable is nil in config.yml.
+;;;     Added (bound-and-true-p emacs-ide-lsp-enable) :if guard to both.
 ;;; Code:
 (require 'core-dev)
 (emacs-ide-dev-register "r" :tier 2 :lsp-server "r-languageserver"
@@ -25,7 +29,9 @@
       (message "lang-data: Rscript not found")))
   (emacs-ide-dev-bind-compile ess-r-mode-map #'emacs-ide-r-run))
 
-(use-package lsp-mode :if (emacs-ide-dev-lang-enabled-p "r")
+(use-package lsp-mode
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "r"))
   :hook (ess-r-mode . lsp-deferred))
 
 ;; ── Julia ─────────────────────────────────────────────────────────────────
@@ -46,7 +52,9 @@
   :hook (julia-mode . julia-repl-mode)
   :bind (:map julia-mode-map ("C-c r" . julia-repl)))
 
-(use-package lsp-julia :if (emacs-ide-dev-lang-enabled-p "julia")
+(use-package lsp-julia
+  :if (and (bound-and-true-p emacs-ide-lsp-enable)  ; FIX-LSP-GUARD
+           (emacs-ide-dev-lang-enabled-p "julia"))
   :after julia-mode :hook (julia-mode . lsp-deferred))
 
 ;; ── Jupyter notebooks ─────────────────────────────────────────────────────

@@ -3,24 +3,24 @@
 ;;; Canonical lang module template.  Every other lang-*.el follows this
 ;;; exact section order and uses the same core-dev.el API calls.
 ;;;
-;;; TEMPLATE SECTIONS (replicate verbatim, fill in lang-specific values):
-;;;   1. Registration       → emacs-ide-dev-register
-;;;   2. Config guard       → emacs-ide-dev-lang-enabled-p
-;;;   3. Treesitter         → emacs-ide-dev-ensure-treesit
-;;;   4. Major mode         → use-package :mode/:interpreter/:hook
-;;;   5. LSP server         → use-package + emacs-ide-dev-lsp-hook
-;;;   6. Formatter          → emacs-ide-dev-attach-formatter
-;;;   7. REPL               → emacs-ide-dev-attach-repl
-;;;   8. Test runner        → use-package or defun wired to tools-test
-;;;   9. Debugger           → emacs-ide-dev-attach-dap
-;;;  10. Project mgmt       → optional (poetry/pipenv/etc.)
-;;;  11. Extras             → refactoring, docstring, notebooks
-;;;
-;;; Lazy loading: nothing here runs at startup.  The major-mode :mode
-;;; entry triggers on first .py file open; every subsequent use-package
-;;; uses :after python or :hook python-mode.
-;;;
-;;; Version: 1.0.1
+;;; Version: 1.0.2
+;;; Fixes vs 1.0.1:
+;;;   - FIX-DOUBLE-PANE-1: Duplicate lsp-pyright use-package block removed.
+;;;     tools-lsp.el already owns lsp-pyright loading via its own
+;;;     (use-package lsp-pyright :after lsp-mode :config (require 'lsp-pyright))
+;;;     block. Having a second (use-package lsp-pyright :after python ...) here
+;;;     caused use-package to fire lsp-pyright setup twice — once when lsp-mode
+;;;     loaded and once when python loaded — triggering two LSP sessions and
+;;;     splitting the frame into two panes.
+;;;     Fix: removed the entire lsp-pyright use-package block from this file.
+;;;     The :init vars (lsp-pyright-use-library-code-for-types etc.) are moved
+;;;     to tools-lsp.el v2.3.0 where lsp-pyright is canonically owned.
+;;;   - FIX-DOUBLE-PANE-2: sphinx-doc-mode was hooked to python-mode via
+;;;     :hook (python-mode . sphinx-doc-mode). sphinx-doc-mode calls
+;;;     (run-python) on activation which opens a Python shell buffer and
+;;;     splits the window every time a .py file is opened.
+;;;     Fix: removed the :hook — sphinx-doc-mode is now :defer t only.
+;;;     Users can enable it manually with M-x sphinx-doc-mode when needed.
 ;;; Fixes vs 1.0.0:
 ;;;   - FIX-4: Removed :hook from lsp-pyright use-package. tools-lsp.el already
 ;;;     hooks python-mode to lsp-deferred and requires lsp-pyright eagerly.
@@ -91,22 +91,13 @@
 
 ;; ============================================================================
 ;; 5. LSP — PYRIGHT (preferred) or PYLSP (fallback)
-;; FIX-4: :hook removed. tools-lsp.el hooks python-mode → lsp-deferred AND
-;;   requires lsp-pyright eagerly in its :config, registering the pyright
-;;   server before any Python buffer opens. A second hook here caused LSP
-;;   to start twice. The :init vars are kept — they configure pyright before
-;;   the server is selected by lsp-mode.
+;; FIX-DOUBLE-PANE-1: lsp-pyright use-package block removed entirely.
+;;   tools-lsp.el owns lsp-pyright — it requires it eagerly in :config and
+;;   sets lsp-pyright-multi-root/auto-import/auto-search-paths there.
+;;   A second use-package lsp-pyright here (:after python) fired setup twice,
+;;   triggering two LSP sessions and splitting the frame into two panes.
+;;   The pyright :init vars below have been moved to tools-lsp.el v2.3.0.
 ;; ============================================================================
-(use-package lsp-pyright
-  :if (or (executable-find "pyright")
-          (executable-find "pyright-langserver"))
-  :after python
-  :init
-  (setq lsp-pyright-use-library-code-for-types  t
-        lsp-pyright-auto-import-completions      t
-        lsp-pyright-stub-path                    ""
-        lsp-pyright-venv-path                    (expand-file-name "~/.virtualenvs")
-        lsp-pyright-multi-root                   nil))
 
 ;; Fallback to pylsp when pyright is absent
 (with-eval-after-load 'python
@@ -246,10 +237,14 @@
 ;; ============================================================================
 
 ;; Docstring generation (Google / NumPy / Sphinx styles)
+;; FIX-DOUBLE-PANE-2: :hook (python-mode . sphinx-doc-mode) removed.
+;;   sphinx-doc-mode calls (run-python) on activation which opens a Python
+;;   shell buffer and splits the window on every .py file open.
+;;   Now :defer t only — enable manually with M-x sphinx-doc-mode.
 (use-package sphinx-doc
   :if (executable-find "python3")
   :after python
-  :hook (python-mode . sphinx-doc-mode)
+  :defer t
   :bind (:map python-mode-map
               ("C-c d" . sphinx-doc)))
 
