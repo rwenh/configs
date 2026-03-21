@@ -25,8 +25,10 @@
 ;;;     defcustom initialises after config-apply runs.
 ;;;   - FIX-INDENT4-WARN: Added warn when indent-4 line is dropped because
 ;;;     current-subsection is nil — makes silent parser drops detectable.
-;;;   - DOC-APPLY: Added comment to emacs-ide-config-apply explaining which
-;;;     keys it wires directly vs which are read lazily by modules.
+;;;   - FIX-PKG-THRESHOLD: performance.slow-package-threshold added to
+;;;     emacs-ide-config-apply, emacs-ide-config-defaults, and the template.
+;;;     Wires config.yml value to emacs-ide-package-slow-threshold when the
+;;;     package module is loaded.
 ;;;   - DOC-ENV: Added comment recommending EMACS_ENVIRONMENT env var over
 ;;;     hostname-based auto-detection.
 ;;; Fixes vs 2.2.8:
@@ -170,7 +172,8 @@
     (performance
      (gc-threshold . 16777216)
      (startup-time-target . 3.0)
-     (native-comp-jobs . 4))
+     (native-comp-jobs . 4)
+     (slow-package-threshold . 0.1))
     (features
      (dashboard . t)
      (which-key . t)
@@ -523,7 +526,14 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
           (setq emacs-ide-startup-time-target (val 'startup-time-target perf)))
         (when (assoc 'native-comp-jobs perf)
           (setq emacs-ide-native-comp-jobs
-                (max 1 (val 'native-comp-jobs perf))))))
+                (max 1 (val 'native-comp-jobs perf))))
+        ;; FIX-PKG-THRESHOLD: Wire performance.slow-package-threshold to
+        ;; emacs-ide-package-slow-threshold when the package module is loaded.
+        (when (assoc 'slow-package-threshold perf)
+          (let ((threshold (val 'slow-package-threshold perf)))
+            (when (and (numberp threshold) (> threshold 0)
+                       (boundp 'emacs-ide-package-slow-threshold))
+              (setq emacs-ide-package-slow-threshold threshold))))))
 
     ;; ── Features ─────────────────────────────────────────────────────────────
     (let ((features (section 'features)))
@@ -676,6 +686,7 @@ performance:
   startup-time-target: 3.0
   native-comp-jobs: 4
   read-process-output-max: 4194304
+  slow-package-threshold: 0.1
 
 features:
   dashboard: true
