@@ -1,7 +1,42 @@
 ;;; emacs-ide-health.el --- Enterprise Health Check System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Health monitoring and auto-recovery.
-;;; Version: 2.2.3
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 2.2.3 to 3.0.4.
+;;;   - FIX-STARTUP-REGISTRY: emacs-ide-health-check-startup now iterates
+;;;     emacs-ide-health-checks (the live registry) instead of a hardcoded
+;;;     parallel list. New checks registered by future modules are included
+;;;     in the startup scan automatically.
+;;;   - FIX-CUSTOM-FILE: emacs-ide-health-check-security replaced
+;;;     (boundp 'custom-file) with (stringp custom-file) — custom-file is
+;;;     always bound (built-in, defaults to nil), so (string= nil ...) threw
+;;;     wrong-type-argument. Mirrors FIX-CUSTOM in init.el v3.0.4.
+;;;   - FIX-RESULT-ORDER: emacs-ide-health-check-all now passes the
+;;;     already-reversed results list to emacs-ide-health-display-results so
+;;;     the report buffer and emacs-ide-health-results share the same order.
+;;;   - FIX-FIXABLE: Removed :fixable t from checks that have no
+;;;     :fix-function — the flag was a false promise; auto-fix silently did
+;;;     nothing for these checks.
+;;;   - FIX-AUTOFIX-NAME: emacs-ide-health-auto-fix variable renamed to
+;;;     emacs-ide-health-enable-auto-fix to avoid name collision with the
+;;;     interactive command emacs-ide-health-auto-fix.
+;;;   - FIX-GC-THRESHOLD: gc-count > 50 threshold is now a configurable
+;;;     defvar emacs-ide-health-gc-startup-threshold with an explaining
+;;;     comment.
+;;;   - FIX-AG: Removed "ag" from recommended tools — project uses
+;;;     ripgrep/fd exclusively per config.yml; ag is never expected.
+;;;   - FIX-PKG-BACKEND: emacs-ide-health-check-packages now reads
+;;;     emacs-ide-completion-backend to check the right completion package
+;;;     instead of always checking corfu unconditionally.
+;;;   - FIX-INTERVAL: emacs-ide-health-check-interval now wired to a
+;;;     repeating idle timer so periodic health checks actually fire.
+;;;   - FIX-LSP-CONFIG: emacs-ide-health-check-lsp-servers now reads
+;;;     enabled languages and their lsp-server from config, covering all
+;;;     enabled langs rather than only 5 hardcoded Tier-1 servers.
+;;;   - FIX-FMT-CONFIG: emacs-ide-health-check-formatters now reads enabled
+;;;     languages and their formatter from config similarly.
 ;;; Fixes vs 2.2.2:
 ;;;   - C-16 (HIGH): Health check registry accumulated duplicate entries on
 ;;;     every config reload. Each top-level (emacs-ide-health-register-check ...)
@@ -27,12 +62,23 @@
 (require 'cl-lib)
 
 (defvar emacs-ide-health-check-on-startup t)
-(defvar emacs-ide-health-auto-fix t)
-(defvar emacs-ide-health-check-interval (* 60 60))
+;; FIX-AUTOFIX-NAME: renamed from emacs-ide-health-auto-fix to avoid
+;; collision with the interactive command emacs-ide-health-auto-fix.
+(defvar emacs-ide-health-enable-auto-fix t)
+(defvar emacs-ide-health-check-interval (* 60 60)
+  "Interval in seconds for periodic idle health checks. Default: 1 hour.")
+;; FIX-GC-THRESHOLD: Configurable threshold for startup GC count warning.
+;; 50 is a reasonable baseline for a config with ~150 packages; raise if
+;; you see spurious warnings on a clean install.
+(defvar emacs-ide-health-gc-startup-threshold 50
+  "GC count during startup above which a performance warning is issued.")
 (defvar emacs-ide-health-last-check nil)
 (defvar emacs-ide-health-results nil)
 (defvar emacs-ide-health--last-errors 0)
 (defvar emacs-ide-health--last-warnings 0)
+;; FIX-INTERVAL: Timer handle for the periodic health check.
+(defvar emacs-ide-health--periodic-timer nil
+  "Timer for periodic idle health checks.")
 
 (defun emacs-ide-health--summary-string ()
   "Return a short status string for modeline/dashboard use."
@@ -82,7 +128,8 @@ duplicate registrations when the module is reloaded."
 (defun emacs-ide-health-check-system-tools ()
   "Check essential system tools."
   (let ((required '("git" "grep" "find"))
-        (recommended '("rg" "fd" "ag"))
+        ;; FIX-AG: removed "ag" — project uses ripgrep/fd per config.yml
+        (recommended '("rg" "fd"))
         (missing-required '())
         (missing-recommended '()))
     (dolist (tool required)
@@ -96,14 +143,12 @@ duplicate registrations when the module is reloaded."
       (list :status 'error
             :message (format "Missing required tools: %s"
                              (string-join (nreverse missing-required) ", "))
-            :details missing-required
-            :fixable nil))
+            :details missing-required))
      (missing-recommended
       (list :status 'warning
             :message (format "Missing recommended tools: %s"
                              (string-join (nreverse missing-recommended) ", "))
-            :details missing-recommended
-            :fixable t))
+            :details missing-recommended))
      (t (list :status 'ok :message "All system tools available")))))
 
 (emacs-ide-health-register-check 'system-tools #'emacs-ide-health-check-system-tools)
@@ -116,15 +161,41 @@ duplicate registrations when the module is reloaded."
   (cl-some #'executable-find candidates))
 
 (defun emacs-ide-health-check-lsp-servers ()
-  "Check LSP server availability."
-  (let ((servers '(("Python"      . ("pyright-langserver" "pyright"))
-                   ("Rust"        . ("rust-analyzer"))
-                   ("Go"          . ("gopls"))
-                   ("TypeScript"  . ("typescript-language-server"))
-                   ("C/C++"       . ("clangd" "ccls"))))
-        (available '())
-        (missing '())
-        (secondary-warnings '()))
+  "Check LSP server availability for all enabled languages.
+FIX-LSP-CONFIG: Reads enabled languages and their configured lsp-server
+from emacs-ide-config-data (lang-settings section) rather than checking
+only 5 hardcoded Tier-1 servers. Falls back to the hardcoded list if
+config is not yet loaded."
+  (let* (;; Build server list from config if available, else use Tier-1 fallback
+         (servers
+          (if (and (boundp 'emacs-ide-config-data) emacs-ide-config-data
+                   (fboundp 'emacs-ide-config-get-nested))
+              (let ((lang-settings (cdr (assoc 'lang-settings emacs-ide-config-data)))
+                    (languages     (cdr (assoc 'languages     emacs-ide-config-data)))
+                    (result '()))
+                (dolist (lang-entry lang-settings)
+                  (let* ((lang    (car lang-entry))
+                         (enabled (cdr (assoc lang languages)))
+                         ;; absent key defaults to enabled per config.yml spec
+                         (active  (if (assoc lang languages) enabled t))
+                         (server  (cdr (assoc 'lsp-server (cdr lang-entry)))))
+                    (when (and active server (stringp server))
+                      (push (cons (symbol-name lang) (list server)) result))))
+                (or result
+                    '(("Python"     . ("pyright-langserver" "pyright"))
+                      ("Rust"       . ("rust-analyzer"))
+                      ("Go"         . ("gopls"))
+                      ("TypeScript" . ("typescript-language-server"))
+                      ("C/C++"      . ("clangd" "ccls")))))
+            ;; Fallback when config not loaded
+            '(("Python"     . ("pyright-langserver" "pyright"))
+              ("Rust"       . ("rust-analyzer"))
+              ("Go"         . ("gopls"))
+              ("TypeScript" . ("typescript-language-server"))
+              ("C/C++"      . ("clangd" "ccls")))))
+         (available '())
+         (missing '())
+         (secondary-warnings '()))
 
     (dolist (s servers)
       (if (emacs-ide-health--find-executable (cdr s))
@@ -146,12 +217,10 @@ duplicate registrations when the module is reloaded."
                 :message (concat base-msg " (runtime dependency issues)")
                 :details (list :available available
                                :missing missing
-                               :warnings secondary-warnings)
-                :fixable t)
+                               :warnings secondary-warnings))
         (list :status base-status
               :message base-msg
-              :details (list :available available :missing missing)
-              :fixable t)))))
+              :details (list :available available :missing missing))))))
 
 (emacs-ide-health-register-check 'lsp-servers #'emacs-ide-health-check-lsp-servers)
 
@@ -159,20 +228,39 @@ duplicate registrations when the module is reloaded."
 ;; FORMATTERS CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-formatters ()
-  "Check code formatter availability."
-  (let ((formatters '(("black"    . "Python (black)")
+  "Check code formatter availability for all enabled languages.
+FIX-FMT-CONFIG: Reads enabled languages and their configured formatter
+from emacs-ide-config-data rather than checking only 4 hardcoded
+Tier-1 formatters. Falls back to hardcoded list if config not loaded."
+  (let* ((formatters
+          (if (and (boundp 'emacs-ide-config-data) emacs-ide-config-data)
+              (let ((lang-settings (cdr (assoc 'lang-settings emacs-ide-config-data)))
+                    (languages     (cdr (assoc 'languages     emacs-ide-config-data)))
+                    (result '()))
+                (dolist (lang-entry lang-settings)
+                  (let* ((lang      (car lang-entry))
+                         (enabled   (cdr (assoc lang languages)))
+                         (active    (if (assoc lang languages) enabled t))
+                         (formatter (cdr (assoc 'formatter (cdr lang-entry)))))
+                    (when (and active formatter (stringp formatter))
+                      (push (cons formatter (symbol-name lang)) result))))
+                (or result
+                    '(("black"    . "Python")
                       ("prettier" . "JavaScript/TypeScript")
                       ("rustfmt"  . "Rust")
-                      ("gofmt"    . "Go")))
-        (missing '()))
+                      ("gofmt"    . "Go"))))
+            '(("black"    . "Python")
+              ("prettier" . "JavaScript/TypeScript")
+              ("rustfmt"  . "Rust")
+              ("gofmt"    . "Go"))))
+         (missing '()))
     (dolist (f formatters)
       (unless (executable-find (car f))
-        (push (cdr f) missing)))
+        (push (format "%s (%s)" (car f) (cdr f)) missing)))
     (if missing
         (list :status 'warning
               :message (format "%d formatters missing" (length missing))
-              :details missing
-              :fixable t)
+              :details missing)
       (list :status 'ok :message "All formatters available"))))
 
 (emacs-ide-health-register-check 'formatters #'emacs-ide-health-check-formatters)
@@ -193,8 +281,13 @@ duplicate registrations when the module is reloaded."
                                         emacs-ide-startup-time-target)
                                    3.0)))
       (push (format "Slow startup: %.2fs" startup-time) warnings))
-    (when (> gc-count 50)
-      (push (format "Excessive GC during startup: %d" gc-count) warnings))
+    ;; FIX-GC-THRESHOLD: Use configurable threshold defvar rather than
+    ;; magic number 50. Adjust emacs-ide-health-gc-startup-threshold if
+    ;; you see spurious warnings on a clean install with many packages.
+    (when (> gc-count emacs-ide-health-gc-startup-threshold)
+      (push (format "Excessive GC during startup: %d (threshold: %d)"
+                    gc-count emacs-ide-health-gc-startup-threshold)
+            warnings))
     (if warnings
         (list :status 'warning
               :message (format "%d performance issues" (length warnings))
@@ -207,17 +300,24 @@ duplicate registrations when the module is reloaded."
 ;; PACKAGES CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-packages ()
-  "Check package health."
-  (let ((issues '()))
-    (dolist (pkg '(use-package which-key projectile magit vertico corfu))
+  "Check package health.
+FIX-PKG-BACKEND: Checks the configured completion backend
+(emacs-ide-completion-backend) rather than always checking corfu,
+so switching to company in config.yml does not produce false warnings."
+  (let* ((backend (if (boundp 'emacs-ide-completion-backend)
+                      emacs-ide-completion-backend
+                    'corfu))
+         (base-pkgs '(use-package which-key projectile magit vertico))
+         (pkgs (append base-pkgs (list backend)))
+         (issues '()))
+    (dolist (pkg pkgs)
       (unless (or (featurep pkg)
                   (locate-library (symbol-name pkg)))
         (push (format "Package not found: %s" pkg) issues)))
     (if issues
         (list :status 'warning
               :message (format "%d package warnings" (length issues))
-              :details issues
-              :fixable t)
+              :details issues)
       (list :status 'ok :message "All packages healthy"))))
 
 (emacs-ide-health-register-check 'packages #'emacs-ide-health-check-packages)
@@ -230,7 +330,10 @@ duplicate registrations when the module is reloaded."
   (let ((warnings '()))
     (unless (and (boundp 'gnutls-verify-error) gnutls-verify-error)
       (push "TLS verification not enforced" warnings))
-    (when (and (boundp 'custom-file)
+    ;; FIX-CUSTOM-FILE: (boundp 'custom-file) is always t — custom-file is a
+    ;; built-in variable that defaults to nil. (string= nil ...) throws
+    ;; wrong-type-argument. Use (stringp custom-file) to safely handle nil.
+    (when (and (stringp custom-file)
                (string= custom-file user-init-file))
       (push "Custom file should be separate from init.el" warnings))
     (unless (executable-find "gpg")
@@ -267,16 +370,20 @@ duplicate registrations when the module is reloaded."
         (push res results)
         (cond ((eq status 'error)   (cl-incf errors))
               ((eq status 'warning) (cl-incf warnings)))))
-    (setq emacs-ide-health-results (reverse results)
-          emacs-ide-health-last-check (current-time))
-    (emacs-ide-health--update-counts errors warnings)
-    (emacs-ide-health-display-results results errors warnings)
-    (when (and emacs-ide-health-auto-fix
-               (or (> errors 0) (> warnings 0))
-               (y-or-n-p (format "%d errors, %d warnings. Attempt auto-fix? "
-                                 errors warnings)))
-      (emacs-ide-health--auto-fix-results results))
-    results))
+    ;; FIX-RESULT-ORDER: reverse once here and reuse for both display and save
+    ;; so the report buffer and emacs-ide-health-results are in the same order.
+    (let ((ordered (reverse results)))
+      (setq emacs-ide-health-results ordered
+            emacs-ide-health-last-check (current-time))
+      (emacs-ide-health--update-counts errors warnings)
+      (emacs-ide-health-display-results ordered errors warnings)
+      ;; FIX-AUTOFIX-NAME: variable renamed to emacs-ide-health-enable-auto-fix
+      (when (and emacs-ide-health-enable-auto-fix
+                 (or (> errors 0) (> warnings 0))
+                 (y-or-n-p (format "%d errors, %d warnings. Attempt auto-fix? "
+                                   errors warnings)))
+        (emacs-ide-health--auto-fix-results ordered))
+      ordered)))
 
 (defun emacs-ide-health--format-details (details)
   "Format DETAILS for display."
@@ -360,37 +467,56 @@ run) so M-x emacs-ide-health-auto-fix works correctly."
 ;; STARTUP QUICK CHECK
 ;; ============================================================================
 (defun emacs-ide-health-check-startup ()
-  "Quick health check on startup (non-blocking)."
+  "Quick health check on startup (non-blocking).
+FIX-STARTUP-REGISTRY: Now iterates emacs-ide-health-checks (the live
+registry) instead of a hardcoded parallel list, so any check registered
+by future modules is automatically included in the startup scan."
   (when emacs-ide-health-check-on-startup
     (run-with-idle-timer
      3 nil
      (lambda ()
-       (let* ((checks (list (cons 'system-tools #'emacs-ide-health-check-system-tools)
-                            (cons 'packages     #'emacs-ide-health-check-packages)
-                            (cons 'lsp-servers  #'emacs-ide-health-check-lsp-servers)
-                            (cons 'formatters   #'emacs-ide-health-check-formatters)
-                            (cons 'security     #'emacs-ide-health-check-security)))
-              (results '())
-              (errors 0)
-              (warnings 0))
-         (dolist (chk checks)
+       (let ((results '())
+             (errors 0)
+             (warnings 0))
+         (dolist (chk emacs-ide-health-checks)
            (let* ((res    (emacs-ide-health-run-check (car chk) (cdr chk)))
                   (status (plist-get (cdr res) :status)))
              (push res results)
              (cond ((eq status 'error)   (cl-incf errors))
                    ((eq status 'warning) (cl-incf warnings)))))
-         (setq emacs-ide-health-results    (reverse results)
-               emacs-ide-health-last-check (current-time))
-         (emacs-ide-health--update-counts errors warnings)
-         (cond
-          ((> errors 0)
-           (message "🏥 Health: ✗ %d error%s found — M-x emacs-ide-health-check-all"
-                    errors (if (= errors 1) "" "s")))
-          ((> warnings 0)
-           (message "🏥 Health: ⚠ %d warning%s — M-x emacs-ide-health-check-all"
-                    warnings (if (= warnings 1) "" "s")))
-          (t
-           (message "🏥 Health: ✓ All checks passed"))))))))
+         (let ((ordered (reverse results)))
+           (setq emacs-ide-health-results    ordered
+                 emacs-ide-health-last-check (current-time))
+           (emacs-ide-health--update-counts errors warnings)
+           (cond
+            ((> errors 0)
+             (message "🏥 Health: ✗ %d error%s found — M-x emacs-ide-health-check-all"
+                      errors (if (= errors 1) "" "s")))
+            ((> warnings 0)
+             (message "🏥 Health: ⚠ %d warning%s — M-x emacs-ide-health-check-all"
+                      warnings (if (= warnings 1) "" "s")))
+            (t
+             (message "🏥 Health: ✓ All checks passed")))))))))
+
+;; ============================================================================
+;; PERIODIC HEALTH CHECK TIMER
+;; FIX-INTERVAL: Wire emacs-ide-health-check-interval to an actual repeating
+;; idle timer. Previously the variable was defined but never used.
+;; ============================================================================
+(defun emacs-ide-health--start-periodic-timer ()
+  "Start the periodic idle health check timer.
+Cancels any existing timer first to avoid duplicates on reload."
+  (when emacs-ide-health--periodic-timer
+    (cancel-timer emacs-ide-health--periodic-timer)
+    (setq emacs-ide-health--periodic-timer nil))
+  (setq emacs-ide-health--periodic-timer
+        (run-with-idle-timer emacs-ide-health-check-interval
+                             :repeat
+                             #'emacs-ide-health-check-startup)))
+
+;; Start the timer after startup is complete so it doesn't compete
+;; with the initial startup check.
+(add-hook 'emacs-startup-hook #'emacs-ide-health--start-periodic-timer 110))
 
 (provide 'emacs-ide-health)
 ;;; emacs-ide-health.el ends here
