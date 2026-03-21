@@ -167,6 +167,7 @@ Three sections:
                     emacs-ide-check-formatters
                     ;; emacs-ide-telemetry.el
                     emacs-ide-telemetry-report
+                    emacs-ide-telemetry-clear          ; FIX-NEW-COMMANDS
                     ;; init.el
                     emacs-ide-update                ; FIX-NEW-COMMANDS
                     emacs-ide-freeze-versions))
