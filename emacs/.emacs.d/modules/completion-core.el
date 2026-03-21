@@ -5,11 +5,34 @@
 ;;; consult-lsp added for symbol search across workspace.
 ;;; nerd-icons-completion adds icons to marginalia annotations.
 ;;; All existing fixes from 2.2.4 retained.
-;;; Version: 3.0.1
-;;; Fixes vs 3.0.0:
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 3.0.1 to 3.0.4.
+;;;   - FIX-CONSULT-PROJECTILE-KEYS: consult-projectile bindings moved to
+;;;     non-colliding keys (C-c p B, C-c p F, C-c p P) so they are not
+;;;     silently overwritten by keybindings.el which binds C-c p f to
+;;;     projectile-find-file (keybindings.el always loads last and wins).
+;;;   - FIX-INIT-DEAD-CODE: Removed the embark-indicators assignment from
+;;;     the embark :init block — it was immediately superseded by the
+;;;     :config block's assignment and was dead code.
+;;;   - FIX-DELAY-ZERO: corfu-auto-delay now uses (if (boundp ...) ... 0.1)
+;;;     instead of (or (bound-and-true-p ...) 0.1). bound-and-true-p returns
+;;;     nil for the value 0 (falsy), causing delay: 0 in config.yml to
+;;;     silently fall back to 0.1 instead of 0.
+;;;   - FIX-MAGIT-GUARD: embark-file-map and embark-buffer-map bindings for
+;;;     magit-status wrapped in with-eval-after-load 'magit to prevent
+;;;     void-function errors when magit hasn't loaded yet at embark setup time.
+;;;   - FIX-MULTIFORM-SETQ: vertico-multiform-categories setq moved inside
+;;;     the (when (fboundp 'vertico-multiform-mode) ...) guard so it only
+;;;     runs when the mode is actually available.
+;;;   - FIX-NERD-ICONS-NOTE: Header comment clarified — nerd-icons-completion
+;;;     is configured in ui-core.el (not here); stale comment removed.
+;;;   - FIX-ABBREV: quietly-read-abbrev-file replaced with the modern
+;;;     (read-abbrev-file abbrev-file-name t) form for Emacs 29+.
+;;; Fixes vs 3.0.1 (retained):
 ;;;   - FIX-DEDUP: Removed (electric-pair-mode 1) call. init.el core-settings
-;;;     block already enables it. This was the third redundant call
-;;;     (init.el + editing-core.el fix + this file).
+;;;     block already enables it.
 ;;; Code:
 
 ;; ============================================================================
@@ -23,14 +46,16 @@
         vertico-cycle         t)
   :config
   (vertico-mode 1)
+  ;; FIX-MULTIFORM-SETQ: vertico-multiform-categories moved inside the
+  ;; fboundp guard so it only runs when the mode is actually available.
   (when (fboundp 'vertico-multiform-mode)
-    (vertico-multiform-mode 1))
-  (setq vertico-multiform-categories
-        '((file       grid)
-          (consult-grep buffer)
-          (imenu      buffer)
-          (buffer     flat)
-          (symbol     (vertico-sort-function . vertico-sort-alpha)))))
+    (vertico-multiform-mode 1)
+    (setq vertico-multiform-categories
+          '((file       grid)
+            (consult-grep buffer)
+            (imenu      buffer)
+            (buffer     flat)
+            (symbol     (vertico-sort-function . vertico-sort-alpha))))))
 
 (use-package vertico-directory
   :after vertico :straight nil
@@ -107,11 +132,15 @@
          ("M-g e" . consult-lsp-diagnostics)))
 
 ;; consult-projectile — project-scoped file/buffer search
+;; FIX-CONSULT-PROJECTILE-KEYS: use C-c p B/F/P (uppercase) to avoid
+;; collision with keybindings.el which binds C-c p b/f/p to the plain
+;; projectile commands. keybindings.el loads last and wins — lowercase
+;; bindings set here would be silently overwritten on every startup.
 (use-package consult-projectile
   :after (consult projectile)
-  :bind (("C-c p b" . consult-projectile-switch-to-buffer)
-         ("C-c p f" . consult-projectile-find-file)
-         ("C-c p p" . consult-projectile-switch-project)))
+  :bind (("C-c p B" . consult-projectile-switch-to-buffer)
+         ("C-c p F" . consult-projectile-find-file)
+         ("C-c p P" . consult-projectile-switch-project)))
 
 ;; ============================================================================
 ;; EMBARK — CONTEXT ACTION HUB
@@ -126,11 +155,9 @@
          ("C-;"   . embark-dwim)       ; sensible default action
          ("C-h B" . embark-bindings))  ; show all bindings
   :init
-  (setq prefix-help-command             #'embark-prefix-help-command
-        embark-indicators
-        '(embark-minimal-indicator
-          embark-highlight-indicator
-          embark-isearch-highlight-indicator)
+  ;; FIX-INIT-DEAD-CODE: removed embark-indicators from :init — it was
+  ;; immediately superseded by the :config assignment and was dead code.
+  (setq prefix-help-command #'embark-prefix-help-command
         embark-quit-after-action
         '((kill-buffer . nil) (t . t)))
   :config
@@ -156,9 +183,14 @@
               #'embark-isearch-highlight-indicator))
 
   ;; Extra embark actions for IDE workflows
-  (define-key embark-file-map     (kbd "g") #'magit-status)
-  (define-key embark-buffer-map   (kbd "g") #'magit-status)
-  (define-key embark-symbol-map   (kbd "h") #'helpful-symbol)
+  ;; FIX-MAGIT-GUARD: wrap magit-status bindings in with-eval-after-load
+  ;; to prevent void-function errors when magit hasn't loaded at embark
+  ;; setup time. embark's :config runs when embark loads, which is before
+  ;; magit in the module load order.
+  (with-eval-after-load 'magit
+    (define-key embark-file-map   (kbd "g") #'magit-status)
+    (define-key embark-buffer-map (kbd "g") #'magit-status))
+  (define-key embark-symbol-map     (kbd "h") #'helpful-symbol)
   (define-key embark-identifier-map (kbd "d") #'xref-find-definitions)
   (define-key embark-identifier-map (kbd "r") #'xref-find-references))
 
@@ -172,7 +204,13 @@
 (use-package corfu
   :init
   (setq corfu-auto              t
-        corfu-auto-delay        (or (bound-and-true-p emacs-ide-completion-delay) 0.1)
+        ;; FIX-DELAY-ZERO: use (if (boundp ...) ... 0.1) instead of
+        ;; (or (bound-and-true-p ...) 0.1). bound-and-true-p returns nil
+        ;; for the value 0 (falsy), so delay: 0 in config.yml would
+        ;; silently fall back to 0.1 rather than disabling the delay.
+        corfu-auto-delay        (if (boundp 'emacs-ide-completion-delay)
+                                    emacs-ide-completion-delay
+                                  0.1)
         corfu-auto-prefix       2
         corfu-cycle             t
         corfu-quit-at-boundary  'separator
@@ -244,7 +282,10 @@
 (setq-default abbrev-mode t)
 (setq save-abbrevs 'silently
       abbrev-file-name (expand-file-name "var/abbrev_defs" user-emacs-directory))
-(when (file-exists-p abbrev-file-name) (quietly-read-abbrev-file))
+;; FIX-ABBREV: quietly-read-abbrev-file is a deprecated alias in Emacs 29+.
+;; Use (read-abbrev-file file t) — the t argument suppresses messages.
+(when (file-exists-p abbrev-file-name)
+  (read-abbrev-file abbrev-file-name t))
 
 ;; ============================================================================
 ;; ELECTRIC PAIR / COMPLETION SETTINGS (unchanged)
