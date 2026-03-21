@@ -17,7 +17,8 @@
 #   - package-signatures: allow-unsigned comment expanded to explain why
 #   - workspace.state-file: comment added noting path is expanded relative to
 #     user-emacs-directory; verify ui-workspace.el uses expand-file-name.
-#   - keybinding examples changed from underscores to hyphens per the NOTES rule
+#   - performance.slow-package-threshold: 0.1 added — wires to
+#     emacs-ide-package-slow-threshold for consistent package load warnings
 #   - advanced.experimental keys given side-effect warning comments
 #
 # What changed from 2.2.1 (v3.0.0):
@@ -149,6 +150,9 @@ performance:
   native-comp-jobs: 4           # Parallel native compilation jobs
   large-file-threshold: 10000000  # 10MB — special handling for large files
   read-process-output-max: 4194304  # 4MB — max process output buffer (LSP perf)
+  slow-package-threshold: 0.1   # Warn if any single package takes longer than
+                                # this many seconds to load. Aligns with
+                                # use-package-minimum-reported-time in init.el.
 
 # ============================================================================
 # UI FEATURES
