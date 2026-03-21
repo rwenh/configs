@@ -31,6 +31,8 @@
 ;;;     emacs-ide-recovery--session-timer on exit. Both timers are
 ;;;     started by their respective modules; without this hook they
 ;;;     would fire during Emacs shutdown.
+;;;   - FIX-TEST-SELECTOR: emacs-ide-run-tests stub in init.el updated
+;;;     to use "^test-emacs-ide-" selector matching emacs-ide-test.el.
 ;;;     "Build date" implied a timestamp fixed at install time; this constant is
 ;;;     recomputed every session. Deprecated alias emacs-ide-build-date retained.
 ;;; Fixes vs 3.0.3:
@@ -575,7 +577,9 @@ Check: M-x emacs-ide-recovery-view-log  or  M-x load-file core/emacs-ide-test.el
           ;; rather than this stub — we do this by checking featurep.
           (if (featurep 'emacs-ide-test)
               (let ((ert-verbose t))
-                (ert-run-tests-batch "^test-"))
+                ;; FIX-TEST-SELECTOR: use namespaced prefix to avoid running
+                ;; third-party ERT tests that share the generic "^test-" namespace
+                (ert-run-tests-batch "^test-emacs-ide-"))
             (message "✗ emacs-ide-test.el loaded but feature not provided")))
       (message "✗ Test file not found: %s" test-file))))
 
