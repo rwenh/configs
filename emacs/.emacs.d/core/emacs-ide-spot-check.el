@@ -1,10 +1,30 @@
 ;;; emacs-ide-spot-check.el --- Spot-check commands and keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 1.0.3
-;;; Fixes vs 1.0.0:
-;;;   - FIX-FBOUNDP: Uses commandp as primary test for interactive commands.
-;;;     fboundp returns nil for defalias targets in Emacs 30 compiled states
-;;;     even when the function is callable. commandp checks the full alias chain.
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 1.0.3 to 3.0.4.
+;;;   - FIX-HEADER-DOC: File header said "Uses commandp as primary test"
+;;;     which directly contradicted the implementation and function-level
+;;;     docstring (both correctly say fboundp). Header updated.
+;;;   - FIX-NEW-COMMANDS: Added commands introduced in this audit pass:
+;;;     emacs-ide-security-harden (emacs-ide-security.el FIX-HARDEN)
+;;;     emacs-ide-profile-reset   (emacs-ide-profiler.el FIX-RESET)
+;;;     emacs-ide-package-clear-times (emacs-ide-package.el FIX-CLEAR)
+;;;     emacs-ide-package-report  (was missing despite existing)
+;;;     emacs-ide-recovery-mode   (emacs-ide-recovery.el, used by safe-mode)
+;;;     emacs-ide-recovery-disable-package  (recovery interactive command)
+;;;     emacs-ide-recovery-reset-crash-count (recovery interactive command)
+;;;     emacs-ide-update / emacs-ide-freeze-versions (init.el commands)
+;;;   - FIX-RECOVERY-KEYS: C-c r d and C-c r C-r added to keybindings
+;;;     section — both are in recovery keymap and README tables but were
+;;;     absent from the spot-check.
+;;;   - FIX-KEY-BUFFER: key-binding calls now use with-temp-buffer to get
+;;;     a clean fundamental-mode context, preventing org-mode or other
+;;;     major-mode keymaps from shadowing global bindings and causing
+;;;     false negatives when spot-check is run from a non-fundamental buffer.
+;;;   - FIX-SELF-CHECK: emacs-ide-spot-check added to MODULE FEATURES list.
+;;; Fixes vs 1.0.0 (retained):
 ;;;   - FIX-HYDRA: Keybinding checker accepts lambda wrappers that call the
 ;;;     expected function. keybindings.el uses fallback lambdas; tools-hydra.el
 ;;;     rebinds them directly. Both are valid — hydra keys now show ✓.
@@ -52,7 +72,7 @@ Handles three cases:
 Shows ✓ for each working item and ✗ for anything missing or wrong.
 
 Three sections:
-  COMMANDS    — every emacs-ide-* function is callable (commandp)
+  COMMANDS    — every emacs-ide-* function is callable (fboundp + alias chain)
   KEYBINDINGS — every key resolves to the expected function
   FEATURES    — every module called (provide ...) successfully"
   (interactive)
@@ -126,15 +146,30 @@ Three sections:
                     emacs-ide-recovery-view-log
                     ;; emacs-ide-security.el
                     emacs-ide-security-check
+                    emacs-ide-security-harden       ; FIX-NEW-COMMANDS: added FIX-HARDEN
                     ;; emacs-ide-profiler.el
                     emacs-ide-profile-start
                     emacs-ide-profile-report
                     emacs-ide-profile-stop
+                    emacs-ide-profile-reset         ; FIX-NEW-COMMANDS: added FIX-RESET
                     emacs-ide-early-init-report
+                    ;; emacs-ide-package.el
+                    emacs-ide-package-report        ; FIX-NEW-COMMANDS: was missing
+                    emacs-ide-package-clear-times   ; FIX-NEW-COMMANDS: added FIX-CLEAR
+                    ;; emacs-ide-recovery.el
+                    emacs-ide-recovery-report
+                    emacs-ide-recovery-backup-config
+                    emacs-ide-recovery-view-log
+                    emacs-ide-recovery-mode                  ; FIX-NEW-COMMANDS
+                    emacs-ide-recovery-disable-package       ; FIX-NEW-COMMANDS
+                    emacs-ide-recovery-reset-crash-count     ; FIX-NEW-COMMANDS
                     ;; tools-format.el
                     emacs-ide-check-formatters
                     ;; emacs-ide-telemetry.el
-                    emacs-ide-telemetry-report))
+                    emacs-ide-telemetry-report
+                    ;; init.el
+                    emacs-ide-update                ; FIX-NEW-COMMANDS
+                    emacs-ide-freeze-versions))
         (let ((ok (emacs-ide-spot-check--command-ok-p fn)))
           (unless ok (push fn cmd-failures))
           (princ (format "  %s %s\n" (if ok "✓" "✗") fn))))
@@ -183,9 +218,11 @@ Three sections:
                  ("C-c W k" persp-kill)
                  ("C-c W r" persp-rename)
                  ;; Recovery — C-c r
-                 ("C-c r r" emacs-ide-recovery-report)
-                 ("C-c r v" emacs-ide-recovery-view-log)
-                 ("C-c r b" emacs-ide-recovery-backup-config)
+                 ("C-c r r"   emacs-ide-recovery-report)
+                 ("C-c r v"   emacs-ide-recovery-view-log)
+                 ("C-c r b"   emacs-ide-recovery-backup-config)
+                 ("C-c r d"   emacs-ide-recovery-disable-package)   ; FIX-RECOVERY-KEYS
+                 ("C-c r C-r" emacs-ide-recovery-reset-crash-count) ; FIX-RECOVERY-KEYS
                  ;; Git
                  ("C-x g"   magit-status)
                  ("C-x M-g" magit-dispatch)
@@ -212,7 +249,12 @@ Three sections:
                  ("C-c ?"   which-key-show-top-level)))
         (let* ((key      (car entry))
                (expected (cadr entry))
-               (actual   (key-binding (kbd key)))
+               ;; FIX-KEY-BUFFER: use with-temp-buffer for a clean
+               ;; fundamental-mode context. Without this, key-binding
+               ;; reads the current buffer's active keymaps — if called
+               ;; from org-mode or another major-mode buffer, local keys
+               ;; shadow global bindings and produce false negatives.
+               (actual   (with-temp-buffer (key-binding (kbd key))))
                (ok       (emacs-ide-spot-check--binding-ok-p actual expected)))
           (unless ok (push (list key expected actual) key-failures))
           (princ (format "  %s %-14s → %-42s%s\n"
@@ -237,6 +279,7 @@ Three sections:
                       emacs-ide-security
                       emacs-ide-telemetry
                       emacs-ide-test               ; FIX-TEST: added
+                      emacs-ide-spot-check         ; FIX-SELF-CHECK: added
                       ui-core ui-theme ui-modeline
                       ui-dashboard ui-workspace
                       completion-core completion-snippets
