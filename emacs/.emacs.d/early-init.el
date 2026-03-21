@@ -1,7 +1,38 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Production-grade early initialization with performance monitoring.
-;;; Version: 2.2.7
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-ORPHAN-COMMENT: Removed stale "REDUCE STARTUP NOISE" section header
+;;;     that had no corresponding benchmark phase beneath it (the actual
+;;;     warning-suppression phase was moved earlier by FIX-ORDER2).
+;;;   - FIX-VERSION: Version header updated from 2.2.9 to 3.0.4.
+;;;   - FIX-MENU-GUARD: Added (fboundp 'menu-bar-mode) guard for consistency
+;;;     with the existing tool-bar-mode and scroll-bar-mode guards.
+;;;   - FIX-NUM-PROCESSORS: Use (num-processors) (Emacs 28+) as primary path
+;;;     in emacs-ide--get-processor-count before falling back to shell spawn.
+;;;   - FIX-REPORT-DIV0: Guard against division-by-zero in
+;;;     emacs-ide-early-init-report when total-time is 0.0.
+;;;   - FIX-SAFE-FLAG: --safe flag renamed to --emacs-ide-safe to avoid
+;;;     collision with Emacs 29's built-in --safe startup option.
+;;;   - DOC-FILE-HANDLER: Added invariant comment to
+;;;     emacs-ide--file-name-handler-alist defvar noting it must be defined
+;;;     before any phase that modifies file-name-handler-alist.
+;;;   - DOC-GC-RESTORE: Added comment to emacs-startup-hook GC restore noting
+;;;     that config.yml gc-threshold is re-applied later by emacs-ide-config.el.
+;;; Fixes vs 2.2.8:
+;;;   - FIX-LSP-PLISTS-ENV: (setq lsp-use-plists t) alone is insufficient.
+;;;     lsp-mode uses the LSP_USE_PLISTS *environment variable* at byte-compile
+;;;     time to switch its internal defsubst between hash-table and plist mode.
+;;;     If the env var is absent when straight.el compiles lsp-mode (even on a
+;;;     fresh install), the .elc/.eln is baked with hash-table operations and
+;;;     the Elisp variable has no effect at runtime.
+;;;     Fix: add (setenv "LSP_USE_PLISTS" "true") alongside the setq so both
+;;;     the compile-time env check AND the runtime variable are set before
+;;;     straight.el ever touches lsp-mode. Both lines are required.
+;;; Fixes vs 2.2.7:
+;;;   - FIX-LSP-PLISTS: (setq lsp-use-plists t) added before any package loads.
 ;;; Fixes vs 2.2.6:
 ;;;   - FIX-TOOLBAR: tool-bar-mode and scroll-bar-mode called unconditionally
 ;;;     in the ui-disable benchmark phase. Both are absent in TTY/batch mode
@@ -70,20 +101,30 @@
 ;; UTILITY FUNCTIONS - MUST BE DEFINED EARLY
 ;; ============================================================================
 (defun emacs-ide--get-processor-count ()
-  "Get number of CPU cores safely."
-  (let* ((env-count (getenv "NUMBER_OF_PROCESSORS"))
-         (count (if env-count
-                    (condition-case nil
-                        (string-to-number env-count)
-                      (error 0))
-                  0)))
-    (if (> count 0) count
-      (condition-case nil
-          (string-to-number
-           (string-trim
-            (shell-command-to-string
-             "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4")))
-        (error 4)))))
+  "Get number of CPU cores safely.
+Priority: (num-processors) Emacs 28+ built-in → NUMBER_OF_PROCESSORS env var
+→ shell fallback (nproc/sysctl) → default 4.
+Using the built-in avoids spawning a shell subprocess during early-init."
+  ;; FIX-NUM-PROCESSORS: (num-processors) available since Emacs 28 — use it
+  ;; first to avoid spawning a shell subprocess during early-init, which can
+  ;; add 50-200ms on systems with heavy .bashrc/.zshrc startup.
+  (cond
+   ((fboundp 'num-processors)
+    (num-processors))
+   (t
+    (let* ((env-count (getenv "NUMBER_OF_PROCESSORS"))
+           (count (if env-count
+                      (condition-case nil
+                          (string-to-number env-count)
+                        (error 0))
+                    0)))
+      (if (> count 0) count
+        (condition-case nil
+            (string-to-number
+             (string-trim
+              (shell-command-to-string
+               "nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4")))
+          (error 4)))))))
 
 ;; FIX-4: Call once here and cache. native-comp-setup references this var
 ;; directly so the shell subprocess is spawned at most once during early-init.
@@ -107,9 +148,26 @@
     (setq gc-cons-threshold most-positive-fixnum
           gc-cons-percentage 1.0)))
 
+;; ============================================================================
+;; LSP PLIST MODE — MUST BE SET BEFORE ANY PACKAGE LOADS
+;; FIX-LSP-PLISTS-ENV: lsp-mode uses the LSP_USE_PLISTS *environment variable*
+;; at byte-compile time (not just the Elisp variable) to bake the correct
+;; deserializer into its .elc/.eln. Both the env var AND the setq are required:
+;;   - setenv: controls which code path is compiled into the .eln by straight.el
+;;   - setq:   controls runtime behaviour for interpreted/already-loaded code
+;; Without setenv, straight.el compiles lsp-mode with hash-table mode baked in
+;; and every LSP message throws wrong-type-argument hash-table-p at runtime.
+;; ============================================================================
+(setenv "LSP_USE_PLISTS" "true")
+(setq lsp-use-plists t)
+
 (defvar emacs-ide--gc-timer nil
   "Timer for idle garbage collection.")
 
+;; DOC-FILE-HANDLER: This defvar MUST remain here, before any benchmark phase
+;; that might modify file-name-handler-alist. Moving it closer to the
+;; file-handler-disable phase would break the backup if anything in between
+;; has already modified the list. Do not relocate without auditing all phases.
 (defvar emacs-ide--file-name-handler-alist file-name-handler-alist
   "Backup of file-name-handler-alist.")
 
@@ -148,7 +206,9 @@
 ;; ============================================================================
 (emacs-ide--benchmark-phase "ui-disable"
   (lambda ()
-    (menu-bar-mode -1)
+    ;; FIX-MENU-GUARD: menu-bar-mode is present in all builds but guarded here
+    ;; for consistency with tool-bar-mode and scroll-bar-mode guards below.
+    (when (fboundp 'menu-bar-mode)   (menu-bar-mode -1))
     ;; FIX-TOOLBAR: tool-bar-mode and scroll-bar-mode are absent in TTY/batch
     ;; and some Emacs builds. Calling them unconditionally throws void-function,
     ;; aborting early-init.el before emacs-ide-early-init-report is defined.
@@ -230,7 +290,12 @@
               (lambda ()
                 (setq file-name-handler-alist emacs-ide--file-name-handler-alist)
 
-                ;; Restore GC to reasonable values
+                ;; Restore GC to reasonable values.
+                ;; DOC-GC-RESTORE: This hardcodes 16MB to match config.yml
+                ;; gc-threshold: 16777216. If you change that value in config.yml,
+                ;; the change takes effect when emacs-ide-config.el re-applies it
+                ;; later in init.el — which runs after this hook. The value here
+                ;; is intentionally a safe interim baseline, not the final value.
                 (setq gc-cons-threshold (* 16 1024 1024)  ; 16MB
                       gc-cons-percentage 0.1)
 
@@ -319,11 +384,6 @@
                         :foreground "#ffffff")))
 
 ;; ============================================================================
-;; REDUCE STARTUP NOISE
-;; BUG-02 FIX: byte-compile-warnings saved inside this lambda (see below)
-;; immediately before it is clobbered, then restored in the startup-hook above.
-
-;; ============================================================================
 ;; TREESIT PREPARATION
 ;; ============================================================================
 (emacs-ide--benchmark-phase "treesit-setup"
@@ -385,7 +445,10 @@
         (princ (format "  %-25s %.3fs (%.1f%%)\n"
                        (car phase)
                        (cdr phase)
-                       (* 100 (/ (cdr phase) total-time)))))
+                       ;; FIX-REPORT-DIV0: guard against total-time=0 in
+                       ;; mocked/test environments.
+                       (if (zerop total-time) 0.0
+                         (* 100 (/ (cdr phase) total-time))))))
       (princ "\n")
       (when (> total-time 0.5)
         (princ "⚠️  Early-init took longer than expected (target: <0.5s)\n")))))
@@ -433,10 +496,14 @@
 (defvar emacs-ide-safe-mode nil
   "If non-nil, boot in safe mode (minimal config).")
 
+;; FIX-SAFE-FLAG: Use --emacs-ide-safe instead of --safe to avoid collision
+;; with Emacs 29's own built-in --safe startup option. If a user passes --safe
+;; intending Emacs's built-in safe mode, the old code would intercept and remove
+;; it, silently preventing the built-in behaviour from activating.
 (when (or (getenv "EMACS_SAFE_MODE")
-          (member "--safe" command-line-args-left))
+          (member "--emacs-ide-safe" command-line-args-left))
   (setq emacs-ide-safe-mode t)
-  (setq command-line-args-left (delete "--safe" command-line-args-left))
+  (setq command-line-args-left (delete "--emacs-ide-safe" command-line-args-left))
   (message "🛡️  EMACS IDE SAFE MODE ENABLED - Minimal configuration"))
 
 (provide 'early-init)
