@@ -26,7 +26,10 @@
 ;;;     in any nested subdirectories.
 ;;;   - FIX-RELOAD-DOC: emacs-ide-reload docstring corrected — it only reloads
 ;;;     init.el, not early-init.el. Docstring previously said "entire config".
-;;;   - FIX-SESSION-DATE: emacs-ide-build-date renamed to emacs-ide-session-date.
+;;;   - FIX-HEALTH-TIMER-CLEANUP: kill-emacs-hook added to cancel
+;;;     emacs-ide-health--periodic-timer on exit. The timer is started
+;;;     by emacs-ide-health.el at emacs-startup-hook weight 110; without
+;;;     this hook it would fire during Emacs shutdown.
 ;;;     "Build date" implied a timestamp fixed at install time; this constant is
 ;;;     recomputed every session. Deprecated alias emacs-ide-build-date retained.
 ;;; Fixes vs 3.0.3:
@@ -502,6 +505,19 @@ In Emacs 30, timers are vectors — use aref slot 5, not car/cdr."
             100)
 
 ) ;; end (unless emacs-ide-safe-mode ...)
+
+;; ============================================================================
+;; TIMER CLEANUP ON EXIT
+;; Cancel the health periodic timer started by emacs-ide-health.el so it
+;; does not fire during Emacs shutdown. The GC timer cleanup lives in
+;; early-init.el (kill-emacs-hook there handles emacs-ide--gc-timer).
+;; ============================================================================
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (when (and (boundp 'emacs-ide-health--periodic-timer)
+                       emacs-ide-health--periodic-timer)
+              (cancel-timer emacs-ide-health--periodic-timer)
+              (setq emacs-ide-health--periodic-timer nil))))
 
 ;; ============================================================================
 ;; CUSTOM FILE
