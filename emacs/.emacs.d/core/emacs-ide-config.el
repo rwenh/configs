@@ -1,7 +1,34 @@
 ;;; emacs-ide-config.el --- Configuration Management System -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; YAML and Elisp configuration management with proper nested parsing.
-;;; Version: 2.2.9
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 2.2.9 to 3.0.4.
+;;;   - FIX-DEFAULT-THEME: emacs-ide-theme defvar and emacs-ide-config-defaults
+;;;     updated from modus-vivendi to ef-dark (ef-themes replaced modus-themes
+;;;     in v3.0.0; defaults were never updated).
+;;;   - FIX-TEMPLATE: emacs-ide-config-create-template skeleton updated to
+;;;     v3.0.4 — adds editing:, workspace:, languages:, lang-settings:, repl:,
+;;;     environments: sections; replaces modus-vivendi with ef-dark; fixes
+;;;     terminal.shell to empty (inherits $SHELL).
+;;;   - FIX-YAML-NULL: emacs-ide-config-parse-value now treats "~" as nil
+;;;     (YAML null literal). Previously fell through to intern, returning
+;;;     symbol ~ instead of nil.
+;;;   - FIX-INDENT6: Parser now handles indent-6 (level-3 list items, e.g.
+;;;     environments.work.org-agenda-files entries). Previously silently
+;;;     dropped all lines at indent 6.
+;;;   - FIX-ESLINT-DUP: Duplicate "eslint" entry removed from tool-name
+;;;     exclusion list.
+;;;   - FIX-PROJECTILE: projectile-indexing-method now set via
+;;;     with-eval-after-load to avoid being overwritten when projectile's
+;;;     defcustom initialises after config-apply runs.
+;;;   - FIX-INDENT4-WARN: Added warn when indent-4 line is dropped because
+;;;     current-subsection is nil — makes silent parser drops detectable.
+;;;   - DOC-APPLY: Added comment to emacs-ide-config-apply explaining which
+;;;     keys it wires directly vs which are read lazily by modules.
+;;;   - DOC-ENV: Added comment recommending EMACS_ENVIRONMENT env var over
+;;;     hostname-based auto-detection.
 ;;; Fixes vs 2.2.8:
 ;;;   - FIX-CONFIG: emacs-ide-config-apply now wires projectile settings from
 ;;;     config.yml to the actual Projectile variables. Previously the project:
@@ -91,7 +118,8 @@
 ;; ============================================================================
 ;; CONFIGURATION VARIABLES
 ;; ============================================================================
-(defvar emacs-ide-theme 'modus-vivendi)
+;; FIX-DEFAULT-THEME: was modus-vivendi — ef-themes replaced modus-themes in v3.0.0
+(defvar emacs-ide-theme 'ef-dark)
 (defvar emacs-ide-font "JetBrains Mono")
 (defvar emacs-ide-font-size 11)
 (defvar emacs-ide-completion-backend 'corfu)
@@ -125,7 +153,8 @@
 
 (defvar emacs-ide-config-defaults
   '((general
-     (theme . modus-vivendi)
+     ;; FIX-DEFAULT-THEME: was modus-vivendi — updated to ef-dark for v3.0.0+
+     (theme . ef-dark)
      (font . "JetBrains Mono")
      (font-size . 11)
      (safe-mode . nil))
@@ -158,7 +187,13 @@
 ;; ENVIRONMENT DETECTION
 ;; ============================================================================
 (defun emacs-ide-config-detect-environment ()
-  "Detect current environment."
+  "Detect current environment.
+DOC-ENV: The EMACS_ENVIRONMENT environment variable is the preferred and most
+reliable way to select an environment — set it in your shell profile or
+systemd unit. The hostname pattern matching below is a convenience fallback
+only and is prone to false positives (e.g. 'homework' matches 'work',
+'corporate-vpn' matches 'corp'). If auto-detection picks the wrong environment,
+set EMACS_ENVIRONMENT explicitly."
   (or (getenv "EMACS_ENVIRONMENT")
       (let ((hostname (system-name)))
         (cond
@@ -179,7 +214,10 @@ Strips inline YAML comments before parsing."
                     "[ \t]+#[^\"']*$" "" value-string))
          (trimmed (string-trim stripped)))
     (cond
-     ((or (string-empty-p trimmed) (string= trimmed "null")) nil)
+     ;; FIX-YAML-NULL: "~" is a valid YAML null literal — treat same as "null"
+     ((or (string-empty-p trimmed)
+          (string= trimmed "null")
+          (string= trimmed "~")) nil)
      ((string= trimmed "true") t)
      ((string= trimmed "false") nil)
      ((string-match-p "^-?[0-9]+$" trimmed) (string-to-number trimmed))
@@ -222,7 +260,8 @@ Strips inline YAML comments before parsing."
                           "rg" "ripgrep" "grep" "ag" "fd" "find"
                           "aspell" "hunspell" "ispell"
                           "flake8" "pylint" "mypy"
-                          "eslint" "tsc" "node" "npm" "npx"
+                          ;; FIX-ESLINT-DUP: "eslint" was duplicated here
+                          "tsc" "node" "npm" "npx"
                           "cargo" "rustc" "go" "python" "python3"
                           "ruby" "php" "java" "mvn" "gradle"
                           "native" "hybrid" "alien"))))
@@ -350,6 +389,50 @@ Returns association list of configuration."
                                           (list (cons key val)))))))))
                  )))))
 
+               ;; FIX-INDENT4-WARN: indent-4 line present but no active
+               ;; subsection — would have been silently dropped. Warn so
+               ;; parser gaps are visible during debugging.
+               ((and (= indent 4) current-section (null current-subsection))
+                (warn "emacs-ide-config: indent-4 line dropped (no subsection): %s"
+                      trimmed))
+
+               ;; ── Level 6: list items / keys inside a sub-section ──────────
+               ;; FIX-INDENT6: Previously all indent-6 lines were silently
+               ;; dropped. This handles list items such as org-agenda-files
+               ;; entries nested under environments.work / environments.home,
+               ;; and any future 3rd-level key-value pairs.
+               ((and (= indent 6) current-section current-subsection)
+                (cond
+                 ;; List item at indent 6 (e.g. "      - ~/work/org/work.org")
+                 ((string-prefix-p "- " trimmed)
+                  (let* ((val (emacs-ide-config-parse-value
+                               (string-trim (substring trimmed 2))))
+                         (sec-entry (assoc current-section data))
+                         (sub-entry (and sec-entry
+                                         (assoc current-subsection
+                                                (cdr sec-entry)))))
+                    (when sub-entry
+                      (setcdr sub-entry
+                              (append (cdr sub-entry) (list val))))))
+
+                 ;; Key-value at indent 6
+                 ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
+                  (let* ((key (intern (match-string 1 trimmed)))
+                         (val (emacs-ide-config-parse-value
+                               (string-trim (match-string 2 trimmed))))
+                         (sec-entry (assoc current-section data))
+                         (sub-entry (and sec-entry
+                                         (assoc current-subsection
+                                                (cdr sec-entry)))))
+                    (when sub-entry
+                      (let ((existing (assoc key (cdr sub-entry))))
+                        (if existing
+                            (setcdr existing val)
+                          (setcdr sub-entry
+                                  (append (cdr sub-entry)
+                                          (list (cons key val)))))))))
+                 ))))
+
           (forward-line 1))
         (nreverse data)))))
 
@@ -379,6 +462,13 @@ Returns association list of configuration."
 
 (defun emacs-ide-config-apply (config)
   "Apply CONFIG settings to Emacs.
+DOC-APPLY: This function only wires settings that must be set BEFORE feature
+modules load (theme var, GC threshold, LSP enable flag, projectile method,
+etc.). All other config.yml keys (lsp.idle-delay, features.beacon,
+git.fill-column, workspace.*, editing.*, repl.*, languages.*, lang-settings.*)
+are intentionally NOT applied here — they are read lazily at module-load time
+via emacs-ide-config-get / emacs-ide-config-get-nested. Do not add wiring here
+for keys that are better read by their owning module on demand.
 C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
   after-init-time is set) or when the YAML value is larger than the
   current threshold. Applying a smaller GC threshold mid-session on
@@ -478,14 +568,16 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
           (setq emacs-ide-project-enable (val 'enable project)))
         (when (assoc 'default-search project)
           (setq emacs-ide-project-search (val 'default-search project)))
-        ;; FIX-CONFIG: Wire projectile-indexing-method from config.yml
-        ;; project.indexing (native/hybrid/alien). tools-project.el reads
-        ;; emacs-ide-project-search but previously never set the actual
-        ;; projectile var. Set it here so it is ready before projectile loads.
+        ;; FIX-PROJECTILE: Set via with-eval-after-load so projectile's
+        ;; defcustom initialisation (which happens when tools-project.el
+        ;; loads the package) does not overwrite the value we set here.
+        ;; Previously this ran during config-apply, before projectile was
+        ;; loaded, and the defcustom reset silently discarded the setting.
         (when (assoc 'indexing project)
           (let ((method (val 'indexing project)))
             (when (memq method '(native hybrid alien))
-              (setq projectile-indexing-method method))))))
+              (with-eval-after-load 'projectile
+                (setq projectile-indexing-method method)))))))
 
     ;; ── Security ─────────────────────────────────────────────────────────────
     (let ((security (section 'security)))
@@ -553,55 +645,134 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
             (y-or-n-p "config.yml exists. Overwrite? "))
     (with-temp-file emacs-ide-config-file
       (insert "# Enterprise Emacs IDE Configuration
-# Version: 2.2.7
-# Edit this file to customize your setup
+# Version: 3.0.4
+# Edit this file to customize your setup.
 # Changes take effect after: M-x emacs-ide-config-reload
 
 general:
-  theme: modus-vivendi
+  theme: ef-dark
   font: JetBrains Mono
   font-size: 11
   safe-mode: false
+  show-dashboard: true
+  restore-session: false
 
 completion:
   backend: corfu
   delay: 0.1
   snippet-expansion: true
+  fuzzy-matching: true
 
 lsp:
   enable: true
   inlay-hints: true
   large-file-threshold: 100000
   semantic-tokens: true
+  idle-delay: 0.3
+  diagnostics-provider: flycheck
 
 performance:
   gc-threshold: 16777216
   startup-time-target: 3.0
   native-comp-jobs: 4
+  read-process-output-max: 4194304
 
 features:
   dashboard: true
   which-key: true
   beacon: true
   rainbow-delimiters: true
+  line-numbers: true
+  modeline: doom-modeline
 
 formatting:
   on-save: true
+  show-errors: errors
+  python: black
+  javascript: prettier
+  typescript: prettier
+  rust: rustfmt
+  go: gofmt
+  c: clang-format
+  cpp: clang-format
+
+editing:
+  meow: false
+  hydra: true
+  surround: true
+
+workspace:
+  enable: true
+  auto-switch: true
+  save-on-exit: true
+  state-file: var/persp-state
+  defaults:
+    - main
+    - debug
+    - scratch
 
 git:
   enable: true
   gutter: true
+  auto-revert: true
+  fill-column: 72
 
 terminal:
   enable: true
-  shell: /bin/bash
+  shell:
+  max-scrollback: 100000
+  kill-buffer-on-exit: true
 
 debug:
   enable: true
+  python: true
+  node: true
+  go: true
+  rust: true
+  cpp: true
 
 project:
   enable: true
+  indexing: alien
   default-search: ripgrep
+  search-paths:
+    - ~/projects
+    - ~/code
+
+languages:
+  python: true
+  javascript: true
+  typescript: true
+  rust: true
+  go: true
+  c: true
+  java: true
+  lua: true
+  shell: true
+  sql: true
+  prose: true
+
+lang-settings:
+  python:
+    lsp-server: pyright
+    formatter: black
+  javascript:
+    lsp-server: typescript-language-server
+    formatter: prettier
+  typescript:
+    lsp-server: typescript-language-server
+    formatter: prettier
+  rust:
+    lsp-server: rust-analyzer
+    formatter: rustfmt
+  go:
+    lsp-server: gopls
+    formatter: gofmt
+
+repl:
+  window-height: 0.35
+  side: bottom
+  auto-focus: true
 
 security:
   tls-verify: true
@@ -610,6 +781,22 @@ security:
 telemetry:
   enabled: true
   usage-stats: true
+  local-only: true
+
+environments:
+  work:
+    # REQUIRED: replace before first use
+    git-user-name: Your Name
+    git-user-email: you@company.com
+    theme: ef-light
+  home:
+    # REQUIRED: replace before first use
+    git-user-name: Your Name
+    git-user-email: you@personal.com
+    theme: ef-dark
+
+keybindings:
+  # custom-save: C-x C-s
 "))
     (message "✓ Created config template at %s" emacs-ide-config-file)))
 
