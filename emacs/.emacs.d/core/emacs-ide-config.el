@@ -29,6 +29,8 @@
 ;;;     emacs-ide-config-apply, emacs-ide-config-defaults, and the template.
 ;;;     Wires config.yml value to emacs-ide-package-slow-threshold when the
 ;;;     package module is loaded.
+;;;   - FIX-TELEMETRY-SIZE: telemetry.max-log-size wired to
+;;;     emacs-ide-telemetry-max-log-size in emacs-ide-config-apply.
 ;;;   - DOC-ENV: Added comment recommending EMACS_ENVIRONMENT env var over
 ;;;     hostname-based auto-detection.
 ;;; Fixes vs 2.2.8:
@@ -607,7 +609,13 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
              ((and (not want) (fboundp 'emacs-ide-telemetry-disable))
               (emacs-ide-telemetry-disable))
              (t
-              (setq emacs-ide-telemetry-enabled want)))))))))
+              (setq emacs-ide-telemetry-enabled want)))))
+        ;; FIX-MAX-LOG-SIZE: wire telemetry.max-log-size to the defvar
+        (when (assoc 'max-log-size telemetry)
+          (let ((size (val 'max-log-size telemetry)))
+            (when (and (numberp size) (> size 0)
+                       (boundp 'emacs-ide-telemetry-max-log-size))
+              (setq emacs-ide-telemetry-max-log-size size))))))))
 
 ;; ============================================================================
 ;; CONFIGURATION ACCESSORS
