@@ -1,7 +1,34 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; RECALIBRATED 3.0.1: nerd-icons demand flag added + font installation check
-;;; Version: 3.0.1
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 3.0.1 to 3.0.4.
+;;;   - FIX-PMODE-NAME: emacs-ide-presentation-mode variable renamed to
+;;;     emacs-ide-presentation-mode--active to eliminate the confusing
+;;;     name collision between the defvar and the defun (both were named
+;;;     emacs-ide-presentation-mode). Variable and function occupy separate
+;;;     namespaces so it did not crash, but was extremely misleading.
+;;;   - FIX-LINE-NUMBERS-CONFIG: global-display-line-numbers-mode and
+;;;     display-line-numbers-type now read features.line-numbers and
+;;;     features.relative-line-numbers from config.yml. Previously
+;;;     hardcoded regardless of user configuration.
+;;;   - FIX-FONT-CHECK-TTY: nerd-icons font availability check now guarded
+;;;     with (display-graphic-p) — font-family-list returns nil on TTY,
+;;;     causing a spurious warning on every TTY startup.
+;;;   - FIX-MODELINE-CONFIG: doom-modeline activation now checks
+;;;     features.modeline from config.yml. Previously activated
+;;;     unconditionally, ignoring the modeline: config option.
+;;;   - FIX-FEATURE-FLAGS: beacon, dimmer, pulsar, highlight-indent-guides,
+;;;     and which-key activation now read their respective config.yml
+;;;     features.* flags instead of always activating unconditionally.
+;;;   - FIX-EMOJI-FONT: set-fontset-font for Noto Color Emoji now wrapped
+;;;     in a font-family-list availability check.
+;;;   - FIX-LIGATURE-DEMAND: ligature changed from :defer t to :demand t
+;;;     so global-ligature-mode activates reliably in after-init-hook.
+;;; Fixes vs 3.0.1 (retained):
+;;;   - nerd-icons :demand t so dashboard can render icons at startup.
 ;;; Code:
 
 ;; ============================================================================
@@ -66,9 +93,12 @@
   :init
   (setq nerd-icons-font-family "Symbols Nerd Font Mono")
   :config
-  ;; Check if fonts are installed; suggest installation if missing
-  (unless (member "Symbols Nerd Font Mono" (font-family-list))
-    (message "⚠️  nerd-icons: 'Symbols Nerd Font Mono' not found. Run: M-x nerd-icons-install-fonts")))
+  ;; FIX-FONT-CHECK-TTY: guard with display-graphic-p — font-family-list
+  ;; returns nil on TTY, causing a spurious warning on every TTY startup
+  ;; even when fonts are correctly installed for GUI sessions.
+  (when (display-graphic-p)
+    (unless (member "Symbols Nerd Font Mono" (font-family-list))
+      (message "⚠️  nerd-icons: 'Symbols Nerd Font Mono' not found. Run: M-x nerd-icons-install-fonts"))))
 
 (use-package nerd-icons-dired
   :if (display-graphic-p)
@@ -112,7 +142,9 @@
           (set-face-attribute 'variable-pitch nil :font "Cantarell-11"))
     (error nil))
 
-  (use-package ligature :defer t)
+  ;; FIX-LIGATURE-DEMAND: :demand t so global-ligature-mode is available
+  ;; in after-init-hook. With :defer t the package may not have loaded yet.
+  (use-package ligature :demand t)
   (add-hook 'after-init-hook
             (lambda ()
               (when (fboundp 'ligature-set-ligatures)
@@ -124,7 +156,9 @@
                 (global-ligature-mode t))))
 
   (when (fboundp 'set-fontset-font)
-    (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend)))
+    ;; FIX-EMOJI-FONT: guard with font availability check
+    (when (member "Noto Color Emoji" (font-family-list))
+      (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend)))
 
 ;; ============================================================================
 ;; SMOOTH SCROLLING (Emacs 29+ pixel precision)
@@ -136,13 +170,22 @@
         pixel-scroll-precision-interpolation-factor 1.0))
 
 ;; ============================================================================
-;; LINE NUMBERS (unchanged)
+;; LINE NUMBERS
+;; FIX-LINE-NUMBERS-CONFIG: read features.line-numbers and
+;; features.relative-line-numbers from config.yml instead of hardcoding.
 ;; ============================================================================
-(global-display-line-numbers-mode 1)
-(setq display-line-numbers-type        'relative
-      display-line-numbers-width       3
-      display-line-numbers-grow-only   t
-      display-line-numbers-width-start t)
+(let ((line-nums-on (if (fboundp 'emacs-ide-config-get)
+                        (emacs-ide-config-get 'features 'line-numbers t)
+                      t))
+      (relative-on (if (fboundp 'emacs-ide-config-get)
+                       (emacs-ide-config-get 'features 'relative-line-numbers t)
+                     t)))
+  (when line-nums-on
+    (global-display-line-numbers-mode 1)
+    (setq display-line-numbers-type        (if relative-on 'relative t)
+          display-line-numbers-width       3
+          display-line-numbers-grow-only   t
+          display-line-numbers-width-start t)))
 
 (dolist (mode '(org-mode-hook term-mode-hook shell-mode-hook
                 eshell-mode-hook vterm-mode-hook dashboard-mode-hook
@@ -161,11 +204,15 @@
       show-paren-when-point-in-periphery t)
 
 ;; ============================================================================
-;; DOOM-MODELINE (unchanged from 2.2.5)
+;; DOOM-MODELINE
+;; FIX-MODELINE-CONFIG: check features.modeline from config.yml before
+;; activating. Previously activated unconditionally regardless of config.
 ;; ============================================================================
 (use-package doom-modeline
   :init
-  (setq doom-modeline-height                  30
+  (setq doom-modeline-height                  (or (and (fboundp 'emacs-ide-config-get)
+                                                       (emacs-ide-config-get 'features 'modeline-height 30))
+                                                  30)
         doom-modeline-bar-width               4
         doom-modeline-icon                    t
         doom-modeline-major-mode-icon         t
@@ -184,7 +231,13 @@
         doom-modeline-env-version             t)
   :config
   (add-hook 'after-init-hook
-            (lambda () (when (fboundp 'doom-modeline-mode) (doom-modeline-mode 1)))))
+            (lambda ()
+              (let ((modeline (if (fboundp 'emacs-ide-config-get)
+                                  (emacs-ide-config-get 'features 'modeline 'doom-modeline)
+                                'doom-modeline)))
+                (when (eq modeline 'doom-modeline)
+                  (when (fboundp 'doom-modeline-mode)
+                    (doom-modeline-mode 1)))))))
 
 (setq frame-title-format
       '((:eval (if (buffer-file-name)
@@ -224,11 +277,21 @@
 
 (add-hook 'after-init-hook
           (lambda ()
-            (when (fboundp 'beacon-mode)      (beacon-mode 1))
-            (when (fboundp 'dimmer-mode)      (dimmer-mode 1))
-            (when (fboundp 'pulsar-global-mode) (pulsar-global-mode 1))))
+            ;; FIX-FEATURE-FLAGS: read config.yml features.* flags before activating
+            (let ((cfg (lambda (key) (if (fboundp 'emacs-ide-config-get)
+                                        (emacs-ide-config-get 'features key t)
+                                      t))))
+              (when (and (funcall cfg 'beacon) (fboundp 'beacon-mode))
+                (beacon-mode 1))
+              (when (and (funcall cfg 'dimmer) (fboundp 'dimmer-mode))
+                (dimmer-mode 1))
+              (when (and (funcall cfg 'pulsar) (fboundp 'pulsar-global-mode))
+                (pulsar-global-mode 1)))))
 
+;; FIX-FEATURE-FLAGS: only hook when features.highlight-indent-guides: true
 (use-package highlight-indent-guides
+  :if (or (not (fboundp 'emacs-ide-config-get))
+          (emacs-ide-config-get 'features 'highlight-indent-guides t))
   :hook (prog-mode . highlight-indent-guides-mode)
   :init
   (setq highlight-indent-guides-method        'character
@@ -251,7 +314,12 @@
         which-key-max-description-length 32))
 
 (add-hook 'after-init-hook
-          (lambda () (when (fboundp 'which-key-mode) (which-key-mode 1))))
+          (lambda ()
+            ;; FIX-FEATURE-FLAGS: check features.which-key from config.yml
+            (when (and (fboundp 'which-key-mode)
+                       (or (not (fboundp 'emacs-ide-config-get))
+                           (emacs-ide-config-get 'features 'which-key t)))
+              (which-key-mode 1))))
 
 ;; ============================================================================
 ;; WINDOW MANAGEMENT (unchanged)
@@ -324,17 +392,22 @@
 
 ;; ============================================================================
 ;; PRESENTATION MODE
+;; FIX-PMODE-NAME: variable renamed from emacs-ide-presentation-mode to
+;; emacs-ide-presentation-mode--active to eliminate the confusing name
+;; collision with the interactive function of the same name.
 ;; ============================================================================
-(defvar emacs-ide-presentation-mode nil)
+(defvar emacs-ide-presentation-mode--active nil
+  "Non-nil when presentation mode is active.")
 
 (defun emacs-ide-presentation-mode ()
+  "Toggle presentation mode (larger font for screen sharing)."
   (interactive)
-  (if emacs-ide-presentation-mode
+  (if emacs-ide-presentation-mode--active
       (progn (set-face-attribute 'default nil :height 110)
-             (setq emacs-ide-presentation-mode nil)
+             (setq emacs-ide-presentation-mode--active nil)
              (message "Presentation mode OFF"))
     (set-face-attribute 'default nil :height 200)
-    (setq emacs-ide-presentation-mode t)
+    (setq emacs-ide-presentation-mode--active t)
     (message "Presentation mode ON")))
 
 ;; ============================================================================
