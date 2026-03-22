@@ -1,8 +1,31 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Language Server Protocol configuration with performance optimizations.
-;;; Version: 2.3.1
-;;; Fixes:
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-CRASH: (or (bound-and-true-p emacs-ide-lsp-enable-inlay-hints) t)
+;;;     was a bare expression sitting in the middle of the lsp-mode :init setq
+;;;     body with no preceding variable name. setq requires (var val) pairs;
+;;;     this gave it an odd argument count of 65, throwing:
+;;;       wrong-number-of-arguments setq 65
+;;;     This aborted the entire :init block — lsp-mode never initialised,
+;;;     causing the 4788s startup time (the startup timer kept running waiting
+;;;     for LSP to settle). Fixed by adding the missing key:
+;;;       lsp-inlay-hints-enable (or ...)
+;;;   - FIX-TS-HOOKS: Added tree-sitter mode variants to lsp-mode :hook list.
+;;;     c-ts-mode, c++-ts-mode, python-ts-mode, rust-ts-mode, go-ts-mode,
+;;;     java-ts-mode, js-ts-mode, typescript-ts-mode were all missing.
+;;;     With Emacs 29's tree-sitter-first approach, opening files in ts-mode
+;;;     variants did not activate LSP.
+;;;   - FIX-INIT-ORDER: Reordered lsp-pyright use-package to put :init before
+;;;     :config in source (use-package always runs :init before :config
+;;;     regardless of source order, but correct ordering aids readability
+;;;     and prevents confusion).
+;;;   - FIX-DIAGNOSTICS-PROVIDER: lsp-diagnostics-provider now reads from
+;;;     config.yml lsp.diagnostics-provider instead of being hardcoded to
+;;;     :flycheck.
+;;; Fixes vs 2.3.1 (retained):
 ;;;   - 2.3.1: FIX-AUTO-GUESS-ROOT: lsp-auto-guess-root t caused LSP to use
 ;;;     /home/cody as project root instead of the actual project folder.
 ;;;     With lsp-enable-file-watchers t this triggered "watch 56,659
@@ -138,16 +161,25 @@
 ;; ============================================================================
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
-  :hook ((c-mode          . emacs-ide-lsp-deferred-optimized)
-         (c++-mode        . emacs-ide-lsp-deferred-optimized)
-         (python-mode     . emacs-ide-lsp-deferred-optimized)
-         (rust-mode       . emacs-ide-lsp-deferred-optimized)
-         (go-mode         . emacs-ide-lsp-deferred-optimized)
-         (java-mode       . emacs-ide-lsp-deferred-optimized)
-         (js-mode         . emacs-ide-lsp-deferred-optimized)
-         (js2-mode        . emacs-ide-lsp-deferred-optimized)
-         (typescript-mode . emacs-ide-lsp-deferred-optimized)
-         (lsp-mode        . lsp-enable-which-key-integration))
+  :hook ((c-mode              . emacs-ide-lsp-deferred-optimized)
+         (c++-mode            . emacs-ide-lsp-deferred-optimized)
+         ;; FIX-TS-HOOKS: added all ts-mode variants for Emacs 29+
+         (c-ts-mode           . emacs-ide-lsp-deferred-optimized)
+         (c++-ts-mode         . emacs-ide-lsp-deferred-optimized)
+         (python-mode         . emacs-ide-lsp-deferred-optimized)
+         (python-ts-mode      . emacs-ide-lsp-deferred-optimized)
+         (rust-mode           . emacs-ide-lsp-deferred-optimized)
+         (rust-ts-mode        . emacs-ide-lsp-deferred-optimized)
+         (go-mode             . emacs-ide-lsp-deferred-optimized)
+         (go-ts-mode          . emacs-ide-lsp-deferred-optimized)
+         (java-mode           . emacs-ide-lsp-deferred-optimized)
+         (java-ts-mode        . emacs-ide-lsp-deferred-optimized)
+         (js-mode             . emacs-ide-lsp-deferred-optimized)
+         (js-ts-mode          . emacs-ide-lsp-deferred-optimized)
+         (js2-mode            . emacs-ide-lsp-deferred-optimized)
+         (typescript-mode     . emacs-ide-lsp-deferred-optimized)
+         (typescript-ts-mode  . emacs-ide-lsp-deferred-optimized)
+         (lsp-mode            . lsp-enable-which-key-integration))
   :init
   (setq lsp-keymap-prefix              "C-c l"
         lsp-completion-provider        :none   ; wire manually below for corfu
@@ -183,11 +215,20 @@
         lsp-enable-file-watchers             t
         lsp-file-watch-threshold             1000
         lsp-ask-valid-restart                nil
-        (or (bound-and-true-p emacs-ide-lsp-enable-inlay-hints) t)
+        ;; FIX-CRASH: was a bare (or ...) expression with no variable name —
+        ;; gave setq an odd argument count of 65, crashing the entire :init.
+        lsp-inlay-hints-enable               (or (bound-and-true-p emacs-ide-lsp-enable-inlay-hints) t)
         ;; NOTE: lsp-use-plists is intentionally NOT set here.
         ;; It must be set before lsp-mode loads — see early-init.el v2.2.8.
         lsp-warn-no-matched-clients          nil
-        lsp-diagnostics-provider             :flycheck
+        ;; FIX-DIAGNOSTICS-PROVIDER: read from config.yml lsp.diagnostics-provider
+        ;; instead of hardcoding :flycheck. Defaults to :flycheck if config unavailable.
+        lsp-diagnostics-provider
+        (let ((p (and (fboundp 'emacs-ide-config-get)
+                      (emacs-ide-config-get 'lsp 'diagnostics-provider nil))))
+          (cond ((eq p 'flycheck) :flycheck)
+                ((eq p 'flymake)  :flymake)
+                (t                :flycheck)))
         lsp-auto-configure                   t
         lsp-watch-file-ignore-regexps
         '("[/\\\\]\\.git$"         "[/\\\\]\\.hg$"
@@ -288,24 +329,9 @@
 (use-package lsp-pyright
   :after lsp-mode
   :if (or (executable-find "pyright") (executable-find "pyright-langserver"))
-  ;; FIX: Two bugs in the previous version:
-  ;;
-  ;; 1. LOAD ORDER: The hook lambda called (require 'lsp-pyright nil t) then
-  ;;    lsp-deferred. But lsp-mode already hooks python-mode to
-  ;;    emacs-ide-lsp-deferred-optimized (above), which fires FIRST and starts
-  ;;    lsp before lsp-pyright is required — so lsp chose a generic server, not
-  ;;    pyright. lsp-pyright must be required eagerly in :config so it registers
-  ;;    its server with lsp-mode before any python buffer is opened.
-  ;;
-  ;; 2. DOUBLE lsp-deferred: The hook also called lsp-deferred a second time,
-  ;;    causing lsp to start twice in every python buffer (once from lsp-mode's
-  ;;    hook, once from lsp-pyright's hook).
-  ;;
-  ;; Fix: require lsp-pyright in :config (runs at package load, before any buffer
-  ;; opens). Remove the hook entirely — lsp-mode's own python-mode hook already
-  ;; calls emacs-ide-lsp-deferred-optimized which invokes lsp-deferred once.
-  :config
-  (require 'lsp-pyright)
+  ;; FIX-INIT-ORDER: :init precedes :config in source for readability.
+  ;; use-package always runs :init before :config regardless of source order,
+  ;; but correct ordering prevents future confusion.
   :init
   (setq lsp-pyright-multi-root              nil
         lsp-pyright-auto-import-completions  t
@@ -313,7 +339,12 @@
         ;; Moved from lang-python.el v1.0.2 (FIX-DOUBLE-PANE-1)
         lsp-pyright-use-library-code-for-types t
         lsp-pyright-stub-path                ""
-        lsp-pyright-venv-path                (expand-file-name "~/.virtualenvs")))
+        lsp-pyright-venv-path                (expand-file-name "~/.virtualenvs"))
+  ;; FIX: require lsp-pyright in :config so it registers its server with
+  ;; lsp-mode before any python buffer is opened. Removed the old hook that
+  ;; called lsp-deferred a second time (double-start bug).
+  :config
+  (require 'lsp-pyright))
 
 (with-eval-after-load 'rust-mode
   (when (executable-find "rust-analyzer")
