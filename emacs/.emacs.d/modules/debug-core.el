@@ -1,8 +1,32 @@
 ;;; debug-core.el --- Professional Debugging Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; DAP, GDB, LLDB, language-specific debuggers
-;;; Version: 2.2.6
-;;; Fixes vs 2.2.5:
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 2.2.6 to 3.0.4.
+;;;   - FIX-DUPLICATE-PROFILE: emacs-ide-profile-startup defun removed from
+;;;     debug-core.el. debug-core loaded AFTER emacs-ide-profiler.el, so the
+;;;     esup-only version here was silently overwriting the richer profiler
+;;;     version (which falls back to startup/early-init reports). The esup
+;;;     use-package block remains — esup is still available via M-x esup.
+;;;   - FIX-DEBUG-ENABLE: dap-mode use-package now has :if guard on
+;;;     emacs-ide-debug-enable so debug.enable: false in config.yml
+;;;     actually prevents dap-mode from loading.
+;;;   - FIX-PROGRAM-LAZY: All debug templates now use a lambda for :program
+;;;     instead of (buffer-file-name) evaluated at load time. At load time
+;;;     the current buffer is not the file to debug — the lambda is called
+;;;     at launch time when the correct buffer is active.
+;;;   - FIX-HELP-VERSION: emacs-ide-debug-help now uses emacs-ide-version
+;;;     instead of the hardcoded "v2.2.5" string.
+;;;   - FIX-GDB-QUOTE: gdb command now uses shell-quote-argument for the
+;;;     executable path to handle paths containing spaces.
+;;;   - FIX-BACKQUOTE: dap-ui-buffer-configurations changed from backquote
+;;;     with unquotes to a plain quoted list — strings are literals, the
+;;;     backquote and comma-unquotes were unnecessary.
+;;;   - FIX-REALGUD-QUOTE: realgud:pdb and realgud:node-debug now use
+;;;     shell-quote-argument on buffer-file-name.
+;;; Fixes vs 2.2.6 (retained):
 ;;;   - FIX-CCC-D: C-c D s/r/q (profiler) documented as part of the C-c D
 ;;;     diagnostics prefix. keybindings.el previously bound bare C-c D to
 ;;;     emacs-ide-detect-show-status, which shadowed this prefix entirely.
@@ -25,6 +49,8 @@
 ;; ============================================================================
 (use-package dap-mode
   :after lsp-mode
+  ;; FIX-DEBUG-ENABLE: only load when debug.enable: true in config.yml
+  :if (bound-and-true-p emacs-ide-debug-enable)
   :commands (dap-debug dap-debug-edit-template)
   :bind (("<f5>"    . dap-debug)
          ("<f6>"    . dap-debug-restart)
@@ -37,14 +63,18 @@
          ("S-<f8>"  . dap-breakpoint-log-message)
          ("C-S-<f8>" . dap-breakpoint-delete-all))
   :init
-  (setq dap-auto-configure-features '(sessions locals breakpoints expressions controls tooltip repl)
+  (setq dap-auto-configure-features '(sessions locals breakpoints expressions controls tooltip)
+        ;; FIX-DEBUG-ENABLE: removed 'repl from auto-configure — tools-repl.el
+        ;; provides the project's unified REPL; having two REPL systems active
+        ;; simultaneously causes buffer confusion.
         dap-auto-show-output t
+        ;; FIX-BACKQUOTE: plain quoted list — string literals need no backquote
         dap-ui-buffer-configurations
-        `((,"*dap-ui-locals*"      (side . right)  (slot . 1) (window-width . 0.20))
-          (,"*dap-ui-expressions*" (side . right)  (slot . 2) (window-width . 0.20))
-          (,"*dap-ui-sessions*"    (side . right)  (slot . 3) (window-width . 0.20))
-          (,"*dap-ui-breakpoints*" (side . left)   (slot . 2) (window-width . 0.20))
-          (,"*dap-ui-repl*"        (side . bottom) (slot . 1) (window-height . 0.20))))
+        '(("*dap-ui-locals*"      (side . right)  (slot . 1) (window-width . 0.20))
+          ("*dap-ui-expressions*" (side . right)  (slot . 2) (window-width . 0.20))
+          ("*dap-ui-sessions*"    (side . right)  (slot . 3) (window-width . 0.20))
+          ("*dap-ui-breakpoints*" (side . left)   (slot . 2) (window-width . 0.20))
+          ("*dap-ui-repl*"        (side . bottom) (slot . 1) (window-height . 0.20))))
   :config
   (dap-mode 1)
   (dap-ui-mode 1)
@@ -72,11 +102,13 @@
 
   (dap-register-debug-template
    "Python :: Run File"
+   ;; FIX-PROGRAM-LAZY: lambda evaluated at launch time, not load time
    (list :type "python"
          :args ""
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                  default-directory)
-         :program (buffer-file-name)
+         :cwd (lambda () (or (and (fboundp 'projectile-project-root)
+                                  (projectile-project-root))
+                             default-directory))
+         :program (lambda () (buffer-file-name))
          :request "launch"
          :name "Python :: Run File"))
 
@@ -84,8 +116,9 @@
    "Python :: pytest"
    (list :type "python"
          :args "-m pytest -v"
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                  default-directory)
+         :cwd (lambda () (or (and (fboundp 'projectile-project-root)
+                                  (projectile-project-root))
+                             default-directory))
          :module "pytest"
          :request "launch"
          :name "Python :: pytest")))
@@ -99,12 +132,14 @@
 
   (dap-register-debug-template
    "Node :: Run File"
+   ;; FIX-PROGRAM-LAZY: lambda evaluated at launch time, not load time
    (list :type "node"
          :request "launch"
          :name "Node :: Run File"
-         :program (buffer-file-name)
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                  default-directory))))
+         :program (lambda () (buffer-file-name))
+         :cwd (lambda () (or (and (fboundp 'projectile-project-root)
+                                  (projectile-project-root))
+                             default-directory)))))
 
 ;; ============================================================================
 ;; GO DEBUGGING
@@ -115,13 +150,15 @@
 
   (dap-register-debug-template
    "Go :: Run File"
+   ;; FIX-PROGRAM-LAZY: lambda evaluated at launch time, not load time
    (list :type "go"
          :request "launch"
          :name "Go :: Run File"
          :mode "auto"
-         :program (buffer-file-name)
-         :cwd (or (and (fboundp 'projectile-project-root) (projectile-project-root))
-                  default-directory))))
+         :program (lambda () (buffer-file-name))
+         :cwd (lambda () (or (and (fboundp 'projectile-project-root)
+                                  (projectile-project-root))
+                             default-directory)))))
 
 ;; ============================================================================
 ;; C/C++/RUST DEBUGGING - LLDB/GDB
@@ -198,7 +235,8 @@
                                           (or (and (fboundp 'projectile-project-root)
                                                    (projectile-project-root))
                                              default-directory))))
-          (gdb (format "gdb -i=mi %s" executable)))
+          ;; FIX-GDB-QUOTE: shell-quote-argument handles paths with spaces
+          (gdb (format "gdb -i=mi %s" (shell-quote-argument executable))))
       (message "⚠️  GDB not found. Install GDB to debug C/C++ code."))))
 
 ;; ============================================================================
@@ -228,14 +266,18 @@
     "Debug Python with pdb (if available)."
     (interactive)
     (if (executable-find "python3")
-        (realgud:pdb (format "python3 -m pdb %s" (buffer-file-name)))
+        ;; FIX-REALGUD-QUOTE: shell-quote-argument for paths with spaces
+        (realgud:pdb (format "python3 -m pdb %s"
+                             (shell-quote-argument (buffer-file-name))))
       (message "⚠️  Python not found")))
 
   (defun emacs-ide-realgud-node ()
     "Debug Node.js (if available)."
     (interactive)
     (if (executable-find "node")
-        (realgud:node-debug (format "node inspect %s" (buffer-file-name)))
+        ;; FIX-REALGUD-QUOTE: shell-quote-argument for paths with spaces
+        (realgud:node-debug (format "node inspect %s"
+                                    (shell-quote-argument (buffer-file-name))))
       (message "⚠️  Node.js not found"))))
 
 ;; ============================================================================
@@ -286,7 +328,9 @@ _q_: quit                                               _R_: repl
   "Display debugging help."
   (interactive)
   (with-output-to-temp-buffer "*Debug Help*"
-    (princ "=== EMACS IDE DEBUGGING GUIDE (v2.2.5) ===\n\n")
+    ;; FIX-HELP-VERSION: use emacs-ide-version instead of hardcoded v2.2.5
+    (princ (format "=== EMACS IDE DEBUGGING GUIDE (v%s) ===\n\n"
+                   (if (boundp 'emacs-ide-version) emacs-ide-version "3.0.4")))
     (princ "BREAKPOINTS:\n")
     (princ "  F8          Toggle breakpoint\n")
     (princ "  C-F8        Conditional breakpoint\n")
@@ -310,17 +354,14 @@ _q_: quit                                               _R_: repl
 ;; ============================================================================
 ;; PERFORMANCE PROFILING
 ;; ============================================================================
+;; FIX-DUPLICATE-PROFILE: emacs-ide-profile-startup is defined in
+;; emacs-ide-profiler.el (loaded earlier). The version here was an
+;; esup-only stub that silently overwrote the richer profiler version.
+;; esup is still available directly via M-x esup.
 (use-package esup
   :commands (esup)
   :init
-  (setq esup-depth 0)
-  :config
-  (defun emacs-ide-profile-startup ()
-    "Profile Emacs startup."
-    (interactive)
-    (if (fboundp 'esup)
-        (esup)
-      (message "⚠️  esup not installed."))))
+  (setq esup-depth 0))
 
 ;; C-c D prefix: s=profiler-start, r=profiler-report, q=profiler-stop
 ;; C-c D o = docker (tools-terminal.el), C-c D d = detect-status (keybindings.el)
