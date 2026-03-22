@@ -6,8 +6,28 @@
 ;;; dap-mode directly.  This keeps each lang module ~60 lines and makes the
 ;;; shared behaviour easy to update in one place.
 ;;;
-;;; Version: 1.0.6
-;;; Fixes vs 1.0.5:
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 1.0.6 to 3.0.4.
+;;;   - FIX-CACHE-INVALIDATE: emacs-ide-dev--config-languages cache is now
+;;;     cleared on emacs-ide-config-reload via add-hook so language
+;;;     enable/disable changes in config.yml take effect without restart.
+;;;   - FIX-TREESIT-LANGS: emacs-ide-dev--treesit-sources expanded with
+;;;     kotlin, scala, sql, elixir, ruby, haskell, go-mod — previously
+;;;     missing, causing "Cannot find recipe" errors for those languages
+;;;     despite FIX-TREESIT-SOURCE being applied.
+;;;   - FIX-EXTRA-VARS-LOCAL: emacs-ide-dev-attach-lsp now uses
+;;;     make-local-variable + set instead of bare set for EXTRA-VARS, so
+;;;     LSP settings like lsp-rust-analyzer-cargo-watch-command are
+;;;     buffer-local rather than silently global across all buffers.
+;;;   - FIX-REPL-KEY-DOC: emacs-ide-dev-attach-repl header docstring
+;;;     updated to match the actual (mode-map repl-fn &optional key)
+;;;     signature — was (repl-fn &optional key) which omitted mode-map.
+;;;   - FIX-DEFAULT-REPL-KEY: Default REPL key changed from "C-c r" to
+;;;     nil with a clear error — callers must pass an explicit key to
+;;;     avoid shadowing the C-c r recovery prefix map.
+;;; Fixes vs 1.0.6 (retained):
 ;;;   - FIX-TREESIT-TIMER: The add-to-list call to populate
 ;;;     treesit-language-source-alist was running OUTSIDE the idle timer
 ;;;     lambda, at the moment emacs-ide-dev-ensure-treesit was called.
@@ -90,7 +110,13 @@
   "Alist of (LANG-KEY . plist) for every lang module that has registered.")
 
 (defvar emacs-ide-dev--config-languages nil
-  "Cached languages section from config.yml. Populated on first access.")
+  "Cached languages section from config.yml. Populated on first access.
+FIX-CACHE-INVALIDATE: Cleared on config reload so language enable/disable
+changes in config.yml take effect without restarting Emacs.")
+
+;; FIX-CACHE-INVALIDATE: hook into config reload to clear the cache
+(add-hook 'emacs-ide-config-reload-hook
+          (lambda () (setq emacs-ide-dev--config-languages nil)))
 
 ;; ============================================================================
 ;; CONFIG.YML INTEGRATION (RECALIBRATED)
@@ -156,7 +182,11 @@ RECALIBRATED: Added major-mode validation."
   (when (and (bound-and-true-p emacs-ide-lsp-enable)
              (fboundp 'lsp-deferred)
              (boundp 'major-mode))
+    ;; FIX-EXTRA-VARS-LOCAL: make each var buffer-local before setting so
+    ;; LSP settings (e.g. lsp-rust-analyzer-cargo-watch-command) are
+    ;; scoped to the current buffer, not silently applied globally.
     (dolist (kv (or extra-vars nil))
+      (make-local-variable (car kv))
       (set (car kv) (cdr kv)))
     (add-hook (intern (concat (symbol-name major-mode) "-hook"))
               #'lsp-deferred)))
@@ -212,11 +242,16 @@ before registration to prevent orphaned entries."
 ;; ============================================================================
 
 (defun emacs-ide-dev-attach-repl (mode-map repl-fn &optional key)
-  "Bind REPL-FN on MODE-MAP under KEY (default C-c r).
-REPL-FN is a zero-arg interactive function that opens the REPL."
-  (let ((k (or key (kbd "C-c r"))))
+  "Bind REPL-FN on MODE-MAP under KEY.
+FIX-REPL-KEY-DOC: Signature is (MODE-MAP REPL-FN &optional KEY).
+FIX-DEFAULT-REPL-KEY: KEY must be provided explicitly — there is no
+safe default. The old default C-c r shadows the recovery prefix map
+(emacs-ide-recovery-map) which is globally bound to C-c r. All lang
+modules must pass an explicit key, e.g. (kbd \"C-c x r\")."
+  (if (null key)
+      (error "emacs-ide-dev-attach-repl: KEY must be supplied explicitly (C-c r is reserved for recovery)")
     (when (keymapp mode-map)
-      (define-key mode-map k repl-fn))))
+      (define-key mode-map key repl-fn))))
 
 ;; ============================================================================
 ;; STANDARD COMPILE KEY
@@ -241,15 +276,29 @@ Canonical compile/run key for all lang modules."
     (c          . ("https://github.com/tree-sitter/tree-sitter-c"))
     (cpp        . ("https://github.com/tree-sitter/tree-sitter-cpp"))
     (css        . ("https://github.com/tree-sitter/tree-sitter-css"))
+    ;; FIX-TREESIT-LANGS: elixir added
+    (elixir     . ("https://github.com/elixir-lang/tree-sitter-elixir"))
     (go         . ("https://github.com/tree-sitter/tree-sitter-go"))
+    ;; FIX-TREESIT-LANGS: go-mod added (separate grammar from go)
+    (gomod      . ("https://github.com/camdencheek/tree-sitter-go-mod"))
+    ;; FIX-TREESIT-LANGS: haskell added
+    (haskell    . ("https://github.com/tree-sitter/tree-sitter-haskell"))
     (html       . ("https://github.com/tree-sitter/tree-sitter-html"))
     (java       . ("https://github.com/tree-sitter/tree-sitter-java"))
     (javascript . ("https://github.com/tree-sitter/tree-sitter-javascript" "master" "src"))
     (json       . ("https://github.com/tree-sitter/tree-sitter-json"))
+    ;; FIX-TREESIT-LANGS: kotlin added (community grammar)
+    (kotlin     . ("https://github.com/nickel-lang/tree-sitter-kotlin"))
     (lua        . ("https://github.com/MunifTanjim/tree-sitter-lua"))
     (markdown   . ("https://github.com/ikatyang/tree-sitter-markdown" "master" "tree-sitter-markdown/src"))
     (python     . ("https://github.com/tree-sitter/tree-sitter-python"))
+    ;; FIX-TREESIT-LANGS: ruby added
+    (ruby       . ("https://github.com/tree-sitter/tree-sitter-ruby"))
     (rust       . ("https://github.com/tree-sitter/tree-sitter-rust"))
+    ;; FIX-TREESIT-LANGS: scala added
+    (scala      . ("https://github.com/tree-sitter/tree-sitter-scala"))
+    ;; FIX-TREESIT-LANGS: sql added (DerekStride community grammar)
+    (sql        . ("https://github.com/DerekStride/tree-sitter-sql" "gh-pages"))
     (toml       . ("https://github.com/tree-sitter/tree-sitter-toml"))
     (tsx        . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src"))
     (typescript . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src"))
