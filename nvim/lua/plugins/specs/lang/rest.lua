@@ -13,7 +13,7 @@ return {
       env_file     = ".env",
       env_pattern  = "\\.env$",
       env_edit_command = "tabedit",
-      encode_url   = true,
+      -- NOTE: encode_url belongs inside request.hooks, not here; removed duplicate top-level key
       skip_ssl_verification = false,
       custom_dynamic_variables = {},
       logs = {
@@ -34,7 +34,7 @@ return {
         },
       },
       highlight = { enable = true, timeout = 750 },
-      ---@param req rest.Request
+      -- FIX: removed stray ---@param annotation (was above a table key, not a function)
       request = {
         hooks = {
           encode_url     = true,
@@ -45,25 +45,27 @@ return {
     },
     keys = {
       {
-        "<leader>hr",
+        -- FIX: renamed <leader>h* → <leader>re* to give Harpoon sole ownership of <leader>h*
+        "<leader>rer",
         function() require("rest-nvim").run() end,
         desc = "REST Run Request",
         ft   = "http",
       },
       {
-        "<leader>hl",
-        function() require("rest-nvim").last() end,
+        "<leader>rel",
+        -- FIX: .last() is the v1 API; v2 renamed it to .run_last()
+        function() require("rest-nvim").run_last() end,
         desc = "REST Run Last",
         ft   = "http",
       },
       {
-        "<leader>hp",
+        "<leader>rep",
         function() require("rest-nvim").preview() end,
         desc = "REST Preview Request",
         ft   = "http",
       },
       {
-        "<leader>he",
+        "<leader>ree",
         function()
           local env = vim.fn.input("Env file: ", ".env", "file")
           if env ~= "" then
