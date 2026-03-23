@@ -36,6 +36,9 @@ return {
       })
 
       -- Shared on_attach keymaps
+      -- NOTE (Fix #1): This is the SOLE owner of LspAttach keymaps. The
+      -- LspAttach block previously duplicated in keymaps.lua has been removed.
+      -- Both would fire on every attach, double-registering all LSP bindings.
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
@@ -50,15 +53,26 @@ return {
           map("<leader>k",  vim.lsp.buf.signature_help,  "Signature Help")
           map("<leader>,r", vim.lsp.buf.rename,          "Rename")
           map("<leader>,a", vim.lsp.buf.code_action,     "Code Action")
-          map("<leader>,f", function() vim.lsp.buf.format({ timeout_ms = 3000 }) end, "Format")
+          -- FIX #2: Format via conform.nvim, not vim.lsp.buf.format().
+          -- lsp.lua's buffer-local binding was silently overriding the conform
+          -- fix already applied in keymaps.lua. conform handles the full
+          -- formatter chain (prettier, stylua, black, etc.) with lsp_fallback.
+          map("<leader>,f", function()
+            require("conform").format({ bufnr = e.buf, lsp_fallback = true })
+          end, "Format")
           map("<leader>,d", vim.diagnostic.open_float,   "Diagnostic Float")
           map("<leader>,l", vim.diagnostic.setloclist,   "Diagnostic List")
-          map("<leader>td", vim.lsp.buf.type_definition, "Type Definition")
+          -- FIX #6: Renamed <leader>td → <leader>ty (Type definition) to
+          -- resolve collision with test.lua's <leader>td (Test Debug Nearest).
+          -- test.lua's binding is global across all filetypes; this one is
+          -- buffer-local but the naming clash caused confusion in which-key.
+          map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
           map("]d",         vim.diagnostic.goto_next,    "Next Diagnostic")
           map("[d",         vim.diagnostic.goto_prev,    "Prev Diagnostic")
           vim.keymap.set("v", "<leader>,a", vim.lsp.buf.code_action, { buffer = e.buf, desc = "LSP: Code Action" })
+          -- FIX #2 (visual range): Also route through conform for range format.
           vim.keymap.set("v", "<leader>,f", function()
-            vim.lsp.buf.format({ timeout_ms = 3000, range = true })
+            require("conform").format({ bufnr = e.buf, lsp_fallback = true })
           end, { buffer = e.buf, desc = "LSP: Format Range" })
         end,
       })
@@ -81,7 +95,10 @@ return {
         },
         rust_analyzer = {
           settings = {
-            ["rust-analyzer"] = { checkOnSave = { command = "clippy" } },
+            -- FIX #9: checkOnSave.command was deprecated in recent rust-analyzer;
+            -- replaced by check.command. Old key still aliased in most versions
+            -- but will eventually be dropped.
+            ["rust-analyzer"] = { check = { command = "clippy" } },
           },
         },
         gopls = {
@@ -97,7 +114,9 @@ return {
           settings = { solargraph = { diagnostics = true, completion = true } },
         },
         elixirls = {
-          cmd = { vim.fn.expand("~/.local/share/nvim/mason/bin/elixir-ls") },
+          -- FIX #3: Use stdpath("data") instead of hardcoded ~/.local/share/nvim
+          -- for portability with custom $XDG_DATA_HOME configurations.
+          cmd = { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" },
         },
         ts_ls                  = {},
         html                   = {},
@@ -160,12 +179,10 @@ return {
     end,
   },
 
-  -- LSP signature help
-  {
-    "ray-x/lsp_signature.nvim",
-    event = "LspAttach",
-    opts  = { bind = true, handler_opts = { border = "rounded" } },
-  },
+  -- NOTE (Fix #7): lsp_signature.nvim removed — blink.cmp already provides
+  -- signature help via `signature = { enabled = true }` in completion.lua.
+  -- Having both active causes duplicate signature popups on function calls.
+  -- blink's built-in integrates better with the completion menu.
 
   -- LSP progress indicator
   {
@@ -191,6 +208,13 @@ return {
         ruby       = { "rubocop" },
         kotlin     = { "ktlint" },
         elixir     = { "mix" },
+        -- FIX #8: Added missing formatters that are installed by MasonInstallAll
+        -- but were not wired into conform — they were installed but never invoked.
+        html       = { "prettier" },
+        css        = { "prettier", "stylelint" },
+        c          = { "clang-format" },
+        cpp        = { "clang-format" },
+        fortran    = { "fprettify" },
       },
       format_on_save = {
         timeout_ms = 500,
@@ -202,7 +226,9 @@ return {
   -- Linting
   {
     "mfussenegger/nvim-lint",
-    event  = "BufReadPre",
+    -- FIX #4: Changed BufReadPre → BufReadPost. nvim-lint needs buffer content
+    -- to lint; BufReadPre fires before content is loaded.
+    event  = "BufReadPost",
     config = function()
       require("lint").linters_by_ft = {
         python     = { "ruff" },
@@ -211,7 +237,10 @@ return {
         sh         = { "shellcheck" },
         ruby       = { "rubocop" },
       }
+      -- FIX #5: Added augroup so this autocmd doesn't accumulate duplicates
+      -- on plugin reload or re-source.
       vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
+        group    = vim.api.nvim_create_augroup("NvimLint", { clear = true }),
         callback = function() require("lint").try_lint() end,
       })
     end,
