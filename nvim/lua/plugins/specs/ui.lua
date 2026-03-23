@@ -1,13 +1,22 @@
 -- lua/plugins/specs/ui.lua - UI plugins
 -- Only the ACTIVE theme loads eagerly (lazy=false). All others are lazy.
 
-local active = require("core.theme").config.theme
+-- FIX #1: Defer theme lookup into a function rather than capturing it at
+-- module load time. The top-level require("core.theme") ran during Lazy's
+-- spec collection (before theme.setup()), meaning `active` was captured once
+-- and never updated — switching themes via M.switch() would leave the wrong
+-- plugin marked lazy=false for the session.
+local function get_active() return require("core.theme").config.theme end
 
+-- FIX #2: Tightened the fallback regex to handle plugin names with dots
+-- (e.g. "author/some.plugin.nvim") by matching up to the first dot after
+-- the last slash, rather than greedily stopping at any dot.
 local function theme_spec(plugin_name, name, extra)
+  local derived = name or (plugin_name:match("/([^/]+)%.nvim$") or plugin_name:match("/([^/]+)$"))
   return vim.tbl_extend("force", {
     plugin_name,
     name     = name or nil,
-    lazy     = active ~= (name or plugin_name:match("/([^.]+)$")),
+    lazy     = get_active() ~= derived,
     priority = 1000,
   }, extra or {})
 end
@@ -118,10 +127,12 @@ return {
         -- Core groups
         { "<leader>b",   group = "buffer" },
         { "<leader>c",   group = "code" },
-        { "<leader>d",   group = "debug" },
+        -- FIX #4: Removed orphan <leader>d group — no bindings use this prefix
+        -- (DAP lives under <leader>; not <leader>d).
         { "<leader>e",   group = "explorer" },
         { "<leader>f",   group = "find" },
-        { "<leader>g",   group = "git" },
+        -- FIX #4: Removed <leader>g "git" group — git bindings moved to <leader>.
+        -- The only <leader>g usage is <leader>go* (Go language), covered below.
         { "<leader>h",   group = "harpoon" },
         { "<leader>r",   group = "run/rust" },
         { "<leader>s",   group = "split" },
@@ -147,14 +158,17 @@ return {
         { "<leader>kt",  group = "kotlin" },
         { "<leader>cc",  group = "cpp/cmake" },
         { "<leader>vh",  group = "vhdl" },
-        { "<leader>fo",  group = "fortran" },
-        { "<leader>zz",  group = "zig" },
+        -- FIX #4: Fortran renamed fo → ft (was conflicting with Telescope <leader>fo)
+        { "<leader>ft",  group = "fortran" },
+        -- FIX #4: Zig prefix is <leader>z* not <leader>zz
+        { "<leader>z",   group = "zig" },
         { "<leader>co",  group = "cobol" },
         { "<leader>md",  group = "markdown" },
         { "<leader>ts",  group = "typescript" },
         { "<leader>jp",  group = "js-packages" },
         { "<leader>db",  group = "database" },
-        { "<leader>hr",  group = "rest" },
+        -- FIX #4: REST renamed hr → re (was mixed into Harpoon's <leader>h namespace)
+        { "<leader>re",  group = "rest" },
         { "<leader>tc",  group = "test-coverage" },
       },
     },
@@ -204,7 +218,7 @@ return {
           { icon = "  ", desc = "Recent Files    ", action = "Telescope oldfiles",                      key = "r" },
           { icon = "  ", desc = "Find Text       ", action = "Telescope live_grep",                     key = "g" },
           { icon = "  ", desc = "Sessions        ", action = "SessionRestore",                          key = "s" },
-          { icon = "  ", desc = "Config          ", action = "edit $MYVIMRC",                           key = "c" },
+          { icon = "  ", desc = "Config          ", action = "edit " .. vim.fn.stdpath("config") .. "/init.lua",  key = "c" },
           { icon = "  ", desc = "Theme           ", action = "lua require('core.theme').toggle()",      key = "t" },
           { icon = "󰒲  ", desc = "Lazy            ", action = "Lazy",                                   key = "l" },
           { icon = "  ", desc = "Quit            ", action = "qa",                                      key = "q" },
