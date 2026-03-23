@@ -18,13 +18,16 @@ return {
       "rcasia/neotest-java",       -- covers Kotlin (Gradle/Maven JUnit)
     },
     keys = {
-      { "<leader>tn", function() require("neotest").run.run() end,                  desc = "Test Nearest" },
-      { "<leader>tf", function() require("neotest").run.run(vim.fn.expand("%")) end, desc = "Test File" },
-      { "<leader>ta", function() require("neotest").run.run(vim.uv.cwd()) end,      desc = "Test All" },
-      { "<leader>ts", function() require("neotest").summary.toggle() end,           desc = "Test Summary" },
-      { "<leader>to", function() require("neotest").output.open({ enter = true }) end, desc = "Test Output" },
-      { "<leader>tp", function() require("neotest").output_panel.toggle() end,      desc = "Test Panel" },
-      { "<leader>td", function() require("neotest").run.run({ strategy = "dap" }) end, desc = "Test Debug Nearest" },
+      { "<leader>'n", function() require("neotest").run.run() end,                   desc = "Test Nearest" },
+      { "<leader>'f", function() require("neotest").run.run(vim.fn.expand("%")) end,  desc = "Test File" },
+      { "<leader>'a", function() require("neotest").run.run(vim.uv.cwd()) end,       desc = "Test All" },
+      { "<leader>'u", function() require("neotest").summary.toggle() end,            desc = "Test Summary" },
+      { "<leader>'o", function() require("neotest").output.open({ enter = true }) end, desc = "Test Output" },
+      { "<leader>'p", function() require("neotest").output_panel.toggle() end,       desc = "Test Panel" },
+      -- FIX #10: Renamed <leader>td → <leader>'d to resolve collision with
+      -- lsp.lua's <leader>td (Type Definition). Neotest keys now consistently
+      -- live under the <leader>' run/test namespace from keymaps.lua.
+      { "<leader>'d", function() require("neotest").run.run({ strategy = "dap" }) end, desc = "Test Debug Nearest" },
     },
     opts = function()
       return {
@@ -33,8 +36,11 @@ return {
           require("neotest-rust"),
           require("neotest-go"),
           require("neotest-rspec")({
+            -- FIX #11: vim.tbl_flatten deprecated in Neovim 0.11 and was a
+            -- no-op here anyway (no nested tables). Direct table construction
+            -- is identical and forward-compatible.
             rspec_cmd = function()
-              return vim.tbl_flatten({ "bundle", "exec", "rspec" })
+              return { "bundle", "exec", "rspec" }
             end,
           }),
           require("neotest-elixir"),
