@@ -68,8 +68,9 @@ local runners = {
   end,
   nim = function(file)
     if vim.fn.executable("nim") == 1 then
-      local exe = vim.fn.fnamemodify(file, ":r")
-      return "nim c -r " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe)
+      -- FIX #7: "nim c -r file" already compiles AND runs in one step.
+      -- The original appended "&& exe" which caused the binary to execute twice.
+      return "nim c -r " .. vim.fn.shellescape(file)
     end
   end,
   ruby = function(file)
@@ -86,10 +87,13 @@ local runners = {
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
     if vim.fn.executable("kotlinc") == 1 then
+      -- FIX #8: name was interpolated raw into the shell command. If the
+      -- filename contains spaces the jar path breaks. Use shellescape.
+      local jar = vim.fn.shellescape(name .. ".jar")
       return "cd " .. vim.fn.shellescape(dir)
         .. " && kotlinc " .. vim.fn.shellescape(file)
-        .. " -include-runtime -d " .. name .. ".jar"
-        .. " && java -jar " .. name .. ".jar"
+        .. " -include-runtime -d " .. jar
+        .. " && java -jar " .. jar
     end
   end,
   cobol = function(file)
@@ -128,8 +132,10 @@ local runners = {
 }
 
 -- Filetypes that support selection execution (need a pipe-able interpreter)
+-- FIX #10: Unified python check to use vim.fn.executable() consistently with
+-- runners.python — was using exepath() which is less idiomatic here.
 local selection_interpreters = {
-  python     = function() return vim.fn.exepath("python3") ~= "" and "python3" or "python" end,
+  python     = function() return vim.fn.executable("python3") == 1 and "python3" or "python" end,
   lua        = function() return "lua" end,
   javascript = function() return vim.fn.executable("node") == 1 and "node" or nil end,
   typescript = function()
@@ -152,7 +158,11 @@ function M.run_file()
     return
   end
 
-  if vim.bo.modified then vim.cmd("write") end
+  -- FIX #9: Guard buftype before writing — scratch/nofile buffers cannot be
+  -- written and would throw E382. Only write normal file buffers.
+  if vim.bo.modified and vim.bo.buftype == "" then
+    vim.cmd("write")
+  end
 
   local runner = runners[ft]
   if not runner then
@@ -181,7 +191,7 @@ function M.run_selection()
   local lines      = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
   local code       = table.concat(lines, "\n")
 
-  local resolver   = selection_interpreters[ft]
+  local resolver = selection_interpreters[ft]
   if not resolver then
     vim.notify("No selection interpreter for: " .. ft, vim.log.levels.WARN)
     return
@@ -193,7 +203,21 @@ function M.run_selection()
     return
   end
 
-  local cmd = string.format("echo %s | %s", vim.fn.shellescape(code), interpreter)
+  -- FIX #5: Replaced `echo code | interpreter` with a tmpfile approach.
+  -- The old method was unreliable: `echo` is not designed for multiline content
+  -- and shellescape'd newlines were passed as literal "\n" characters on many
+  -- shells (dash, sh), arriving at the interpreter as a single mangled line.
+  -- Writing to a tmpfile and running it directly is portable and correct.
+  local tmpfile = vim.fn.tempname() .. "." .. ft
+  local f = io.open(tmpfile, "w")
+  if not f then
+    vim.notify("Failed to create temp file for selection run", vim.log.levels.ERROR)
+    return
+  end
+  f:write(code)
+  f:close()
+
+  local cmd = interpreter .. " " .. vim.fn.shellescape(tmpfile)
   vim.cmd("split | terminal " .. cmd)
 end
 
