@@ -36,7 +36,8 @@ return {
     optional = true,
     keys = {
       {
-        "<leader>fob",
+        -- FIX: renamed <leader>fo* → <leader>ft* to free <leader>fo for Telescope recent files
+        "<leader>ftb",
         function()
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
@@ -51,7 +52,7 @@ return {
         ft   = "fortran",
       },
       {
-        "<leader>foc",
+        "<leader>ftc",
         function()
           local file = vim.fn.expand("%:p")
           local Terminal = require("toggleterm.terminal").Terminal
@@ -65,7 +66,7 @@ return {
         ft   = "fortran",
       },
       {
-        "<leader>fom",
+        "<leader>ftm",
         function()
           local Terminal = require("toggleterm.terminal").Terminal
           Terminal:new({
@@ -90,15 +91,21 @@ return {
       local s, t, i = ls.snippet, ls.text_node, ls.insert_node
 
       ls.add_snippets("fortran", {
+        -- FIX: i(0) (final cursor position) moved to end of snippet.
+        -- Previously i(0) appeared before the closing line, causing the cursor
+        -- to land in the middle of the snippet before jumping was complete.
+        -- i(1) on the closing line correctly mirrors the name (linked tabstop).
         s("program", {
           t("program "), i(1, "name"),
-          t({ "", "  implicit none", "  " }), i(0),
+          t({ "", "  implicit none", "  " }), i(2),
           t({ "", "end program " }), i(1),
+          i(0),
         }),
         s("subroutine", {
           t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
-          t({ "", "  implicit none", "  " }), i(0),
+          t({ "", "  implicit none", "  " }), i(3),
           t({ "", "end subroutine " }), i(1),
+          i(0),
         }),
         s("do", {
           t("do "), i(1, "i"), t(" = "), i(2, "1"), t(", "), i(3, "n"),
