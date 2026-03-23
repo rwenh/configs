@@ -43,6 +43,10 @@ return {
   },
 
   -- Comments
+  -- FIX #13: nvim-ts-context-commentstring v0.8+ removed the
+  -- integrations.comment_nvim module. The new API is to call setup() with
+  -- enable_autocmd = false; Comment.nvim picks up the context automatically.
+  -- If you are pinned to <v0.8, revert to the pre_hook pattern.
   {
     "numToStr/Comment.nvim",
     dependencies = "JoosepAlviste/nvim-ts-context-commentstring",
@@ -51,6 +55,7 @@ return {
       { "gc",  mode = { "n", "v" } },
     },
     config = function()
+      require("ts_context_commentstring").setup({ enable_autocmd = false })
       require("Comment").setup({
         pre_hook = require("ts_context_commentstring.integrations.comment_nvim").create_pre_hook(),
       })
@@ -64,10 +69,13 @@ return {
   {
     "windwp/nvim-autopairs",
     event = "InsertEnter",
-    opts  = { check_ts = true },
+    -- FIX #9: map_cr = false prevents autopairs from inserting a closing bracket
+    -- on <CR> — blink.cmp's auto_brackets (completion.lua) already handles this
+    -- on completion accept. Without this, <CR> to accept a completion would
+    -- produce a doubled closing bracket.
+    opts  = { check_ts = true, map_cr = false },
     config = function(_, opts)
       require("nvim-autopairs").setup(opts)
-      -- blink.cmp handles bracket pairing natively (auto_brackets in completion.lua)
     end,
   },
 
@@ -123,9 +131,10 @@ return {
       auto_save       = true,
       auto_restore    = true,
     },
-    init = function()
-      vim.o.sessionoptions = "blank,buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
-    end,
+    -- FIX #8: Removed redundant init block that set vim.o.sessionoptions.
+    -- options.lua already owns this setting with the same value.
+    -- Having two places set the same option creates a false appearance of
+    -- conflict. options.lua is the single source of truth for all vim options.
   },
 
   -- Zen mode
@@ -187,7 +196,18 @@ return {
   { "petertriho/nvim-scrollbar", event = "BufReadPost", opts = {} },
 
   -- Code actions preview
-  { "aznhe21/actions-preview.nvim", opts = {} },
+  -- FIX #11: Added keys trigger — without any event/cmd/keys this spec had no
+  -- lazy-load trigger and would never load (defaults.lazy = true). Wired to
+  -- the same <leader>,a binding used in keymaps.lua so it intercepts code
+  -- actions and shows the preview UI. Remove if not using this plugin.
+  {
+    "aznhe21/actions-preview.nvim",
+    keys = {
+      { "<leader>,a", function() require("actions-preview").code_actions() end,
+        mode = { "n", "v" }, desc = "Code action (preview)" },
+    },
+    opts = {},
+  },
 
   -- Refactoring
   {
@@ -209,10 +229,12 @@ return {
       { "<leader>h2", function() require("harpoon"):list():select(2) end,                                                  desc = "Harpoon 2" },
       { "<leader>h3", function() require("harpoon"):list():select(3) end,                                                  desc = "Harpoon 3" },
       { "<leader>h4", function() require("harpoon"):list():select(4) end,                                                  desc = "Harpoon 4" },
-      { "<C-1>",      function() require("harpoon"):list():select(1) end },
-      { "<C-2>",      function() require("harpoon"):list():select(2) end },
-      { "<C-3>",      function() require("harpoon"):list():select(3) end },
-      { "<C-4>",      function() require("harpoon"):list():select(4) end },
+      -- FIX #12: <C-number> not transmitted by most terminals — changed to
+      -- <M-number> (Alt+number) to match the same fix applied in keymaps.lua.
+      { "<M-1>", function() require("harpoon"):list():select(1) end },
+      { "<M-2>", function() require("harpoon"):list():select(2) end },
+      { "<M-3>", function() require("harpoon"):list():select(3) end },
+      { "<M-4>", function() require("harpoon"):list():select(4) end },
     },
   },
 }
