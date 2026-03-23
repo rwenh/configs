@@ -20,12 +20,36 @@
 16. **theme.lua** — background resolution result is now cached
 17. **runner.lua** — run_selection now covers all 9 languages that have runners, not just 5
 18. **specs/init.lua** — import order fixed: web before html/css, database before sql
+    > ⚠️ NOTE: This order is load-order sensitive. web.lua must load before html.lua/css.lua,
+    > and database.lua must load before sql.lua. This dependency is intentional — do not
+    > reorder these imports.
+
+## What Was Changed (v2.1 → v2.1.1 — Post-Audit Fixes)
+
+19. **init.lua** — version field corrected to "2.1" (was stuck at "2.0")
+20. **init.lua** — `core.autocmds` now loads synchronously (before defer_fn).
+    Previously deferred with 0ms which caused BufReadPre/BufRead to be missed
+    for the first file opened via CLI (e.g. `nvim myfile.lua`).
+21. **init.lua** — startup stats notification now hooks into the `LazyDone` User
+    event instead of a hardcoded 150ms timer. The timer was fragile on slower
+    machines or with many plugins.
+22. **init.lua** — added hard-fail guard after `plugins` load. If plugins/init.lua
+    fails, init now aborts early with a clear error rather than silently producing
+    a broken state (no LSP, no colorscheme, etc.).
+23. **Fortran keymaps** — `<leader>fo*` → `<leader>ft*`. The `<leader>fo` prefix
+    was shadowing Telescope's "recent files" binding (`<leader>fo`), causing
+    which-key to block and Telescope to require an extra keypress.
+    Update fortran.lua keymaps accordingly.
+24. **REST keymaps** — `<leader>h*` → `<leader>re*`. REST bindings were mixed into
+    Harpoon's `<leader>h` namespace with no visual separation, risking future
+    suffix collisions. Harpoon retains sole ownership of `<leader>h*`.
+    Update rest.lua keymaps accordingly.
 
 ## File Structure
 
 ```
 ~/.config/nvim/
-├── init.lua                          ← unchanged
+├── init.lua                          ← UPDATED (v2.1.1 fixes)
 └── lua/
     ├── core/
     │   ├── autocmds.lua              ← unchanged
@@ -40,7 +64,7 @@
     └── plugins/
         ├── init.lua                  ← unchanged
         └── specs/
-            ├── init.lua              ← UPDATED (import order)
+            ├── init.lua              ← UPDATED (import order — see note in #18)
             ├── advanced.lua          ← UPDATED (better-escape restored)
             ├── completion.lua        ← UPDATED (capabilities removed, now in lsp.lua)
             ├── dap.lua               ← unchanged
@@ -57,7 +81,7 @@
                 ├── css.lua           ← UPDATED (tailwind, stylelint, treesitter)
                 ├── database.lua      ← UPDATED (full dadbod owner)
                 ├── elixir.lua        ← unchanged
-                ├── fortran.lua       ← UPDATED (build integration, snippets)
+                ├── fortran.lua       ← UPDATED (keymaps fo* → ft*, build integration, snippets)
                 ├── go.lua            ← unchanged
                 ├── html.lua          ← UPDATED (htmlhint, prettier)
                 ├── java.lua          ← unchanged
@@ -65,7 +89,7 @@
                 ├── kotlin.lua        ← UPDATED (neotest, build integration)
                 ├── markdown.lua      ← UPDATED (table mode, paste-image)
                 ├── python.lua        ← UPDATED (unified py* prefix)
-                ├── rest.lua          ← UPDATED (keymaps, env support)
+                ├── rest.lua          ← UPDATED (keymaps h* → re*, env support)
                 ├── ruby.lua          ← UPDATED (rdbg DAP, neotest-rspec)
                 ├── rust.lua          ← unchanged
                 ├── sql.lua           ← UPDATED (defers dadbod to database.lua)
