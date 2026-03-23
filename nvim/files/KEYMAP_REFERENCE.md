@@ -54,7 +54,7 @@ Space (` `)
 - `<leader>fk` — Find keymaps
 - `<leader>fc` — Find commands
 - `<leader>fr` — Resume last search
-- `<leader>fo` — Recent files
+- `<leader>fo` — Recent files        ← sole owner of this binding; Fortran moved to <leader>ft*
 - `Ctrl+s` — Live grep
 
 ---
@@ -264,23 +264,23 @@ Space (` `)
 - `<leader>ccs` — CMake select target
 - `<leader>ccd` — Generate docstring
 
-### Fortran (`<leader>fo*`)
-- `<leader>fob` — Build & run
-- `<leader>foc` — Check syntax
-- `<leader>fom` — Make
+### Fortran (`<leader>ft*`)  ← RENAMED from `<leader>fo*` (was shadowing Telescope `<leader>fo` recent files)
+- `<leader>ftb` — Build & run
+- `<leader>ftc` — Check syntax
+- `<leader>ftm` — Make
 
 ### Zig (`<leader>z*`)
 - `<leader>zb` — Build run
 - `<leader>zt` — Build test
 - `<leader>zc` — Run file
 
-### VHDL (`<leader>vh*`)  ← was `<leader>v*`
+### VHDL (`<leader>vh*`)
 - `<leader>vha` — GHDL Analyze
 - `<leader>vhe` — GHDL Elaborate
 - `<leader>vhr` — GHDL Run & View
 - `<leader>vhc` — GHDL Syntax Check
 
-### COBOL (`<leader>co*`)  ← was `<leader>cb`
+### COBOL (`<leader>co*`)
 - `<leader>cob` — Compile & run
 - `<leader>coc` — Syntax check
 
@@ -289,16 +289,24 @@ Space (` `)
 - `<leader>dba` — Add connection
 - `<leader>dbf` — Find buffer
 
-### REST (`<leader>h*`)
-- `<leader>hr` — Run request
-- `<leader>hp` — Preview request
-- `<leader>hl` — Run last request
-- `<leader>he` — Select env file
+### REST (`<leader>re*`)  ← RENAMED from `<leader>h*` (was mixed into Harpoon's namespace)
+- `<leader>rer` — Run request
+- `<leader>rep` — Preview request
+- `<leader>rel` — Run last request
+- `<leader>ree` — Select env file
 
 ### Markdown (`<leader>md*`)
 - `<leader>mdt` — Table mode toggle
 - `<leader>mdf` — Table realign
 - `<leader>mdp` — Paste image
+
+---
+
+## HARPOON (standalone — no longer shares `<leader>h*` with REST)
+- `<leader>ha` — Add file
+- `<leader>hm` — Toggle menu
+- `<leader>h1`–`h4` — Jump to file 1–4
+- `Ctrl+1`–`4` — Jump to file 1–4 (alternative)
 
 ---
 
