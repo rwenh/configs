@@ -70,6 +70,16 @@ return {
       dap.listeners.before.event_exited["dapui_config"]      = function() dapui.close() end
 
       -- ── Python ──────────────────────────────────────────────────────────────
+      -- FIX #2: vim.fn.exepath() returns "" (not nil) when binary not found.
+      -- "" is truthy in Lua so `or` never falls through — replaced with explicit ~= "" check.
+      local function find_python()
+        local p3 = vim.fn.exepath("python3")
+        if p3 ~= "" then return p3 end
+        local p = vim.fn.exepath("python")
+        if p ~= "" then return p end
+        return "python3"  -- last-resort name so the error message is meaningful
+      end
+
       dap.adapters.python = function(cb, config)
         if config.request == "attach" then
           local port = (config.connect or config).port
@@ -78,7 +88,7 @@ return {
                options = { source_filetype = "python" } })
         else
           cb({ type = "executable",
-               command = vim.fn.exepath("python3") or vim.fn.exepath("python"),
+               command = find_python(),
                args    = { "-m", "debugpy.adapter" },
                options = { source_filetype = "python" } })
         end
@@ -88,13 +98,13 @@ return {
         { type = "python", request = "launch", name = "Launch file", program = "${file}",
           pythonPath = function()
             local v = os.getenv("VIRTUAL_ENV")
-            return v and (v .. "/bin/python") or vim.fn.exepath("python3") or vim.fn.exepath("python")
+            return v and (v .. "/bin/python") or find_python()
           end },
         { type = "python", request = "launch", name = "Launch file with arguments", program = "${file}",
           args = function() return vim.split(vim.fn.input("Arguments: "), " +") end,
           pythonPath = function()
             local v = os.getenv("VIRTUAL_ENV")
-            return v and (v .. "/bin/python") or vim.fn.exepath("python3") or vim.fn.exepath("python")
+            return v and (v .. "/bin/python") or find_python()
           end },
         { type = "python", request = "attach", name = "Attach remote",
           connect = function()
@@ -132,8 +142,11 @@ return {
         stopOnEntry = false,
       }
 
-      dap.configurations.c    = { codelldb_launch }
-      dap.configurations.cpp  = { codelldb_launch }
+      -- FIX #6: Use vim.deepcopy so C and C++ configs are independent table
+      -- instances. Sharing the same reference means a runtime mutation to one
+      -- (e.g. by a plugin appending env vars) would silently affect the other.
+      dap.configurations.c   = { vim.deepcopy(codelldb_launch) }
+      dap.configurations.cpp = { vim.deepcopy(codelldb_launch) }
       dap.configurations.rust = {
         vim.tbl_extend("force", codelldb_launch, {
           name    = "Launch file",
@@ -188,10 +201,14 @@ return {
       }
 
       -- ── Elixir (ElixirLS) ─────────────────────────────────────────────────
+      -- FIX #3: exepath() returns "" not nil — or never falls through on miss.
+      -- Also replaced hardcoded ~/.local/share/nvim with vim.fn.stdpath("data")
+      -- for portability across custom $XDG_DATA_HOME setups.
+      local elixir_dbg = vim.fn.exepath("elixir-ls-debugger")
       dap.adapters.mix_task = {
         type    = "executable",
-        command = vim.fn.exepath("elixir-ls-debugger")
-               or vim.fn.expand("~/.local/share/nvim/mason/bin/elixir-ls-debugger"),
+        command = elixir_dbg ~= "" and elixir_dbg
+                  or (vim.fn.stdpath("data") .. "/mason/bin/elixir-ls-debugger"),
         args    = {},
       }
       dap.configurations.elixir = {
@@ -211,10 +228,14 @@ return {
           local path = vim.api.nvim_buf_get_name(bufnr)
           if path ~= "" and #buf_bps > 0 then
             bps[path] = vim.tbl_map(function(bp)
+              -- NOTE: DAP internal field is bp.logMessage (camelCase); we
+              -- persist it as log_message (snake_case) to match the set() API.
               return { line = bp.line, condition = bp.condition, log_message = bp.logMessage }
             end, buf_bps)
           end
         end
+        -- FIX #5: Skip write when there are no breakpoints to persist.
+        if next(bps) == nil then return end
         local f = io.open(bp_file, "w")
         if f then f:write(vim.json.encode(bps)); f:close() end
       end
