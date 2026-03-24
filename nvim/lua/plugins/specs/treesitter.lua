@@ -11,7 +11,7 @@ return {
     -- root module, which is wrong here. Using an explicit config function
     -- ensures the correct setup target is called, especially post-rewrite.
     config = function(_, opts)
-      require("nvim-treesitter.configs").setup(opts)
+      require("nvim-treesitter").setup(opts)
     end,
     opts = {
       ensure_installed = {
