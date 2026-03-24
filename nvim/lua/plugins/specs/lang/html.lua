@@ -5,10 +5,18 @@ return {
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    config = function()
-      local lint = require("lint")
-      lint.linters_by_ft = vim.tbl_extend("force", lint.linters_by_ft or {}, {
-        html = { "htmlhint" },
+    -- FIX #1: optional=true config doesn't run — moved to init.
+    -- FIX #2: Use targeted assignment instead of tbl_extend on whole table
+    -- to avoid overwriting entries registered by lsp.lua's lint config.
+    init = function()
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = "*.html",
+        once     = true,
+        callback = function()
+          local ok, lint = pcall(require, "lint")
+          if not ok then return end
+          lint.linters_by_ft.html = { "htmlhint" }
+        end,
       })
     end,
   },
@@ -39,15 +47,16 @@ return {
   {
     "neovim/nvim-lspconfig",
     optional = true,
-    opts = {
-      servers = {
-        html = {
-          filetypes = { "html", "htmldjango", "jinja.html" },
-          init_options = {
-            provideFormatter = false, -- defer to prettier
-          },
+    -- FIX #3: opts.servers is the LazyVim pattern and doesn't work with this
+    -- config's LSP setup (lsp.lua uses vim.lsp.config/enable directly).
+    -- Moved to init using the same pattern as lsp.lua optional servers.
+    init = function()
+      vim.lsp.config("html", {
+        filetypes    = { "html", "htmldjango", "jinja.html" },
+        init_options = {
+          provideFormatter = false,  -- defer formatting to prettier
         },
-      },
-    },
+      })
+    end,
   },
 }
