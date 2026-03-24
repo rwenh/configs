@@ -98,54 +98,11 @@ map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
 
 -- ============================================================================
 -- LSP & CODE ACTIONS
--- FIX #1: LSP buffer-local keymaps moved into a LspAttach autocmd.
--- Previously these were global — active in every buffer regardless of whether
--- LSP was attached, causing "No LSP client attached" errors in plain files.
--- The KEYMAP_REFERENCE already documented these as "set on LspAttach in lsp.lua"
--- but the implementation contradicted that. Now aligned.
+-- NOTE: All LSP buffer-local keymaps (gd, gD, gi, gr, K, <leader>k,
+-- <leader>,*, ]d, [d) are defined in lsp.lua's LspAttach autocmd.
+-- lsp.lua is the sole owner — defining them here too caused every LSP buffer
+-- to double-register all bindings. Removed.
 -- ============================================================================
-
-vim.api.nvim_create_autocmd("LspAttach", {
-  group    = vim.api.nvim_create_augroup("KeymapsLspAttach", { clear = true }),
-  callback = function(e)
-    local lmap = function(keys, action, desc)
-      map("n", keys, action, { buffer = e.buf, desc = desc })
-    end
-    local lvmap = function(keys, action, desc)
-      map({ "n", "v" }, keys, action, { buffer = e.buf, desc = desc })
-    end
-
-    -- Navigation
-    lmap("gd",          "<cmd>lua vim.lsp.buf.definition()<cr>",    "Go to definition")
-    lmap("gD",          "<cmd>lua vim.lsp.buf.declaration()<cr>",   "Go to declaration")
-    lmap("gi",          "<cmd>lua vim.lsp.buf.implementation()<cr>","Go to implementation")
-    lmap("gr",          "<cmd>lua vim.lsp.buf.references()<cr>",    "References")
-    lmap("K",           "<cmd>lua vim.lsp.buf.hover()<cr>",         "Hover documentation")
-    lmap("<leader>k",   "<cmd>lua vim.lsp.buf.signature_help()<cr>","Signature help")
-
-    -- Code actions
-    lvmap("<leader>,a", "<cmd>lua vim.lsp.buf.code_action()<cr>",   "Code action")
-    lmap("<leader>,r",  "<cmd>lua vim.lsp.buf.rename()<cr>",        "Rename symbol")
-    lmap("<leader>,o",  "<cmd>AerialToggle<cr>",                    "Code outline")
-
-    -- FIX #2: Format via conform.nvim, not vim.lsp.buf.format().
-    -- The config uses conform for all formatting (prettier, stylua, black, etc.).
-    -- vim.lsp.buf.format() bypassed conform entirely and used the raw LSP formatter.
-    lmap("<leader>,f", function()
-      require("conform").format({ bufnr = e.buf, lsp_fallback = true })
-    end, "Format code")
-    map("v", "<leader>,f", function()
-      require("conform").format({ bufnr = e.buf, lsp_fallback = true })
-    end, { buffer = e.buf, desc = "Format selection" })
-
-    -- Diagnostics (buffer-local)
-    lmap("]d",          "<cmd>lua vim.diagnostic.goto_next()<cr>",  "Next diagnostic")
-    lmap("[d",          "<cmd>lua vim.diagnostic.goto_prev()<cr>",  "Prev diagnostic")
-    lmap("<leader>,d",  "<cmd>lua vim.diagnostic.open_float()<cr>", "Show diagnostic")
-    lmap("<leader>,l",  "<cmd>lua vim.diagnostic.setloclist()<cr>", "Diagnostics list")
-    lmap("<leader>,t",  "<cmd>ToggleDiagnostics<cr>",               "Toggle diagnostics")
-  end,
-})
 
 -- ============================================================================
 -- GIT OPERATIONS (Using PERIOD '.' - represents history/versions)
