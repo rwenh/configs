@@ -7,8 +7,10 @@ return {
   {
     "neovim/nvim-lspconfig",
     optional = true,
-    config = function()
-      -- Only enable if binary is present (installed via npm: cssmodules-language-server)
+    -- FIX #5: optional=true specs do not run their config function — Lazy
+    -- only merges opts. Moved registration into init which does run on
+    -- optional specs, guarded by executable check.
+    init = function()
       if vim.fn.executable("cssmodules-language-server") == 1 then
         vim.lsp.config("cssmodules_ls", {
           init_options = { isCSSModules = true },
@@ -62,11 +64,20 @@ return {
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    config = function()
-      local lint = require("lint")
-      lint.linters_by_ft = vim.tbl_extend("force", lint.linters_by_ft or {}, {
-        css  = { "stylelint" },
-        scss = { "stylelint" },
+    -- FIX #6: optional=true config functions don't run — moved to init.
+    -- FIX #7: Use targeted per-key assignment instead of tbl_extend on the
+    -- whole table. tbl_extend risks losing entries set by lsp.lua's config
+    -- if load order causes a full table replacement.
+    init = function()
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = { "*.css", "*.scss" },
+        once     = true,
+        callback = function()
+          local ok, lint = pcall(require, "lint")
+          if not ok then return end
+          lint.linters_by_ft.css  = { "stylelint" }
+          lint.linters_by_ft.scss = { "stylelint" }
+        end,
       })
     end,
   },
