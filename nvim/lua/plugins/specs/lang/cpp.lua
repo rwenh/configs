@@ -13,12 +13,12 @@ return {
       cmake_generate_options = { "-DCMAKE_EXPORT_COMPILE_COMMANDS=1" },
     },
     keys = {
-      { "<leader>ccg", "<cmd>CMakeGenerate<cr>",   desc = "CMake Generate",   ft = "cpp" },
-      { "<leader>ccb", "<cmd>CMakeBuild<cr>",      desc = "CMake Build",      ft = "cpp" },
-      { "<leader>ccr", "<cmd>CMakeRun<cr>",        desc = "CMake Run",        ft = "cpp" },
-      { "<leader>cct", "<cmd>CMakeRunTest<cr>",    desc = "CMake Test",       ft = "cpp" },
-      { "<leader>ccc", "<cmd>CMakeClean<cr>",      desc = "CMake Clean",      ft = "cpp" },
-      { "<leader>ccs", "<cmd>CMakeSelectTarget<cr>", desc = "CMake Select Target", ft = "cpp" },
+      { "<leader>ccg", "<cmd>CMakeGenerate<cr>",     desc = "CMake Generate",       ft = { "cpp", "cmake" } },
+      { "<leader>ccb", "<cmd>CMakeBuild<cr>",        desc = "CMake Build",          ft = { "cpp", "cmake" } },
+      { "<leader>ccr", "<cmd>CMakeRun<cr>",          desc = "CMake Run",            ft = { "cpp", "cmake" } },
+      { "<leader>cct", "<cmd>CMakeRunTest<cr>",      desc = "CMake Test",           ft = { "cpp", "cmake" } },
+      { "<leader>ccc", "<cmd>CMakeClean<cr>",        desc = "CMake Clean",          ft = { "cpp", "cmake" } },
+      { "<leader>ccs", "<cmd>CMakeSelectTarget<cr>", desc = "CMake Select Target",  ft = { "cpp", "cmake" } },
     },
   },
 
@@ -34,7 +34,11 @@ return {
       },
     },
     keys = {
-      { "<leader>ccd", function() require("neogen").generate() end, desc = "Generate C++ Docstring", ft = "cpp" },
+      -- FIX #3: Added ft = "c" entry — plugin loads for both c and cpp but
+      -- the original key only fired in cpp buffers, leaving C files without
+      -- docstring generation access.
+      { "<leader>ccd", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "cpp" },
+      { "<leader>ccd", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "c" },
     },
   },
 
@@ -49,15 +53,9 @@ return {
     end,
   },
 
-  -- Conform: clang-format for C++
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = {
-      formatters_by_ft = {
-        cpp = { "clang_format" },
-        c   = { "clang_format" },
-      },
-    },
-  },
+  -- NOTE (Fix #1 & #2): Conform clang-format spec removed from here.
+  -- lsp.lua already registers c = { "clang-format" } and cpp = { "clang-format" }
+  -- correctly (hyphen, not underscore). The original entry used "clang_format"
+  -- (underscore) which conform does not recognise — formatting was silently
+  -- skipped for all C/C++ files. Keeping it in lsp.lua as the single source.
 }
