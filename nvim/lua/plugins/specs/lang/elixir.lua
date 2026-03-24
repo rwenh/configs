@@ -44,4 +44,4 @@ return {
   -- and the global <leader>'* bindings (test nearest/file/all/summary) cover
   -- Elixir buffers. Keeping a duplicate spec here caused double adapter
   -- registration and redundant which-key entries for the same actions.
-
+}
