@@ -16,18 +16,19 @@ return {
   {
     "stevearc/conform.nvim",
     optional = true,
-    opts = {
-      formatters_by_ft = {
-        fortran = { "fprettify" },
-      },
-      formatters = {
-        fprettify = {
-          command = "fprettify",
-          args    = { "--indent", "2", "--stdout", "-" },
-          stdin   = true,
-        },
-      },
-    },
+    -- FIX #2: Use opts as a function to safely deep-merge nested tables.
+    -- Plain opts table causes shallow merge — other specs' top-level
+    -- "formatters" entries can be lost if this spec merges last.
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.fortran = { "fprettify" }
+      opts.formatters = opts.formatters or {}
+      opts.formatters.fprettify = {
+        command = "fprettify",
+        args    = { "--indent", "2", "--stdout", "-" },
+        stdin   = true,
+      }
+    end,
   },
 
   -- Build integration via toggleterm
@@ -42,8 +43,13 @@ return {
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
           local Terminal = require("toggleterm.terminal").Terminal
+          -- FIX #1: shellescape all paths — raw expand() breaks on spaces in
+          -- file/directory names (same pattern fixed in cobol.lua).
           Terminal:new({
-            cmd           = string.format("gfortran -Wall -o %s %s && %s", exe, file, exe),
+            cmd = string.format("gfortran -Wall -o %s %s && %s",
+              vim.fn.shellescape(exe),
+              vim.fn.shellescape(file),
+              vim.fn.shellescape(exe)),
             direction     = "float",
             close_on_exit = false,
           }):toggle()
@@ -57,7 +63,8 @@ return {
           local file = vim.fn.expand("%:p")
           local Terminal = require("toggleterm.terminal").Terminal
           Terminal:new({
-            cmd           = string.format("gfortran -Wall -fsyntax-only %s", file),
+            cmd           = string.format("gfortran -Wall -fsyntax-only %s",
+              vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
           }):toggle()
