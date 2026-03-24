@@ -1,11 +1,10 @@
 -- lua/plugins/specs/lang/database.lua - Database tools
--- Single source of truth for dadbod + UI. sql.lua is now empty (or removed).
+-- Single source of truth for dadbod + UI. sql.lua defers to this file.
 
 return {
-  {
-    "tpope/vim-dadbod",
-    lazy = true,
-  },
+  -- FIX #4: Removed standalone { "tpope/vim-dadbod", lazy = true } spec.
+  -- vim-dadbod-ui already declares it as a dependency — Lazy loads it
+  -- automatically. The redundant spec adds nothing.
 
   {
     "kristijanhusak/vim-dadbod-ui",
@@ -20,24 +19,31 @@ return {
       { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer" },
     },
     init = function()
-      vim.g.db_ui_use_nerd_fonts  = 1
-      vim.g.db_ui_save_location   = vim.fn.stdpath("data") .. "/dadbod-ui"
-      vim.g.db_ui_show_database_icon = 1
+      vim.g.db_ui_use_nerd_fonts           = 1
+      vim.g.db_ui_save_location            = vim.fn.stdpath("data") .. "/dadbod-ui"
+      vim.g.db_ui_show_database_icon       = 1
       vim.g.db_ui_force_echo_notifications = 1
-      vim.g.db_ui_win_position    = "left"
-      vim.g.db_ui_winwidth        = 40
+      vim.g.db_ui_win_position             = "left"
+      vim.g.db_ui_winwidth                 = 40
     end,
   },
 
-  -- blink.cmp source for DB completion
+  -- DB completion source
   {
     "kristijanhusak/vim-dadbod-completion",
-    lazy = true,
+    -- FIX #1: Added ft trigger — previously lazy=true with no trigger meant
+    -- config never ran and omnifunc was never set for SQL buffers.
+    ft     = { "sql", "mysql", "plsql", "psql" },
     config = function()
+      -- FIX #2: Added augroup to prevent autocmd accumulation on reload.
+      -- FIX #3: Corrected comment — blink.cmp does NOT pick this up
+      -- automatically. The omnifunc must be set explicitly, which is what
+      -- this autocmd does. Remove this block only if you add
+      -- vim-dadbod-completion as an explicit blink source instead.
       vim.api.nvim_create_autocmd("FileType", {
+        group    = vim.api.nvim_create_augroup("DadbodCompletion", { clear = true }),
         pattern  = { "sql", "mysql", "plsql", "psql" },
         callback = function()
-          -- blink.cmp picks up vim-dadbod-completion automatically via LSP fallback
           vim.opt_local.omnifunc = "vim_dadbod_completion#omni"
         end,
       })
