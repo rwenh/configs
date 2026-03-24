@@ -52,6 +52,10 @@ return {
           map("K",          vim.lsp.buf.hover,           "Hover Docs")
           map("<leader>k",  vim.lsp.buf.signature_help,  "Signature Help")
           map("<leader>,r", vim.lsp.buf.rename,          "Rename")
+          -- NOTE: <leader>,a is also mapped in editor.lua's actions-preview.nvim
+          -- spec. That spec-level key takes precedence as a lazy-load trigger;
+          -- once loaded, actions-preview intercepts the binding. This fallback
+          -- fires only before actions-preview loads or if it's removed.
           map("<leader>,a", vim.lsp.buf.code_action,     "Code Action")
           -- FIX #2: Format via conform.nvim, not vim.lsp.buf.format().
           -- lsp.lua's buffer-local binding was silently overriding the conform
@@ -69,7 +73,7 @@ return {
           map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
           map("]d",         vim.diagnostic.goto_next,    "Next Diagnostic")
           map("[d",         vim.diagnostic.goto_prev,    "Prev Diagnostic")
-          vim.keymap.set("v", "<leader>,a", vim.lsp.buf.code_action, { buffer = e.buf, desc = "LSP: Code Action" })
+          vim.keymap.set("v", "<leader>,a", vim.lsp.buf.code_action, { buffer = e.buf, desc = "LSP: Code Action (fallback)" })
           -- FIX #2 (visual range): Also route through conform for range format.
           vim.keymap.set("v", "<leader>,f", function()
             require("conform").format({ bufnr = e.buf, lsp_fallback = true })
