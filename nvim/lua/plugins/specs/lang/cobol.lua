@@ -13,8 +13,13 @@ return {
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
           local Terminal = require("toggleterm.terminal").Terminal
+          -- FIX #5: All paths shellescape'd — raw expand() paths break on
+          -- filenames/directories that contain spaces.
           Terminal:new({
-            cmd           = string.format("cobc -x -o %s %s && %s", exe, file, exe),
+            cmd = string.format("cobc -x -o %s %s && %s",
+              vim.fn.shellescape(exe),
+              vim.fn.shellescape(file),
+              vim.fn.shellescape(exe)),
             direction     = "float",
             close_on_exit = false,
           }):toggle()
@@ -28,7 +33,8 @@ return {
           local file = vim.fn.expand("%:p")
           local Terminal = require("toggleterm.terminal").Terminal
           Terminal:new({
-            cmd           = string.format("cobc -fsyntax-only %s", file),
+            cmd           = string.format("cobc -fsyntax-only %s",
+              vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
           }):toggle()
