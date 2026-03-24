@@ -44,9 +44,11 @@ return {
 
   -- Comments
   -- FIX #13: nvim-ts-context-commentstring v0.8+ removed the
-  -- integrations.comment_nvim module. The new API is to call setup() with
-  -- enable_autocmd = false; Comment.nvim picks up the context automatically.
-  -- If you are pinned to <v0.8, revert to the pre_hook pattern.
+  -- integrations.comment_nvim module. The correct v0.8+ pattern is:
+  -- call ts_context_commentstring.setup() with enable_autocmd=false,
+  -- then use its integrations.comment_nvim pre_hook which still exists
+  -- but is now initialized differently. If you are on <v0.8, remove the
+  -- setup() call and keep only the pre_hook line.
   {
     "numToStr/Comment.nvim",
     dependencies = "JoosepAlviste/nvim-ts-context-commentstring",
