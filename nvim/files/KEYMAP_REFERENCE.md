@@ -8,7 +8,7 @@ Space (` `)
 ## CORE EDITING
 - `jk` / `kj` — Exit insert mode *(handled by better-escape.nvim, zero lag)*
 - `<Esc>` — Clear search highlight
-- `Alt+j` / `Alt+k` — Move lines up/down (normal + visual)
+- `Alt+j` / `Alt+k` — Move lines up/down (normal + visual, not select mode)
 - `<` / `>` (visual) — Indent left/right (keeps selection)
 
 ---
@@ -75,6 +75,7 @@ Space (` `)
 - `<leader>,d` — Show diagnostic float
 - `<leader>,l` — Diagnostics list
 - `<leader>,t` — Toggle diagnostics
+- `<leader>ty` — Type definition
 
 ---
 
@@ -88,6 +89,7 @@ Space (` `)
 - `]h` / `[h` — Next/previous hunk
 - `<leader>.p` — Preview hunk
 - `<leader>.r` — Reset hunk
+- `<leader>.S` — Stage hunk
 
 ---
 
@@ -125,6 +127,7 @@ Space (` `)
 - `<leader>'o` — Test output
 - `<leader>'p` — Test panel
 - `<leader>'u` — Test summary
+- `<leader>'d` — Test debug nearest (Neotest + DAP)
 - `<leader>tcv` — Coverage load
 - `<leader>tcs` — Coverage summary
 - `<leader>tct` — Coverage toggle
@@ -162,7 +165,7 @@ Space (` `)
 - `<leader>ha` — Add file
 - `<leader>hm` — Toggle menu
 - `<leader>h1`–`h4` — Jump to file 1–4
-- `Ctrl+1`–`4` — Jump to file 1–4 (alternative)
+- `Alt+1`–`4` — Jump to file 1–4 (alternative)
 
 ---
 
@@ -299,14 +302,6 @@ Space (` `)
 - `<leader>mdt` — Table mode toggle
 - `<leader>mdf` — Table realign
 - `<leader>mdp` — Paste image
-
----
-
-## HARPOON (standalone — no longer shares `<leader>h*` with REST)
-- `<leader>ha` — Add file
-- `<leader>hm` — Toggle menu
-- `<leader>h1`–`h4` — Jump to file 1–4
-- `Ctrl+1`–`4` — Jump to file 1–4 (alternative)
 
 ---
 
