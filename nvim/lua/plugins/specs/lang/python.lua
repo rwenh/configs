@@ -49,9 +49,24 @@ return {
 
       try_setup(1)
 
-      vim.keymap.set("n", "<leader>pydm", function() require("dap-python").test_method() end,         { desc = "Python Debug Method" })
-      vim.keymap.set("n", "<leader>pydc", function() require("dap-python").test_class() end,          { desc = "Python Debug Class" })
-      vim.keymap.set({ "n", "v" }, "<leader>pyds", function() require("dap-python").debug_selection() end, { desc = "Python Debug Selection" })
+      -- FIX #6: Keymaps scoped to Python buffers via FileType autocmd.
+      -- The original set them globally — active in every buffer type.
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "python",
+        group    = vim.api.nvim_create_augroup("PythonDapKeymaps", { clear = true }),
+        callback = function(e)
+          local buf = e.buf
+          vim.keymap.set("n", "<leader>pydm",
+            function() require("dap-python").test_method() end,
+            { buffer = buf, desc = "Python Debug Method" })
+          vim.keymap.set("n", "<leader>pydc",
+            function() require("dap-python").test_class() end,
+            { buffer = buf, desc = "Python Debug Class" })
+          vim.keymap.set({ "n", "v" }, "<leader>pyds",
+            function() require("dap-python").debug_selection() end,
+            { buffer = buf, desc = "Python Debug Selection" })
+        end,
+      })
     end,
   },
 
@@ -66,7 +81,11 @@ return {
       },
     },
     keys = {
-      { "<leader>pyd", function() require("neogen").generate() end, desc = "Python Generate Docstring" },
+      -- FIX #8: Renamed <leader>pyd → <leader>pyg (generate) to avoid being
+      -- a prefix of <leader>pydm/pydc/pyds (debug subgroup). which-key would
+      -- wait for a third key after pyd, making the docstring binding unreachable
+      -- without timeout.
+      { "<leader>pyg", function() require("neogen").generate() end, desc = "Python Generate Docstring" },
     },
   },
 
@@ -90,7 +109,9 @@ return {
           send_motion  = "<leader>pyrc",
           visual_send  = "<leader>pyrc",
           send_line    = "<leader>pyrl",
-          cr           = "<leader>pyr<cr>",
+          -- FIX #9: Removed cr = "<leader>pyr<cr>" — iron's cr keymap expects
+          -- a simple key (e.g. "<CR>") not a compound leader sequence. The
+          -- string was syntactically invalid as a keymap.
           interrupt    = "<leader>pyri",
           exit         = "<leader>pyrq",
           clear        = "<leader>pyrx",
@@ -106,13 +127,8 @@ return {
   -- Better indentation
   { "Vimjas/vim-python-pep8-indent", ft = "python" },
 
-  -- Neotest adapter
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    opts = function(_, opts)
-      opts.adapters = opts.adapters or {}
-      -- neotest-python already added in test.lua; skip duplicate
-    end,
-  },
+  -- NOTE (Fix #10): Neotest optional spec removed — it was a no-op that only
+  -- set opts.adapters to itself. test.lua handles neotest-python registration
+  -- centrally. No entry needed here.
+
 }
