@@ -1,40 +1,30 @@
 -- lua/plugins/specs/lang/javascript.lua
 
 return {
-  -- DAP: vscode-js adapter
-  {
-    "mxsdev/nvim-dap-vscode-js",
-    ft           = { "javascript", "javascriptreact" },
-    dependencies = { "mfussenegger/nvim-dap" },
-    opts         = { adapters = { "pwa-node", "pwa-chrome" } },
-  },
+  -- NOTE (Fix #1): nvim-dap-vscode-js removed — dap.lua already registers
+  -- the pwa-node adapter directly via the js-debug-adapter Mason package.
+  -- Having both caused pwa-node to be registered twice, second silently
+  -- overwriting the first.
 
-  -- Neotest adapter for JS (vitest/jest)
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    dependencies = { "marilari88/neotest-vitest", "haydenmeade/neotest-jest" },
-    opts = function(_, opts)
-      opts.adapters = opts.adapters or {}
-      table.insert(opts.adapters, require("neotest-vitest"))
-      table.insert(opts.adapters, require("neotest-jest")({
-        jestCommand = "npm test --",
-      }))
-    end,
-  },
+  -- NOTE (Fix #3): neotest-vitest and neotest-jest adapter registrations
+  -- removed — test.lua already registers both centrally. Inserting them here
+  -- too caused each adapter to run twice per test file, producing duplicate
+  -- results. The adapter plugins themselves are still installed as dependencies
+  -- of neotest in test.lua.
 
   -- Package.json dependency management
   {
     "vuki656/package-info.nvim",
     dependencies = "MunifTanjim/nui.nvim",
-    ft           = "json",
-    event        = "BufRead package.json",
-    opts         = { colors = { up_to_date = "#3C4048", outdated = "#d19a66" } },
+    -- FIX #4: Removed ft = "json" — loaded package-info for ALL json files.
+    -- Only package.json needs it; the BufRead event is precise and sufficient.
+    event = "BufRead package.json",
+    opts  = { colors = { up_to_date = "#3C4048", outdated = "#d19a66" } },
     keys = {
-      { "<leader>jps", function() require("package-info").show() end,          desc = "Show package versions" },
-      { "<leader>jpu", function() require("package-info").update() end,        desc = "Update package" },
-      { "<leader>jpd", function() require("package-info").delete() end,        desc = "Delete package" },
-      { "<leader>jpi", function() require("package-info").install() end,       desc = "Install package" },
+      { "<leader>jps", function() require("package-info").show() end,           desc = "Show package versions" },
+      { "<leader>jpu", function() require("package-info").update() end,         desc = "Update package" },
+      { "<leader>jpd", function() require("package-info").delete() end,         desc = "Delete package" },
+      { "<leader>jpi", function() require("package-info").install() end,        desc = "Install package" },
       { "<leader>jpc", function() require("package-info").change_version() end, desc = "Change version" },
     },
   },
@@ -43,22 +33,30 @@ return {
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    config = function()
-      local lint = require("lint")
-      lint.linters_by_ft = vim.tbl_extend("force", lint.linters_by_ft or {}, {
-        javascript      = { "eslint_d" },
-        javascriptreact = { "eslint_d" },
+    -- FIX #2: optional=true config doesn't run — moved to init.
+    -- Targeted assignment avoids overwriting lsp.lua's linter table.
+    init = function()
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = { "*.js", "*.jsx" },
+        once     = true,
+        callback = function()
+          local ok, lint = pcall(require, "lint")
+          if not ok then return end
+          lint.linters_by_ft.javascript      = { "eslint_d" }
+          lint.linters_by_ft.javascriptreact = { "eslint_d" }
+        end,
       })
     end,
   },
 
-  -- Conform: prettier
+  -- Conform: prettier for JSX (JS already registered in lsp.lua)
   {
     "stevearc/conform.nvim",
     optional = true,
+    -- FIX #5: Removed javascript entry — lsp.lua already registers it.
+    -- Kept javascriptreact which lsp.lua doesn't cover.
     opts = {
       formatters_by_ft = {
-        javascript      = { "prettier" },
         javascriptreact = { "prettier" },
       },
     },
