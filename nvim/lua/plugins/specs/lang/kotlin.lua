@@ -27,26 +27,25 @@ return {
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    config = function()
-      local lint = require("lint")
-      lint.linters_by_ft = vim.tbl_extend("force", lint.linters_by_ft or {}, {
-        kotlin = { "ktlint" },
+    -- FIX #6: optional=true config doesn't run — moved to init.
+    -- Targeted assignment avoids overwriting lsp.lua's linter table.
+    init = function()
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = "*.kt",
+        once     = true,
+        callback = function()
+          local ok, lint = pcall(require, "lint")
+          if not ok then return end
+          lint.linters_by_ft.kotlin = { "ktlint" }
+        end,
       })
     end,
   },
 
-  -- Neotest adapter for Kotlin (JUnit via Gradle/Maven)
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    dependencies = { "rcasia/neotest-java" },
-    opts = function(_, opts)
-      opts.adapters = opts.adapters or {}
-      table.insert(opts.adapters, require("neotest-java")({
-        ignore_wrapper = false,
-      }))
-    end,
-  },
+  -- NOTE (Fix #7): neotest-java adapter registration removed — test.lua
+  -- already registers require("neotest-java")({ ignore_wrapper = false })
+  -- centrally. Inserting it here too caused double registration and duplicate
+  -- test results in Kotlin/Java buffers.
 
   -- Build integration via toggleterm
   {
@@ -56,10 +55,16 @@ return {
       {
         "<leader>ktb",
         function()
+          -- FIX #8: Use find_root() to locate project root regardless of cwd.
+          -- filereadable("gradlew") resolved against cwd — if the user hasn't
+          -- cd'd to the project root, detection silently fell back to the wrong
+          -- build command.
+          local root = require("core.util.path").find_root()
           local Terminal = require("toggleterm.terminal").Terminal
-          -- Prefer Gradle, fall back to Maven
-          local cmd = vim.fn.filereadable("gradlew") == 1 and "./gradlew build"
-                   or vim.fn.filereadable("pom.xml") == 1 and "mvn compile"
+          local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
+                        and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew build"
+                   or vim.fn.filereadable(root .. "/pom.xml") == 1
+                        and "cd " .. vim.fn.shellescape(root) .. " && mvn compile"
                    or "kotlinc *.kt -include-runtime -d app.jar"
           Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
@@ -69,9 +74,12 @@ return {
       {
         "<leader>ktt",
         function()
+          local root = require("core.util.path").find_root()
           local Terminal = require("toggleterm.terminal").Terminal
-          local cmd = vim.fn.filereadable("gradlew") == 1 and "./gradlew test"
-                   or vim.fn.filereadable("pom.xml") == 1 and "mvn test"
+          local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
+                        and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
+                   or vim.fn.filereadable(root .. "/pom.xml") == 1
+                        and "cd " .. vim.fn.shellescape(root) .. " && mvn test"
                    or "echo 'No build tool found'"
           Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
@@ -81,8 +89,10 @@ return {
       {
         "<leader>ktr",
         function()
+          local root = require("core.util.path").find_root()
           local Terminal = require("toggleterm.terminal").Terminal
-          local cmd = vim.fn.filereadable("gradlew") == 1 and "./gradlew run"
+          local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
+                        and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew run"
                    or "echo 'No Gradle wrapper found'"
           Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
