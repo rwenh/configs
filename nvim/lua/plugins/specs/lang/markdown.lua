@@ -4,22 +4,25 @@ return {
   -- Browser preview
   {
     "iamcco/markdown-preview.nvim",
+    -- FIX #3: Removed ft = "markdown" — with both cmd and ft triggers the
+    -- plugin loaded on every markdown file open, not just when commands are
+    -- used. cmd-only is sufficient and avoids the eager load.
     cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
-    ft    = "markdown",
-    build = function()
-      require("lazy").load({ plugins = { "markdown-preview.nvim" } })
-      vim.fn["mkdp#util#install"]()
-    end,
-    init = function()
-      vim.g.mkdp_filetypes = { "markdown" }
-    end,
+    -- FIX #2: Removed require("lazy").load(...) from build — build runs in
+    -- the plugin's own context already; forcing a load here caused issues when
+    -- build ran before Lazy had finished its setup.
+    build = function() vim.fn["mkdp#util#install"]() end,
+    init  = function() vim.g.mkdp_filetypes = { "markdown" } end,
     version = false,
   },
 
   -- Rich render inside Neovim
   {
     "MeanderingProgrammer/render-markdown.nvim",
-    ft   = "markdown",
+    ft           = "markdown",
+    -- FIX #1: Added explicit treesitter dependency — render-markdown requires
+    -- treesitter to parse and render markdown elements correctly.
+    dependencies = "nvim-treesitter/nvim-treesitter",
     opts = {
       heading = { enabled = true, sign = false },
       code    = { enabled = true, sign = false },
