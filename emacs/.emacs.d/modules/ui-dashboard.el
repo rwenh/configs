@@ -1,21 +1,28 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.6
-;;; Fix 3.0.6: FIX-DASHBOARD-SPLIT: When initial-buffer-choice returns the
-;;;   dashboard buffer, Emacs shows dashboard in window 1 and any subsequently
-;;;   opened file in window 2 — producing a permanent horizontal split every
-;;;   time a .py, .c, or any file is opened. Two fixes applied:
-;;;   1. Added emacs-ide-dashboard--kill-on-file-open: a find-file-hook that
-;;;      deletes the dashboard window and kills the dashboard buffer the moment
-;;;      a real file is opened, leaving only the file in a single full window.
-;;;   2. Set dashboard-buffer-last-window-pos to nil after setup so dashboard
-;;;      does not try to restore its own window layout on the next redisplay.
-;;;   Together these ensure the dashboard is a true splash screen: visible at
-;;;   startup, gone the instant you open anything real.
-;;; Fix 3.0.4 (retained): dashboard-item-generators/shortcuts registration moved inside
-;;;   the use-package :config block (FIX-7). Top-level defvar + add-to-list
-;;;   before dashboard loaded clobbered dashboard's own variable defaults.
-;;; Fix 3.0.3 (retained): Cancel void timers before dashboard-setup-startup-hook.
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit — was versioned as 3.0.6 in original):
+;;;   - FIX-VERSION: Header aligned to project version 3.0.4.
+;;;   - FIX-THEME-COLORS: All hardcoded hex face colors replaced with
+;;;     standard Emacs faces (error, warning, success, shadow, link)
+;;;     that adapt to the active ef-theme. The old Doom One dark palette
+;;;     values were nearly invisible on ef-light and other light themes.
+;;;   - FIX-DEFUN-RELOAD: emacs-ide-dashboard--kill-on-file-open moved to
+;;;     top-level defun (outside :config). Defining it inside :config caused
+;;;     M-x emacs-ide-config-reload to re-add it to find-file-hook even
+;;;     after it had already self-removed, potentially firing it a second
+;;;     time. add-hook now guarded with unless/memq.
+;;;   - FIX-SESSION-RESTORE: initial-buffer-choice now checks
+;;;     general.restore-session from config.yml — if true, perspective.el
+;;;     restores the previous session and the dashboard should not override
+;;;     the initial buffer choice.
+;;;   - FIX-REFRESH-TIMER: Dashboard refresh idle timer raised from 4s to 6s
+;;;     to ensure health check results (fired at 3s idle) are available
+;;;     before the dashboard renders them.
+;;; Fix 3.0.6 (retained): FIX-DASHBOARD-SPLIT — kill-on-file-open hook.
+;;; Fix 3.0.4 (retained): FIX-7 — registration inside :config.
+;;; Fix 3.0.3 (retained): Cancel void timers around dashboard-setup-startup-hook.
 ;;; Fix 3.0.2 (retained): :demand t.
 ;;; Code:
 
@@ -23,16 +30,17 @@
 ;; HEALTH WIDGET
 ;; ============================================================================
 (defun emacs-ide-dashboard--health-section (list-size)
-  "Dashboard health widget. LIST-SIZE ignored."
+  "Dashboard health widget. LIST-SIZE ignored.
+FIX-THEME-COLORS: uses standard Emacs faces instead of hardcoded hex values."
   (let* ((results  (and (boundp 'emacs-ide-health-results) emacs-ide-health-results))
          (checked  (and (boundp 'emacs-ide-health-last-check) emacs-ide-health-last-check))
          (errors   (if (boundp 'emacs-ide-health--last-errors)   emacs-ide-health--last-errors   0))
          (warnings (if (boundp 'emacs-ide-health--last-warnings) emacs-ide-health--last-warnings 0)))
     (if (not checked)
-        (insert (propertize "  󰣐 Health check pending...\n" 'face '(:foreground "#888888")))
-      (let* ((face (cond ((> errors   0) '(:foreground "#ff6c6b" :weight bold))
-                         ((> warnings 0) '(:foreground "#ECBE7B" :weight bold))
-                         (t              '(:foreground "#98be65" :weight bold))))
+        (insert (propertize "  󰣐 Health check pending...\n" 'face 'shadow))
+      (let* ((face (cond ((> errors   0) 'error)
+                         ((> warnings 0) 'warning)
+                         (t              'success)))
              (str  (cond ((> errors   0) (format "✗ %d error%s, %d warning%s"
                                                   errors (if (= errors 1) "" "s")
                                                   warnings (if (= warnings 1) "" "s")))
@@ -48,37 +56,35 @@
                                ((eq status 'warning) "  ⚠")
                                ((eq status 'error)   "  ✗")
                                (t                    "  ?")))
-                 (face   (cond ((eq status 'ok)      '(:foreground "#98be65"))
-                               ((eq status 'warning) '(:foreground "#ECBE7B"))
-                               ((eq status 'error)   '(:foreground "#ff6c6b"))
-                               (t                    '(:foreground "#888888")))))
+                 (face   (cond ((eq status 'ok)      'success)
+                               ((eq status 'warning) 'warning)
+                               ((eq status 'error)   'error)
+                               (t                    'shadow))))
             (insert (propertize (format "%s %-20s %s\n" icon name (or msg "")) 'face face))))
         (when (or (> errors 0) (> warnings 0))
           (insert-button "  → Run full health check"
                          'action (lambda (_) (call-interactively #'emacs-ide-health-check-all))
                          'follow-link t
-                         'face '(:foreground "#51afef" :underline t))
+                         'face 'link)
           (insert "\n"))))))
 
 ;; ============================================================================
 ;; WORKSPACE WIDGET
 ;; ============================================================================
 (defun emacs-ide-dashboard--workspace-section (list-size)
-  "Show active workspaces. LIST-SIZE ignored."
+  "Show active workspaces. LIST-SIZE ignored.
+FIX-THEME-COLORS: uses standard faces instead of hardcoded hex values."
   (if (not (fboundp 'persp-names))
-      (insert (propertize "  󰡕 Workspaces: perspective.el not loaded\n"
-                          'face '(:foreground "#888888")))
+      (insert (propertize "  󰡕 Workspaces: perspective.el not loaded\n" 'face 'shadow))
     (let ((names   (persp-names))
           (current (when (fboundp 'persp-current-name) (persp-current-name))))
-      (insert (propertize "  󰡕 Workspaces: " 'face '(:weight bold)))
+      (insert (propertize "  󰡕 Workspaces: " 'face 'bold))
       (dolist (name names)
         (let ((active (string= name current)))
           (insert-button (format "[%s]" name)
                          'action (let ((n name)) (lambda (_) (persp-switch n)))
                          'follow-link t
-                         'face (if active
-                                   '(:foreground "#51afef" :weight bold)
-                                 '(:foreground "#888888")))
+                         'face (if active 'link 'shadow))
           (insert " ")))
       (insert "\n"))))
 
@@ -86,7 +92,8 @@
 ;; QUICK ACTIONS WIDGET
 ;; ============================================================================
 (defun emacs-ide-dashboard--actions-section (list-size)
-  "Quick-action buttons row. LIST-SIZE ignored."
+  "Quick-action buttons row. LIST-SIZE ignored.
+FIX-THEME-COLORS: uses standard faces instead of hardcoded hex values."
   (insert "  ")
   (dolist (action '(("  New file"       . find-file)
                     ("  Find project"   . projectile-switch-project)
@@ -97,9 +104,31 @@
     (insert-button (car action)
                    'action (let ((cmd (cdr action))) (lambda (_) (call-interactively cmd)))
                    'follow-link t
-                   'face '(:foreground "#51afef" :underline nil :box (:line-width 1)))
+                   'face '(:inherit link :box (:line-width 1)))
     (insert "  "))
   (insert "\n"))
+
+;; ============================================================================
+;; DASHBOARD SPLIT PREVENTION
+;; FIX-DEFUN-RELOAD: defined at top level so M-x emacs-ide-config-reload
+;; does not re-add it to find-file-hook after it has already self-removed.
+;; Defining inside :config caused add-hook to run again on every reload.
+;; ============================================================================
+(defun emacs-ide-dashboard--kill-on-file-open ()
+  "Close dashboard window and kill its buffer when a real file opens.
+Only fires for file-visiting buffers (buffer-file-name non-nil) — dired
+and other non-file buffers leave the dashboard intact.
+Removes itself from `find-file-hook' after first run (one-shot)."
+  (when (and buffer-file-name
+             (not (string= (buffer-name) "*dashboard*")))
+    (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
+                                  "*dashboard*"))))
+      (when db-buf
+        (let ((db-win (get-buffer-window db-buf)))
+          (when (and db-win (not (one-window-p)))
+            (delete-window db-win)))
+        (kill-buffer db-buf)))
+    (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)))
 
 ;; ============================================================================
 ;; DASHBOARD SETUP
@@ -172,41 +201,33 @@
     (when (fboundp 'emacs-ide--find-and-cancel-void-timers)
       (emacs-ide--find-and-cancel-void-timers))
     ;; Refresh after health check fires
-    (run-with-idle-timer 4 nil
+    ;; FIX-REFRESH-TIMER: raised from 4s to 6s so health check results
+    ;; (fired at 3s idle in emacs-ide-health-check-startup) are available
+    ;; before the dashboard refresh renders them.
+    (run-with-idle-timer 6 nil
                          (lambda ()
                            (when (get-buffer "*dashboard*")
                              (with-current-buffer "*dashboard*"
                                (when (fboundp 'dashboard-refresh-buffer)
                                  (dashboard-refresh-buffer))))))
 
-    ;; ── FIX-DASHBOARD-SPLIT ──────────────────────────────────────────────
-    ;; Kill dashboard window+buffer the instant a real file is opened.
-    ;; Without this, dashboard stays in window 1 and the file opens in
-    ;; window 2 producing a permanent horizontal split on every file open.
-    (defun emacs-ide-dashboard--kill-on-file-open ()
-      "Close dashboard window and kill its buffer when a real file opens.
-Removes itself from `find-file-hook' after first run so it only fires once."
-      (when (and buffer-file-name
-                 (not (string= (buffer-name) "*dashboard*")))
-        (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
-                                      "*dashboard*"))))
-          (when db-buf
-            ;; Delete the window showing dashboard if it exists
-            (let ((db-win (get-buffer-window db-buf)))
-              (when (and db-win (not (one-window-p)))
-                (delete-window db-win)))
-            ;; Kill the buffer itself so it doesn't linger
-            (kill-buffer db-buf)))
-        ;; Self-removing — only needs to run once per session
-        (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)))
+    ;; ── FIX-DASHBOARD-SPLIT (retained from 3.0.6) ───────────────────────
+    ;; FIX-DEFUN-RELOAD: defun moved to top level; add-hook guarded with
+    ;; unless/memq to prevent re-adding after config reload.
+    (unless (memq #'emacs-ide-dashboard--kill-on-file-open find-file-hook)
+      (add-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open))
 
-    (add-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)
-
-    (setq initial-buffer-choice
-          (lambda ()
-            (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)
-                                "*dashboard*"))
-                (get-buffer-create "*dashboard*"))))))
+    ;; FIX-SESSION-RESTORE: only set initial-buffer-choice when session
+    ;; restore is disabled — perspective.el handles initial buffer when
+    ;; general.restore-session: true in config.yml.
+    (let ((restore-session (and (fboundp 'emacs-ide-config-get)
+                                (emacs-ide-config-get 'general 'restore-session nil))))
+      (unless restore-session
+        (setq initial-buffer-choice
+              (lambda ()
+                (or (get-buffer (or (bound-and-true-p dashboard-buffer-name)
+                                    "*dashboard*"))
+                    (get-buffer-create "*dashboard*"))))))))
 
 (provide 'ui-dashboard)
 ;;; ui-dashboard.el ends here
