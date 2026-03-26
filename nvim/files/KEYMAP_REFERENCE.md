@@ -189,7 +189,7 @@ Space (` `)
 
 ### Python (`<leader>py*`)
 - `<leader>pyv` — Select virtualenv
-- `<leader>pyd` — Generate docstring
+- `<leader>pyg` — Generate docstring
 - `<leader>pydm` — Debug method
 - `<leader>pydc` — Debug class
 - `<leader>pyds` — Debug selection
@@ -253,10 +253,8 @@ Space (` `)
 - `<leader>jpc` — Change version
 
 ### Elixir (`<leader>ex*`)
-- `<leader>exn` — Test nearest
-- `<leader>exf` — Test file
-- `<leader>exa` — Test all
-- `<leader>exs` — Test summary
+- *(Elixir tests use the global `<leader>'*` bindings — neotest-elixir adapter
+  is registered centrally in test.lua)*
 
 ### C++ / CMake (`<leader>cc*`)
 - `<leader>ccg` — CMake generate
