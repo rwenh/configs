@@ -165,6 +165,9 @@ cmd("MasonInstallAll", function()
     "rubocop",
     "clang-format",
     "fprettify",
+    -- FIX (sql.lua #6): sqlfmt registered as formatter in sql.lua but was
+    -- missing from MasonInstallAll — would never be auto-installed.
+    "sqlfmt",
     -- Linters
     "ruff",
     "eslint_d",
