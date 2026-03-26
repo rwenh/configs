@@ -18,22 +18,11 @@ return {
     end,
   },
 
-  -- Neotest adapter for RSpec
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    dependencies = { "olimorris/neotest-rspec" },
-    opts = function(_, opts)
-      opts.adapters = opts.adapters or {}
-      table.insert(opts.adapters, require("neotest-rspec")({
-        rspec_cmd = function()
-          return vim.tbl_flatten({
-            "bundle", "exec", "rspec",
-          })
-        end,
-      }))
-    end,
-  },
+  -- NOTE (Fix #4): neotest-rspec spec removed — test.lua already registers
+  -- it centrally with the same rspec_cmd config. Inserting it here too caused
+  -- double adapter registration and duplicate test results.
+  -- NOTE (Fix #5): vim.tbl_flatten was also used here (deprecated in 0.11,
+  -- no-op on flat lists) — moot since the spec is removed.
 
   -- Rails support
   { "tpope/vim-rails", ft = "ruby" },
@@ -45,61 +34,12 @@ return {
     dependencies = "nvim-treesitter/nvim-treesitter",
   },
 
-  -- DAP via rdbg (replaces unmaintained nvim-dap-ruby)
-  {
-    "mfussenegger/nvim-dap",
-    optional = true,
-    ft       = "ruby",
-    config   = function()
-      local dap = require("dap")
+  -- NOTE (Fix #6): Ruby DAP spec removed for two reasons:
+  -- 1. optional=true config functions don't run — the adapter was silently
+  --    never registered, making Ruby debugging non-functional from this spec.
+  -- 2. dap.lua already registers dap.adapters.ruby and dap.configurations.ruby
+  --    directly. This was a redundant duplicate of that configuration.
 
-      dap.adapters.ruby = function(callback, config)
-        callback({
-          type = "server",
-          host = "127.0.0.1",
-          port = "${port}",
-          executable = {
-            command = "bundle",
-            args    = {
-              "exec", "rdbg",
-              "--open", "--port", "${port}",
-              "-c", "--",
-              config.command or "ruby",
-              config.program,
-            },
-          },
-        })
-      end
-
-      dap.configurations.ruby = {
-        {
-          type    = "ruby",
-          name    = "Debug current file",
-          request = "attach",
-          localfs = true,
-          program = "${file}",
-          command = "ruby",
-        },
-        {
-          type    = "ruby",
-          name    = "Debug RSpec (nearest)",
-          request = "attach",
-          localfs = true,
-          program = "${file}",
-          command = "bundle exec rspec",
-        },
-      }
-    end,
-  },
-
-  -- Conform: rubocop
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = {
-      formatters_by_ft = {
-        ruby = { "rubocop" },
-      },
-    },
-  },
+  -- NOTE (Fix #7): Conform rubocop spec removed — lsp.lua already registers
+  -- ruby = { "rubocop" } in formatters_by_ft. Redundant duplicate.
 }
