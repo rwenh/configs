@@ -15,7 +15,9 @@ return {
     dependencies = "mason.nvim",
     opts = {
       ensure_installed = {
-        "lua_ls", "basedpyright", "rust_analyzer",
+        "lua_ls", "basedpyright",
+        -- NOTE (Fix rust.lua #2): rust_analyzer removed — rustaceanvim manages
+        -- it exclusively. Having both caused two rust-analyzer clients per buffer.
         "ts_ls", "html", "cssls", "jsonls", "yamlls",
         "clangd", "gopls", "solargraph", "elixirls",
         "kotlin_language_server", "zls",
@@ -97,14 +99,8 @@ return {
             basedpyright = { analysis = { typeCheckingMode = "basic" } },
           },
         },
-        rust_analyzer = {
-          settings = {
-            -- FIX #9: checkOnSave.command was deprecated in recent rust-analyzer;
-            -- replaced by check.command. Old key still aliased in most versions
-            -- but will eventually be dropped.
-            ["rust-analyzer"] = { check = { command = "clippy" } },
-          },
-        },
+        -- NOTE (Fix rust.lua #2): rust_analyzer removed — rustaceanvim in
+        -- rust.lua manages rust-analyzer exclusively via vim.g.rustaceanvim.
         gopls = {
           settings = {
             gopls = {
