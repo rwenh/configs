@@ -231,8 +231,20 @@ function M.run_tests()
     typescript = "npm test",
     ruby       = "bundle exec rspec",
     elixir     = "mix test",
-    kotlin     = vim.fn.filereadable("gradlew") == 1 and "./gradlew test" or "mvn test",
-    java       = vim.fn.filereadable("gradlew") == 1 and "./gradlew test" or "mvn test",
+    kotlin = (function()
+      -- FIX: Use project root for build tool detection — filereadable("gradlew")
+      -- resolved against cwd, which may not be the project root.
+      local root = require("core.util.path").find_root()
+      return vim.fn.filereadable(root .. "/gradlew") == 1
+        and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
+        or  "cd " .. vim.fn.shellescape(root) .. " && mvn test"
+    end)(),
+    java = (function()
+      local root = require("core.util.path").find_root()
+      return vim.fn.filereadable(root .. "/gradlew") == 1
+        and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
+        or  "cd " .. vim.fn.shellescape(root) .. " && mvn test"
+    end)(),
     zig        = "zig build test",
   }
 
