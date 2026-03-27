@@ -165,9 +165,9 @@ cmd("MasonInstallAll", function()
     "rubocop",
     "clang-format",
     "fprettify",
-    -- FIX (sql.lua #6): sqlfmt registered as formatter in sql.lua but was
-    -- missing from MasonInstallAll — would never be auto-installed.
-    "sqlfmt",
+    -- FIX (vhdl.lua #8): vsg (VHDL Style Guide) is pip-installed, not
+    -- Mason-managed. Install separately: pip install vsg
+    -- "sqlfmt",
     -- Linters
     "ruff",
     "eslint_d",
