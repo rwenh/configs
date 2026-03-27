@@ -16,9 +16,9 @@ return {
     opts = {
       ensure_installed = {
         "lua_ls", "basedpyright",
-        -- NOTE (Fix rust.lua #2): rust_analyzer removed — rustaceanvim manages
-        -- it exclusively. Having both caused two rust-analyzer clients per buffer.
-        "ts_ls", "html", "cssls", "jsonls", "yamlls",
+        -- NOTE: rust_analyzer removed — rustaceanvim owns it (see rust.lua)
+        -- NOTE: ts_ls removed — typescript-tools.nvim owns tsserver (see typescript.lua)
+        "html", "cssls", "jsonls", "yamlls",
         "clangd", "gopls", "solargraph", "elixirls",
         "kotlin_language_server", "zls",
       },
@@ -118,7 +118,8 @@ return {
           -- for portability with custom $XDG_DATA_HOME configurations.
           cmd = { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" },
         },
-        ts_ls                  = {},
+        -- NOTE: ts_ls removed — typescript-tools.nvim in typescript.lua
+        -- manages tsserver exclusively to prevent double client attachment.
         html                   = {},
         cssls                  = {},
         jsonls                 = {},
