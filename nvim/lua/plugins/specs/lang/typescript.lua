@@ -1,15 +1,13 @@
 -- lua/plugins/specs/lang/typescript.lua
 
 return {
-  -- DAP: vscode-js adapter
-  {
-    "mxsdev/nvim-dap-vscode-js",
-    ft           = { "typescript", "typescriptreact" },
-    dependencies = { "mfussenegger/nvim-dap" },
-    opts         = { adapters = { "pwa-node", "pwa-chrome" } },
-  },
+  -- NOTE (Fix #1): nvim-dap-vscode-js removed — dap.lua already registers
+  -- pwa-node directly via js-debug-adapter. Same fix as javascript.lua.
 
-  -- TypeScript LSP extras (twoslash queries, import organizer, tsserver actions)
+  -- TypeScript LSP extras (import organizer, tsserver actions, inlay hints)
+  -- FIX #2: typescript-tools.nvim manages its own tsserver instance.
+  -- lsp.lua's ts_ls entry has been removed (see lsp.lua) to prevent two
+  -- tsserver clients attaching per TypeScript buffer.
   {
     "pmizio/typescript-tools.nvim",
     ft           = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
@@ -17,56 +15,56 @@ return {
     opts = {
       settings = {
         tsserver_file_preferences = {
-          importModuleSpecifierPreference    = "non-relative",
-          includeInlayParameterNameHints     = "literals",
-          includeInlayVariableTypeHints      = false,
+          importModuleSpecifierPreference         = "non-relative",
+          includeInlayParameterNameHints          = "literals",
+          includeInlayVariableTypeHints           = false,
           includeInlayFunctionLikeReturnTypeHints = true,
         },
       },
     },
     keys = {
-      { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",    desc = "TS Organize Imports",   ft = "typescript" },
-      { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",  desc = "TS Add Missing Imports", ft = "typescript" },
-      { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>", desc = "TS Remove Unused",      ft = "typescript" },
-      { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",             desc = "TS Fix All",            ft = "typescript" },
-      { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>", desc = "TS Source Definition", ft = "typescript" },
+      -- FIX #6: Added typescriptreact to ft — TSTools commands work in .tsx
+      -- files but the original keys were inaccessible there.
+      { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",     desc = "TS Organize Imports",   ft = { "typescript", "typescriptreact" } },
+      { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",   desc = "TS Add Missing Imports", ft = { "typescript", "typescriptreact" } },
+      { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>", desc = "TS Remove Unused",       ft = { "typescript", "typescriptreact" } },
+      { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",              desc = "TS Fix All",             ft = { "typescript", "typescriptreact" } },
+      { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>",desc = "TS Source Definition",   ft = { "typescript", "typescriptreact" } },
     },
   },
 
-  -- Neotest adapter
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    dependencies = { "marilari88/neotest-vitest", "haydenmeade/neotest-jest" },
-    opts = function(_, opts)
-      opts.adapters = opts.adapters or {}
-      table.insert(opts.adapters, require("neotest-vitest"))
-      table.insert(opts.adapters, require("neotest-jest")({
-        jestCommand = "npm test --",
-      }))
-    end,
-  },
+  -- NOTE (Fix #3): neotest-vitest and neotest-jest registrations removed —
+  -- test.lua already handles both centrally. Double insertion produced
+  -- duplicate test results. Same fix as javascript.lua #3.
 
   -- Lint: eslint_d
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    config = function()
-      local lint = require("lint")
-      lint.linters_by_ft = vim.tbl_extend("force", lint.linters_by_ft or {}, {
-        typescript      = { "eslint_d" },
-        typescriptreact = { "eslint_d" },
+    -- FIX #4: optional=true config doesn't run — moved to init.
+    -- Targeted assignment avoids overwriting lsp.lua's linter table.
+    init = function()
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = { "*.ts", "*.tsx" },
+        once     = true,
+        callback = function()
+          local ok, lint = pcall(require, "lint")
+          if not ok then return end
+          lint.linters_by_ft.typescript      = { "eslint_d" }
+          lint.linters_by_ft.typescriptreact = { "eslint_d" }
+        end,
       })
     end,
   },
 
-  -- Conform: prettier
+  -- Conform: prettier for TSX (TS already registered in lsp.lua)
   {
     "stevearc/conform.nvim",
     optional = true,
+    -- FIX #5: Removed typescript entry — lsp.lua already registers it.
+    -- Kept typescriptreact which lsp.lua doesn't cover.
     opts = {
       formatters_by_ft = {
-        typescript      = { "prettier" },
         typescriptreact = { "prettier" },
       },
     },
