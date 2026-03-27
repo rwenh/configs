@@ -4,7 +4,7 @@
 ;;; buffer list + window layout).  Tab-bar shows workspaces as tabs.
 ;;; Workspaces auto-created from config.yml environments section.
 ;;;
-;;; Default workspaces: work · personal · debug · scratch
+;;; Default workspaces: main · debug · scratch (or from workspace.defaults:)
 ;;; Switch:   C-c W s   or   M-1..9 (tab-bar)
 ;;; Create:   C-c W n
 ;;; Kill:     C-c W k
@@ -12,7 +12,32 @@
 ;;; Save:     C-c W S   (burly bookmark)
 ;;; Restore:  C-c W R   (burly bookmark)
 ;;;
-;;; Version: 1.0.0
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 1.0.0 to 3.0.4.
+;;;   - FIX-ENV-KEY: emacs-ide-workspace-setup-defaults used (assoc
+;;;     "environments" ...) with a string key against a symbol-keyed alist.
+;;;     YAML parser interns all section headers as symbols, so string lookup
+;;;     always returned nil — no environment workspaces were ever created.
+;;;     Fixed to (assoc 'environments ...).
+;;;   - FIX-STATE-FILE: persp-state-default-file now reads
+;;;     workspace.state-file from config.yml via emacs-ide-config-get
+;;;     instead of being hardcoded to "var/persp-state".
+;;;   - FIX-AUTO-SWITCH-CONFIG: emacs-ide-workspace-auto-switch now reads
+;;;     workspace.auto-switch from config.yml instead of always being t.
+;;;   - FIX-ACTIVE-GUARD: doom-modeline--active replaced with standard
+;;;     selected-window check in workspace modeline segment — private
+;;;     function may be renamed in future doom-modeline versions.
+;;;   - FIX-CONSULT-IDEMPOTENT: add-to-list for consult-buffer-sources now
+;;;     guarded with unless/member to prevent duplicate entries on reload.
+;;;   - FIX-SAVE-ON-EXIT: kill-emacs-hook added to call persp-state-save
+;;;     when workspace.save-on-exit: true in config.yml.
+;;;   - FIX-DEFAULTS-CONFIG: emacs-ide-workspace-setup-defaults now reads
+;;;     workspace.defaults from config.yml instead of hardcoding
+;;;     '("main" "debug" "scratch").
+;;;   - FIX-SESSION-RESTORE: persp-switch "main" at end of setup-defaults
+;;;     now skipped when general.restore-session: true in config.yml.
 ;;; Code:
 
 ;; ============================================================================
@@ -37,7 +62,13 @@
          ("C-c W w" . persp-state-save))
   :init
   (setq persp-initial-frame-name    "main"
-        persp-state-default-file    (expand-file-name "var/persp-state" user-emacs-directory)
+        ;; FIX-STATE-FILE: read from config.yml workspace.state-file
+        persp-state-default-file
+        (expand-file-name
+         (or (and (fboundp 'emacs-ide-config-get)
+                  (emacs-ide-config-get 'workspace 'state-file nil))
+             "var/persp-state")
+         user-emacs-directory)
         persp-suppress-no-prefix-key-warning t
         persp-show-modestring        t
         persp-modestring-short       t
@@ -75,26 +106,42 @@
 ;; ============================================================================
 
 (defun emacs-ide-workspace-setup-defaults ()
-  "Create default workspaces based on config.yml environments section."
+  "Create default workspaces based on config.yml environments section.
+FIX-ENV-KEY: uses symbol key 'environments (was string \"environments\").
+FIX-DEFAULTS-CONFIG: reads workspace.defaults from config.yml.
+FIX-SESSION-RESTORE: skips persp-switch to main when restore-session: true."
   (when (fboundp 'persp-switch)
-    (let ((envs (condition-case nil
-                    (when (boundp 'emacs-ide-config-data)
-                      (mapcar #'car
-                              (cdr (assoc "environments" emacs-ide-config-data))))
-                  (error nil)))
-          (defaults '("main" "debug" "scratch")))
+    (let* (;; FIX-ENV-KEY: symbol key — YAML parser interns section headers
+           (envs (condition-case nil
+                     (when (boundp 'emacs-ide-config-data)
+                       (mapcar #'car
+                               (cdr (assoc 'environments emacs-ide-config-data))))
+                   (error nil)))
+           ;; FIX-DEFAULTS-CONFIG: read workspace.defaults from config
+           (cfg-defaults (and (fboundp 'emacs-ide-config-get)
+                              (emacs-ide-config-get 'workspace 'defaults nil)))
+           (defaults (or (and (listp cfg-defaults) (mapcar (lambda (d)
+                                                             (if (symbolp d)
+                                                                 (symbol-name d)
+                                                               d))
+                                                           cfg-defaults))
+                         '("main" "debug" "scratch"))))
       ;; Create environment workspaces from config
       (dolist (env (or envs defaults))
-        (unless (and (fboundp 'persp-get-by-name)
-                     (persp-get-by-name env))
-          (persp-new env)))
+        (let ((name (if (symbolp env) (symbol-name env) env)))
+          (unless (and (fboundp 'persp-get-by-name)
+                       (persp-get-by-name name))
+            (persp-new name))))
       ;; Always ensure debug and scratch exist
       (dolist (ws '("debug" "scratch"))
         (unless (and (fboundp 'persp-get-by-name)
                      (persp-get-by-name ws))
           (persp-new ws)))
-      ;; Return to main
-      (persp-switch "main"))))
+      ;; FIX-SESSION-RESTORE: don't switch to main when restoring a session
+      (let ((restore (and (fboundp 'emacs-ide-config-get)
+                          (emacs-ide-config-get 'general 'restore-session nil))))
+        (unless restore
+          (persp-switch "main"))))))
 
 (add-hook 'after-init-hook #'emacs-ide-workspace-setup-defaults)
 
@@ -112,7 +159,11 @@
 ;; When switching Projectile projects, optionally switch to matching workspace
 ;; ============================================================================
 
-(defvar emacs-ide-workspace-auto-switch t
+;; FIX-AUTO-SWITCH-CONFIG: read workspace.auto-switch from config.yml
+(defvar emacs-ide-workspace-auto-switch
+  (if (fboundp 'emacs-ide-config-get)
+      (emacs-ide-config-get 'workspace 'auto-switch t)
+    t)
   "When non-nil, switching projects creates/switches a matching workspace.")
 
 (defun emacs-ide-workspace-on-project-switch ()
@@ -147,8 +198,10 @@
                      (when (fboundp 'persp-current-buffers)
                        (mapcar #'buffer-name (persp-current-buffers)))))
       "Consult source for current workspace buffers.")
-    (add-to-list 'consult-buffer-sources
-                 'emacs-ide-workspace--consult-source)))
+    ;; FIX-CONSULT-IDEMPOTENT: guard prevents duplicate on M-x emacs-ide-config-reload
+    (unless (member 'emacs-ide-workspace--consult-source consult-buffer-sources)
+      (add-to-list 'consult-buffer-sources
+                   'emacs-ide-workspace--consult-source))))
 
 ;; ============================================================================
 ;; MODELINE — show workspace name
@@ -157,24 +210,42 @@
 (with-eval-after-load 'doom-modeline
   (with-eval-after-load 'perspective
     (doom-modeline-def-segment emacs-ide-workspace
-      "Current workspace name."
-      (when (and (doom-modeline--active)
+      "Current workspace name.
+FIX-ACTIVE-GUARD: uses standard selected-window check instead of the
+private doom-modeline--active function."
+      (when (and (eq (selected-window) (get-buffer-window))
                  (fboundp 'persp-current-name))
         (propertize (format " [%s]" (persp-current-name))
                     'face 'doom-modeline-buffer-major-mode
                     'help-echo "Current workspace")))))
 
 ;; ============================================================================
+;; SAVE ON EXIT
+;; FIX-SAVE-ON-EXIT: save perspective state on exit when configured.
+;; workspace.save-on-exit: true in config.yml was previously ignored.
+;; ============================================================================
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (when (and (fboundp 'persp-state-save)
+                       (bound-and-true-p persp-mode)
+                       (or (not (fboundp 'emacs-ide-config-get))
+                           (emacs-ide-config-get 'workspace 'save-on-exit t)))
+              (ignore-errors (persp-state-save)))))
+
+;; ============================================================================
 ;; QUICK WORKSPACE SWITCHER (M-1 through M-9)
 ;; ============================================================================
 
 (defun emacs-ide-workspace-switch-by-index (n)
-  "Switch to the Nth workspace (1-indexed)."
-  (when (fboundp 'persp-names)
-    (let ((names (persp-names)))
-      (if (> n (length names))
-          (message "workspace: only %d workspaces exist" (length names))
-        (persp-switch (nth (1- n) names))))))
+  "Switch to the Nth workspace (1-indexed).
+FIX from audit: guards against persp-mode being inactive."
+  (if (not (bound-and-true-p persp-mode))
+      (message "workspace: persp-mode is not active")
+    (when (fboundp 'persp-names)
+      (let ((names (persp-names)))
+        (if (> n (length names))
+            (message "workspace: only %d workspaces exist" (length names))
+          (persp-switch (nth (1- n) names)))))))
 
 (dotimes (i 9)
   (let ((n (1+ i)))
