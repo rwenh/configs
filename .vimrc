@@ -6,7 +6,6 @@
 " 2026-upgrade: vim-matchup · vim-asterisk · vim-easy-align · gutentags+rg
 " 2026-final:   vim-indent-guides (replaces indentLine) · vim-textobj-user/indent/comment
 " =============================================================================
-
 " -----------------------------------------------------------------------------
 " IMPORTANT — openSUSE specific:
 " /usr/share/vim/vim91/suse.vimrc loads BEFORE ~/.vimrc and resets g:loaded_*
@@ -97,6 +96,7 @@ set autoindent expandtab tabstop=4 softtabstop=4 shiftwidth=4 shiftround smartta
 augroup FormatOptions
   autocmd!
   autocmd FileType * setlocal formatoptions-=cro
+  autocmd FileType gitcommit setlocal formatoptions+=cro
 augroup END
 
 " Buffers / windows
@@ -119,6 +119,8 @@ for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui'
 endfor
 
 set swapfile   directory=~/.vim/swap//
+" backup=keep a tilde backup after write; nowritebackup=coc.nvim requirement
+" (coc needs to read the file mid-write; writebackup would break that)
 set backup     nowritebackup backupdir=~/.vim/backup//
 set autoread
 
@@ -251,6 +253,8 @@ Plug 'glts/vim-textobj-comment'            " ic/ac — comment text objects
 Plug 'matze/vim-move'             " Alt+j/k move lines/blocks
 Plug 'mbbill/undotree',           { 'on': 'UndotreeToggle' }
 Plug 'jdhao/better-escape.vim'    " jk/kj → Esc in insert mode
+" Note: vim-visual-multi can conflict with coc.nvim insert-mode mappings.
+" If completion behaves oddly in multi-cursor mode, check :verbose imap <Tab>
 Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
 Plug 'psliwka/vim-smoothie'       " smooth C-d/C-u scrolling
 Plug 'nathanaelkane/vim-indent-guides'  " indent guides — no conceal tricks
@@ -263,9 +267,9 @@ Plug 'haya14busa/vim-asterisk'
 Plug 'junegunn/vim-easy-align'
 
 " ---------------------------------------------------------------------------
-" SNIPPETS — UltiSnips integrates with coc-snippets
+" SNIPPETS — vim-vsnip (pure Vimscript) integrates with coc-snippets
 " ---------------------------------------------------------------------------
-Plug 'SirVer/ultisnips'
+Plug 'hrsh7th/vim-vsnip'          " pure Vimscript, no Python needed
 Plug 'honza/vim-snippets'
 
 " ---------------------------------------------------------------------------
@@ -363,7 +367,6 @@ Plug 'tpope/vim-dispatch'
 Plug 'tpope/vim-obsession'
 Plug 'editorconfig/editorconfig-vim'
 Plug 'liuchengxu/vim-which-key'
-Plug 'liuchengxu/vim-clap', { 'do': ':Clap install-binary' }
 Plug 'szw/vim-maximizer',   { 'on': 'MaximizerToggle' }
 Plug 'tpope/vim-eunuch'
 
@@ -681,6 +684,10 @@ nnoremap <silent> <F9> :call <SID>RunAction('test')<CR>
 " 6. Plugin Configuration
 " -----------------------------------------------------------------------------
 
+" --- context.vim — disable on large files to avoid scroll lag ---
+let g:context_max_height = 5
+autocmd BufReadPre * if getfsize(expand('<afile>')) > 500000 | let b:context_enabled = 0 | endif
+
 " --- better-escape ---
 let g:better_escape_shortcut = ['jk', 'kj']
 let g:better_escape_interval = 200
@@ -741,8 +748,8 @@ call coc#config('diagnostic.virtualText',     v:false)
 call coc#config('diagnostic.displayByAle',    v:false)
 call coc#config('signature.enable',           v:true)
 call coc#config('hover.autoHide',             v:true)
-" UltiSnips integration
-call coc#config('snippets.ultisnips.enable',  v:true)
+" vsnip integration
+call coc#config('snippets.enable', v:true)
 " Format on save (coc handles the languages ALE used to fix)
 call coc#config('coc.preferences.formatOnSaveFiletypes', [
   \ 'python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact',
