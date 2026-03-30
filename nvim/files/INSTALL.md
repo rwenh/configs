@@ -45,6 +45,61 @@
     suffix collisions. Harpoon retains sole ownership of `<leader>h*`.
     Update rest.lua keymaps accordingly.
 
+## What Was Changed (v2.1.1 → v2.2 — Lang Module Audit)
+
+**Double-LSP clients eliminated** (each was causing two LSP instances per buffer):
+- **rust.lua** — `rustaceanvim` now exclusively manages `rust-analyzer`; `rust_analyzer` removed from `lsp.lua`
+- **typescript.lua** — `typescript-tools.nvim` now exclusively manages `tsserver`; `ts_ls` removed from `lsp.lua`
+- **go.lua** — `go.nvim` set `lsp_cfg = false`; `gopls` solely owned by `lsp.lua`
+- **elixir.lua** — `elixir-tools.nvim` set `elixirls.enable = false`; `elixirls` solely owned by `lsp.lua`
+
+**`optional=true` config→init migrations** (config on optional specs never ran):
+- `css.lua` — cssmodules_ls registration, stylelint linter
+- `html.lua` — htmlhint linter, html LSP settings
+- `javascript.lua` — eslint_d linter
+- `typescript.lua` — eslint_d linter
+- `kotlin.lua` — ktlint linter
+
+**Duplicate neotest adapter registrations removed** (test.lua is the central owner):
+- `javascript.lua`, `typescript.lua` — vitest + jest removed
+- `kotlin.lua` — neotest-java removed
+- `ruby.lua` — neotest-rspec removed
+- `elixir.lua` — neotest-elixir spec removed entirely
+- `python.lua` — empty no-op neotest spec removed
+
+**DAP config→init migrations** (optional=true config never ran):
+- `ruby.lua` — removed entirely (dap.lua already owns Ruby adapter)
+- `zig.lua` — moved to init with FileType autocmd
+
+**Shell escaping fixes** (raw paths broke on spaces in filenames):
+- `cobol.lua` — cobc compile/check commands
+- `fortran.lua` — gfortran build/check commands
+- `vhdl.lua` — ghdl -e and -r entity name from user input
+
+**LSP ownership fixes** (opts.servers is LazyVim API, not compatible here):
+- `html.lua` — html server settings moved to `vim.lsp.config()` call in init
+
+**rustaceanvim** — `vim.g.rustaceanvim` moved from `config` to `init` (read at load time, not after)
+
+**Other fixes:**
+- `c.lua` — stale `inlay_hints` API replaced with native `vim.lsp.inlay_hint.enable()`
+- `cpp.lua` — `clang_format` (underscore) corrected to `clang-format` (hyphen); CMake keys now available in cmake filetype too
+- `database.lua` — dadbod-completion had no lazy trigger; omnifunc never registered
+- `go.lua` — added `build` step for go.nvim; removed duplicate gopls settings
+- `java.lua` — `start_or_attach` moved into FileType autocmd; nil root_dir guard; glob bundle fix; `add_commands()` removed (deleted upstream)
+- `kotlin.lua` — build tool detection now uses `find_root()` instead of cwd-relative `filereadable()`
+- `markdown.lua` — `markdown-preview.nvim` build fn cleaned; render-markdown got treesitter dependency
+- `python.lua` — DAP keymaps scoped to Python buffers; docstring key `pyd→pyg`; invalid iron `cr` keymap removed
+- `ruby.lua` — duplicate rubocop conform spec removed (lsp.lua owns it)
+- `rust.lua` — crates.nvim keymaps scoped to Cargo.toml buffer
+- `sql.lua` — sqlfmt documented as pip-installed (not Mason-managed)
+- `treesitter.lua` — explicit `config` fn to call `nvim-treesitter.configs.setup()`
+- `typescript.lua` — TSTools keys now include typescriptreact filetype
+- `vhdl.lua` — vsg conform opts use function form; unused `d` node removed
+- `web.lua` — autotag double-nested opts fixed; emmet filetypes corrected to actual Neovim names; augroup added
+- `zig.lua` — `zig_fmt_autosave=0`; conform zigfmt spec added; lldb empty-string guard fixed
+- `runner.lua` — kotlin/java `run_tests()` now uses `find_root()` for build tool detection
+
 ## File Structure
 
 ```
