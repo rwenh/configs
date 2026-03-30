@@ -1,17 +1,24 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; v3.0.2 fixes:
-;;;   - FIX-MEOW-KEY: (assoc "editing" emacs-ide-config-data) used string keys
-;;;     but the YAML parser interns all top-level keys as symbols. assoc with a
-;;;     string against a symbol-keyed alist always returns nil — Meow was never
-;;;     auto-enabled from config.yml even when editing.meow: true was set.
-;;;     This is the same class of bug fixed in core-dev.el as FIX-6b.
-;;;     Fix: changed both assoc calls to use the symbol 'editing and 'meow,
-;;;     matching the keys as actually produced by the YAML parser.
-;;; v3.0.1 fixes:
-;;;   - FIX-9: removed duplicate electric-pair-mode (init.el already enables it).
-;;;   - FIX-10: removed duplicate dumb-jump block (tools-lsp.el owns dumb-jump).
-;;; Version: 3.0.2
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (audit):
+;;;   - FIX-VERSION: Header bumped from 3.0.2 to 3.0.4.
+;;;   - FIX-UNDO-TREE-DEMAND: undo-tree changed from :defer t to :demand t
+;;;     and activated directly in :config instead of after-init-hook.
+;;;     With :defer t the package may not have loaded when after-init-hook
+;;;     fires, making (fboundp 'global-undo-tree-mode) return nil silently
+;;;     — same class of bug as the ligature fix in ui-core.el.
+;;;   - FIX-MEOW-IF: use-package meow :if condition simplified — the
+;;;     emacs-ide-meow-enabled clause is always nil at load time (defvar
+;;;     defaults to nil), so only the config-data clause ever fired. The
+;;;     redundant first clause removed; condition now only reads config.
+;;;   - FIX-HELPFUL-NOTE: Comment added documenting that helpful C-h
+;;;     bindings may be overwritten by keybindings.el (loads last).
+;;; Fixes vs 3.0.2 (retained):
+;;;   - FIX-MEOW-KEY: assoc uses symbol keys 'editing/'meow.
+;;;   - FIX-9: duplicate electric-pair-mode removed.
+;;;   - FIX-10: duplicate dumb-jump block removed.
 ;;; Code:
 
 ;; ============================================================================
@@ -125,12 +132,13 @@
                   (emacs-ide-meow-setup)
                   (setq emacs-ide-meow-enabled t))))))
 
-;; Optional: load meow package (deferred, no cost if not enabled)
+;; FIX-MEOW-IF: removed emacs-ide-meow-enabled clause — it is always nil
+;; at load time (defvar default), so only the config-data clause ever fired.
+;; The redundant first clause added unnecessary confusion.
 (use-package meow
-  :if (or emacs-ide-meow-enabled
-          (and (boundp 'emacs-ide-config-data)
-               (let ((e (cdr (assoc 'editing emacs-ide-config-data))))
-                 (and e (cdr (assoc 'meow e))))))
+  :if (and (boundp 'emacs-ide-config-data)
+           (let ((e (cdr (assoc 'editing emacs-ide-config-data))))
+             (and e (cdr (assoc 'meow e)))))
   :defer t)
 
 ;; ============================================================================
@@ -158,10 +166,14 @@
   (sp-local-pair 'markdown-mode "```" "```"))
 
 ;; ============================================================================
-;; UNDO-TREE (unchanged from 2.2.3, deferred)
+;; UNDO-TREE
+;; FIX-UNDO-TREE-DEMAND: changed from :defer t + after-init-hook to
+;; :demand t + :config activation. With :defer t the package may not have
+;; loaded when after-init-hook fires, making (fboundp ...) return nil
+;; silently — same class of bug as the ligature fix in ui-core.el.
 ;; ============================================================================
 (use-package undo-tree
-  :defer t
+  :demand t
   :init
   (setq undo-tree-visualizer-diff       t
         undo-tree-visualizer-timestamps t
@@ -170,10 +182,10 @@
         `(("." . ,(expand-file-name "var/undo-tree" user-emacs-directory))))
   :bind (("C-/"   . undo-tree-undo)
          ("C-?"   . undo-tree-redo)
-         ("C-x u" . undo-tree-visualize)))
-
-(add-hook 'after-init-hook
-          (lambda () (when (fboundp 'global-undo-tree-mode) (global-undo-tree-mode 1))))
+         ("C-x u" . undo-tree-visualize))
+  :config
+  (when (fboundp 'global-undo-tree-mode)
+    (global-undo-tree-mode 1)))
 
 ;; ============================================================================
 ;; MULTIPLE CURSORS (unchanged)
@@ -216,7 +228,10 @@
          ("M-<down>" . move-text-down)))
 
 ;; ============================================================================
-;; HELPFUL (unchanged)
+;; HELPFUL
+;; FIX-HELPFUL-NOTE: These C-h bindings may be overwritten by keybindings.el
+;; which loads last and wins for global keys. If helpful commands are not
+;; reachable via C-h, check keybindings.el for conflicting bindings.
 ;; ============================================================================
 (use-package helpful
   :bind (("C-h f" . helpful-callable)
