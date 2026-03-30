@@ -197,6 +197,9 @@ Space (` `)
 - `<leader>pyrr` — REPL restart
 - `<leader>pyrc` — REPL send motion/visual
 - `<leader>pyrl` — REPL send line
+- `<leader>pyri` — REPL interrupt
+- `<leader>pyrq` — REPL quit
+- `<leader>pyrx` — REPL clear
 
 ### Ruby (`<leader>rb*`)
 - `<leader>rbn` — Test nearest
@@ -212,8 +215,8 @@ Space (` `)
 - `<leader>rse` — Expand macro
 - `<leader>rsh` — Hover actions
 - `<leader>rsc` — Toggle crates
-- `<leader>rsu` — Update crate
-- `<leader>rsU` — Upgrade crate
+- `<leader>rsu` — Update crate (normal) / Update selected crates (visual)
+- `<leader>rsU` — Upgrade crate (normal) / Upgrade selected crates (visual)
 
 ### Go (`<leader>go*`)
 - `<leader>got` — Test
@@ -227,9 +230,9 @@ Space (` `)
 
 ### Java (`<leader>jv*`)
 - `<leader>jvo` — Organize imports
-- `<leader>jvv` — Extract variable
-- `<leader>jvc` — Extract constant
-- `<leader>jvm` — Extract method
+- `<leader>jvv` — Extract variable (normal + visual)
+- `<leader>jvc` — Extract constant (normal + visual)
+- `<leader>jvm` — Extract method *(visual only)*
 - `<leader>jvt` — Test class
 - `<leader>jvn` — Test nearest method
 
