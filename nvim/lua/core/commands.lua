@@ -131,7 +131,6 @@ cmd("MasonInstallAll", function()
     -- LSP
     "lua-language-server",
     "basedpyright",
-    "rust-analyzer",
     "typescript-language-server",
     "html-lsp",
     "css-lsp",
@@ -139,13 +138,17 @@ cmd("MasonInstallAll", function()
     "yaml-language-server",
     "clangd",
     "solargraph",
-    "elixir-ls",
-    "kotlin-language-server",
+    "elixir-ls",            -- mason-lspconfig server name: elixirls
+    "kotlin-language-server", -- mason-lspconfig server name: kotlin_language_server
     "zls",
     "fortls",
     "sqls",
-    "cobol-language-server",
-    "vhdl-ls",
+    -- NOTE: cobol-language-support is the correct Mason registry name
+    -- (NOT cobol-language-server). Binary installed: cobol-language-server
+    "cobol-language-support",
+    -- NOTE: rust_hdl is the correct Mason registry name for the VHDL LSP
+    -- (NOT vhdl-ls). Binary installed: vhdl_ls
+    "rust_hdl",
     -- DAP
     "debugpy",
     "codelldb",
