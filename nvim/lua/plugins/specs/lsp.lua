@@ -19,8 +19,15 @@ return {
         -- NOTE: rust_analyzer removed — rustaceanvim owns it (see rust.lua)
         -- NOTE: ts_ls removed — typescript-tools.nvim owns tsserver (see typescript.lua)
         "html", "cssls", "jsonls", "yamlls",
-        "clangd", "gopls", "solargraph", "elixirls",
-        "kotlin_language_server", "zls",
+        "clangd", "gopls", "solargraph",
+        -- NOTE: elixirls removed from ensure_installed — mason-lspconfig alias
+        -- "elixirls" → Mason package "elixir-ls" is a known breakage point across
+        -- versions. elixir-tools.nvim has elixirls.enable=false anyway so this
+        -- server is managed by lsp.lua directly; ensure MasonInstallAll installs
+        -- "elixir-ls" (see commands.lua) and the cmd path in servers table handles
+        -- the rest. No auto-install via mason-lspconfig needed.
+        "kotlin_language_server", -- Mason package: kotlin-language-server ✓
+        "zls",
       },
       automatic_installation = true,
     },
@@ -138,7 +145,7 @@ return {
       local optional = {
         {
           name   = "vhdl_ls",
-          binary = "vhdl_ls",
+          binary = "vhdl_ls",   -- installed by Mason package "rust_hdl"
           config = { filetypes = { "vhdl", "vhd" } },
         },
         {
@@ -153,7 +160,7 @@ return {
         },
         {
           name   = "cobol_ls",
-          binary = "cobol-language-server",
+          binary = "cobol-language-server", -- installed by Mason package "cobol-language-support"
           config = {
             filetypes = { "cobol" },
             settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
