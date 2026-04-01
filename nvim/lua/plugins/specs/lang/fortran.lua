@@ -95,23 +95,26 @@ return {
     ft = "fortran",
     config = function()
       local ls = require("luasnip")
-      local s, t, i = ls.snippet, ls.text_node, ls.insert_node
+      local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
 
+      -- FIX #3: Replaced duplicate i(1) tabstops with f() (function_node) to
+      -- mirror the name in the closing line. LuaSnip does not allow two
+      -- insert_nodes sharing the same index — only the first is ever written
+      -- to; the second stays as its initializer text and never reflects edits.
+      -- function_node reads args[1][1] (current value of i(1)) and echoes it,
+      -- so the closing `end program / end subroutine` line stays in sync as
+      -- the user types the name.
       ls.add_snippets("fortran", {
-        -- FIX: i(0) (final cursor position) moved to end of snippet.
-        -- Previously i(0) appeared before the closing line, causing the cursor
-        -- to land in the middle of the snippet before jumping was complete.
-        -- i(1) on the closing line correctly mirrors the name (linked tabstop).
         s("program", {
           t("program "), i(1, "name"),
           t({ "", "  implicit none", "  " }), i(2),
-          t({ "", "end program " }), i(1),
+          t({ "", "end program " }), f(function(args) return args[1][1] end, { 1 }),
           i(0),
         }),
         s("subroutine", {
           t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
           t({ "", "  implicit none", "  " }), i(3),
-          t({ "", "end subroutine " }), i(1),
+          t({ "", "end subroutine " }), f(function(args) return args[1][1] end, { 1 }),
           i(0),
         }),
         s("do", {
