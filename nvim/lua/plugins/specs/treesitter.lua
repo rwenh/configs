@@ -6,12 +6,15 @@ return {
     build     = ":TSUpdate",
     lazy      = false,
     priority  = 100,
-    -- FIX #12: nvim-treesitter uses require("nvim-treesitter.configs").setup(),
-    -- not the plugin root. Lazy's `opts` shorthand passes to setup() on the
-    -- root module, which is wrong here. Using an explicit config function
-    -- ensures the correct setup target is called, especially post-rewrite.
+    -- FIX #12: nvim-treesitter configuration must go through
+    -- require("nvim-treesitter.configs").setup(), NOT the plugin root module.
+    -- Lazy's `opts` shorthand calls setup() on the root module, which is
+    -- incorrect post-rewrite — it silently swallows options (highlight,
+    -- indent, incremental_selection, etc.) because the root module does not
+    -- implement setup(). An explicit config function targeting the correct
+    -- submodule is required.
     config = function(_, opts)
-      require("nvim-treesitter").setup(opts)
+      require("nvim-treesitter.configs").setup(opts)
     end,
     opts = {
       ensure_installed = {
