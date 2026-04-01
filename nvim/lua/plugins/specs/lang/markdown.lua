@@ -11,7 +11,11 @@ return {
     -- FIX #2: Removed require("lazy").load(...) from build — build runs in
     -- the plugin's own context already; forcing a load here caused issues when
     -- build ran before Lazy had finished its setup.
-    build = "cd app && npm install",
+    -- FIX #4: Changed `npm install` → `yarn install` to avoid dirtying
+    -- yarn.lock when the project is managed with yarn. npm and yarn maintain
+    -- separate lockfiles; running npm inside a yarn-managed repo adds an
+    -- unwanted package-lock.json and may resolve different versions.
+    build = "cd app && yarn install",
     init  = function() vim.g.mkdp_filetypes = { "markdown" } end,
     version = false,
   },
