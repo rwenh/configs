@@ -11,7 +11,8 @@ require("lazy").setup({
     -- restores per-spec pinning. Plugins without a version spec still track
     -- HEAD (Lazy's own default when version is unset).
   },
-  install  = { colorscheme = { "tokyonight" } },
+  install     = { colorscheme = { "tokyonight" } },
+  concurrency = 10,  -- limit parallel git ops to avoid DNS exhaustion under load
   checker  = {
     enabled = true,
     notify  = false,  -- checks for updates silently; run :Lazy update to apply
