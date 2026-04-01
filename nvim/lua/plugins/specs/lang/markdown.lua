@@ -11,7 +11,7 @@ return {
     -- FIX #2: Removed require("lazy").load(...) from build — build runs in
     -- the plugin's own context already; forcing a load here caused issues when
     -- build ran before Lazy had finished its setup.
-    build = function() vim.fn["mkdp#util#install"]() end,
+    build = "cd app && npm install",
     init  = function() vim.g.mkdp_filetypes = { "markdown" } end,
     version = false,
   },
