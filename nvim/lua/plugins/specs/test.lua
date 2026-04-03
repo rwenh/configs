@@ -6,48 +6,53 @@ return {
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-treesitter/nvim-treesitter",
-      -- Core adapters
       "nvim-neotest/neotest-python",
       "rouge8/neotest-rust",
       "nvim-neotest/neotest-go",
-      -- Extended adapters
       "olimorris/neotest-rspec",
       "jfpedroza/neotest-elixir",
       "marilari88/neotest-vitest",
       "haydenmeade/neotest-jest",
-      "rcasia/neotest-java",       -- covers Kotlin (Gradle/Maven JUnit)
+      "rcasia/neotest-java",
     },
     keys = {
-      { "<leader>'n", function() require("neotest").run.run() end,                   desc = "Test Nearest" },
-      { "<leader>'f", function() require("neotest").run.run(vim.fn.expand("%")) end,  desc = "Test File" },
-      { "<leader>'a", function() require("neotest").run.run(vim.uv.cwd()) end,       desc = "Test All" },
-      { "<leader>'u", function() require("neotest").summary.toggle() end,            desc = "Test Summary" },
-      { "<leader>'o", function() require("neotest").output.open({ enter = true }) end, desc = "Test Output" },
-      { "<leader>'p", function() require("neotest").output_panel.toggle() end,       desc = "Test Panel" },
-      -- FIX #10: Renamed <leader>td → <leader>'d to resolve collision with
-      -- lsp.lua's <leader>td (Type Definition). Neotest keys now consistently
-      -- live under the <leader>' run/test namespace from keymaps.lua.
-      { "<leader>'d", function() require("neotest").run.run({ strategy = "dap" }) end, desc = "Test Debug Nearest" },
+      { "<leader>'n", function() pcall(function() require("neotest").run.run() end) end, desc = "Test Nearest" },
+      { "<leader>'f", function() pcall(function() require("neotest").run.run(vim.fn.expand("%")) end) end, desc = "Test File" },
+      { "<leader>'a", function() pcall(function() require("neotest").run.run(vim.uv.cwd()) end) end, desc = "Test All" },
+      { "<leader>'u", function() pcall(function() require("neotest").summary.toggle() end) end, desc = "Test Summary" },
+      { "<leader>'o", function() pcall(function() require("neotest").output.open({ enter = true }) end) end, desc = "Test Output" },
+      { "<leader>'p", function() pcall(function() require("neotest").output_panel.toggle() end) end, desc = "Test Panel" },
+      { "<leader>'d", function() pcall(function() require("neotest").run.run({ strategy = "dap" }) end) end, desc = "Test Debug Nearest" },
     },
     opts = function()
+      -- RECALIBRATION: Safe adapter loading
+      local adapters = {}
+
+      local adapter_configs = {
+        { "neotest-python", function() return require("neotest-python")({ runner = "pytest" }) end },
+        { "neotest-rust", function() return require("neotest-rust") end },
+        { "neotest-go", function() return require("neotest-go") end },
+        { "neotest-rspec", function()
+          return require("neotest-rspec")({ rspec_cmd = function() return { "bundle", "exec", "rspec" } end })
+        end },
+        { "neotest-elixir", function() return require("neotest-elixir") end },
+        { "neotest-vitest", function() return require("neotest-vitest") end },
+        { "neotest-jest", function() return require("neotest-jest")({ jestCommand = "npm test --" }) end },
+        { "neotest-java", function() return require("neotest-java")({ ignore_wrapper = false }) end },
+      }
+
+      for _, config in ipairs(adapter_configs) do
+        local name, loader = config[1], config[2]
+        local ok, adapter = pcall(loader)
+        if ok and adapter then
+          table.insert(adapters, adapter)
+        else
+          vim.notify("Failed to load " .. name, vim.log.levels.WARN)
+        end
+      end
+
       return {
-        adapters = {
-          require("neotest-python")({ runner = "pytest" }),
-          require("neotest-rust"),
-          require("neotest-go"),
-          require("neotest-rspec")({
-            -- FIX #11: vim.tbl_flatten deprecated in Neovim 0.11 and was a
-            -- no-op here anyway (no nested tables). Direct table construction
-            -- is identical and forward-compatible.
-            rspec_cmd = function()
-              return { "bundle", "exec", "rspec" }
-            end,
-          }),
-          require("neotest-elixir"),
-          require("neotest-vitest"),
-          require("neotest-jest")({ jestCommand = "npm test --" }),
-          require("neotest-java")({ ignore_wrapper = false }),
-        },
+        adapters = adapters,
         status   = { virtual_text = true },
         output   = { open_on_run = true },
         quickfix = { open = false },
@@ -61,9 +66,9 @@ return {
     cmd  = "Coverage",
     opts = {},
     keys = {
-      { "<leader>tcv", "<cmd>Coverage<cr>",       desc = "Coverage Load" },
+      { "<leader>tcv", "<cmd>Coverage<cr>", desc = "Coverage Load" },
       { "<leader>tcs", "<cmd>CoverageSummary<cr>", desc = "Coverage Summary" },
-      { "<leader>tct", "<cmd>CoverageToggle<cr>",  desc = "Coverage Toggle" },
+      { "<leader>tct", "<cmd>CoverageToggle<cr>", desc = "Coverage Toggle" },
     },
   },
 }
