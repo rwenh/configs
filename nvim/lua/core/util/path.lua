@@ -1,13 +1,15 @@
--- lua/core/util/path.lua - Path utilities
+-- lua/core/util/path.lua - Path utilities with caching
 
 local M = {}
 
--- FIX #4: Removed ".git/config" — it is always co-located with ".git" so it
--- was a redundant marker adding no extra detection coverage.
+-- RECALIBRATION: Safe root marker detection with comprehensive coverage
 local root_markers = {
   ".git", ".hg", ".svn",
   "Cargo.toml", "package.json", "go.mod", "pyproject.toml",
   "Makefile", "CMakeLists.txt", ".nvim.lua",
+  "pom.xml", "build.gradle", "build.gradle.kts",  -- Java/Kotlin
+  "mix.exs", "rebar.config",                        -- Elixir/Erlang
+  "setup.py", "setup.cfg", "pyproject.toml",       -- Python (duplicated for safety)
 }
 
 local cache = {}
@@ -16,6 +18,7 @@ local cache_timeout = 300
 function M.find_root(start_path)
   start_path = start_path or vim.fn.expand("%:p:h")
 
+  -- Check cache first
   if cache[start_path] then
     local age = os.time() - cache[start_path].time
     if age < cache_timeout then
@@ -23,15 +26,24 @@ function M.find_root(start_path)
     end
   end
 
-  -- FIX #1: Capture os.time() once so both cache-write sites use the same
-  -- timestamp and can't diverge if execution crosses a second boundary.
-  local now     = os.time()
+  -- Capture timestamp once for consistency
+  local now = os.time()
   local current = start_path
 
+  -- Walk up directory tree (max 20 levels to prevent infinite loops)
   for _ = 1, 20 do
     for _, marker in ipairs(root_markers) do
       local path = current .. "/" .. marker
-      if vim.fn.isdirectory(path) == 1 or vim.fn.filereadable(path) == 1 then
+
+      -- RECALIBRATION: Safe filesystem checks with error handling
+      local ok_dir, is_dir = pcall(function()
+        return vim.fn.isdirectory(path) == 1
+      end)
+      local ok_file, is_file = pcall(function()
+        return vim.fn.filereadable(path) == 1
+      end)
+
+      if (ok_dir and is_dir) or (ok_file and is_file) then
         cache[start_path] = { root = current, time = now }
         return current
       end
@@ -42,6 +54,7 @@ function M.find_root(start_path)
     current = parent
   end
 
+  -- Fallback to current working directory
   local cwd = vim.fn.getcwd()
   cache[start_path] = { root = cwd, time = now }
   return cwd
@@ -51,13 +64,13 @@ function M.clear_cache()
   cache = {}
 end
 
--- FIX #2: Invalidate the cache whenever the user changes working directory
--- (:cd, :lcd, :tcd) so find_root doesn't return a stale project root within
--- the 300-second TTL window after switching projects.
+-- RECALIBRATION: Safe DirChanged autocmd with error handling
 vim.api.nvim_create_autocmd("DirChanged", {
   group    = vim.api.nvim_create_augroup("PathCacheClear", { clear = true }),
   pattern  = "*",
-  callback = M.clear_cache,
+  callback = function()
+    pcall(function() M.clear_cache() end)
+  end,
   desc     = "Clear path.lua root cache on directory change",
 })
 
