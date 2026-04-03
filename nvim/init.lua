@@ -55,17 +55,26 @@ end, 0)
 -- FIX #3: Use the LazyDone event instead of a hardcoded 150ms timer.
 -- The timer was fragile — on slow machines or with many plugins, lazy.nvim
 -- may not have finished accumulating startuptime within 150ms.
+-- RECALIBRATION: Added defensive checks for stats existence and type validation
 vim.api.nvim_create_autocmd("User", {
   pattern  = "LazyDone",
   once     = true,
   callback = function()
-    local ok, lazy = pcall(require, "lazy")
-    if ok then
-      local s = lazy.stats()
-      vim.notify(
-        string.format("⚡ %d/%d plugins · %.0fms", s.loaded, s.count, s.startuptime),
-        vim.log.levels.INFO
-      )
-    end
+    vim.schedule(function()
+      local ok, lazy = pcall(require, "lazy")
+      if not ok then return end
+
+      -- Type-safe stats access with nil checks
+      local stats = lazy.stats and lazy.stats()
+      if not stats or not stats.count or not stats.loaded then return end
+
+      -- Only notify if we have meaningful numbers
+      if stats.count > 0 then
+        vim.notify(
+          string.format("⚡ %d/%d plugins · %.0fms", stats.loaded, stats.count, stats.startuptime or 0),
+          vim.log.levels.INFO
+        )
+      end
+    end)
   end,
 })
