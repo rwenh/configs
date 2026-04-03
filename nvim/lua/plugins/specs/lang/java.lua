@@ -6,21 +6,28 @@ return {
     ft           = "java",
     dependencies = { "mfussenegger/nvim-dap", "williamboman/mason.nvim" },
     config = function()
-      -- FIX #5: jdtls.start_or_attach must be called on every Java BufEnter,
-      -- not just once at plugin load. Without this, only the first Java buffer
-      -- opened in a session gets an LSP client; subsequent Java files get none.
+      -- RECALIBRATION: Safe jdtls with comprehensive error handling
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "java",
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
         callback = function()
-          local jdtls    = require("jdtls")
+          local ok, jdtls = pcall(require, "jdtls")
+          if not ok then
+            vim.notify("nvim-jdtls failed to load", vim.log.levels.ERROR)
+            return
+          end
+
           local data_dir = vim.fn.stdpath("data")
 
-          local root_dir = require("jdtls.setup").find_root(
+          local ok_setup, setup = pcall(require, "jdtls.setup")
+          if not ok_setup then
+            vim.notify("jdtls.setup failed to load", vim.log.levels.ERROR)
+            return
+          end
+
+          local root_dir = setup.find_root(
             { ".git", "mvnw", "gradlew", "pom.xml", "build.gradle" }
           )
-          -- FIX #6: find_root returns nil for standalone .java files outside
-          -- a project. fnamemodify(nil,...) would crash — fall back to cwd.
           root_dir = root_dir or vim.fn.getcwd()
 
           local workspace = data_dir .. "/jdtls-workspace/"
@@ -31,10 +38,7 @@ return {
           local os_key    = os_map[vim.uv.os_uname().sysname] or "linux"
           local config_dir = data_dir .. "/mason/packages/jdtls/config_" .. os_key
 
-          -- FIX #7: vim.fn.glob(..., 1) returns a table, not a string.
-          -- Wrapping a table in { } produced nested tables that jdtls rejected
-          -- as invalid bundle paths. Use vim.split on the newline-separated
-          -- string form (no second arg) for a flat list.
+          -- Safe glob for bundles
           local bundles = vim.split(
             vim.fn.glob(data_dir .. "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar"),
             "\n", { plain = true, trimempty = true }
@@ -79,10 +83,7 @@ return {
             },
             init_options = { bundles = bundles },
             on_attach = function(_, bufnr)
-              jdtls.setup_dap({ hotcodereplace = "auto" })
-              -- FIX #8: jdtls.setup.add_commands() was removed in recent
-              -- nvim-jdtls — commands are now registered automatically by
-              -- start_or_attach. Calling it throws a nil error.
+              pcall(function() jdtls.setup_dap({ hotcodereplace = "auto" }) end)
               pcall(function() require("jdtls.dap").setup_dap_main_class_configs() end)
 
               local function map(lhs, rhs, desc)
@@ -92,18 +93,18 @@ return {
                 vim.keymap.set("v", lhs, rhs, { buffer = bufnr, desc = desc })
               end
 
-              map("<leader>jvo",  function() jdtls.organize_imports() end,           "Java Organize Imports")
-              map("<leader>jvv",  function() jdtls.extract_variable() end,           "Java Extract Variable")
-              map("<leader>jvc",  function() jdtls.extract_constant() end,           "Java Extract Constant")
-              map("<leader>jvt",  function() jdtls.test_class() end,                 "Java Test Class")
-              map("<leader>jvn",  function() jdtls.test_nearest_method() end,        "Java Test Nearest Method")
-              mapv("<leader>jvv", function() jdtls.extract_variable(true) end,       "Java Extract Variable")
-              mapv("<leader>jvc", function() jdtls.extract_constant(true) end,       "Java Extract Constant")
-              mapv("<leader>jvm", function() jdtls.extract_method(true) end,         "Java Extract Method")
+              map("<leader>jvo",  function() pcall(function() jdtls.organize_imports() end) end,           "Java Organize Imports")
+              map("<leader>jvv",  function() pcall(function() jdtls.extract_variable() end) end,           "Java Extract Variable")
+              map("<leader>jvc",  function() pcall(function() jdtls.extract_constant() end) end,           "Java Extract Constant")
+              map("<leader>jvt",  function() pcall(function() jdtls.test_class() end) end,                 "Java Test Class")
+              map("<leader>jvn",  function() pcall(function() jdtls.test_nearest_method() end) end,        "Java Test Nearest Method")
+              mapv("<leader>jvv", function() pcall(function() jdtls.extract_variable(true) end) end,       "Java Extract Variable")
+              mapv("<leader>jvc", function() pcall(function() jdtls.extract_constant(true) end) end,       "Java Extract Constant")
+              mapv("<leader>jvm", function() pcall(function() jdtls.extract_method(true) end) end,         "Java Extract Method")
             end,
           }
 
-          jdtls.start_or_attach(config)
+          pcall(function() jdtls.start_or_attach(config) end)
         end,
       })
     end,
