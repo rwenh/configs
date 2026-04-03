@@ -1,131 +1,241 @@
--- lua/core/commands.lua - Custom commands
+-- lua/core/commands.lua - Custom commands with comprehensive error handling
 
 local cmd = vim.api.nvim_create_user_command
 
--- Health check
--- FIX #11: Use an ordered list instead of pairs() so output is deterministic.
--- pairs() iterates in undefined order — the report printed fields randomly.
+-- ════���══════════════════════════════════════════════════════════════════════
+-- HEALTH CHECK
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("Health", function()
+  -- FIX #11: Use an ordered list instead of pairs() for deterministic output.
+  local ok_version, version = pcall(function()
+    return vim.version()
+  end)
+
+  local ok_os, os_info = pcall(function()
+    return vim.uv.os_uname()
+  end)
+
+  local ok_clip = pcall(function()
+    return vim.fn.has("clipboard") == 1
+  end)
+
+  local ok_lsp, lsp_clients = pcall(function()
+    return vim.lsp.get_clients()
+  end)
+
+  local ok_mem, mem = pcall(function()
+    return collectgarbage("count") / 1024
+  end)
+
   local health = {
-    { "nvim",      string.format("v%d.%d.%d", vim.version().major, vim.version().minor, vim.version().patch) },
-    { "os",        vim.uv.os_uname().sysname },
-    { "clipboard", vim.fn.has("clipboard") == 1 and "✓" or "✗" },
-    { "lsp",       (function()
-                     local lsp = vim.lsp.get_clients()
-                     return #lsp > 0 and string.format("%d active", #lsp) or "none"
-                   end)() },
-    { "memory",    string.format("%.1fMB", collectgarbage("count") / 1024) },
+    { "nvim", ok_version and string.format("v%d.%d.%d", version.major, version.minor, version.patch) or "unknown" },
+    { "os", ok_os and os_info.sysname or "unknown" },
+    { "clipboard", ok_clip and "✓" or "✗" },
+    { "lsp", ok_lsp and (#lsp_clients > 0 and string.format("%d active", #lsp_clients) or "none") or "unknown" },
+    { "memory", ok_mem and string.format("%.1fMB", mem) or "unknown" },
   }
+
   print("=== Neovim Health ===")
   for _, pair in ipairs(health) do
     print(string.format("%-12s: %s", pair[1], pair[2]))
   end
 end, { desc = "Show health status" })
 
--- Format
--- FIX #10a: Route through conform.nvim (not vim.lsp.buf.format directly) so
--- the full formatter chain (prettier, stylua, black, etc.) is respected.
--- FIX #10b: End column was `0` which created a zero-width range on the last
--- line. Use the actual line length so the full last line is included.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- FORMAT
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("Format", function(opts)
+  local ok, conform = pcall(require, "conform")
+  if not ok then
+    vim.notify("conform.nvim not available", vim.log.levels.ERROR)
+    return
+  end
+
+  -- FIX #10a: Route through conform.nvim (not vim.lsp.buf.format directly)
+  -- FIX #10b: End column calculation for proper range formatting
   if opts.range > 0 then
     local end_line   = opts.line2
     local end_col    = #vim.fn.getline(end_line)
-    require("conform").format({
-      lsp_fallback = true,
-      range = {
-        start  = { opts.line1, 0 },
-        ["end"] = { end_line, end_col },
-      },
-    })
+    pcall(function()
+      conform.format({
+        lsp_fallback = true,
+        range = {
+          start  = { opts.line1, 0 },
+          ["end"] = { end_line, end_col },
+        },
+      })
+    end)
   else
-    require("conform").format({ lsp_fallback = true })
+    pcall(function()
+      conform.format({ lsp_fallback = true })
+    end)
   end
 end, { range = true, desc = "Format file or range" })
 
--- Project root
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PROJECT ROOT
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("ProjectRoot", function()
-  local root = require("core.util.path").find_root()
-  vim.cmd.cd(root)
-  vim.notify("Project root: " .. root)
+  local ok, path_util = pcall(require, "core.util.path")
+  if not ok then
+    vim.notify("path.lua not available", vim.log.levels.ERROR)
+    return
+  end
+
+  local root = path_util.find_root()
+  if not root then
+    vim.notify("Could not determine project root", vim.log.levels.WARN)
+    return
+  end
+
+  pcall(function()
+    vim.cmd.cd(root)
+    vim.notify("Project root: " .. root)
+  end)
 end, { desc = "Change to project root" })
 
--- Copy path
+-- ═══════════════════════════════════════════════════════════════════════════
+-- COPY PATH
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("CopyPath", function()
   local path = vim.fn.expand("%:p")
-  vim.fn.setreg("+", path)
-  vim.notify("Copied: " .. path)
+  if path == "" then
+    vim.notify("No file path available", vim.log.levels.WARN)
+    return
+  end
+  pcall(function()
+    vim.fn.setreg("+", path)
+    vim.notify("Copied: " .. path)
+  end)
 end, { desc = "Copy file path" })
 
 cmd("CopyRelPath", function()
   local path = vim.fn.expand("%:.")
-  vim.fn.setreg("+", path)
-  vim.notify("Copied: " .. path)
+  if path == "" then
+    vim.notify("No file path available", vim.log.levels.WARN)
+    return
+  end
+  pcall(function()
+    vim.fn.setreg("+", path)
+    vim.notify("Copied: " .. path)
+  end)
 end, { desc = "Copy relative path" })
 
--- Delete other buffers
+-- ═══════════════════════════════════════════════════════════════════════════
+-- DELETE OTHER BUFFERS
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("BufOnly", function()
   local current = vim.api.nvim_get_current_buf()
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+  local ok, buffers = pcall(function()
+    return vim.api.nvim_list_bufs()
+  end)
+
+  if not ok then
+    vim.notify("Failed to list buffers", vim.log.levels.ERROR)
+    return
+  end
+
+  for _, buf in ipairs(buffers) do
     if buf ~= current and vim.api.nvim_buf_is_loaded(buf) then
-      vim.api.nvim_buf_delete(buf, { force = false })
+      pcall(function()
+        vim.api.nvim_buf_delete(buf, { force = false })
+      end)
     end
   end
   vim.notify("Deleted other buffers")
 end, { desc = "Delete all other buffers" })
 
--- Clean up memory
+-- ═══════════════════════════════════════════════════════════════════════════
+-- CLEAN UP MEMORY
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("CleanUp", function()
-  collectgarbage("collect")
-  vim.notify(string.format("Memory: %.1fMB", collectgarbage("count") / 1024))
+  pcall(function()
+    collectgarbage("collect")
+    local mem = collectgarbage("count") / 1024
+    vim.notify(string.format("Memory: %.1fMB", mem))
+  end)
 end, { desc = "Run garbage collection" })
 
--- Toggle options
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TOGGLE OPTIONS
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("ToggleWrap", function()
-  vim.wo.wrap = not vim.wo.wrap
-  vim.notify("Wrap: " .. tostring(vim.wo.wrap))
+  pcall(function()
+    vim.wo.wrap = not vim.wo.wrap
+    vim.notify("Wrap: " .. tostring(vim.wo.wrap))
+  end)
 end, { desc = "Toggle line wrap" })
 
 cmd("ToggleSpell", function()
-  vim.wo.spell = not vim.wo.spell
-  vim.notify("Spell: " .. tostring(vim.wo.spell))
+  pcall(function()
+    vim.wo.spell = not vim.wo.spell
+    vim.notify("Spell: " .. tostring(vim.wo.spell))
+  end)
 end, { desc = "Toggle spell check" })
 
--- FIX #8: vim.diagnostic.is_enabled() with no args returns global state (0.10+).
--- Added explicit comment on scope — enable(false) with no bufnr disables
--- diagnostics globally. This is intentional for a toggle command but noted
--- clearly so it's not mistaken for a buffer-local toggle.
+-- FIX #8: vim.diagnostic.is_enabled() with no args returns global state.
+-- Added explicit comment on scope — enable(false) disables globally.
 cmd("ToggleDiagnostics", function()
-  local enabled = vim.diagnostic.is_enabled()
-  if enabled then
-    vim.diagnostic.enable(false)  -- disables globally across all buffers
-    vim.notify("Diagnostics disabled")
-  else
-    vim.diagnostic.enable()       -- re-enables globally
-    vim.notify("Diagnostics enabled")
+  local ok, is_enabled = pcall(function()
+    return vim.diagnostic.is_enabled()
+  end)
+
+  if not ok then
+    vim.notify("Failed to check diagnostic status", vim.log.levels.ERROR)
+    return
   end
+
+  pcall(function()
+    if is_enabled then
+      vim.diagnostic.enable(false)  -- disables globally across all buffers
+      vim.notify("Diagnostics disabled")
+    else
+      vim.diagnostic.enable()       -- re-enables globally
+      vim.notify("Diagnostics enabled")
+    end
+  end)
 end, { desc = "Toggle diagnostics (global)" })
 
 cmd("ToggleAutoformat", function()
-  vim.g.disable_autoformat = not vim.g.disable_autoformat
-  vim.notify("Autoformat: " .. tostring(not vim.g.disable_autoformat))
+  pcall(function()
+    vim.g.disable_autoformat = not vim.g.disable_autoformat
+    vim.notify("Autoformat: " .. tostring(not vim.g.disable_autoformat))
+  end)
 end, { desc = "Toggle autoformat" })
 
--- Telescope resume
+-- ═══════════════════════════════════════════════════════════════════════════
+-- TELESCOPE RESUME
+-- ═══════════════════════════════════════════════════════════════════════════
+
 cmd("TelescopeResume", function()
-  require("telescope.builtin").resume()
+  local ok, telescope = pcall(require, "telescope.builtin")
+  if not ok then
+    vim.notify("telescope not available", vim.log.levels.ERROR)
+    return
+  end
+  pcall(function()
+    telescope.resume()
+  end)
 end, { desc = "Resume last telescope picker" })
 
--- Install all mason packages
--- FIX #9: Rewrote the completion counter so the "Done" summary only fires
--- after ALL async installs have actually finished.
--- Previously, already-installed packages were counted synchronously and could
--- push installed+#failed == #pkgs to true before any async callbacks had run,
--- causing premature "All packages installed!" on partially-done runs.
--- Registry lookup failures now correctly increment a skip counter separate
--- from failed installs so the total accounting is always exact.
+-- ═══════════════════════════════════════════════════════════════════════════
+-- INSTALL ALL MASON PACKAGES
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- FIX #9: Rewrote completion counter for correct async tracking
 cmd("MasonInstallAll", function()
-  local registry = require("mason-registry")
+  local ok, registry = pcall(require, "mason-registry")
+  if not ok then
+    vim.notify("mason-registry not available", vim.log.levels.ERROR)
+    return
+  end
 
   local pkgs = {
     -- LSP
@@ -138,16 +248,12 @@ cmd("MasonInstallAll", function()
     "yaml-language-server",
     "clangd",
     "solargraph",
-    "elixir-ls",            -- mason-lspconfig server name: elixirls
-    "kotlin-language-server", -- mason-lspconfig server name: kotlin_language_server
+    "elixir-ls",
+    "kotlin-language-server",
     "zls",
     "fortls",
     "sqls",
-    -- NOTE: cobol-language-support is the correct Mason registry name
-    -- (NOT cobol-language-server). Binary installed: cobol-language-server
     "cobol-language-support",
-    -- NOTE: rust_hdl is the correct Mason registry name for the VHDL LSP
-    -- (NOT vhdl-ls). Binary installed: vhdl_ls
     "rust_hdl",
     -- DAP
     "debugpy",
@@ -168,9 +274,6 @@ cmd("MasonInstallAll", function()
     "rubocop",
     "clang-format",
     "fprettify",
-    -- FIX (vhdl.lua #8): vsg (VHDL Style Guide) is pip-installed, not
-    -- Mason-managed. Install separately: pip install vsg
-    -- "sqlfmt",
     -- Linters
     "ruff",
     "eslint_d",
@@ -200,8 +303,11 @@ cmd("MasonInstallAll", function()
   end
 
   for _, pkg_name in ipairs(pkgs) do
-    local ok, pkg = pcall(registry.get_package, pkg_name)
-    if not ok then
+    local ok_pkg, pkg = pcall(function()
+      return registry.get_package(pkg_name)
+    end)
+
+    if not ok_pkg or not pkg then
       vim.notify("Not in registry: " .. pkg_name, vim.log.levels.WARN)
       table.insert(failed, pkg_name)
     elseif pkg:is_installed() then
@@ -210,17 +316,19 @@ cmd("MasonInstallAll", function()
     else
       pending = pending + 1
       vim.notify("Installing " .. pkg_name .. "...", vim.log.levels.INFO)
-      pkg:install():once("closed", vim.schedule_wrap(function()
-        pending = pending - 1
-        if pkg:is_installed() then
-          installed = installed + 1
-          vim.notify(pkg_name .. " ✓", vim.log.levels.INFO)
-        else
-          table.insert(failed, pkg_name)
-          vim.notify(pkg_name .. " ✗", vim.log.levels.ERROR)
-        end
-        check_done()
-      end))
+      pcall(function()
+        pkg:install():once("closed", vim.schedule_wrap(function()
+          pending = pending - 1
+          if pkg:is_installed() then
+            installed = installed + 1
+            vim.notify(pkg_name .. " ✓", vim.log.levels.INFO)
+          else
+            table.insert(failed, pkg_name)
+            vim.notify(pkg_name .. " ✗", vim.log.levels.ERROR)
+          end
+          check_done()
+        end))
+      end)
     end
   end
 
