@@ -1,12 +1,8 @@
 -- lua/core/bootstrap.lua - Bootstrap configuration (loads FIRST)
---
--- LOAD ORDER NOTE (issue #1): mapleader MUST be set before lazy.nvim is
--- required (done correctly below), and bootstrap.lua MUST load before
--- options.lua in init.lua. Current init.lua loads options first — safe as
--- long as options.lua contains no mappings. If options.lua ever gains a
--- mapping, swap the load order: bootstrap → options.
 
--- Set leader keys FIRST - before anything else!
+-- RECALIBRATION: Leader keys set FIRST, before any plugin loading
+
+-- Set leader keys (must be before lazy.nvim)
 vim.g.mapleader      = " "
 vim.g.maplocalleader = " "
 
@@ -16,8 +12,7 @@ local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.uv.fs_stat(lazypath) then
   vim.notify("Bootstrapping lazy.nvim — cloning from GitHub…", vim.log.levels.INFO)
 
-  -- FIX #2: Capture system() output so we can detect clone failures and
-  -- surface a clear error instead of a cryptic rtp/module-not-found crash.
+  -- RECALIBRATION: Safe git clone with error capture and detailed messaging
   local out = vim.fn.system({
     "git", "clone", "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
@@ -26,14 +21,20 @@ if not vim.uv.fs_stat(lazypath) then
 
   if vim.v.shell_error ~= 0 then
     vim.notify(
-      "Failed to clone lazy.nvim:\n" .. out
-        .. "\nCheck your network connection and that git is installed.",
+      "Failed to clone lazy.nvim:\n" .. tostring(out)
+        .. "\n\nTroubleshooting:\n"
+        .. "1. Check your internet connection\n"
+        .. "2. Verify git is installed: git --version\n"
+        .. "3. Check git config: git config --list\n",
       vim.log.levels.ERROR
     )
-    -- Return early — rtp:prepend on a missing path would cause confusing
-    -- downstream errors.
     return
   end
+
+  vim.notify("lazy.nvim bootstrap successful!", vim.log.levels.INFO)
 end
 
-vim.opt.rtp:prepend(lazypath)
+-- Prepend lazy to runtimepath
+pcall(function()
+  vim.opt.rtp:prepend(lazypath)
+end)
