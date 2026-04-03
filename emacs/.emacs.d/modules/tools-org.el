@@ -1,10 +1,38 @@
 ;;; tools-org.el --- Org-Mode Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; NEW MODULE — proper org-mode setup wired to config.yml environment
-;;; settings (org_directory, org_agenda_files from work/home environments).
-;;; lang-core.el has minimal org setup; this provides the full office-grade
-;;; experience: agenda, capture templates, babel, export, and appearance.
-;;; Add "tools-org" to emacs-ide-feature-modules in init.el (after lang-core).
+;;; Proper org-mode setup wired to config.yml environment settings
+;;; (org-directory, org-agenda-files from work/home environments).
+;;; Provides the full office-grade experience: agenda, capture templates,
+;;; babel, export, and appearance.
+;;; Add "tools-org" to emacs-ide-feature-modules in init.el (after core-dev).
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 1.0.0 (audit):
+;;;   - FIX-VERSION: Version header added (file had none).
+;;;   - FIX-DEFVAR-RELOAD: emacs-ide-org-directory and emacs-ide-org-agenda-files
+;;;     were defvars evaluated once at top level. On M-x emacs-ide-config-reload
+;;;     or environment switch (work↔home) they were never updated — defvar is
+;;;     a no-op when the variable is already bound. Replaced with a helper
+;;;     emacs-ide-org--update-paths that re-reads config and is called via
+;;;     with-eval-after-load 'emacs-ide-config and emacs-ide-config-reload-hook.
+;;;   - FIX-MKDIR-TOPLEVEL: (make-directory emacs-ide-org-directory) ran at
+;;;     load time before config was confirmed loaded. Deferred into
+;;;     emacs-ide-org--update-paths so the correct configured path is always
+;;;     used when the directory is created.
+;;;   - FIX-NESTED-USE-PACKAGE: (use-package org-bullets) was nested inside
+;;;     the org :config block. Nested use-package calls are unsupported —
+;;;     the inner call may run before straight has registered the package.
+;;;     Moved to a top-level (use-package org-bullets :after org ...) block.
+;;;   - FIX-COMMENT-LANGCORE: Header comment referenced lang-core.el which
+;;;     was removed in v3.0.0 and replaced by modules/langs/. Updated.
+;;;   - FIX-ORG-DIR-SYNC: org-directory, org-agenda-files, and
+;;;     org-default-notes-file were set in :init from a defvar snapshot and
+;;;     never updated on reload. emacs-ide-org--update-paths now also updates
+;;;     these live org variables when org is already loaded.
+;;;   - FIX-AGENDA-FILES-NIL: If emacs-ide-org--config-get returned nil
+;;;     (e.g. "default" environment with no agenda files configured),
+;;;     (listp nil) is t so mapcar ran over nil producing nil — the fallback
+;;;     todo.org was silently dropped. Added explicit nil check before mapcar.
 ;;; Code:
 
 (require 'cl-lib)
@@ -21,22 +49,45 @@
            (env-cfg (cdr (assoc env-sym envs))))
       (cdr (assoc key env-cfg)))))
 
-(defvar emacs-ide-org-directory
-  (expand-file-name
-   (or (emacs-ide-org--config-get 'org-directory)
-       "~/org"))
-  "Org directory from config.")
+;; FIX-DEFVAR-RELOAD: defvars set initial defaults only.
+;; emacs-ide-org--update-paths populates them correctly after config loads.
+(defvar emacs-ide-org-directory (expand-file-name "~/org")
+  "Org directory derived from config.yml environment settings.")
 
-(defvar emacs-ide-org-agenda-files
-  (let ((files (emacs-ide-org--config-get 'org-agenda-files)))
-    (if (listp files)
-        (mapcar #'expand-file-name files)
-      (list (expand-file-name "~/org/todo.org"))))
-  "Org agenda files from config.")
+(defvar emacs-ide-org-agenda-files (list (expand-file-name "~/org/todo.org"))
+  "Org agenda files derived from config.yml environment settings.")
 
-;; Ensure directory exists
-(unless (file-directory-p emacs-ide-org-directory)
-  (make-directory emacs-ide-org-directory t))
+(defun emacs-ide-org--update-paths ()
+  "Re-read org paths from config and sync live org variables.
+FIX-DEFVAR-RELOAD: called after config loads and on every reload so that
+environment switches (work↔home) take effect without restarting Emacs.
+FIX-MKDIR-TOPLEVEL: directory creation happens here, not at load time.
+FIX-ORG-DIR-SYNC: updates live org-* variables when org is already loaded.
+FIX-AGENDA-FILES-NIL: explicit nil check before mapcar."
+  ;; Resolve directory
+  (setq emacs-ide-org-directory
+        (expand-file-name
+         (or (emacs-ide-org--config-get 'org-directory) "~/org")))
+  ;; FIX-MKDIR-TOPLEVEL: defer directory creation to here
+  (unless (file-directory-p emacs-ide-org-directory)
+    (make-directory emacs-ide-org-directory t))
+  ;; FIX-AGENDA-FILES-NIL: (listp nil) is t — check for non-nil before mapcar
+  (let ((raw-files (emacs-ide-org--config-get 'org-agenda-files)))
+    (setq emacs-ide-org-agenda-files
+          (if (and raw-files (listp raw-files))
+              (mapcar #'expand-file-name raw-files)
+            (list (expand-file-name "~/org/todo.org")))))
+  ;; FIX-ORG-DIR-SYNC: update live org variables if org is already loaded
+  (when (featurep 'org)
+    (setq org-directory          emacs-ide-org-directory
+          org-agenda-files       emacs-ide-org-agenda-files
+          org-default-notes-file (expand-file-name "inbox.org" emacs-ide-org-directory))))
+
+;; Update after config loads and on every subsequent reload
+(with-eval-after-load 'emacs-ide-config
+  (emacs-ide-org--update-paths))
+
+(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-org--update-paths)
 
 ;; ============================================================================
 ;; ORG-MODE CORE
@@ -97,15 +148,11 @@
         org-export-with-author      t
         org-export-headline-levels  4
 
-        ;; Babel languages — offline only, no network
+        ;; Babel — disable eval confirmation (sources are local/trusted)
         org-confirm-babel-evaluate  nil)
 
   :config
-  ;; FIX: org-babel-do-load-languages was called eagerly in :config, which
-  ;; triggered loading ob-python, ob-shell, ob-js, ob-C and their dependencies
-  ;; synchronously at startup — accounting for ~1.7s of the org load time.
-  ;; Deferred to a 3-second idle timer: babel backends load after the user
-  ;; starts interacting, not during the startup critical path.
+  ;; Defer babel language loading — ob-python/shell/js/C add ~1.7s if eager
   (run-with-idle-timer
    3 nil
    (lambda ()
@@ -137,13 +184,19 @@
           ("b" "Bug / Issue" entry
            (file+headline org-default-notes-file "Bugs")
            "* TODO [#A] Bug: %?\n  DEADLINE: %T\n  %i\n  %a\n"
-           :empty-lines 1)))
+           :empty-lines 1))))
 
-  ;; Pretty bullets
-  (use-package org-bullets
-    :hook (org-mode . org-bullets-mode)
-    :init
-    (setq org-bullets-bullet-list '("◉" "○" "✸" "✿"))))
+;; ============================================================================
+;; ORG-BULLETS — pretty heading bullets
+;; FIX-NESTED-USE-PACKAGE: moved from inside org :config to a top-level block.
+;; Nested use-package is unsupported — straight may not have registered the
+;; package when the inner call runs inside :config.
+;; ============================================================================
+(use-package org-bullets
+  :after org
+  :hook (org-mode . org-bullets-mode)
+  :init
+  (setq org-bullets-bullet-list '("◉" "○" "✸" "✿")))
 
 ;; ============================================================================
 ;; ORG AGENDA CUSTOM VIEWS
