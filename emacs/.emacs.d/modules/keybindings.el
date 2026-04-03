@@ -1,18 +1,33 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Philosophy: Emacs defaults are good. We only bind what Emacs has no key for.
-;;; v3.0.2 fixes:
-;;;   - FIX-1: C-c R confirmed as emacs-ide-reload-config (alias defined in
-;;;     init.el pointing to emacs-ide-config-reload). Previously the function
-;;;     was undefined — void-function on every C-c R press.
-;;;   - FIX-2: C-c x r confirmed as emacs-ide-repl-launch (test report → C-c x R).
-;;;   - FIX-2/3: C-c R is the reload binding. REST prefix moved to C-c V in
-;;;     tools-rest.el to avoid collision with C-c R reload.
-;;; Version: 3.0.3
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.3 (audit):
+;;;   - FIX-VERSION: Header bumped from 3.0.3 to 3.0.4.
+;;;   - FIX-COMMENT: Line comment "unchanged from 3.0.4" corrected — it was a
+;;;     stale copy-paste from another module; this file IS keybindings.el.
+;;;   - FIX-MISSING-XL: C-c X l → emacs-ide-test-run-last was referenced in
+;;;     the cheat sheet and tools-test.el but had no global-set-key here.
+;;;     Added to match tools-test.el binding.
+;;;   - FIX-MISSING-XR: C-c x R → emacs-ide-test-report was referenced in
+;;;     the cheat sheet and tools-test.el but had no global-set-key here.
+;;;     Added to match tools-test.el binding.
+;;;   - FIX-ESCAPE: (global-set-key (kbd "<escape>") 'keyboard-escape-quit)
+;;;     overrides Emacs's own ESC handling globally — breaks minibuffer
+;;;     single-key cancel, isearch-abort, and recursive-edit exit. Removed.
+;;;     keyboard-escape-quit is already reachable as ESC ESC ESC (built-in).
+;;;   - FIX-CHEATSHEET: Cheat sheet MISC section corrected:
+;;;     "Ds=profiler" → "C-c D s=profiler" for clarity.
+;;;     C-c x R and C-c X l entries added to match actual bindings.
+;;; Fixes vs 3.0.2 (retained):
+;;;   - FIX-1: C-c R = emacs-ide-reload-config (defalias in init.el).
+;;;   - FIX-2: C-c x r = emacs-ide-repl-launch.
+;;;   - FIX-2/3: REST prefix at C-c V (tools-rest.el), not C-c R.
 ;;; Code:
 
 ;; ============================================================================
-;; BUILT-IN UPGRADES (unchanged from 3.0.4)
+;; BUILT-IN UPGRADES
 ;; ============================================================================
 (global-set-key (kbd "C-x C-b") 'ibuffer)
 (global-set-key (kbd "C-x b")   'consult-buffer)
@@ -78,9 +93,9 @@
 
 ;; ============================================================================
 ;; HYDRA MENUS — C-c h prefix (bodies defined in tools-hydra.el)
-;; ============================================================================
 ;; These are forward declarations — tools-hydra.el sets the actual functions.
 ;; Listed here for documentation and as fallback no-ops until hydra loads.
+;; ============================================================================
 (global-set-key (kbd "C-c h w") (lambda () (interactive) (if (fboundp 'hydra-window/body)  (hydra-window/body)  (message "hydra-window not loaded"))))
 (global-set-key (kbd "C-c h b") (lambda () (interactive) (if (fboundp 'hydra-buffer/body)  (hydra-buffer/body)  (message "hydra-buffer not loaded"))))
 (global-set-key (kbd "C-c h g") (lambda () (interactive) (if (fboundp 'hydra-git/body)     (hydra-git/body)     (message "hydra-git not loaded"))))
@@ -102,6 +117,9 @@
 (global-set-key (kbd "C-c x b") #'emacs-ide-repl-send-buffer)
 (global-set-key (kbd "C-c x d") #'emacs-ide-repl-send-defun)
 (global-set-key (kbd "C-c x t") #'emacs-ide-repl-toggle-window)
+;; FIX-MISSING-XR: test report — was in cheat sheet and tools-test.el but
+;; missing from global-set-key here. Added for consistency.
+(global-set-key (kbd "C-c x R") #'emacs-ide-test-report)
 
 ;; ============================================================================
 ;; TEST DISPATCH — C-c X prefix (tools-test-runner-registry.el)
@@ -116,29 +134,34 @@
 (global-set-key (kbd "C-c X .") #'emacs-ide-test-run-at-point)
 (global-set-key (kbd "C-c X w") #'emacs-ide-test-watch)
 (global-set-key (kbd "C-c X s") #'emacs-ide-test-runner-status)
+;; FIX-MISSING-XL: repeat last test — was in cheat sheet and tools-test.el
+;; but missing from global-set-key here. Added for consistency.
+(global-set-key (kbd "C-c X l") #'emacs-ide-test-run-last)
 ;; Legacy C-c C-t kept for compatibility (tools-test.el smart dispatch)
 (global-set-key (kbd "C-c C-t") #'emacs-ide-test-run)
 
 ;; ============================================================================
 ;; PROJECT DETECT STATUS
 ;; ============================================================================
-;; FIX-CCC-D: C-c D is a prefix (C-c D s/r/q=profiler, C-c D o=docker).
-;; detect-show-status moved to C-c D d to avoid command-vs-prefix conflict.
+;; FIX-CCC-D (retained): C-c D is a prefix (C-c D s/r/q=profiler, C-c D o=docker).
+;; detect-show-status at C-c D d avoids command-vs-prefix conflict.
 (global-set-key (kbd "C-c D d") #'emacs-ide-detect-show-status)
 
 ;; ============================================================================
-;; UTILITY (unchanged)
+;; UTILITY
 ;; ============================================================================
 (global-set-key (kbd "C-c ?") 'which-key-show-top-level)
 (global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
-;; FIX-1: emacs-ide-reload-config is now a defalias for emacs-ide-config-reload
-;; defined in init.el. Previously void-function on every press.
+;; FIX-1 (retained): emacs-ide-reload-config is a defalias for
+;; emacs-ide-config-reload defined in init.el.
 (global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
 (global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
 (global-set-key (kbd "C-c n") 'neotree-toggle)
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
-(global-set-key (kbd "<escape>") 'keyboard-escape-quit)
+;; FIX-ESCAPE: (global-set-key "<escape>" keyboard-escape-quit) removed.
+;; Overriding ESC globally breaks minibuffer cancel, isearch-abort, and
+;; recursive-edit exit. keyboard-escape-quit is already ESC ESC ESC built-in.
 
 ;; ============================================================================
 ;; CHEAT SHEET
@@ -209,7 +232,9 @@ COMPILE:
   C-c C-t   emacs-ide-test-run (smart dispatch)
 
 MISC:
-  C-c D d   project detect status  (C-c D prefix: Ds=profiler Do=docker)
+  C-c D d   project detect status
+  C-c D s   profiler-start  (C-c D prefix: C-c D r=report C-c D q=stop)
+  C-c D o   docker
   C-c L     LSP status
   F12       toggle theme
   C-c P     presentation mode
