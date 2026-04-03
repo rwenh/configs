@@ -1,19 +1,16 @@
--- lua/plugins/specs/lang/rest.lua - REST client (rest.nvim v2 API)
--- v2 dropped <Plug> mappings in favour of :Rest <subcommand> and lua functions.
+-- lua/plugins/specs/lang/rest.lua - REST client (v2 API)
 
 return {
   {
     "rest-nvim/rest.nvim",
     ft           = "http",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-treesitter/nvim-treesitter" },
-    -- Pin to v2 stable; v1 is abandoned and uses the old <Plug> API
     version = "^2",
     opts = {
       client = "curl",
       env_file     = ".env",
       env_pattern  = "\\.env$",
       env_edit_command = "tabedit",
-      -- NOTE: encode_url belongs inside request.hooks, not here; removed duplicate top-level key
       skip_ssl_verification = false,
       custom_dynamic_variables = {},
       logs = {
@@ -34,7 +31,6 @@ return {
         },
       },
       highlight = { enable = true, timeout = 750 },
-      -- FIX: removed stray ---@param annotation (was above a table key, not a function)
       request = {
         hooks = {
           encode_url     = true,
@@ -43,24 +39,25 @@ return {
         },
       },
     },
+    config = function(_, opts)
+      pcall(function() require("rest-nvim").setup(opts) end)
+    end,
     keys = {
       {
-        -- FIX: renamed <leader>h* → <leader>re* to give Harpoon sole ownership of <leader>h*
         "<leader>rer",
-        function() require("rest-nvim").run() end,
+        function() pcall(function() require("rest-nvim").run() end) end,
         desc = "REST Run Request",
         ft   = "http",
       },
       {
         "<leader>rel",
-        -- FIX: .last() is the v1 API; v2 renamed it to .run_last()
-        function() require("rest-nvim").run_last() end,
+        function() pcall(function() require("rest-nvim").run_last() end) end,
         desc = "REST Run Last",
         ft   = "http",
       },
       {
         "<leader>rep",
-        function() require("rest-nvim").preview() end,
+        function() pcall(function() require("rest-nvim").preview() end) end,
         desc = "REST Preview Request",
         ft   = "http",
       },
@@ -69,7 +66,7 @@ return {
         function()
           local env = vim.fn.input("Env file: ", ".env", "file")
           if env ~= "" then
-            require("rest-nvim").select_env(env)
+            pcall(function() require("rest-nvim").select_env(env) end)
           end
         end,
         desc = "REST Select Env",
@@ -78,7 +75,7 @@ return {
     },
   },
 
-  -- Treesitter parser for .http files (required by rest.nvim v2)
+  -- Treesitter parser for .http files
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
