@@ -5,19 +5,18 @@ return {
     "ray-x/go.nvim",
     dependencies = "ray-x/guihua.lua",
     ft    = { "go", "gomod" },
-    -- FIX #5: Added build step — go.nvim requires this for treesitter
-    -- go parser and some UI features to initialise correctly.
     build = ":lua require('go.install').update_all_sync()",
     config = function()
-      require("go").setup({
-        -- FIX #3: Disabled lsp_cfg — go.nvim would launch its own gopls
-        -- instance alongside the one already configured in lsp.lua, attaching
-        -- two gopls clients per Go buffer (duplicate diagnostics/completions).
-        -- lsp.lua owns gopls via vim.lsp.config/enable (Neovim 0.11+ API).
-        lsp_cfg = false,
-        -- FIX #4: gopls settings removed — lsp.lua already configures
-        -- analyses/staticcheck/gofumpt for gopls. Redundant with lsp_cfg=false.
-      })
+      -- RECALIBRATION: Safe setup with defensive options
+      local ok = pcall(function()
+        require("go").setup({
+          lsp_cfg = false,
+        })
+      end)
+
+      if not ok then
+        vim.notify("go.nvim setup failed", vim.log.levels.WARN)
+      end
     end,
     keys = {
       { "<leader>got", "<cmd>GoTest<cr>",     desc = "Go Test",          ft = "go" },
