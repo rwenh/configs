@@ -16,23 +16,21 @@ return {
   {
     "stevearc/conform.nvim",
     optional = true,
-    opts = {
-      formatters_by_ft = {
-        kotlin = { "ktlint" },
-      },
-    },
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.kotlin = { "ktlint" }
+    end,
   },
 
   -- Lint: ktlint
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    -- FIX #6: optional=true config doesn't run — moved to init.
-    -- Targeted assignment avoids overwriting lsp.lua's linter table.
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = "*.kt",
         once     = true,
+        group    = vim.api.nvim_create_augroup("KotlinLint", { clear = true }),
         callback = function()
           local ok, lint = pcall(require, "lint")
           if not ok then return end
@@ -42,11 +40,6 @@ return {
     end,
   },
 
-  -- NOTE (Fix #7): neotest-java adapter registration removed — test.lua
-  -- already registers require("neotest-java")({ ignore_wrapper = false })
-  -- centrally. Inserting it here too caused double registration and duplicate
-  -- test results in Kotlin/Java buffers.
-
   -- Build integration via toggleterm
   {
     "akinsho/toggleterm.nvim",
@@ -55,18 +48,27 @@ return {
       {
         "<leader>ktb",
         function()
-          -- FIX #8: Use find_root() to locate project root regardless of cwd.
-          -- filereadable("gradlew") resolved against cwd — if the user hasn't
-          -- cd'd to the project root, detection silently fell back to the wrong
-          -- build command.
-          local root = require("core.util.path").find_root()
-          local Terminal = require("toggleterm.terminal").Terminal
+          -- RECALIBRATION: Safe toggleterm require and find_root
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local ok_path, path = pcall(require, "core.util.path")
+          if not ok_path then
+            vim.notify("path.lua not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local root = path.find_root()
           local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
                         and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew build"
                    or vim.fn.filereadable(root .. "/pom.xml") == 1
                         and "cd " .. vim.fn.shellescape(root) .. " && mvn compile"
                    or "kotlinc *.kt -include-runtime -d app.jar"
-          Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+
+          term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
         desc = "Kotlin Build",
         ft   = "kotlin",
@@ -74,14 +76,26 @@ return {
       {
         "<leader>ktt",
         function()
-          local root = require("core.util.path").find_root()
-          local Terminal = require("toggleterm.terminal").Terminal
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local ok_path, path = pcall(require, "core.util.path")
+          if not ok_path then
+            vim.notify("path.lua not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local root = path.find_root()
           local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
                         and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
                    or vim.fn.filereadable(root .. "/pom.xml") == 1
                         and "cd " .. vim.fn.shellescape(root) .. " && mvn test"
                    or "echo 'No build tool found'"
-          Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+
+          term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
         desc = "Kotlin Test",
         ft   = "kotlin",
@@ -89,12 +103,24 @@ return {
       {
         "<leader>ktr",
         function()
-          local root = require("core.util.path").find_root()
-          local Terminal = require("toggleterm.terminal").Terminal
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local ok_path, path = pcall(require, "core.util.path")
+          if not ok_path then
+            vim.notify("path.lua not available", vim.log.levels.ERROR)
+            return
+          end
+
+          local root = path.find_root()
           local cmd = vim.fn.filereadable(root .. "/gradlew") == 1
                         and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew run"
                    or "echo 'No Gradle wrapper found'"
-          Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+
+          term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
         end,
         desc = "Kotlin Run",
         ft   = "kotlin",
