@@ -5,13 +5,11 @@ return {
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    -- FIX #1: optional=true config doesn't run — moved to init.
-    -- FIX #2: Use targeted assignment instead of tbl_extend on whole table
-    -- to avoid overwriting entries registered by lsp.lua's lint config.
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = "*.html",
         once     = true,
+        group    = vim.api.nvim_create_augroup("HtmlLint", { clear = true }),
         callback = function()
           local ok, lint = pcall(require, "lint")
           if not ok then return end
@@ -25,11 +23,10 @@ return {
   {
     "stevearc/conform.nvim",
     optional = true,
-    opts = {
-      formatters_by_ft = {
-        html = { "prettier" },
-      },
-    },
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.html = { "prettier" }
+    end,
   },
 
   -- Treesitter: HTML parser
@@ -47,16 +44,15 @@ return {
   {
     "neovim/nvim-lspconfig",
     optional = true,
-    -- FIX #3: opts.servers is the LazyVim pattern and doesn't work with this
-    -- config's LSP setup (lsp.lua uses vim.lsp.config/enable directly).
-    -- Moved to init using the same pattern as lsp.lua optional servers.
     init = function()
-      vim.lsp.config("html", {
-        filetypes    = { "html", "htmldjango", "jinja.html" },
-        init_options = {
-          provideFormatter = false,  -- defer formatting to prettier
-        },
-      })
+      pcall(function()
+        vim.lsp.config("html", {
+          filetypes    = { "html", "htmldjango", "jinja.html" },
+          init_options = {
+            provideFormatter = false,
+          },
+        })
+      end)
     end,
   },
 }
