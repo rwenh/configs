@@ -1,6 +1,5 @@
 -- lua/plugins/specs/dap.lua - Debug Adapter Protocol
--- F-key and <leader>d* maps are defined in keymaps.lua / here via `keys` table.
--- <leader>; maps live in keymaps.lua — only plugin-lazy-load keys are listed here.
+-- F-key and <leader>; maps are defined in keymaps.lua / here via `keys` table.
 
 return {
   {
@@ -10,8 +9,6 @@ return {
       "theHamsta/nvim-dap-virtual-text",
       "nvim-neotest/nvim-nio",
     },
-    -- Only list keys needed to trigger lazy-loading of this plugin.
-    -- Full keymap definitions are in core/keymaps.lua under <leader>; and <F*>.
     keys = {
       { "<F5>" },
       { "<F6>" },
@@ -28,46 +25,67 @@ return {
       local dapui  = require("dapui")
 
       -- UI Setup
-      dapui.setup({
-        layouts = {
-          {
-            elements = {
-              { id = "scopes",      size = 0.25 },
-              { id = "breakpoints", size = 0.25 },
-              { id = "stacks",      size = 0.25 },
-              { id = "watches",     size = 0.25 },
+      -- RECALIBRATION: Added pcall wrapper for dapui.setup
+      local ok = pcall(function()
+        dapui.setup({
+          layouts = {
+            {
+              elements = {
+                { id = "scopes",      size = 0.25 },
+                { id = "breakpoints", size = 0.25 },
+                { id = "stacks",      size = 0.25 },
+                { id = "watches",     size = 0.25 },
+              },
+              size     = 40,
+              position = "left",
             },
-            size     = 40,
-            position = "left",
-          },
-          {
-            elements = {
-              { id = "repl",    size = 0.5 },
-              { id = "console", size = 0.5 },
+            {
+              elements = {
+                { id = "repl",    size = 0.5 },
+                { id = "console", size = 0.5 },
+              },
+              size     = 10,
+              position = "bottom",
             },
-            size     = 10,
-            position = "bottom",
           },
-        },
-      })
+        })
+      end)
 
-      require("nvim-dap-virtual-text").setup({
-        enabled                    = true,
-        highlight_changed_variables = true,
-        highlight_new_as_changed   = true,
-      })
+      if not ok then
+        vim.notify("dapui setup failed", vim.log.levels.WARN)
+      end
+
+      pcall(function()
+        require("nvim-dap-virtual-text").setup({
+          enabled                    = true,
+          highlight_changed_variables = true,
+          highlight_new_as_changed   = true,
+        })
+      end)
 
       -- Signs
-      vim.fn.sign_define("DapBreakpoint",          { text = "●", texthl = "DapBreakpoint",  linehl = "",             numhl = "" })
-      vim.fn.sign_define("DapStopped",             { text = "▶", texthl = "DapStopped",     linehl = "DapStoppedLine", numhl = "" })
-      vim.fn.sign_define("DapBreakpointCondition", { text = "◆", texthl = "DapBreakpoint",  linehl = "",             numhl = "" })
-      vim.fn.sign_define("DapBreakpointRejected",  { text = "✖", texthl = "DapBreakpoint",  linehl = "",             numhl = "" })
-      vim.fn.sign_define("DapLogPoint",            { text = "◉", texthl = "DapLogPoint",    linehl = "",             numhl = "" })
+      local signs = {
+        DapBreakpoint          = { text = "●", texthl = "DapBreakpoint",  linehl = "",             numhl = "" },
+        DapStopped             = { text = "▶", texthl = "DapStopped",     linehl = "DapStoppedLine", numhl = "" },
+        DapBreakpointCondition = { text = "◆", texthl = "DapBreakpoint",  linehl = "",             numhl = "" },
+        DapBreakpointRejected  = { text = "✖", texthl = "DapBreakpoint",  linehl = "",             numhl = "" },
+        DapLogPoint            = { text = "◉", texthl = "DapLogPoint",    linehl = "",             numhl = "" },
+      }
+      for sign, config in pairs(signs) do
+        pcall(vim.fn.sign_define, sign, config)
+      end
 
       -- Auto open/close UI
-      dap.listeners.after.event_initialized["dapui_config"]  = function() dapui.open() end
-      dap.listeners.before.event_terminated["dapui_config"]  = function() dapui.close() end
-      dap.listeners.before.event_exited["dapui_config"]      = function() dapui.close() end
+      local function safe_dapui_open()
+        pcall(function() dapui.open() end)
+      end
+      local function safe_dapui_close()
+        pcall(function() dapui.close() end)
+      end
+
+      dap.listeners.after.event_initialized["dapui_config"]  = safe_dapui_open
+      dap.listeners.before.event_terminated["dapui_config"]  = safe_dapui_close
+      dap.listeners.before.event_exited["dapui_config"]      = safe_dapui_close
 
       -- ── Python ──────────────────────────────────────────────────────────────
       -- FIX #2: vim.fn.exepath() returns "" (not nil) when binary not found.
@@ -77,7 +95,7 @@ return {
         if p3 ~= "" then return p3 end
         local p = vim.fn.exepath("python")
         if p ~= "" then return p end
-        return "python3"  -- last-resort name so the error message is meaningful
+        return "python3"
       end
 
       dap.adapters.python = function(cb, config)
@@ -143,12 +161,10 @@ return {
       }
 
       -- FIX #6: Use vim.deepcopy so C and C++ configs are independent table
-      -- instances. Sharing the same reference means a runtime mutation to one
-      -- (e.g. by a plugin appending env vars) would silently affect the other.
       dap.configurations.c   = { vim.deepcopy(codelldb_launch) }
       dap.configurations.cpp = { vim.deepcopy(codelldb_launch) }
       dap.configurations.rust = {
-        vim.tbl_extend("force", codelldb_launch, {
+        vim.tbl_extend("force", vim.deepcopy(codelldb_launch), {
           name    = "Launch file",
           program = function()
             return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/target/debug/", "file")
@@ -201,9 +217,7 @@ return {
       }
 
       -- ── Elixir (ElixirLS) ─────────────────────────────────────────────────
-      -- FIX #3: exepath() returns "" not nil — or never falls through on miss.
-      -- Also replaced hardcoded ~/.local/share/nvim with vim.fn.stdpath("data")
-      -- for portability across custom $XDG_DATA_HOME setups.
+      -- FIX #3: exepath() returns "" not nil
       local elixir_dbg = vim.fn.exepath("elixir-ls-debugger")
       dap.adapters.mix_task = {
         type    = "executable",
@@ -224,20 +238,24 @@ return {
 
       local function save_breakpoints()
         local bps = {}
-        for bufnr, buf_bps in pairs(require("dap.breakpoints").get()) do
+        local ok, bp_data = pcall(function() return require("dap.breakpoints").get() end)
+        if not ok then return end
+
+        for bufnr, buf_bps in pairs(bp_data) do
           local path = vim.api.nvim_buf_get_name(bufnr)
           if path ~= "" and #buf_bps > 0 then
             bps[path] = vim.tbl_map(function(bp)
-              -- NOTE: DAP internal field is bp.logMessage (camelCase); we
-              -- persist it as log_message (snake_case) to match the set() API.
               return { line = bp.line, condition = bp.condition, log_message = bp.logMessage }
             end, buf_bps)
           end
         end
-        -- FIX #5: Skip write when there are no breakpoints to persist.
         if next(bps) == nil then return end
+
         local f = io.open(bp_file, "w")
-        if f then f:write(vim.json.encode(bps)); f:close() end
+        if f then
+          f:write(vim.json.encode(bps))
+          f:close()
+        end
       end
 
       local function load_breakpoints()
@@ -250,15 +268,23 @@ return {
           local bufnr = vim.fn.bufnr(path, true)
           if bufnr ~= -1 then
             for _, bp in ipairs(entries) do
-              require("dap.breakpoints").set(
-                { condition = bp.condition, log_message = bp.log_message }, bufnr, bp.line)
+              pcall(function()
+                require("dap.breakpoints").set(
+                  { condition = bp.condition, log_message = bp.log_message }, bufnr, bp.line)
+              end)
             end
           end
         end
       end
 
-      vim.api.nvim_create_autocmd("VimLeavePre", { callback = save_breakpoints })
-      vim.api.nvim_create_autocmd("VimEnter",    { callback = function() vim.defer_fn(load_breakpoints, 100) end })
+      vim.api.nvim_create_autocmd("VimLeavePre", {
+        group = vim.api.nvim_create_augroup("DapBreakpointsSave", { clear = true }),
+        callback = save_breakpoints
+      })
+      vim.api.nvim_create_autocmd("VimEnter", {
+        group = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true }),
+        callback = function() vim.defer_fn(load_breakpoints, 100) end
+      })
     end,
   },
 
