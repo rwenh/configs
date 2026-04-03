@@ -1,11 +1,12 @@
 -- lua/plugins/specs/init.lua - Load all plugin specs
 
 return {
-  -- Core — ORDER MATTERS for the following dependencies:
+  -- Core — ORDER MATTERS for dependencies:
   --   • completion must precede lsp  (blink capabilities injected in lsp.lua)
   --   • lsp must precede all lang/*  (lang specs add servers/parsers to lsp config)
   --   • web must precede html/css    (autotag + emmet setup consumed by html/css)
   --   • database must precede sql    (dadbod owner; sql defers to it)
+
   { import = "plugins.specs.ui" },
   { import = "plugins.specs.editor" },
   { import = "plugins.specs.completion" },   -- blink caps; must be before lsp
@@ -16,7 +17,7 @@ return {
   { import = "plugins.specs.test" },
   { import = "plugins.specs.advanced" },
 
-  -- Languages
+  -- Languages (order preserved from original for stability)
   { import = "plugins.specs.lang.c" },
   { import = "plugins.specs.lang.cpp" },
   { import = "plugins.specs.lang.rust" },
@@ -26,10 +27,10 @@ return {
   { import = "plugins.specs.lang.kotlin" },
   { import = "plugins.specs.lang.javascript" },
   { import = "plugins.specs.lang.typescript" },
-  { import = "plugins.specs.lang.web" },       -- autotag + emmet; must be before html/css
+  { import = "plugins.specs.lang.web" },       -- autotag + emmet; before html/css
   { import = "plugins.specs.lang.html" },
   { import = "plugins.specs.lang.css" },
-  { import = "plugins.specs.lang.database" },  -- dadbod owner; must be before sql
+  { import = "plugins.specs.lang.database" },  -- dadbod owner; before sql
   { import = "plugins.specs.lang.sql" },
   { import = "plugins.specs.lang.markdown" },
   { import = "plugins.specs.lang.rest" },
@@ -39,7 +40,4 @@ return {
   { import = "plugins.specs.lang.zig" },
   { import = "plugins.specs.lang.cobol" },
   { import = "plugins.specs.lang.vhdl" },
-  -- NOTE: Nim is intentionally omitted from lang/* specs. runner.lua has a
-  -- nim runner but there is no LSP/treesitter/formatter spec for it yet.
-  -- Add plugins.specs.lang.nim here if Nim support is needed.
 }
