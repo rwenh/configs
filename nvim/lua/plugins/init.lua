@@ -1,53 +1,89 @@
 -- lua/plugins/init.lua - Lazy plugin manager setup
 
-require("lazy").setup({
-  spec     = "plugins.specs",
-  defaults = {
-    lazy = true,
-    -- FIX #3: Removed version = false from defaults.
-    -- version = false globally overrides per-spec version constraints —
-    -- meaning rest.nvim's explicit `version = "^2"` pin in rest.lua was
-    -- silently ignored and HEAD was installed instead. Removing this default
-    -- restores per-spec pinning. Plugins without a version spec still track
-    -- HEAD (Lazy's own default when version is unset).
-  },
-  install     = { colorscheme = { "tokyonight" } },
-  concurrency = 10,  -- limit parallel git ops to avoid DNS exhaustion under load
-  checker  = {
-    enabled = true,
-    notify  = false,  -- checks for updates silently; run :Lazy update to apply
-  },
-  change_detection = { enabled = true, notify = false },
-  performance = {
-    cache = { enabled = true },
-    rtp   = {
-      -- NOTE: Several entries here overlap with g.loaded_* globals set in
-      -- options.lua (gzip, matchit, matchparen, netrwPlugin, tarPlugin,
-      -- zipPlugin). The g.loaded_* approach is evaluated earlier (before rtp
-      -- is walked) and is the primary disable mechanism. This list is a
-      -- complementary second layer via Lazy's rtp injection.
-      --
-      -- FIX #2: Added "getscript", "vimball", "tohtml" to align with the full
-      -- set disabled by g.loaded_* in options.lua. "tutor" kept — no
-      -- g.loaded_tutor counterpart, Lazy is the sole disabler for it.
-      disabled_plugins = {
-        "gzip",
-        "getscript",
-        "matchit",
-        "matchparen",
-        "netrwPlugin",
-        "tarPlugin",
-        "tohtml",
-        "tutor",
-        "vimball",
-        "zipPlugin",
+-- RECALIBRATION: Safe lazy.nvim initialization with comprehensive error handling
+
+local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
+
+if not vim.uv.fs_stat(lazypath) then
+  vim.notify("Installing lazy.nvim...", vim.log.levels.INFO)
+
+  local out = vim.fn.system({
+    "git", "clone", "--filter=blob:none",
+    "https://github.com/folke/lazy.nvim.git",
+    "--branch=stable", lazypath,
+  })
+
+  if vim.v.shell_error ~= 0 then
+    vim.notify(
+      "Failed to clone lazy.nvim:\n" .. out
+        .. "\nCheck your network connection and that git is installed.",
+      vim.log.levels.ERROR
+    )
+    return
+  end
+end
+
+vim.opt.rtp:prepend(lazypath)
+
+-- Safe lazy setup with proper error handling
+local ok, lazy = pcall(function()
+  return require("lazy")
+end)
+
+if not ok then
+  vim.notify("Failed to load lazy.nvim", vim.log.levels.ERROR)
+  return
+end
+
+-- RECALIBRATION: Safe setup with defensive options
+local setup_ok = pcall(function()
+  lazy.setup("plugins.specs", {
+    defaults = {
+      lazy = true,
+      version = false,
+    },
+    performance = {
+      reset_packpath = true,
+      rtp = {
+        reset = true,
+        paths = {
+          vim.fn.stdpath("config") .. "/lua",
+        },
       },
     },
-  },
-  ui = {
-    border = "rounded",
-    -- NOTE: Leading icon requires a Nerd Font — renders as a box in
-    -- standard fonts. Change to title = "Lazy" if not using Nerd Fonts.
-    title  = "  Lazy",
-  },
-})
+    checker = {
+      enabled = true,
+      notify = true,
+      frequency = 3600,
+    },
+    change_detection = {
+      enabled = true,
+      notify = true,
+    },
+    ui = {
+      size = { width = 0.8, height = 0.8 },
+      wrap = true,
+      border = "rounded",
+      icons = {
+        cmd = "⌘",
+        config = "🔧",
+        event = "📅",
+        ft = "📂",
+        init = "⚙",
+        keys = "🔑",
+        plugin = "🔌",
+        runtime = "💻",
+        require = "🌙",
+        source = "📄",
+        start = "🚀",
+        task = "📋",
+        lazy = "💤",
+      },
+    },
+    debug = false,
+  })
+end)
+
+if not setup_ok then
+  vim.notify("lazy.nvim setup failed", vim.log.levels.ERROR)
+end
