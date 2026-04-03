@@ -1,5 +1,4 @@
 -- lua/plugins/specs/lang/zig.lua - Zig development
--- LSP (zls) is configured in lsp.lua.
 
 return {
   -- Zig syntax support
@@ -7,23 +6,18 @@ return {
     "ziglang/zig.vim",
     ft   = "zig",
     init = function()
-      -- FIX #7: Disabled zig.vim's built-in fmt-on-save — conform handles
-      -- formatting via format_on_save in lsp.lua. Having both active caused
-      -- double formatting on BufWritePre with potential output conflicts.
       vim.g.zig_fmt_autosave = 0
     end,
   },
 
-  -- FIX #8: Conform formatter for Zig — needed since zig_fmt_autosave is now 0.
-  -- conform has native support for zigfmt (wraps zig fmt).
+  -- Conform formatter for Zig
   {
     "stevearc/conform.nvim",
     optional = true,
-    opts = {
-      formatters_by_ft = {
-        zig = { "zigfmt" },
-      },
-    },
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.zig = { "zigfmt" }
+    end,
   },
 
   -- DAP: codelldb/lldb for Zig
@@ -31,10 +25,6 @@ return {
     "mfussenegger/nvim-dap",
     optional = true,
     ft       = "zig",
-    -- FIX #5: optional=true config never runs — moved to init.
-    -- The Zig DAP adapter was silently never registered, making debugging
-    -- non-functional. dap.lua already registers codelldb for C/C++; Zig
-    -- reuses the same adapter since codelldb supports Zig binaries.
     init = function()
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "zig",
@@ -42,12 +32,14 @@ return {
         group    = vim.api.nvim_create_augroup("ZigDap", { clear = true }),
         callback = function()
           local ok, dap = pcall(require, "dap")
-          if not ok then return end
+          if not ok then
+            vim.notify("nvim-dap not available", vim.log.levels.WARN)
+            return
+          end
 
           local codelldb = vim.fn.stdpath("data") .. "/mason/bin/codelldb"
 
-          -- FIX #6: Added ~= "" guard on lldb-dap fallback — without it,
-          -- exepath returning "" would be truthy and set an empty command.
+          -- Safe exepath checks with empty string guards
           local lldb = vim.fn.exepath("lldb-vscode")
           if lldb == "" then lldb = vim.fn.exepath("lldb-dap") end
           if lldb == "" then lldb = nil end
@@ -59,6 +51,9 @@ return {
             }
           elseif lldb then
             dap.adapters.zig = { type = "executable", command = lldb }
+          else
+            vim.notify("[zig] No debugger found (install codelldb or lldb-vscode)", vim.log.levels.WARN)
+            return
           end
 
           dap.configurations.zig = {
@@ -86,8 +81,14 @@ return {
       {
         "<leader>zb",
         function()
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({ cmd = "zig build run", direction = "float", close_on_exit = false }):toggle()
+          -- RECALIBRATION: Safe toggleterm require
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          term.Terminal:new({ cmd = "zig build run", direction = "float", close_on_exit = false }):toggle()
         end,
         desc = "Zig Build Run",
         ft   = "zig",
@@ -95,8 +96,13 @@ return {
       {
         "<leader>zt",
         function()
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({ cmd = "zig build test", direction = "float", close_on_exit = false }):toggle()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          term.Terminal:new({ cmd = "zig build test", direction = "float", close_on_exit = false }):toggle()
         end,
         desc = "Zig Build Test",
         ft   = "zig",
@@ -104,9 +110,14 @@ return {
       {
         "<leader>zc",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
+          term.Terminal:new({
             cmd           = string.format("zig run %s", vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
