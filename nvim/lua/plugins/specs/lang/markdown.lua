@@ -1,87 +1,51 @@
--- lua/plugins/specs/lang/markdown.lua - Markdown writing
+-- nvim/lua/plugins/specs/lang/markdown.lua
 
 return {
-  -- Browser preview
   {
     "iamcco/markdown-preview.nvim",
-    -- FIX #3: Removed ft = "markdown" — with both cmd and ft triggers the
-    -- plugin loaded on every markdown file open, not just when commands are
-    -- used. cmd-only is sufficient and avoids the eager load.
-    cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
-    -- FIX #2: Removed require("lazy").load(...) from build — build runs in
-    -- the plugin's own context already; forcing a load here caused issues when
-    -- build ran before Lazy had finished its setup.
-    -- FIX #4: Changed `npm install` → `yarn install` to avoid dirtying
-    -- yarn.lock when the project is managed with yarn. npm and yarn maintain
-    -- separate lockfiles; running npm inside a yarn-managed repo adds an
-    -- unwanted package-lock.json and may resolve different versions.
-    build = "cd app && yarn install",
-    init  = function() vim.g.mkdp_filetypes = { "markdown" } end,
-    version = false,
-  },
-
-  -- Rich render inside Neovim
-  {
-    "MeanderingProgrammer/render-markdown.nvim",
-    ft           = "markdown",
-    -- FIX #1: Added explicit treesitter dependency — render-markdown requires
-    -- treesitter to parse and render markdown elements correctly.
-    dependencies = "nvim-treesitter/nvim-treesitter",
-    opts = {
-      heading = { enabled = true, sign = false },
-      code    = { enabled = true, sign = false },
-      bullet  = { enabled = true },
-    },
-  },
-
-  -- Table formatting
-  {
-    "dhruvasagar/vim-table-mode",
-    ft   = "markdown",
-    init = function()
-      vim.g.table_mode_corner = "|"
-    end,
-    keys = {
-      { "<leader>mdt", "<cmd>TableModeToggle<cr>",   desc = "Markdown Table Mode" },
-      { "<leader>mdf", "<cmd>TableModeRealign<cr>",  desc = "Markdown Table Realign" },
-    },
-  },
-
-  -- Paste image from clipboard
-  {
-    "HakonHarnes/img-clip.nvim",
-    ft   = "markdown",
-    opts = {
-      default = {
-        dir_path   = "assets",
-        file_name  = "%Y-%m-%d-%H-%M-%S",
-        use_absolute_path = false,
-      },
-    },
-    keys = {
-      { "<leader>mdp", "<cmd>PasteImage<cr>", desc = "Markdown Paste Image" },
-    },
-  },
-
-  -- Conform: prettier for markdown
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = {
-      formatters_by_ft = {
-        markdown = { "prettier" },
-      },
-    },
-  },
-
-  -- Treesitter
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "markdown", "markdown_inline" })
+    cmd = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
+    ft = { "markdown" },
+    build = function(plugin)
+      if vim.fn.executable("npm") == 1 then
+        vim.fn.system("cd " .. plugin.dir .. "/app && npm install --legacy-peer-deps 2>/dev/null")
       end
     end,
+    init = function()
+      vim.g.mkdp_filetypes = { "markdown" }
+      vim.g.mkdp_auto_start = 0
+      vim.g.mkdp_auto_close = 1
+      vim.g.mkdp_refresh_slow = 0
+      vim.g.mkdp_combine_preview = 1
+      vim.g.mkdp_preview_options = {
+        mkit = {},
+        katex = {},
+        uml = {},
+        maid = {},
+        disable_sync_scroll = 0,
+        sync_scroll_type = "middle",
+      }
+    end,
+    keys = {
+      { "<leader>mp", "<cmd>MarkdownPreviewToggle<CR>", desc = "Markdown Preview Toggle" },
+    },
+  },
+
+  {
+    "preservim/vim-markdown",
+    ft = { "markdown" },
+    init = function()
+      vim.g.vim_markdown_folding_disabled = 1
+      vim.g.vim_markdown_frontmatter = 1
+      vim.g.vim_markdown_toml_frontmatter = 1
+    end,
+  },
+
+  {
+    "dhruvasagar/vim-table-mode",
+    ft = { "markdown" },
+    cmd = "TableModeToggle",
+    keys = {
+      { "<leader>tm", "<cmd>TableModeToggle<CR>", desc = "Table Mode Toggle" },
+    },
   },
 }
