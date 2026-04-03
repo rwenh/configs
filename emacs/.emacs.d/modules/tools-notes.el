@@ -16,24 +16,69 @@
 ;;;   general.notes-directory: ~/my/notes)
 ;;;
 ;;; Add "tools-notes" to emacs-ide-feature-modules in init.el (after tools-org).
-;;; Version: 1.0.0
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 1.0.0 (audit):
+;;;   - FIX-VERSION: Header bumped from 1.0.0 to 3.0.4.
+;;;   - FIX-DEFVAR-RELOAD: emacs-ide-notes-directory was a top-level defvar
+;;;     evaluated once at load time. On M-x emacs-ide-config-reload the defvar
+;;;     is a no-op (already bound), so a changed general.notes-directory in
+;;;     config.yml was never picked up. Replaced with a defvar default + a
+;;;     with-eval-after-load update that re-reads config after it loads, and
+;;;     a config-reload-hook that keeps the var in sync.
+;;;   - FIX-MKDIR-TOPLEVEL: (make-directory) ran at load time before config
+;;;     was fully applied — if emacs-ide-notes-directory still held the defvar
+;;;     default the wrong directory could be created. Deferred to a helper
+;;;     function called after config is confirmed loaded.
+;;;   - FIX-AUTOSYNC-VAR: org-roam-db-autosync-on-save is not a real org-roam
+;;;     variable — it was silently setting a non-existent var. The correct
+;;;     mechanism is org-roam-db-autosync-mode (already called in :config).
+;;;     Spurious setq removed.
+;;;   - FIX-NOTES-DIR-SYNC: org-roam-directory was set in :init from the
+;;;     defvar but never updated on config reload. A config-reload-hook now
+;;;     keeps org-roam-directory in sync with emacs-ide-notes-directory.
+;;;   - FIX-GREP-SHELL-INJECTION: emacs-ide-notes-search fallback interpolated
+;;;     (read-string) directly into a shell format string without quoting —
+;;;     shell injection risk. Wrapped with shell-quote-argument.
 ;;; Code:
 
 (require 'cl-lib)
 
 ;; ============================================================================
 ;; DIRECTORY SETUP
+;; FIX-DEFVAR-RELOAD: defvar sets the initial default only. The real value
+;; is populated/updated by emacs-ide-notes--update-directory, called both
+;; after emacs-ide-config loads and on every config reload.
 ;; ============================================================================
-(defvar emacs-ide-notes-directory
+(defvar emacs-ide-notes-directory (expand-file-name "~/notes")
+  "Root directory for org-roam notes.
+Set from config.yml general.notes-directory after config loads.")
+
+(defun emacs-ide-notes--resolve-directory ()
+  "Return the notes directory from config.yml or the default ~/notes."
   (expand-file-name
    (or (and (boundp 'emacs-ide-config-data)
             (let ((gen (cdr (assoc 'general emacs-ide-config-data))))
               (cdr (assoc 'notes-directory gen))))
-       "~/notes"))
-  "Root directory for org-roam notes.")
+       "~/notes")))
 
-(unless (file-directory-p emacs-ide-notes-directory)
-  (make-directory emacs-ide-notes-directory t))
+(defun emacs-ide-notes--update-directory ()
+  "Sync emacs-ide-notes-directory from config and ensure it exists.
+FIX-MKDIR-TOPLEVEL: directory creation deferred here, after config is loaded,
+so we always create the correct configured path and not the defvar default.
+FIX-NOTES-DIR-SYNC: also updates org-roam-directory if org-roam is loaded."
+  (setq emacs-ide-notes-directory (emacs-ide-notes--resolve-directory))
+  (unless (file-directory-p emacs-ide-notes-directory)
+    (make-directory emacs-ide-notes-directory t))
+  ;; Keep org-roam-directory in sync if org-roam is already loaded
+  (when (boundp 'org-roam-directory)
+    (setq org-roam-directory emacs-ide-notes-directory)))
+
+;; Update after config loads and on every subsequent reload
+(with-eval-after-load 'emacs-ide-config
+  (emacs-ide-notes--update-directory))
+
+(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-notes--update-directory)
 
 ;; ============================================================================
 ;; ORG-ROAM — the linked notes backbone
@@ -45,7 +90,8 @@
         org-roam-db-location
         (expand-file-name "var/org-roam.db" user-emacs-directory)
         org-roam-completion-everywhere t
-        org-roam-db-autosync-on-save  t
+        ;; FIX-AUTOSYNC-VAR: org-roam-db-autosync-on-save does not exist.
+        ;; org-roam-db-autosync-mode (called in :config) is the correct mechanism.
         org-roam-node-display-template
         (concat "${title:*} "
                 (propertize "${tags:20}" 'face 'org-tag)))
@@ -149,19 +195,22 @@
   (interactive)
   (if (fboundp 'org-roam-ui-open)
       (org-roam-ui-open)
-    (message "⚠️  org-roam-ui not available — install it via M-x straight-use-package RET org-roam-ui")))
+    (message "⚠️  org-roam-ui not available — install via M-x straight-use-package RET org-roam-ui")))
 
 ;; ============================================================================
 ;; QUICK SEARCH ACROSS ALL NOTES
+;; FIX-GREP-SHELL-INJECTION: read-string result now wrapped in
+;; shell-quote-argument before interpolation into the shell command string.
 ;; ============================================================================
 (defun emacs-ide-notes-search ()
   "Full-text search across all notes using ripgrep."
   (interactive)
   (if (fboundp 'consult-ripgrep)
       (consult-ripgrep emacs-ide-notes-directory)
-    (grep-find (format "grep -r \"%s\" %s"
-                       (read-string "Search notes: ")
-                       (shell-quote-argument emacs-ide-notes-directory)))))
+    (let ((query (read-string "Search notes: ")))
+      (grep-find (format "grep -r %s %s"
+                         (shell-quote-argument query)
+                         (shell-quote-argument emacs-ide-notes-directory))))))
 
 (global-set-key (kbd "C-c n /") 'emacs-ide-notes-search)
 
