@@ -1,13 +1,7 @@
--- lua/plugins/specs/lang/typescript.lua
+-- lua/plugins/specs/lang/typescript.lua - TypeScript development
 
 return {
-  -- NOTE (Fix #1): nvim-dap-vscode-js removed — dap.lua already registers
-  -- pwa-node directly via js-debug-adapter. Same fix as javascript.lua.
-
-  -- TypeScript LSP extras (import organizer, tsserver actions, inlay hints)
-  -- FIX #2: typescript-tools.nvim manages its own tsserver instance.
-  -- lsp.lua's ts_ls entry has been removed (see lsp.lua) to prevent two
-  -- tsserver clients attaching per TypeScript buffer.
+  -- TypeScript LSP extras
   {
     "pmizio/typescript-tools.nvim",
     ft           = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
@@ -22,9 +16,10 @@ return {
         },
       },
     },
+    config = function(_, opts)
+      pcall(function() require("typescript-tools").setup(opts) end)
+    end,
     keys = {
-      -- FIX #6: Added typescriptreact to ft — TSTools commands work in .tsx
-      -- files but the original keys were inaccessible there.
       { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",     desc = "TS Organize Imports",   ft = { "typescript", "typescriptreact" } },
       { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",   desc = "TS Add Missing Imports", ft = { "typescript", "typescriptreact" } },
       { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>", desc = "TS Remove Unused",       ft = { "typescript", "typescriptreact" } },
@@ -33,20 +28,15 @@ return {
     },
   },
 
-  -- NOTE (Fix #3): neotest-vitest and neotest-jest registrations removed —
-  -- test.lua already handles both centrally. Double insertion produced
-  -- duplicate test results. Same fix as javascript.lua #3.
-
   -- Lint: eslint_d
   {
     "mfussenegger/nvim-lint",
     optional = true,
-    -- FIX #4: optional=true config doesn't run — moved to init.
-    -- Targeted assignment avoids overwriting lsp.lua's linter table.
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = { "*.ts", "*.tsx" },
         once     = true,
+        group    = vim.api.nvim_create_augroup("TypescriptLint", { clear = true }),
         callback = function()
           local ok, lint = pcall(require, "lint")
           if not ok then return end
@@ -57,17 +47,14 @@ return {
     end,
   },
 
-  -- Conform: prettier for TSX (TS already registered in lsp.lua)
+  -- Conform: prettier for TSX
   {
     "stevearc/conform.nvim",
     optional = true,
-    -- FIX #5: Removed typescript entry — lsp.lua already registers it.
-    -- Kept typescriptreact which lsp.lua doesn't cover.
-    opts = {
-      formatters_by_ft = {
-        typescriptreact = { "prettier" },
-      },
-    },
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.typescriptreact = { "prettier" }
+    end,
   },
 
   -- Treesitter
