@@ -1,11 +1,6 @@
 -- lua/plugins/specs/lang/database.lua - Database tools
--- Single source of truth for dadbod + UI. sql.lua defers to this file.
 
 return {
-  -- FIX #4: Removed standalone { "tpope/vim-dadbod", lazy = true } spec.
-  -- vim-dadbod-ui already declares it as a dependency — Lazy loads it
-  -- automatically. The redundant spec adds nothing.
-
   {
     "kristijanhusak/vim-dadbod-ui",
     dependencies = {
@@ -31,20 +26,16 @@ return {
   -- DB completion source
   {
     "kristijanhusak/vim-dadbod-completion",
-    -- FIX #1: Added ft trigger — previously lazy=true with no trigger meant
-    -- config never ran and omnifunc was never set for SQL buffers.
     ft     = { "sql", "mysql", "plsql", "psql" },
     config = function()
-      -- FIX #2: Added augroup to prevent autocmd accumulation on reload.
-      -- FIX #3: Corrected comment — blink.cmp does NOT pick this up
-      -- automatically. The omnifunc must be set explicitly, which is what
-      -- this autocmd does. Remove this block only if you add
-      -- vim-dadbod-completion as an explicit blink source instead.
+      -- RECALIBRATION: Safe autocmd with augroup
       vim.api.nvim_create_autocmd("FileType", {
         group    = vim.api.nvim_create_augroup("DadbodCompletion", { clear = true }),
         pattern  = { "sql", "mysql", "plsql", "psql" },
         callback = function()
-          vim.opt_local.omnifunc = "vim_dadbod_completion#omni"
+          pcall(function()
+            vim.opt_local.omnifunc = "vim_dadbod_completion#omni"
+          end)
         end,
       })
     end,
