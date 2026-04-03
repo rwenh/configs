@@ -24,6 +24,8 @@
     > and database.lua must load before sql.lua. This dependency is intentional — do not
     > reorder these imports.
 
+---
+
 ## What Was Changed (v2.1 → v2.1.1 — Post-Audit Fixes)
 
 19. **init.lua** — version field corrected to "2.1" (was stuck at "2.0")
@@ -44,6 +46,8 @@
     Harpoon's `<leader>h` namespace with no visual separation, risking future
     suffix collisions. Harpoon retains sole ownership of `<leader>h*`.
     Update rest.lua keymaps accordingly.
+
+---
 
 ## What Was Changed (v2.1.1 → v2.2 — Lang Module Audit)
 
@@ -100,6 +104,37 @@
 - `zig.lua` — `zig_fmt_autosave=0`; conform zigfmt spec added; lldb empty-string guard fixed
 - `runner.lua` — kotlin/java `run_tests()` now uses `find_root()` for build tool detection
 
+---
+
+## What Was Changed (v2.2 → v2.2.1 — Doc Consistency Audit)
+
+**KEYMAP_REFERENCE.md corrections** (docs did not match actual Lua):
+
+25. **Rust keymaps corrected** — `<leader>rsh/rsa/rsd/rst` was stale documentation
+    that never matched `rust.lua`. Actual bindings are `<leader>rh` (hover), `<leader>ra`
+    (code action), `<leader>rd` (debuggables), `<leader>rt` (test). Docs updated to match.
+26. **Crates.nvim keymaps removed from docs** — `<leader>rsc/rsu/rsU` were listed in
+    the reference but `crates.nvim` is not specced anywhere in `rust.lua`. Removed to
+    prevent confusion. Add `crates.nvim` to `rust.lua` if you want this functionality.
+27. **Markdown keymaps corrected** — `<leader>mdt/mdf/mdp` were stale. Actual bindings
+    from `markdown.lua` are `<leader>mp` (MarkdownPreviewToggle) and `<leader>tm`
+    (TableModeToggle). Docs updated.
+28. **Undo tree binding corrected in UI Toggles** — `<leader>uu` was listed under UI
+    Toggles but was explicitly removed from `keymaps.lua` (see NOTE in that file).
+    The canonical binding `<leader>xu` (defined in `advanced.lua` / `keymaps.lua`
+    MISC UTILITIES) is the sole owner. Stale `<leader>uu` entry removed from UI Toggles.
+
+**web.lua / css.lua — tailwind-tools.nvim duplicate noted:**
+- `tailwind-tools.nvim` is specced in both `web.lua` (VeryLazy, full opts) and `css.lua`
+  (with `server.override = false`). These are the same plugin with conflicting opts.
+  `css.lua` holds the correct authoritative spec (`server.override = false` is required
+  to prevent it from fighting lsp.lua's ownership of the tailwindcss LSP server).
+  The duplicate in `web.lua` should be removed in a future pass — only the three
+  remaining plugins (`tailwind-tools`, `nvim-ts-autotag`, `emmet-vim`) should stay in
+  `web.lua`, with `tailwind-tools` solely owned by `css.lua`.
+
+---
+
 ## File Structure
 
 ```
@@ -142,7 +177,7 @@
                 ├── java.lua          ← unchanged
                 ├── javascript.lua    ← UPDATED (eslint, neotest, package-info)
                 ├── kotlin.lua        ← UPDATED (neotest, build integration)
-                ├── markdown.lua      ← UPDATED (table mode, paste-image)
+                ├── markdown.lua      ← UPDATED (table mode)
                 ├── python.lua        ← UPDATED (unified py* prefix)
                 ├── rest.lua          ← UPDATED (keymaps h* → re*, env support)
                 ├── ruby.lua          ← UPDATED (rdbg DAP, neotest-rspec)
@@ -150,9 +185,16 @@
                 ├── sql.lua           ← UPDATED (defers dadbod to database.lua)
                 ├── typescript.lua    ← UPDATED (typescript-tools, eslint, neotest)
                 ├── vhdl.lua          ← UPDATED (keymaps vh*, proper snippets)
-                ├── web.lua           ← unchanged
+                ├── web.lua           ← UPDATED (colorizer duplicate removed — #29 below)
                 └── zig.lua           ← UPDATED (DAP via codelldb/lldb)
 ```
+
+> **#29 — web.lua colorizer conflict (v2.2.1):** `norcalli/nvim-colorizer.lua` was
+> removed from `web.lua`. `NvChad/nvim-colorizer.lua` (a maintained fork of the same
+> plugin) is the canonical spec in `advanced.lua`. Having both caused a startup
+> conflict where one overwrote the other's setup. `advanced.lua` owns colorizer.
+
+---
 
 ## Installation Steps
 
