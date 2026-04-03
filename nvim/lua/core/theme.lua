@@ -1,4 +1,4 @@
--- lua/core/theme.lua - Theme management
+-- lua/core/theme.lua - Theme management with dynamic switching
 
 local M = {}
 
@@ -19,64 +19,83 @@ M.available = {
   "kanagawa", "gruvbox-material", "solarized", "solarized-osaka",
 }
 
--- FIX #9: Removed _bg_cache entirely.
--- The original cache was set once at setup() and never invalidated across
--- time boundaries — if Neovim stayed open past day_end (19:00) or day_start
--- (7:00) the background would be permanently stale for that session.
--- The cache comment claimed it saved repeated os.date() calls, but setup()
--- only runs once at startup, so the cache saved exactly zero calls in
--- practice while introducing the staleness problem.
--- os.date("%H") is a trivial syscall — no caching needed.
+-- RECALIBRATION: Safe background resolution with time-based switching
 local function resolve_background()
-  local h = tonumber(os.date("%H"))
+  local ok, h = pcall(function()
+    return tonumber(os.date("%H"))
+  end)
+
+  if not ok or not h then
+    return "dark"  -- Fallback on error
+  end
+
   return (h >= M.config.day_start and h < M.config.day_end) and "light" or "dark"
 end
 
+-- RECALIBRATION: Safe colorscheme application with comprehensive error handling
 local function apply(bg)
   vim.o.background = bg
-  local ok, err = pcall(vim.cmd.colorscheme, M.config.theme)
+
+  local ok, err = pcall(function()
+    vim.cmd.colorscheme(M.config.theme)
+  end)
+
   if not ok then
     vim.notify(
       string.format("[theme] '%s' not found, falling back to '%s'\n%s",
-        M.config.theme, M.config.fallback, err),
+        M.config.theme, M.config.fallback, tostring(err)),
       vim.log.levels.WARN
     )
-    pcall(vim.cmd.colorscheme, M.config.fallback)
+    pcall(function()
+      vim.cmd.colorscheme(M.config.fallback)
+    end)
   end
 end
 
 function M.setup()
-  apply(resolve_background())
+  pcall(function()
+    apply(resolve_background())
+  end)
 end
 
 function M.toggle()
   local next_bg = vim.o.background == "dark" and "light" or "dark"
-  apply(next_bg)
-  vim.notify(string.format("[theme] %s › %s", M.config.theme, next_bg), vim.log.levels.INFO)
+  pcall(function()
+    apply(next_bg)
+    vim.notify(string.format("[theme] %s › %s", M.config.theme, next_bg), vim.log.levels.INFO)
+  end)
 end
 
--- FIX #12: Validate theme_name against M.available before mutating config.
--- Previously, an invalid name would permanently corrupt M.config.theme —
--- apply() would fail and fall back to "default", but the bad name would
--- persist and be retried on every subsequent toggle/switch call.
+-- RECALIBRATION: Safe theme switching with validation
 function M.switch(theme_name)
+  if not theme_name or theme_name == "" then
+    vim.notify("[theme] Theme name cannot be empty", vim.log.levels.ERROR)
+    return
+  end
+
   local valid = vim.tbl_contains(M.available, theme_name)
   if not valid then
     vim.notify(
       string.format(
-        "[theme] '%s' is not in the available list: %s",
+        "[theme] '%s' is not in the available list:\n%s",
         theme_name, table.concat(M.available, ", ")
       ),
       vim.log.levels.ERROR
     )
     return
   end
-  -- FIX #10: Keep M.config.theme as the user-configured default (startup
-  -- setting). Track the currently active theme separately so M.config
-  -- remains stable as a source of truth for the original preference.
-  M.config.theme = theme_name   -- intentional: user switched preference
-  apply(resolve_background())
-  vim.notify(string.format("[theme] switched to %s", theme_name), vim.log.levels.INFO)
+
+  -- Update config and apply
+  M.config.theme = theme_name
+  pcall(function()
+    apply(resolve_background())
+    vim.notify(string.format("[theme] switched to %s", theme_name), vim.log.levels.INFO)
+  end)
+end
+
+-- RECALIBRATION: Safe get_active_theme for lazy loading
+function M.get_active_theme()
+  return M.config.theme or "tokyonight"
 end
 
 return M
