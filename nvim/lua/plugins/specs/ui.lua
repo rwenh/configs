@@ -348,7 +348,6 @@ return {
       win = {
         border  = "rounded",
         padding = { 1, 2 },
-        winblend = 0,
         zindex  = 1000,
       },
       layout = {
