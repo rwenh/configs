@@ -157,7 +157,7 @@ echo "✓ Done — run: nvim"
     │   ├── commands.lua        # user commands (:MasonInstallAll etc.)
     │   ├── theme.lua           # theme management + dark/light toggle
     │   └── util/
-    │       ├── path.lua        # project root detection
+    │       ├── path.lua        # project root detection + caching
     │       └── runner.lua      # file/selection/test runner engine
     └── plugins/
         ├── init.lua            # lazy.nvim setup
@@ -166,11 +166,11 @@ echo "✓ Done — run: nvim"
             ├── editor.lua      # telescope, tree, flash, harpoon, sessions
             ├── lsp.lua         # LSP, Mason, conform, nvim-lint
             ├── completion.lua  # blink.cmp
-            ├── treesitter.lua  # treesitter + context
+            ├── treesitter.lua  # treesitter + context + textobjects
             ├── git.lua         # gitsigns, lazygit, diffview
-            ├── dap.lua         # nvim-dap + UI + adapters
-            ├── test.lua        # neotest + coverage
-            ├── advanced.lua    # colorizer, navic, rainbow, better-escape
+            ├── dap.lua         # nvim-dap + UI + adapters (all languages)
+            ├── test.lua        # neotest + coverage (all adapters)
+            ├── advanced.lua    # colorizer, navic, rainbow, better-escape, ufo
             └── lang/           # per-language plugin specs (20+ languages)
 ```
 
@@ -182,9 +182,9 @@ echo "✓ Done — run: nvim"
 |----------|-----|-----|--------|------|------|
 | Lua | lua_ls | — | stylua | — | — |
 | Python | basedpyright | debugpy | black + isort | ruff | pytest |
-| Rust | rust-analyzer | codelldb | rustfmt | clippy | cargo |
+| Rust | rust-analyzer *(rustaceanvim)* | codelldb | rustfmt | clippy | cargo |
 | Go | gopls | delve | goimports + gofumpt | staticcheck | go test |
-| TypeScript | ts_ls + typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
+| TypeScript | typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
 | JavaScript | ts_ls | pwa-node | prettier | eslint_d | vitest / jest |
 | Java | jdtls | java-debug | — | — | JUnit |
 | Kotlin | kotlin_language_server | — | ktlint | ktlint | JUnit |
@@ -193,7 +193,7 @@ echo "✓ Done — run: nvim"
 | C | clangd | codelldb | clang-format | — | — |
 | C++ | clangd + clangd_extensions | codelldb | clang-format | — | — |
 | HTML | html-lsp | — | prettier | htmlhint | — |
-| CSS / SCSS | cssls | — | prettier | stylelint | — |
+| CSS / SCSS | cssls + cssmodules_ls | — | prettier | stylelint | — |
 | SQL | sqls | — | sqlfmt | — | — |
 | Markdown | — | — | prettier | — | — |
 | Zig | zls | codelldb / lldb | zig fmt | — | zig test |
@@ -214,12 +214,14 @@ Leader key: `Space`
 | `<leader>ff` | Find files |
 | `<leader>fw` | Live grep |
 | `<leader>fb` | Find buffers |
+| `<leader>fo` | Recent files |
 | `<leader>ee` | Toggle explorer |
 | `<leader>.g` | LazyGit |
 | `<leader>ww` | Save |
 | `<leader>wq` | Save & quit |
 | `<leader>ut` | Toggle dark/light theme |
 | `<leader>uz` | Zen mode |
+| `<leader>xu` | Undo tree |
 | `s` | Flash jump |
 
 ### LSP (on attach)
@@ -253,6 +255,20 @@ Leader key: `Space`
 | `<leader>'t` | Run tests |
 | `<leader>'n` | Neotest nearest |
 | `<leader>'f` | Neotest file |
+| `<leader>'d` | Neotest debug nearest |
+
+### Language shortcuts (examples)
+
+| Key | Action |
+|-----|--------|
+| `<leader>rh` | Rust hover actions |
+| `<leader>got` | Go test |
+| `<leader>pyv` | Python select venv |
+| `<leader>tso` | TS organize imports |
+| `<leader>ccb` | CMake build |
+| `<leader>dbu` | Toggle DB UI |
+| `<leader>rer` | REST run request |
+| `<leader>mp` | Markdown preview |
 
 > Full reference: [`KEYMAP_REFERENCE.md`](KEYMAP_REFERENCE.md)
 
