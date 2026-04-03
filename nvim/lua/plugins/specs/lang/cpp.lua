@@ -1,8 +1,6 @@
 -- lua/plugins/specs/lang/cpp.lua - C++ development
--- clangd_extensions (ft = {"c","cpp"}) lives in c.lua — no duplication needed.
 
 return {
-  -- CMake integration
   {
     "Civitasv/cmake-tools.nvim",
     ft  = { "cpp", "cmake" },
@@ -12,6 +10,12 @@ return {
       cmake_build_directory = "build",
       cmake_generate_options = { "-DCMAKE_EXPORT_COMPILE_COMMANDS=1" },
     },
+    config = function(_, opts)
+      local ok = pcall(function() require("cmake-tools").setup(opts) end)
+      if not ok then
+        vim.notify("cmake-tools setup failed", vim.log.levels.WARN)
+      end
+    end,
     keys = {
       { "<leader>ccg", "<cmd>CMakeGenerate<cr>",     desc = "CMake Generate",       ft = { "cpp", "cmake" } },
       { "<leader>ccb", "<cmd>CMakeBuild<cr>",        desc = "CMake Build",          ft = { "cpp", "cmake" } },
@@ -22,7 +26,6 @@ return {
     },
   },
 
-  -- C++ snippets and docstring generation
   {
     "danymat/neogen",
     ft           = { "cpp", "c" },
@@ -33,16 +36,18 @@ return {
         c   = { template = { annotation_convention = "doxygen" } },
       },
     },
+    config = function(_, opts)
+      local ok = pcall(function() require("neogen").setup(opts) end)
+      if not ok then
+        vim.notify("neogen setup failed", vim.log.levels.WARN)
+      end
+    end,
     keys = {
-      -- FIX #3: Added ft = "c" entry — plugin loads for both c and cpp but
-      -- the original key only fired in cpp buffers, leaving C files without
-      -- docstring generation access.
-      { "<leader>ccd", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "cpp" },
-      { "<leader>ccd", function() require("neogen").generate() end, desc = "Generate Docstring", ft = "c" },
+      { "<leader>ccd", function() pcall(function() require("neogen").generate() end) end, desc = "Generate Docstring", ft = "cpp" },
+      { "<leader>ccd", function() pcall(function() require("neogen").generate() end) end, desc = "Generate Docstring", ft = "c" },
     },
   },
 
-  -- Treesitter: cpp parser
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -52,10 +57,4 @@ return {
       end
     end,
   },
-
-  -- NOTE (Fix #1 & #2): Conform clang-format spec removed from here.
-  -- lsp.lua already registers c = { "clang-format" } and cpp = { "clang-format" }
-  -- correctly (hyphen, not underscore). The original entry used "clang_format"
-  -- (underscore) which conform does not recognise — formatting was silently
-  -- skipped for all C/C++ files. Keeping it in lsp.lua as the single source.
 }
