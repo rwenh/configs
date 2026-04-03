@@ -16,7 +16,29 @@
 ;;;   C-c h r   repl hydra       — launch/send/toggle
 ;;;   C-c h s   search hydra     — ripgrep/occur/symbol
 ;;;
-;;; Version: 1.0.0
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 1.0.0 (audit):
+;;;   - FIX-VERSION: Header bumped from 1.0.0 to 3.0.4.
+;;;   - FIX-WINDOW-DUP: hydra-window had "m" bound to delete-other-windows,
+;;;     duplicating "D". Changed "m" to ace-maximize-window (maximize current
+;;;     window via ace-window) which is distinct and useful.
+;;;   - FIX-BUFFER-SCRATCH: scratch-buffer is Emacs 28+ only — calling it on
+;;;     Emacs 27 throws void-function. Added fboundp guard with fallback to
+;;;     (switch-to-buffer "*scratch*").
+;;;   - FIX-LSP-LENS: (lsp-lens-mode 'toggle) is not a valid call — minor
+;;;     mode functions take a numeric argument, not the symbol 'toggle.
+;;;     Fixed to toggle via numeric arg based on current mode state.
+;;;   - FIX-FLYCHECK-TOGGLE: (flycheck-mode 'toggle) same class of bug.
+;;;     Fixed to use numeric arg toggle pattern.
+;;;   - FIX-FLYSPELL-TOGGLE: (flyspell-mode 'toggle) same class of bug.
+;;;     Fixed to use numeric arg toggle pattern.
+;;;   - FIX-WORD-WRAP: word-wrap-whitespace-mode does not exist in Emacs.
+;;;     Replaced with visual-line-mode which is the correct built-in.
+;;;   - FIX-GLOBAL-KEYS-RACE: Global hydra entry keys were set outside
+;;;     with-eval-after-load 'hydra. If hydra loads asynchronously the body
+;;;     functions are not yet defined when global-set-key runs, silently
+;;;     binding to void symbols. Moved inside the with-eval-after-load block.
 ;;; Code:
 
 (use-package hydra :demand t)
@@ -55,7 +77,9 @@
   ("l" windmove-right)
   ("o" ace-window)
   ("x" ace-swap-window)
-  ("m" delete-other-windows)
+  ;; FIX-WINDOW-DUP: was delete-other-windows — duplicate of "D".
+  ;; ace-maximize-window maximizes via ace-window selection instead.
+  ("m" (when (fboundp 'ace-maximize-window) (ace-maximize-window)))
   ("n" tab-bar-new-tab)
   ("N" tab-bar-switch-to-next-tab)
   ("P" tab-bar-switch-to-prev-tab)
@@ -83,7 +107,10 @@
              (cl-remove-if (lambda (b) (eq b (current-buffer)))
                            (buffer-list))))
   ("R" revert-buffer)
-  ("s" scratch-buffer)
+  ;; FIX-BUFFER-SCRATCH: scratch-buffer is Emacs 28+ only; guard with fboundp
+  ("s" (if (fboundp 'scratch-buffer)
+           (scratch-buffer)
+         (switch-to-buffer "*scratch*")))
   ("n" (switch-to-buffer (generate-new-buffer "*new*")))
   ("w" save-some-buffers)
   ("p" previous-buffer)
@@ -112,9 +139,9 @@
   ("D" magit-diff-working-tree)
   ("b" magit-blame-addition)
   ("t" git-timemachine)
-  ("n" (when (fboundp 'diff-hl-next-hunk) (diff-hl-next-hunk)))
+  ("n" (when (fboundp 'diff-hl-next-hunk)     (diff-hl-next-hunk)))
   ("p" (when (fboundp 'diff-hl-previous-hunk) (diff-hl-previous-hunk)))
-  ("r" (when (fboundp 'diff-hl-revert-hunk) (diff-hl-revert-hunk)))
+  ("r" (when (fboundp 'diff-hl-revert-hunk)   (diff-hl-revert-hunk)))
   ("z" magit-stash)
   ("Z" magit-stash-pop)
   ("f" (when (fboundp 'forge-dispatch) (forge-dispatch)))
@@ -137,21 +164,24 @@
   ────────────────────────────────────────────────
   _q_ quit
 "
-  ("d" (when (fboundp 'lsp-find-definition) (lsp-find-definition)))
-  ("r" (when (fboundp 'lsp-find-references) (lsp-find-references)))
-  ("i" (when (fboundp 'lsp-find-implementation) (lsp-find-implementation)))
+  ("d" (when (fboundp 'lsp-find-definition)      (lsp-find-definition)))
+  ("r" (when (fboundp 'lsp-find-references)      (lsp-find-references)))
+  ("i" (when (fboundp 'lsp-find-implementation)  (lsp-find-implementation)))
   ("t" (when (fboundp 'lsp-find-type-definition) (lsp-find-type-definition)))
-  ("o" (when (fboundp 'lsp-ui-imenu) (lsp-ui-imenu)))
-  ("s" consult-lsp-symbols)
-  ("R" (when (fboundp 'lsp-rename) (call-interactively #'lsp-rename)))
-  ("a" (when (fboundp 'lsp-execute-code-action) (lsp-execute-code-action)))
-  ("f" (when (fboundp 'lsp-format-buffer) (lsp-format-buffer)))
+  ("o" (when (fboundp 'lsp-ui-imenu)             (lsp-ui-imenu)))
+  ("s" (when (fboundp 'consult-lsp-symbols)      (consult-lsp-symbols)))
+  ("R" (when (fboundp 'lsp-rename)               (call-interactively #'lsp-rename)))
+  ("a" (when (fboundp 'lsp-execute-code-action)  (lsp-execute-code-action)))
+  ("f" (when (fboundp 'lsp-format-buffer)        (lsp-format-buffer)))
   ("h" (when (fboundp 'lsp-describe-thing-at-point) (lsp-describe-thing-at-point)))
-  ("u" (when (fboundp 'lsp-ui-doc-toggle) (lsp-ui-doc-toggle)))
-  ("k" (when (fboundp 'lsp-signature-activate) (lsp-signature-activate)))
-  ("e" (when (fboundp 'flycheck-list-errors) (flycheck-list-errors)))
-  ("l" (when (fboundp 'lsp-lens-mode) (lsp-lens-mode 'toggle)))
-  ("w" (when (fboundp 'lsp-describe-session) (lsp-describe-session)))
+  ("u" (when (fboundp 'lsp-ui-doc-toggle)        (lsp-ui-doc-toggle)))
+  ("k" (when (fboundp 'lsp-signature-activate)   (lsp-signature-activate)))
+  ("e" (when (fboundp 'flycheck-list-errors)     (flycheck-list-errors)))
+  ;; FIX-LSP-LENS: (lsp-lens-mode 'toggle) is invalid — minor modes take
+  ;; numeric args. Toggle via current state instead.
+  ("l" (when (fboundp 'lsp-lens-mode)
+         (if (bound-and-true-p lsp-lens-mode) (lsp-lens-mode -1) (lsp-lens-mode 1))))
+  ("w" (when (fboundp 'lsp-describe-session)     (lsp-describe-session)))
   ("q" nil))
 
 ;; ============================================================================
@@ -203,9 +233,9 @@
   ("f" emacs-ide-test-run-file)
   ("p" emacs-ide-test-run-project)
   ("." emacs-ide-test-run-at-point)
-  ("l" (when (fboundp 'emacs-ide-test-run-last) (emacs-ide-test-run-last)))
+  ("l" (when (fboundp 'emacs-ide-test-run-last)  (emacs-ide-test-run-last)))
   ("w" emacs-ide-test-watch)
-  ("r" (when (fboundp 'emacs-ide-test-report) (emacs-ide-test-report)))
+  ("r" (when (fboundp 'emacs-ide-test-report)    (emacs-ide-test-report)))
   ("s" emacs-ide-test-runner-status)
   ("q" nil))
 
@@ -226,24 +256,24 @@
   ────────────────────────────────────────────────────────
   _ESC_ close
 "
-  ("s" (when (fboundp 'dap-step-in) (dap-step-in)))
-  ("n" (when (fboundp 'dap-next) (dap-next)))
-  ("o" (when (fboundp 'dap-step-out) (dap-step-out)))
-  ("c" (when (fboundp 'dap-continue) (dap-continue)))
-  ("r" (when (fboundp 'dap-debug-restart) (dap-debug-restart)))
-  ("q" (when (fboundp 'dap-disconnect) (dap-disconnect)) :color blue)
-  ("b" (when (fboundp 'dap-breakpoint-toggle) (dap-breakpoint-toggle)) :color red)
+  ("s" (when (fboundp 'dap-step-in)              (dap-step-in)))
+  ("n" (when (fboundp 'dap-next)                 (dap-next)))
+  ("o" (when (fboundp 'dap-step-out)             (dap-step-out)))
+  ("c" (when (fboundp 'dap-continue)             (dap-continue)))
+  ("r" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
+  ("q" (when (fboundp 'dap-disconnect)           (dap-disconnect)) :color blue)
+  ("b" (when (fboundp 'dap-breakpoint-toggle)    (dap-breakpoint-toggle)) :color red)
   ("B" (when (fboundp 'dap-breakpoint-condition) (dap-breakpoint-condition)))
   ("L" (when (fboundp 'dap-breakpoint-log-message) (dap-breakpoint-log-message)))
   ("D" (when (fboundp 'dap-breakpoint-delete-all) (dap-breakpoint-delete-all)))
-  ("l" (when (fboundp 'dap-ui-locals) (dap-ui-locals)))
-  ("e" (when (fboundp 'dap-eval-thing-at-point) (dap-eval-thing-at-point)))
-  ("w" (when (fboundp 'dap-ui-expressions) (dap-ui-expressions)))
-  ("u" (when (fboundp 'dap-up-stack-frame) (dap-up-stack-frame)))
-  ("d" (when (fboundp 'dap-down-stack-frame) (dap-down-stack-frame)))
-  ("R" (when (fboundp 'dap-ui-repl) (dap-ui-repl)))
-  ("5" (when (fboundp 'dap-debug) (call-interactively #'dap-debug)))
-  ("6" (when (fboundp 'dap-debug-restart) (dap-debug-restart)))
+  ("l" (when (fboundp 'dap-ui-locals)            (dap-ui-locals)))
+  ("e" (when (fboundp 'dap-eval-thing-at-point)  (dap-eval-thing-at-point)))
+  ("w" (when (fboundp 'dap-ui-expressions)       (dap-ui-expressions)))
+  ("u" (when (fboundp 'dap-up-stack-frame)       (dap-up-stack-frame)))
+  ("d" (when (fboundp 'dap-down-stack-frame)     (dap-down-stack-frame)))
+  ("R" (when (fboundp 'dap-ui-repl)              (dap-ui-repl)))
+  ("5" (when (fboundp 'dap-debug)                (call-interactively #'dap-debug)))
+  ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
   ("ESC" nil :color blue))
 
 ;; ============================================================================
@@ -254,7 +284,7 @@
   toggles
   ────────────────────────────────────────────────
   _t_ theme          _l_ line numbers    _r_ relative #s
-  _i_ indent guides  _w_ whitespace      _W_ word wrap
+  _i_ indent guides  _w_ whitespace      _W_ visual line
   _c_ fill column    _f_ flycheck        _s_ flyspell
   _d_ dimmer         _b_ beacon          _p_ pulsar
   _T_ treemacs       _n_ neotree         _P_ presentation
@@ -268,17 +298,23 @@
              (if (eq display-line-numbers-type 'relative) t 'relative)))
   ("i" highlight-indent-guides-mode)
   ("w" whitespace-mode)
-  ("W" word-wrap-whitespace-mode)
+  ;; FIX-WORD-WRAP: word-wrap-whitespace-mode does not exist; visual-line-mode
+  ;; is the correct built-in for soft word-wrap.
+  ("W" visual-line-mode)
   ("c" display-fill-column-indicator-mode)
-  ("f" (when (fboundp 'flycheck-mode) (flycheck-mode 'toggle)))
-  ("s" (when (fboundp 'flyspell-mode) (flyspell-mode 'toggle)))
-  ("d" (when (fboundp 'dimmer-mode) (call-interactively #'dimmer-mode)))
-  ("b" (when (fboundp 'beacon-mode) (call-interactively #'beacon-mode)))
+  ;; FIX-FLYCHECK-TOGGLE: (flycheck-mode 'toggle) is invalid — use numeric arg
+  ("f" (when (fboundp 'flycheck-mode)
+         (if (bound-and-true-p flycheck-mode) (flycheck-mode -1) (flycheck-mode 1))))
+  ;; FIX-FLYSPELL-TOGGLE: (flyspell-mode 'toggle) is invalid — use numeric arg
+  ("s" (when (fboundp 'flyspell-mode)
+         (if (bound-and-true-p flyspell-mode) (flyspell-mode -1) (flyspell-mode 1))))
+  ("d" (when (fboundp 'dimmer-mode)        (call-interactively #'dimmer-mode)))
+  ("b" (when (fboundp 'beacon-mode)        (call-interactively #'beacon-mode)))
   ("p" (when (fboundp 'pulsar-global-mode) (call-interactively #'pulsar-global-mode)))
   ("T" treemacs)
   ("n" neotree-toggle)
   ("P" emacs-ide-presentation-mode)
-  ("z" (when (fboundp 'olivetti-mode) (call-interactively #'olivetti-mode)))
+  ("z" (when (fboundp 'olivetti-mode)      (call-interactively #'olivetti-mode)))
   ("v" visual-fill-column-mode)
   ("q" nil))
 
@@ -334,10 +370,12 @@
   ("u" consult-focus-lines)
   ("q" nil))
 
-) ;; end with-eval-after-load 'hydra
-
 ;; ============================================================================
-;; GLOBAL HYDRA ENTRY KEYS  (C-c h prefix)
+;; GLOBAL HYDRA ENTRY KEYS (C-c h prefix)
+;; FIX-GLOBAL-KEYS-RACE: Moved inside with-eval-after-load 'hydra so that
+;; all hydra body functions are defined before these bindings are set.
+;; Previously these ran outside the block — if hydra loaded asynchronously
+;; the body functions were void at binding time.
 ;; ============================================================================
 (global-set-key (kbd "C-c h w") #'hydra-window/body)
 (global-set-key (kbd "C-c h b") #'hydra-buffer/body)
@@ -349,9 +387,11 @@
 (global-set-key (kbd "C-c h u") #'hydra-toggle/body)
 (global-set-key (kbd "C-c h r") #'hydra-repl/body)
 (global-set-key (kbd "C-c h s") #'hydra-search/body)
-;; Quick-access shortcuts
-(global-set-key (kbd "C-c h h") (lambda () (interactive)
-                                   (message "Hydras: w)indow b)uffer g)it l)sp p)roject t)est d)ebug u)toggle r)epl s)earch")))
+(global-set-key (kbd "C-c h h")
+                (lambda () (interactive)
+                  (message "Hydras: w)indow b)uffer g)it l)sp p)roject t)est d)ebug u)toggle r)epl s)earch")))
+
+) ;; end with-eval-after-load 'hydra
 
 (provide 'tools-hydra)
 ;;; tools-hydra.el ends here
