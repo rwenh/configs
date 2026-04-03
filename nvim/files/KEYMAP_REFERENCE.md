@@ -54,7 +54,7 @@ Space (` `)
 - `<leader>fk` — Find keymaps
 - `<leader>fc` — Find commands
 - `<leader>fr` — Resume last search
-- `<leader>fo` — Recent files        ← sole owner of this binding; Fortran moved to <leader>ft*
+- `<leader>fo` — Recent files  ← sole owner; Fortran uses `<leader>ft*` to avoid conflict
 - `Ctrl+s` — Live grep
 
 ---
@@ -150,7 +150,6 @@ Space (` `)
 - `<leader>us` — Toggle spell
 - `<leader>un` — Toggle line numbers
 - `<leader>uz` — Zen mode
-- `<leader>uu` — Undo tree
 
 ---
 
@@ -182,6 +181,7 @@ Space (` `)
 - `<leader>xl` — Lazy (plugin manager)
 - `<leader>xn` — Mason (LSP installer)
 - `<leader>xx` — Trouble diagnostics
+- `<leader>xu` — Undo tree
 
 ---
 
@@ -208,15 +208,11 @@ Space (` `)
 - `<leader>rbl` — Test last
 - `<leader>rbv` — Test visit
 
-### Rust (`<leader>rs*`)
-- `<leader>rsa` — Code action
-- `<leader>rsd` — Debuggables
-- `<leader>rsr` — Runnables
-- `<leader>rse` — Expand macro
-- `<leader>rsh` — Hover actions
-- `<leader>rsc` — Toggle crates
-- `<leader>rsu` — Update crate (normal) / Update selected crates (visual)
-- `<leader>rsU` — Upgrade crate (normal) / Upgrade selected crates (visual)
+### Rust (`<leader>r*`)
+- `<leader>rh` — Hover actions
+- `<leader>ra` — Code action
+- `<leader>rd` — Debuggables
+- `<leader>rt` — Test
 
 ### Go (`<leader>go*`)
 - `<leader>got` — Test
@@ -268,7 +264,7 @@ Space (` `)
 - `<leader>ccs` — CMake select target
 - `<leader>ccd` — Generate docstring
 
-### Fortran (`<leader>ft*`)  ← RENAMED from `<leader>fo*` (was shadowing Telescope `<leader>fo` recent files)
+### Fortran (`<leader>ft*`)  ← uses `ft*` not `fo*` to avoid shadowing `<leader>fo` (Telescope recent files)
 - `<leader>ftb` — Build & run
 - `<leader>ftc` — Check syntax
 - `<leader>ftm` — Make
@@ -293,16 +289,15 @@ Space (` `)
 - `<leader>dba` — Add connection
 - `<leader>dbf` — Find buffer
 
-### REST (`<leader>re*`)  ← RENAMED from `<leader>h*` (was mixed into Harpoon's namespace)
+### REST (`<leader>re*`)  ← uses `re*` not `h*` to avoid collision with Harpoon's `<leader>h` namespace
 - `<leader>rer` — Run request
 - `<leader>rep` — Preview request
 - `<leader>rel` — Run last request
 - `<leader>ree` — Select env file
 
-### Markdown (`<leader>md*`)
-- `<leader>mdt` — Table mode toggle
-- `<leader>mdf` — Table realign
-- `<leader>mdp` — Paste image
+### Markdown
+- `<leader>mp` — Markdown preview toggle
+- `<leader>tm` — Table mode toggle
 
 ---
 
