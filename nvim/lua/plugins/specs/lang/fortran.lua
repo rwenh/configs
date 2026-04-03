@@ -16,9 +16,6 @@ return {
   {
     "stevearc/conform.nvim",
     optional = true,
-    -- FIX #2: Use opts as a function to safely deep-merge nested tables.
-    -- Plain opts table causes shallow merge — other specs' top-level
-    -- "formatters" entries can be lost if this spec merges last.
     opts = function(_, opts)
       opts.formatters_by_ft = opts.formatters_by_ft or {}
       opts.formatters_by_ft.fortran = { "fprettify" }
@@ -37,15 +34,19 @@ return {
     optional = true,
     keys = {
       {
-        -- FIX: renamed <leader>fo* → <leader>ft* to free <leader>fo for Telescope recent files
         "<leader>ftb",
         function()
+          -- RECALIBRATION: Safe toggleterm require
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
-          local Terminal = require("toggleterm.terminal").Terminal
-          -- FIX #1: shellescape all paths — raw expand() breaks on spaces in
-          -- file/directory names (same pattern fixed in cobol.lua).
-          Terminal:new({
+
+          term.Terminal:new({
             cmd = string.format("gfortran -Wall -o %s %s && %s",
               vim.fn.shellescape(exe),
               vim.fn.shellescape(file),
@@ -60,9 +61,14 @@ return {
       {
         "<leader>ftc",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
+          term.Terminal:new({
             cmd           = string.format("gfortran -Wall -fsyntax-only %s",
               vim.fn.shellescape(file)),
             direction     = "float",
@@ -75,8 +81,13 @@ return {
       {
         "<leader>ftm",
         function()
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
+          term.Terminal:new({
             cmd           = "make",
             direction     = "float",
             close_on_exit = false,
@@ -94,35 +105,32 @@ return {
     optional = true,
     ft = "fortran",
     config = function()
-      local ls = require("luasnip")
+      local ok, ls = pcall(require, "luasnip")
+      if not ok then return end
+
       local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
 
-      -- FIX #3: Replaced duplicate i(1) tabstops with f() (function_node) to
-      -- mirror the name in the closing line. LuaSnip does not allow two
-      -- insert_nodes sharing the same index — only the first is ever written
-      -- to; the second stays as its initializer text and never reflects edits.
-      -- function_node reads args[1][1] (current value of i(1)) and echoes it,
-      -- so the closing `end program / end subroutine` line stays in sync as
-      -- the user types the name.
-      ls.add_snippets("fortran", {
-        s("program", {
-          t("program "), i(1, "name"),
-          t({ "", "  implicit none", "  " }), i(2),
-          t({ "", "end program " }), f(function(args) return args[1][1] end, { 1 }),
-          i(0),
-        }),
-        s("subroutine", {
-          t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
-          t({ "", "  implicit none", "  " }), i(3),
-          t({ "", "end subroutine " }), f(function(args) return args[1][1] end, { 1 }),
-          i(0),
-        }),
-        s("do", {
-          t("do "), i(1, "i"), t(" = "), i(2, "1"), t(", "), i(3, "n"),
-          t({ "", "  " }), i(0),
-          t({ "", "end do" }),
-        }),
-      })
+      pcall(function()
+        ls.add_snippets("fortran", {
+          s("program", {
+            t("program "), i(1, "name"),
+            t({ "", "  implicit none", "  " }), i(2),
+            t({ "", "end program " }), f(function(args) return args[1][1] end, { 1 }),
+            i(0),
+          }),
+          s("subroutine", {
+            t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
+            t({ "", "  implicit none", "  " }), i(3),
+            t({ "", "end subroutine " }), f(function(args) return args[1][1] end, { 1 }),
+            i(0),
+          }),
+          s("do", {
+            t("do "), i(1, "i"), t(" = "), i(2, "1"), t(", "), i(3, "n"),
+            t({ "", "  " }), i(0),
+            t({ "", "end do" }),
+          }),
+        })
+      end)
     end,
   },
 }
