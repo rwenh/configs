@@ -1,16 +1,10 @@
 -- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
--- LSP (vhdl_ls) is configured in lsp.lua.
 
 return {
   -- Formatter
   {
     "stevearc/conform.nvim",
     optional = true,
-    -- FIX #7: Use opts as a function to safely deep-merge nested tables.
-    -- Plain table opts causes shallow merge — other specs' top-level
-    -- "formatters" entries can be lost when this spec merges last.
-    -- NOTE #8: vsg is pip-installed (pip install vsg), not Mason-managed.
-    -- Run: pip install vsg  — it will not appear in :MasonInstallAll.
     opts = function(_, opts)
       opts.formatters_by_ft = opts.formatters_by_ft or {}
       opts.formatters_by_ft.vhdl = { "vsg" }
@@ -42,9 +36,14 @@ return {
       {
         "<leader>vha",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
+          term.Terminal:new({
             cmd           = string.format("ghdl -a %s", vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
@@ -56,12 +55,16 @@ return {
       {
         "<leader>vhe",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
-            -- FIX #10: shellescape entity name — raw user input breaks on
-            -- names with spaces or special characters.
+
+          term.Terminal:new({
             cmd           = string.format("ghdl -e %s", vim.fn.shellescape(entity)),
             direction     = "float",
             close_on_exit = false,
@@ -73,11 +76,16 @@ return {
       {
         "<leader>vhr",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
-            -- FIX #10: shellescape entity name in run command too.
+
+          term.Terminal:new({
             cmd = string.format(
               "ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd",
               vim.fn.shellescape(entity)
@@ -92,9 +100,14 @@ return {
       {
         "<leader>vhc",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
+          term.Terminal:new({
             cmd           = string.format("ghdl -s %s", vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
@@ -112,48 +125,50 @@ return {
     optional = true,
     ft = "vhdl",
     config = function()
-      local ls = require("luasnip")
-      -- FIX #9: Removed unused `d` (dynamic_node) — all dynamic text uses
-      -- `f` (function_node); `d` was imported but never referenced.
+      local ok, ls = pcall(require, "luasnip")
+      if not ok then return end
+
       local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
 
-      ls.add_snippets("vhdl", {
-        s("entity", {
-          t("entity "), i(1, "entity_name"), t(" is"),
-          t({ "", "  port (" }),
-          t({ "", "    " }), i(2, "signal_name"), t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
-          t({ "", "  );" }),
-          t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
-        }),
-        s("arch", {
-          t("architecture "), i(1, "rtl"), t(" of "), i(2, "entity_name"), t(" is"),
-          t({ "", "begin" }),
-          t({ "", "  " }), i(0),
-          t({ "", "end architecture " }), f(function(args) return args[1] end, { 1 }), t(";"),
-        }),
-        s("process", {
-          t("process("), i(1, "clk"), t(")"),
-          t({ "", "begin" }),
-          t({ "", "  if rising_edge(" }), f(function(args) return args[1] end, { 1 }), t(") then"),
-          t({ "", "    " }), i(0),
-          t({ "", "  end if;" }),
-          t({ "", "end process;" }),
-        }),
-        s("std", {
-          t({ "library ieee;", "use ieee.std_logic_1164.all;", "use ieee.numeric_std.all;", "" }),
-        }),
-        s("tb", {
-          t("entity "), i(1, "tb_name"), t(" is"),
-          t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
-          t({ "", "", "architecture sim of " }), f(function(args) return args[1] end, { 1 }), t(" is"),
-          t({ "", "begin" }),
-          t({ "", "  uut: entity work." }), i(2, "dut_name"),
-          t({ "", "    port map (" }),
-          t({ "", "      " }), i(0),
-          t({ "", "    );" }),
-          t({ "", "end architecture sim;" }),
-        }),
-      })
+      pcall(function()
+        ls.add_snippets("vhdl", {
+          s("entity", {
+            t("entity "), i(1, "entity_name"), t(" is"),
+            t({ "", "  port (" }),
+            t({ "", "    " }), i(2, "signal_name"), t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
+            t({ "", "  );" }),
+            t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
+          }),
+          s("arch", {
+            t("architecture "), i(1, "rtl"), t(" of "), i(2, "entity_name"), t(" is"),
+            t({ "", "begin" }),
+            t({ "", "  " }), i(0),
+            t({ "", "end architecture " }), f(function(args) return args[1] end, { 1 }), t(";"),
+          }),
+          s("process", {
+            t("process("), i(1, "clk"), t(")"),
+            t({ "", "begin" }),
+            t({ "", "  if rising_edge(" }), f(function(args) return args[1] end, { 1 }), t(") then"),
+            t({ "", "    " }), i(0),
+            t({ "", "  end if;" }),
+            t({ "", "end process;" }),
+          }),
+          s("std", {
+            t({ "library ieee;", "use ieee.std_logic_1164.all;", "use ieee.numeric_std.all;", "" }),
+          }),
+          s("tb", {
+            t("entity "), i(1, "tb_name"), t(" is"),
+            t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
+            t({ "", "", "architecture sim of " }), f(function(args) return args[1] end, { 1 }), t(" is"),
+            t({ "", "begin" }),
+            t({ "", "  uut: entity work." }), i(2, "dut_name"),
+            t({ "", "    port map (" }),
+            t({ "", "      " }), i(0),
+            t({ "", "    );" }),
+            t({ "", "end architecture sim;" }),
+          }),
+        })
+      end)
     end,
   },
 }
