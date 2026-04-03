@@ -41,27 +41,7 @@ return {
       vim.g.user_emmet_leader_key = "<C-y>"
     end,
   },
-
-  {
-    "norcalli/nvim-colorizer.lua",
-    event = "BufReadPre",
-    ft = { "css", "scss", "html", "javascript", "typescriptreact", "vue" },
-    config = function()
-      pcall(function()
-        require("colorizer").setup({
-          "css", "scss", "html", "javascript", "typescriptreact", "vue",
-        }, {
-          RGB = true,
-          RRGGBB = true,
-          names = false,
-          RRGGBBAA = false,
-          rgb_fn = false,
-          hsl_fn = false,
-          css = false,
-          css_fn = false,
-          mode = "background",
-        })
-      end)
-    end,
-  },
+  -- NOTE: colorizer is owned by advanced.lua (NvChad/nvim-colorizer.lua).
+  -- That plugin is a maintained fork of norcalli/nvim-colorizer.lua;
+  -- speccing both causes a startup conflict — removed here.
 }
