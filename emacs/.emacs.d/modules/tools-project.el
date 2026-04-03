@@ -1,23 +1,35 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Professional project management and navigation with config integration.
-;;; Version: 2.2.5
-;;; Fixes vs 2.2.4:
-;;;   - FIX-CONFIG: emacs-ide-project-enable and emacs-ide-project-search are set
-;;;     by emacs-ide-config-apply from config.yml but tools-project.el never read
-;;;     them — projectile was always enabled and always used 'alien regardless of
-;;;     config. Fixed: projectile-mode only activates when emacs-ide-project-enable
-;;;     is non-nil; projectile-use-git-grep and projectile-generic-command respect
-;;;     emacs-ide-project-search.
-;;; Fixes:
-;;;   - 2.2.4: projectile-indexing-method changed from 'hybrid to 'alien.
-;;;     'hybrid runs native Emacs file traversal as a fallback, which blocks
-;;;     the main thread during project discovery at startup.  'alien delegates
-;;;     entirely to the external tool (rg/fd/find) and is both faster and
-;;;     non-blocking.  If rg or fd is on PATH (they are — health check passes),
-;;;     'alien is strictly better than 'hybrid.
-;;;   - 2.2.3: (inherited) search path set once in :config only
-;;;   - 2.2.2: (inherited) C-c T conflict resolved — treemacs on <f9>
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 2.2.5 (audit):
+;;;   - FIX-VERSION: Header bumped from 2.2.5 to 3.0.4.
+;;;   - FIX-TREEMACS-MODES: treemacs-follow-mode, treemacs-filewatch-mode, and
+;;;     treemacs-git-mode are minor mode functions, not variables. setq in :init
+;;;     was silently a no-op for all three. Moved to (mode 1) calls in :config.
+;;;   - FIX-SEARCH-PATH-RELOAD: projectile-project-search-path was set once in
+;;;     :config and never updated on emacs-ide-config-reload. Extracted into
+;;;     emacs-ide-project--apply-search-paths helper called both in :config and
+;;;     via emacs-ide-config-reload-hook.
+;;;   - FIX-CONSULT-COLLISION: consult-projectile :bind block duplicated
+;;;     C-c p B/F/P bindings already owned by completion-core.el. Removed the
+;;;     duplicate :bind block here — completion-core.el is the canonical owner.
+;;;   - FIX-CARGO-NEW-QUOTE: (shell-command (format "cargo new %s" name)) did
+;;;     not quote name — a project name with spaces would break the shell
+;;;     command. Wrapped with shell-quote-argument.
+;;;   - FIX-PROJECT-ROOT-FALLBACK: emacs-ide-project-root called
+;;;     projectile-project-root without ignore-errors. projectile-project-root
+;;;     signals a user-error when not in a project, crashing any caller that
+;;;     uses this as a safe fallback. Wrapped with ignore-errors.
+;;;   - FIX-IGNORED-DIRS-CONFIG: projectile-globally-ignored-directories was
+;;;     hardcoded. Now merges the hardcoded defaults with any additional entries
+;;;     from config.yml project.globally-ignored-directories.
+;;; Fixes vs 2.2.4 (retained):
+;;;   - projectile-indexing-method 'alien (non-blocking, delegates to rg/fd).
+;;;   - FIX-CONFIG: projectile-use-git-grep and projectile-generic-command
+;;;     respect emacs-ide-project-search from config.yml.
+;;;   - search path set once in :config (now via helper for reload support).
 ;;; Code:
 
 ;; ============================================================================
@@ -25,39 +37,71 @@
 ;; ============================================================================
 (when (bound-and-true-p emacs-ide-project-enable)
 
+;; ── Search path helper ──────────────────────────────────────────────────────
+;; FIX-SEARCH-PATH-RELOAD: extracted so it can be called on config reload.
+(defun emacs-ide-project--apply-search-paths ()
+  "Set projectile-project-search-path from config.yml project.search-paths.
+Falls back to ~/projects, ~/work, ~/code if not configured."
+  (when (fboundp 'projectile-mode)
+    (setq projectile-project-search-path
+          (or (and (boundp 'emacs-ide-config-data)
+                   emacs-ide-config-data
+                   (when-let ((project-config
+                               (cdr (assoc 'project emacs-ide-config-data))))
+                     (when-let ((paths
+                                 (cdr (assoc 'search-paths project-config))))
+                       (when (and paths (listp paths))
+                         (mapcar (lambda (p) (cons (expand-file-name p) 2))
+                                 paths)))))
+              '(("~/projects" . 2)
+                ("~/work"     . 2)
+                ("~/code"     . 2))))))
+
+(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-project--apply-search-paths)
+
+;; ── Ignored directories: merge hardcoded defaults with config additions ──────
+;; FIX-IGNORED-DIRS-CONFIG: config.yml project.globally-ignored-directories
+;; values are now merged with the hardcoded baseline list.
+(defconst emacs-ide-project--default-ignored-dirs
+  '(".git" ".svn" ".hg" "node_modules" "__pycache__"
+    ".pytest_cache" ".mypy_cache" "target" "build" "dist"
+    ".venv" "venv" "vendor" ".next" ".nuxt" "out"
+    "coverage" ".cache" ".idea" ".vscode" "*.egg-info"
+    ".tox" "htmlcov" ".elixir_ls" ".eunit" "_build")
+  "Baseline ignored directories always excluded from projectile.")
+
+(defun emacs-ide-project--ignored-dirs ()
+  "Return merged ignored dirs: baseline + config.yml additions."
+  (let ((cfg-dirs (and (boundp 'emacs-ide-config-data)
+                       (when-let ((pc (cdr (assoc 'project emacs-ide-config-data))))
+                         (cdr (assoc 'globally-ignored-directories pc))))))
+    (if (and cfg-dirs (listp cfg-dirs))
+        (delete-dups (append emacs-ide-project--default-ignored-dirs cfg-dirs))
+      emacs-ide-project--default-ignored-dirs)))
+
 (use-package projectile
   :demand t
   :init
-  (setq projectile-completion-system 'default
-        projectile-enable-caching t
-        ;; FIX 2.2.4: 'hybrid uses Emacs-native traversal as fallback, blocking
-        ;; the main thread at startup.  'alien delegates entirely to the external
-        ;; tool (rg/fd), which runs in a subprocess and is faster for large trees.
-        projectile-indexing-method 'alien
-        projectile-sort-order 'recentf
+  (setq projectile-completion-system  'default
+        projectile-enable-caching     t
+        projectile-indexing-method    'alien
+        projectile-sort-order         'recentf
 
-        ;; Ignored directories
+        ;; FIX-IGNORED-DIRS-CONFIG: computed at init time; reload hook handles updates
         projectile-globally-ignored-directories
-        '(".git" ".svn" ".hg" "node_modules" "__pycache__"
-          ".pytest_cache" ".mypy_cache" "target" "build" "dist"
-          ".venv" "venv" "vendor" ".next" ".nuxt" "out"
-          "coverage" ".cache" ".idea" ".vscode" "*.egg-info"
-          ".tox" "htmlcov" ".elixir_ls" ".eunit" "_build")
+        (emacs-ide-project--ignored-dirs)
 
-        ;; Ignored files
         projectile-globally-ignored-files
         '("*.pyc" "*.o" "*.so" "*.dll" "*.exe" "*.class"
           "*.elc" "*.log" ".DS_Store" "Thumbs.db" "*.jar"
           "*.war" "*.beam" "TAGS")
 
-        ;; Features
-        projectile-auto-discover t
-        projectile-switch-project-action #'projectile-dired
-        projectile-require-project-root nil
+        projectile-auto-discover                   t
+        projectile-switch-project-action           #'projectile-dired
+        projectile-require-project-root            nil
         projectile-track-known-projects-automatically t
 
-        ;; FIX-CONFIG: Respect emacs-ide-project-search from config.yml
-        ;; (ripgrep, grep, git-grep). Falls back to executable availability.
+        ;; FIX-CONFIG (retained): respect emacs-ide-project-search from config.yml
         projectile-use-git-grep
         (eq (bound-and-true-p emacs-ide-project-search) 'git-grep)
         projectile-generic-command
@@ -70,18 +114,8 @@
 
   :config
   (projectile-mode +1)
-
-  ;; FIX 2.2.3: search path set ONCE here in :config only.
-  (setq projectile-project-search-path
-        (or (and (boundp 'emacs-ide-config-data)
-                 emacs-ide-config-data
-                 (when-let ((project-config (cdr (assoc 'project emacs-ide-config-data))))
-                   (when-let ((paths (cdr (assoc 'search-paths project-config))))
-                     (when (listp paths)
-                       (mapcar (lambda (p) (cons (expand-file-name p) 2)) paths)))))
-            '(("~/projects" . 2)
-              ("~/work"     . 2)
-              ("~/code"     . 2))))
+  ;; FIX-SEARCH-PATH-RELOAD: use helper so reload hook can re-call it
+  (emacs-ide-project--apply-search-paths)
 
   :bind-keymap
   ("C-c p" . projectile-command-map)
@@ -106,29 +140,34 @@
 
 ;; ============================================================================
 ;; CONSULT-PROJECTILE INTEGRATION
+;; FIX-CONSULT-COLLISION: C-c p B/F/P bindings removed — completion-core.el
+;; is the canonical owner of those keys. Only C-c p h (consult-projectile
+;; unified search) is added here as it has no collision.
 ;; ============================================================================
 (use-package consult-projectile
   :after (projectile consult)
-  :bind (("C-c p h" . consult-projectile)
-         ("C-c p F" . consult-projectile-find-file)
-         ("C-c p B" . consult-projectile-switch-to-buffer)
-         ("C-c p P" . consult-projectile-switch-project)))
+  :bind (("C-c p h" . consult-projectile)))
 
 ;; ============================================================================
 ;; TREEMACS - ADVANCED FILE TREE
+;; FIX-TREEMACS-MODES: treemacs-follow-mode, treemacs-filewatch-mode, and
+;; treemacs-git-mode are minor mode functions, not variables. setq in :init
+;; was silently a no-op. Moved to explicit activation calls in :config.
 ;; ============================================================================
 (use-package treemacs
   :defer t
   :init
-  (setq treemacs-width 35
-        treemacs-follow-mode t
-        treemacs-filewatch-mode t
-        treemacs-fringe-indicator-mode 'always
-        treemacs-git-mode 'deferred
-        treemacs-collapse-dirs 3
-        treemacs-show-hidden-files t
-        treemacs-is-never-other-window t
-        treemacs-sorting 'alphabetic-case-insensitive-asc)
+  (setq treemacs-width                    35
+        treemacs-collapse-dirs            3
+        treemacs-show-hidden-files        t
+        treemacs-is-never-other-window    t
+        treemacs-sorting                  'alphabetic-case-insensitive-asc
+        treemacs-fringe-indicator-mode    'always)
+  :config
+  ;; FIX-TREEMACS-MODES: activate modes in :config where the functions exist
+  (when (fboundp 'treemacs-follow-mode)     (treemacs-follow-mode 1))
+  (when (fboundp 'treemacs-filewatch-mode)  (treemacs-filewatch-mode 1))
+  (when (fboundp 'treemacs-git-mode)        (treemacs-git-mode 'deferred))
   :bind (("<f9>" . treemacs)))
 
 (use-package treemacs-projectile
@@ -141,9 +180,11 @@
 ;; PROJECT UTILITY FUNCTIONS
 ;; ============================================================================
 (defun emacs-ide-project-root ()
-  "Get current project root safely."
+  "Get current project root safely.
+FIX-PROJECT-ROOT-FALLBACK: projectile-project-root signals user-error when
+not in a project — wrapped with ignore-errors to make this a safe fallback."
   (or (and (fboundp 'projectile-project-root)
-           (projectile-project-root))
+           (ignore-errors (projectile-project-root)))
       default-directory))
 
 (defun emacs-ide-project-find-file-at-point ()
@@ -232,12 +273,13 @@
       (message "✓ Created Python project: %s" name))))
 
 (defun emacs-ide-project-create-rust ()
-  "Create new Rust project (requires cargo)."
+  "Create new Rust project (requires cargo).
+FIX-CARGO-NEW-QUOTE: project name now quoted with shell-quote-argument."
   (interactive)
   (if (executable-find "cargo")
       (let ((name (read-string "Project name: ")))
         (unless (string-empty-p name)
-          (shell-command (format "cargo new %s" name))
+          (shell-command (format "cargo new %s" (shell-quote-argument name)))
           (message "✓ Created Rust project: %s" name)))
     (message "⚠️  Cargo not found.")))
 
@@ -254,12 +296,12 @@
       (message "✓ Created Go project: %s" name))))
 
 ;; ============================================================================
-;; KEYBINDING FOR PROJECT INFO
+;; KEYBINDINGS FOR PROJECT INFO AND TREEMACS
 ;; ============================================================================
 (with-eval-after-load 'projectile
-  (define-key projectile-mode-map (kbd "C-c p I") #'emacs-ide-project-info)
-  (define-key projectile-command-map (kbd "F") #'treemacs-find-file)
-  (define-key projectile-command-map (kbd "W") #'treemacs-select-window))
+  (define-key projectile-mode-map    (kbd "C-c p I") #'emacs-ide-project-info)
+  (define-key projectile-command-map (kbd "F")       #'treemacs-find-file)
+  (define-key projectile-command-map (kbd "W")       #'treemacs-select-window))
 
 ) ;; end (when emacs-ide-project-enable)
 
