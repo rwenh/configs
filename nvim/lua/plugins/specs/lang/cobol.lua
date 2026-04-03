@@ -1,8 +1,6 @@
 -- lua/plugins/specs/lang/cobol.lua - COBOL development
--- LSP (cobol_ls) is configured in lsp.lua.
 
 return {
-  -- Compile & Run
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -10,12 +8,16 @@ return {
       {
         "<leader>cob",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
-          local Terminal = require("toggleterm.terminal").Terminal
-          -- FIX #5: All paths shellescape'd — raw expand() paths break on
-          -- filenames/directories that contain spaces.
-          Terminal:new({
+
+          term.Terminal:new({
             cmd = string.format("cobc -x -o %s %s && %s",
               vim.fn.shellescape(exe),
               vim.fn.shellescape(file),
@@ -30,11 +32,15 @@ return {
       {
         "<leader>coc",
         function()
+          local ok, term = pcall(require, "toggleterm.terminal")
+          if not ok then
+            vim.notify("toggleterm not available", vim.log.levels.ERROR)
+            return
+          end
+
           local file = vim.fn.expand("%:p")
-          local Terminal = require("toggleterm.terminal").Terminal
-          Terminal:new({
-            cmd           = string.format("cobc -fsyntax-only %s",
-              vim.fn.shellescape(file)),
+          term.Terminal:new({
+            cmd = string.format("cobc -fsyntax-only %s", vim.fn.shellescape(file)),
             direction     = "float",
             close_on_exit = false,
           }):toggle()
@@ -45,13 +51,14 @@ return {
     },
   },
 
-  -- COBOL snippets
   {
     "L3MON4D3/LuaSnip",
     optional = true,
     ft = "cobol",
     config = function()
-      local ls = require("luasnip")
+      local ok, ls = pcall(require, "luasnip")
+      if not ok then return end
+
       local s, t, i = ls.snippet, ls.text_node, ls.insert_node
 
       ls.add_snippets("cobol", {
