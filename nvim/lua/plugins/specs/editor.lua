@@ -90,6 +90,8 @@ return {
   },
 
   -- Better motions
+  -- NOTE: leap.nvim removed from advanced.lua — flash.nvim is the sole owner
+  -- of the "s" motion. Remove this spec too if you prefer leap instead.
   {
     "folke/flash.nvim",
     event = "VeryLazy",
@@ -111,15 +113,13 @@ return {
   },
 
   -- Mini modules
+  -- NOTE: mini.ai canonical spec lives here (n_lines = 500).
+  -- The duplicate in advanced.lua has been removed.
   { "echasnovski/mini.ai",   event = "VeryLazy", opts = { n_lines = 500 } },
   { "echasnovski/mini.move", event = "VeryLazy", opts = {} },
 
-  -- Undo tree
-  {
-    "mbbill/undotree",
-    cmd  = "UndotreeToggle",
-    keys = { { "<leader>uu", "<cmd>UndotreeToggle<cr>", desc = "Undotree" } },
-  },
+  -- NOTE: undotree and nvim-ufo removed from here.
+  -- Canonical specs with full config live in advanced.lua.
 
   -- Better quickfix
   { "kevinhwang91/nvim-bqf", ft = "qf", opts = {} },
@@ -135,8 +135,6 @@ return {
     },
     -- FIX #8: Removed redundant init block that set vim.o.sessionoptions.
     -- options.lua already owns this setting with the same value.
-    -- Having two places set the same option creates a false appearance of
-    -- conflict. options.lua is the single source of truth for all vim options.
   },
 
   -- Zen mode
@@ -179,21 +177,6 @@ return {
     keys = { { "<leader>/s", function() require("spectre").open() end, desc = "Search & replace" } },
   },
 
-  -- Better fold
-  {
-    "kevinhwang91/nvim-ufo",
-    dependencies = "kevinhwang91/promise-async",
-    event        = "BufReadPost",
-    opts = {
-      provider_selector = function() return { "treesitter", "indent" } end,
-    },
-    config = function(_, opts)
-      require("ufo").setup(opts)
-      vim.keymap.set("n", "zR", require("ufo").openAllFolds)
-      vim.keymap.set("n", "zM", require("ufo").closeAllFolds)
-    end,
-  },
-
   -- Scrollbar
   { "petertriho/nvim-scrollbar", event = "BufReadPost", opts = {} },
 
@@ -225,12 +208,12 @@ return {
     branch       = "harpoon2",
     dependencies = "nvim-lua/plenary.nvim",
     keys = {
-      { "<leader>ha", function() require("harpoon"):list():add() end,                                                      desc = "Harpoon add" },
-      { "<leader>hm", function() require("harpoon").ui:toggle_quick_menu(require("harpoon"):list()) end,                   desc = "Harpoon menu" },
-      { "<leader>h1", function() require("harpoon"):list():select(1) end,                                                  desc = "Harpoon 1" },
-      { "<leader>h2", function() require("harpoon"):list():select(2) end,                                                  desc = "Harpoon 2" },
-      { "<leader>h3", function() require("harpoon"):list():select(3) end,                                                  desc = "Harpoon 3" },
-      { "<leader>h4", function() require("harpoon"):list():select(4) end,                                                  desc = "Harpoon 4" },
+      { "<leader>ha", function() require("harpoon"):list():add() end,                                    desc = "Harpoon add" },
+      { "<leader>hm", function() require("harpoon").ui:toggle_quick_menu(require("harpoon"):list()) end, desc = "Harpoon menu" },
+      { "<leader>h1", function() require("harpoon"):list():select(1) end,                                desc = "Harpoon 1" },
+      { "<leader>h2", function() require("harpoon"):list():select(2) end,                                desc = "Harpoon 2" },
+      { "<leader>h3", function() require("harpoon"):list():select(3) end,                                desc = "Harpoon 3" },
+      { "<leader>h4", function() require("harpoon"):list():select(4) end,                                desc = "Harpoon 4" },
       -- FIX #12: <C-number> not transmitted by most terminals — changed to
       -- <M-number> (Alt+number) to match the same fix applied in keymaps.lua.
       { "<M-1>", function() require("harpoon"):list():select(1) end },
