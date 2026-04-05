@@ -1,9 +1,24 @@
 -- nvim/lua/plugins/specs/treesitter.lua
+--
+-- FIX (v2.2.4):
+--   • tag="v0.9.3" hard-pin removed. The pin conflicted with auto_install=true:
+--     any parser requiring a grammar ABI newer than 0.9.3 compiled against the
+--     wrong header and silently produced empty highlights. Removed pin so lazy
+--     installs the latest stable treesitter release; ABI negotiation is handled
+--     by nvim-treesitter itself.
+--   • fold = {enable=true} inside nvim-treesitter opts has NO effect. Treesitter
+--     folding is enabled via vim.opt (foldmethod/foldexpr), not through the
+--     configs.setup() table. The dead key was removed; fold setup moved to
+--     options.lua (foldmethod="expr", foldexpr via autocmd on BufReadPost).
+--   • vim parser still explicitly ignored (broken query on 0.11.x).
 
 return {
   {
     "nvim-treesitter/nvim-treesitter",
-    tag      = "v0.9.3",          -- last version supporting Neovim 0.11.x
+    -- FIX: tag pin removed — hard-pinning to v0.9.3 caused ABI mismatches
+    -- with parsers that require a newer grammar ABI. lazy.nvim will now track
+    -- the latest stable release and auto_install will compile against the
+    -- correct header version.
     build    = ":TSUpdate",
     lazy     = false,
     priority = 100,
@@ -34,7 +49,7 @@ return {
         "markdown", "markdown_inline",
         "python", "query", "regex", "rust",
         "sql", "toml", "typescript",
-        "vimdoc", "yaml",             -- removed "vim" (broken query on 0.11.x)
+        "vimdoc", "yaml",
         "fortran", "julia", "zig", "ruby",
         "elixir", "heex", "eex",
         "kotlin", "vhdl", "java", "scala",
@@ -44,7 +59,7 @@ return {
 
       auto_install   = true,
       sync_install   = false,
-      ignore_install = { "comment", "vim" },  -- explicitly ignore vim parser
+      ignore_install = { "comment", "vim" },
 
       highlight = {
         enable  = true,
@@ -73,7 +88,12 @@ return {
       },
 
       rainbow = { enable = false },
-      fold    = { enable = true },
+      -- FIX: fold key removed. nvim-treesitter.configs.setup() does not
+      -- honour a "fold" key — treesitter folding is enabled exclusively via:
+      --   vim.opt.foldmethod = "expr"
+      --   vim.opt.foldexpr   = "nvim_treesitter#foldexpr()"
+      -- Both are set in options.lua. Leaving the dead key here caused
+      -- confusion about why folding "wasn't working" despite being "enabled".
 
       textobjects = {
         select = {

@@ -1,15 +1,16 @@
 -- lua/plugins/specs/lang/python.lua - Python development
 --
--- FIX (v2.2.3):
+-- FIX (v2.2.4):
+--   • iron repl_open_cmd: require("iron.view").bottom(20) was called eagerly
+--     at config() execution time. If iron.nvim hadn't finished loading yet
+--     (e.g. first open of a .py file on a slow machine), the require errored
+--     inside the pcall, setup() was skipped entirely, and iron silently never
+--     configured. Wrapped in a function so evaluation is deferred to the
+--     moment iron actually opens a REPL — guaranteed to be after load.
 --   • iron send_motion and visual_send: both were bound to <leader>pyrc.
---     iron uses separate keys for motion vs visual; binding both to the same
---     key meant visual_send in normal mode was a silent no-op that polluted
---     the keymap. Fixed: visual_send → <leader>pyrv.
---   • dap-python async race: the FileType autocmd for PythonDapKeymaps fired
---     immediately on FileType, but dap-python setup() is async (vim.system
---     callback). On slow machines keymaps registered before the adapter was
---     ready. Fixed: PythonDapKeymaps autocmd now fires inside the vim.system
---     success callback, guaranteeing adapter is set up first.
+--     visual_send moved to <leader>pyrv (unchanged from v2.2.3 fix).
+--   • dap-python async race: PythonDapKeymaps autocmd fires inside the
+--     vim.system success callback (unchanged from v2.2.3 fix).
 
 return {
   {
@@ -37,8 +38,6 @@ return {
         "/usr/bin/python",
       }
 
-      -- FIX: register DAP keymaps INSIDE the success callback so the adapter
-      -- is guaranteed to exist before any keymap fires.
       local function register_dap_keymaps()
         vim.api.nvim_create_autocmd("FileType", {
           pattern  = "python",
@@ -57,7 +56,6 @@ return {
           end,
         })
 
-        -- Apply keymaps to any already-open python buffers
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
           if vim.bo[buf].filetype == "python" then
             vim.keymap.set("n", "<leader>pydm",
@@ -88,7 +86,6 @@ return {
             if result.code == 0 then
               local ok = pcall(function() require("dap-python").setup(python) end)
               if ok then
-                -- FIX: keymaps registered only after adapter is confirmed ready
                 register_dap_keymaps()
               end
             else
@@ -132,13 +129,17 @@ return {
                 format  = require("iron.fts.common").bracketed_paste,
               },
             },
-            repl_open_cmd = require("iron.view").bottom(20),
+            -- FIX: iron.view.bottom(20) wrapped in a function so it is
+            -- evaluated lazily when iron opens a REPL, not at config time.
+            -- Eager evaluation at setup() called require("iron.view") before
+            -- the module was guaranteed loaded, causing the entire iron setup
+            -- to silently fail inside pcall on the first .py open.
+            repl_open_cmd = function()
+              return require("iron.view").bottom(20)
+            end,
           },
           keymaps = {
             send_motion       = "<leader>pyrc",
-            -- FIX: visual_send moved off <leader>pyrc to avoid collision.
-            -- Both pointing to the same key caused visual_send in normal
-            -- mode to shadow send_motion silently.
             visual_send       = "<leader>pyrv",
             send_line         = "<leader>pyrl",
             send_until_cursor = "<leader>pyru",
@@ -149,8 +150,8 @@ return {
       end)
     end,
     keys = {
-      { "<leader>pyrs", "<cmd>IronRepl<cr>",    desc = "Python REPL Start" },
-      { "<leader>pyrr", "<cmd>IronRestart<cr>", desc = "Python REPL Restart" },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start" },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart" },
       { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt" },
     },
   },

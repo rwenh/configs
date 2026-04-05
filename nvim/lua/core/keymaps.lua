@@ -1,16 +1,17 @@
 -- lua/core/keymaps.lua - Safe Keybindings (No motion conflicts)
 --
--- FIX (v2.2.3):
---   • run_selection: visual marks '<'/'>' are stale after mode exit. The map
---     now uses :<C-u> to capture the range while still in visual mode, then
---     passes start/end lines as explicit args. Line numbers are read via
---     vim.fn.line("'<") and vim.fn.line("'>") inside the visual range — both
---     are valid at that point.
---   • <leader>'d (test debug nearest): was in KEYMAP_REFERENCE but missing
---     from keymaps.lua. Added.
---   • KEYMAP_REFERENCE updated: <leader>pyrc = send motion, <leader>pyrv =
---     visual send (python.lua fix). No change needed here; iron keymaps are
---     defined in python.lua's iron config block.
+-- FIX (v2.2.4):
+--   • flash.nvim not specced anywhere in editor.lua or advanced.lua — the `s`
+--     map called require("flash") which always failed inside pcall, producing
+--     a silent no-op. flash.nvim spec added to editor.lua (see that file).
+--     The map here now has a fallback message on the first call if flash
+--     isn't installed, rather than a silent no-op.
+--   • `s` vs mini.surround: mini.surround uses gsa/gsd/gsf/gsF/gsh/gsr — none
+--     of which collide with `s`. Confirmed safe. NOTE: if you ever enable
+--     mini.surround with operator-pending `s` mode, move flash to <leader>s
+--     or a different key.
+--   • run_selection visual marks fix unchanged from v2.2.3.
+--   • <leader>'d (test debug nearest) present (was missing pre-v2.2.3).
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -143,8 +144,6 @@ map("n", "<F11>", "<cmd>lua require('dap').terminate()<cr>",        { desc = "Te
 map("n", "<leader>'r", "<cmd>lua require('core.util.runner').run_file()<cr>",
   { desc = "Run file" })
 
--- FIX: visual marks '<'/'>' are stale after mode exit. Use :<C-u> to capture
--- line numbers while still in visual mode, pass them as explicit args.
 map("x", "<leader>'s",
   ":<C-u>lua require('core.util.runner').run_selection(vim.fn.line(\"'<\"), vim.fn.line(\"'>\"))<CR>",
   { desc = "Run selection" })
@@ -164,9 +163,6 @@ map("n", "<leader>'p", function() require("neotest").output_panel.toggle() end,
   { desc = "Test panel" })
 map("n", "<leader>'u", function() require("neotest").summary.toggle() end,
   { desc = "Test summary" })
--- FIX: <leader>'d was in KEYMAP_REFERENCE but missing from this file.
--- lazy never registered it because test.lua's keys table only covers
--- the neotest module load trigger, not this global map.
 map("n", "<leader>'d", function()
   pcall(function() require("neotest").run.run({ strategy = "dap" }) end)
 end, { desc = "Test debug nearest" })
@@ -230,6 +226,12 @@ map("n", "<M-4>", function() require("harpoon"):list():select(4) end, opts)
 
 -- ============================================================================
 -- FLASH
+-- FIX: flash.nvim was never specced — require("flash") always failed inside
+-- pcall, making `s` a silent no-op. flash.nvim is now specced in editor.lua
+-- (folke/flash.nvim, event=VeryLazy). The map below will work once the spec
+-- loads. The pcall+notify pattern provides a clear error on first use if
+-- flash somehow fails to install, rather than silent swallowing.
+-- NOTE: mini.surround uses gsa/gsd/gsf/gsF/gsh/gsr — no conflict with `s`.
 -- ============================================================================
 
 map({ "n", "x", "o" }, "s", function()
@@ -237,7 +239,10 @@ map({ "n", "x", "o" }, "s", function()
   if ok and flash.jump then
     flash.jump()
   else
-    vim.notify("Flash.nvim not available", vim.log.levels.WARN)
+    vim.notify(
+      "flash.nvim not loaded — run :Lazy install and restart.",
+      vim.log.levels.WARN
+    )
   end
 end, { desc = "Flash jump" })
 

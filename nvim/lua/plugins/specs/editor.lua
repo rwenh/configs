@@ -1,11 +1,15 @@
 -- lua/plugins/specs/editor.lua
 --
--- FIX (v2.2.3):
---   • persistence.nvim: options = vim.opt.sessionoptions:get() was evaluated
---     at spec-load time, before options.lua had set sessionoptions. It always
---     captured the Neovim default ("blank,buffers,curdir,...") not our value.
---     Fixed: pass options as a function so it's evaluated at setup() time,
---     after options.lua has run.
+-- FIX (v2.2.4):
+--   • telescope-fzf-native: build command is a cmake pipeline. When cmake is
+--     absent the build step fails silently (lazy swallows build errors), fzf
+--     native never compiles, and telescope falls back to the slow Lua sorter
+--     with no warning. Added cond guard: if cmake is unavailable, fall back to
+--     the pure-make build (which only needs a C compiler and make, available
+--     on almost all systems). If neither is present the plugin loads without
+--     native sorting — better than a silent half-broken state.
+--   • persistence.nvim: options evaluated lazily via config function so
+--     sessionoptions reflects the value set in options.lua (unchanged).
 
 return {
 
@@ -38,7 +42,6 @@ return {
       "nvim-telescope/telescope-fzf-native.nvim",
       "nvim-tree/nvim-web-devicons",
     },
-    build = "make",
     config = function()
       local ok = pcall(function()
         require("telescope").setup({
@@ -63,7 +66,8 @@ return {
             },
           },
         })
-        require("telescope").load_extension("fzf")
+        -- fzf extension load is a no-op if native build didn't compile
+        pcall(function() require("telescope").load_extension("fzf") end)
       end)
       if not ok then
         vim.notify("telescope setup failed", vim.log.levels.WARN)
@@ -73,8 +77,35 @@ return {
 
   {
     "nvim-telescope/telescope-fzf-native.nvim",
-    build = "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build",
     lazy = true,
+    -- FIX: cmake build fails silently when cmake is absent, leaving telescope
+    -- without native sorting and no user-visible warning. Strategy:
+    --   1. If cmake exists → use the full cmake pipeline (best performance).
+    --   2. If only make/cc exist → use the simple `make` build.
+    --   3. If neither → skip build entirely; telescope still works, just slower.
+    build = (function()
+      if vim.fn.executable("cmake") == 1 then
+        return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build"
+      elseif vim.fn.executable("make") == 1 then
+        return "make"
+      end
+      -- No suitable build tool — return empty string, lazy skips the step.
+      return ""
+    end)(),
+    cond = function()
+      -- Load the plugin even if the native build failed — telescope degrades
+      -- gracefully to the Lua sorter. We just notify the user once.
+      if vim.fn.executable("cmake") == 0 and vim.fn.executable("make") == 0 then
+        vim.schedule(function()
+          vim.notify(
+            "[telescope-fzf-native] cmake and make both unavailable — using slow Lua sorter.\n"
+            .. "Install cmake or make for native sorting performance.",
+            vim.log.levels.WARN
+          )
+        end)
+      end
+      return true
+    end,
   },
 
   {
@@ -258,6 +289,23 @@ return {
     },
   },
 
+  -- FIX: flash.nvim spec added. keymaps.lua maps `s` to flash.jump() but the
+  -- plugin was never specced — require("flash") always failed in pcall.
+  -- event=VeryLazy ensures it loads before any `s` keypress in normal use.
+  {
+    "folke/flash.nvim",
+    event = "VeryLazy",
+    opts  = {
+      modes = {
+        search = { enabled = false }, -- don't hijack /
+        char   = { enabled = false }, -- don't hijack f/t/F/T
+      },
+    },
+    config = function(_, opts)
+      pcall(function() require("flash").setup(opts) end)
+    end,
+  },
+
   { "echasnovski/mini.move",   version = false, event = "VeryLazy",
     config = function() require("mini.move").setup() end },
 
@@ -296,8 +344,6 @@ return {
     },
   },
 
-  -- FIX: options evaluated lazily via config function so sessionoptions
-  -- reflects the value set in options.lua, not Neovim's built-in default.
   {
     "folke/persistence.nvim",
     event = "BufReadPre",
@@ -305,7 +351,6 @@ return {
     config = function()
       require("persistence").setup({
         dir     = vim.fn.stdpath("state") .. "/sessions/",
-        -- Evaluated at setup() time — after options.lua has set sessionoptions
         options = vim.opt.sessionoptions:get(),
         pre_save = nil,
       })

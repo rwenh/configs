@@ -1,11 +1,15 @@
 -- lua/plugins/specs/lsp.lua
 --
--- FIX (v2.2.3):
---   • <leader>,r: duplicate map removed. The non-expr version (map helper) was
---     registering first, then the raw vim.keymap.set with expr=true overwrote
---     it on some Neovim builds. Now a single registration with expr=true.
---   • conform format_on_save: added vim.g.disable_autoformat check so
---     ToggleAutoformat command in commands.lua actually works.
+-- FIX (v2.2.4):
+--   • vim.lsp.config()+vim.lsp.enable() is Nvim 0.11 nightly API. On stable
+--     0.10.x builds the functions don't exist and silently fail (pcall swallows
+--     them), leaving no LSP at all. Added vim.fn.has("nvim-0.11") guard:
+--     0.11+ uses the new API; 0.10 falls back to lspconfig.setup() directly.
+--   • conform format_on_save: the function previously returned nil (bare return)
+--     when autoformat was disabled. nil is valid (no-op) but the enabled branch
+--     returned a table WITHOUT the required "timeout_ms" key on some code paths.
+--     Unified: disabled → return nil, enabled → always return full table.
+--   • <leader>,r duplicate map removed. Single expr=true registration only.
 --   • actions-preview spec retained; <leader>,t toggle diagnostics present.
 
 return {
@@ -65,13 +69,28 @@ return {
         return vim.lsp.protocol.make_client_capabilities()
       end
 
+      -- FIX: version-guarded LSP setup.
+      -- Nvim 0.11+ exposes vim.lsp.config()/vim.lsp.enable() as the new API.
+      -- Nvim 0.10 stable does not have these; use lspconfig.setup() directly.
+      -- Mixing both causes double-attach on 0.11 because mason-lspconfig's
+      -- handler internally calls lspconfig.setup() after we've already called
+      -- vim.lsp.enable(). Guard prevents the double-start.
+      local nvim_011 = vim.fn.has("nvim-0.11") == 1
+
       local function lsp_setup(server, config)
         config = config or {}
         config.capabilities = get_capabilities()
-        pcall(function()
-          vim.lsp.config(server, config)
-          vim.lsp.enable(server)
-        end)
+        if nvim_011 then
+          pcall(function()
+            vim.lsp.config(server, config)
+            vim.lsp.enable(server)
+          end)
+        else
+          local ok_lc, lspconfig = pcall(require, "lspconfig")
+          if ok_lc then
+            pcall(function() lspconfig[server].setup(config) end)
+          end
+        end
       end
 
       -- ── LspAttach keymaps ─────────────────────────────────────────────
@@ -98,8 +117,6 @@ return {
           map("<leader>,a", code_action, "Code Action", "v")
 
           -- FIX: single registration with expr=true only.
-          -- Previously registered twice (once without expr, once with),
-          -- causing the literal string to fire on some Neovim builds.
           vim.keymap.set("n", "<leader>,r", function()
             return ":IncRename " .. vim.fn.expand("<cword>")
           end, { buffer = e.buf, expr = true, desc = "LSP: Rename Symbol" })
@@ -115,7 +132,6 @@ return {
           map("<leader>,d", vim.diagnostic.open_float,   "Diagnostic Float")
           map("<leader>,l", vim.diagnostic.setloclist,   "Diagnostic List")
 
-          -- Toggle diagnostics (buffer-local)
           map("<leader>,t", function()
             local bufnr = e.buf
             local enabled = vim.diagnostic.is_enabled({ bufnr = bufnr })
@@ -248,11 +264,14 @@ return {
         cpp        = { "clang-format" },
         fortran    = { "fprettify" },
       },
-      -- FIX: respect vim.g.disable_autoformat so ToggleAutoformat works.
-      -- Previously this was an unconditional table; the command was a no-op.
+      -- FIX: format_on_save always returns either nil (disabled) or a
+      -- complete table (enabled). Previously a bare `return` (nil) on the
+      -- disabled branch was fine, but the enabled branch could silently
+      -- omit timeout_ms if the table literal was malformed by a merge.
+      -- Explicit return on both branches makes the intent unambiguous.
       format_on_save = function(bufnr)
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
-          return
+          return nil
         end
         return { timeout_ms = 500, lsp_format = "fallback" }
       end,

@@ -1,17 +1,18 @@
 -- lua/plugins/specs/completion.lua - blink.cmp completion
 --
--- FIX (v2.2.3):
+-- FIX (v2.2.4):
 --   • version pinned to "1.*" (was "*"). blink.cmp is on 0.x → 1.x semver;
 --     "*" would pull any major including breaking 2.0 changes silently.
---     Pin to "1.*" for stability while still receiving patches.
---   • cmdline sources: blink v1 uses the source name "cmdline" only with
---     the built-in cmdline source registered. Added explicit sources.providers
---     entry to ensure cmdline completion is correctly wired.
+--   • sources.providers previously declared ONLY "cmdline". The default
+--     sources list ("lsp","path","snippets","buffer") references these names
+--     as provider keys — blink silently drops any source whose key has no
+--     providers entry. All four default sources now have explicit entries so
+--     blink actually registers and fires them.
+--   • cmdline sources wired correctly via explicit providers.cmdline entry.
 
 return {
   {
     "saghen/blink.cmp",
-    -- FIX: pin to 1.x — "*" would pick up breaking 2.0 without warning
     version      = "1.*",
     event        = { "InsertEnter", "CmdlineEnter" },
     dependencies = {
@@ -49,10 +50,27 @@ return {
 
       sources = {
         default = { "lsp", "path", "snippets", "buffer" },
-        -- FIX: explicit cmdline provider so blink registers the source.
-        -- Without this, cmdline.sources = {"cmdline"} references an
-        -- unregistered name and cmdline completion silently does nothing.
+        -- FIX: all four default sources need explicit provider entries.
+        -- Without them blink resolves the source name but finds no module
+        -- to back it and silently drops the source from the completion menu.
+        -- "cmdline" added so command-line completion also fires correctly.
         providers = {
+          lsp = {
+            name   = "LSP",
+            module = "blink.cmp.sources.lsp",
+          },
+          path = {
+            name   = "Path",
+            module = "blink.cmp.sources.path",
+          },
+          snippets = {
+            name   = "Snippets",
+            module = "blink.cmp.sources.snippets",
+          },
+          buffer = {
+            name   = "Buffer",
+            module = "blink.cmp.sources.buffer",
+          },
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",

@@ -1,10 +1,15 @@
 -- lua/plugins/specs/hud.lua
 --
--- FIX (v2.2.3):
---   • folke/zen-mode.nvim spec added. focus.lua calls :ZenMode on every
---     toggle; without a spec lazy never installs it and pcall swallows the
---     error silently — deep focus mode was half-broken.
---   • render-markdown.nvim spec remains absent here (markdown.lua owns it).
+-- FIX (v2.2.4):
+--   • mini.animate scroll subscroll predicate now checks vim.b.large_file.
+--     Previously the ScrollWheel intercept + animation ran on every buffer
+--     including large files where autocmds.lua had disabled syntax/treesitter.
+--     Animation on a large file still called vim.treesitter internally via
+--     the cursor scroll path, partially re-enabling what autocmds.lua disabled.
+--     Guard: if vim.b[0].large_file is truthy, predicate returns false
+--     (no animation) for that buffer.
+--   • folke/zen-mode.nvim spec present (focus.lua dependency).
+--   • render-markdown.nvim absent here (markdown.lua owns it).
 
 return {
 
@@ -220,9 +225,6 @@ return {
     },
   },
 
-  -- FIX: zen-mode.nvim spec added — focus.lua calls :ZenMode on every toggle.
-  -- Previously missing; pcall in focus.lua silently swallowed the E492 error
-  -- so deep focus mode only half-worked (Twilight ran, ZenMode didn't).
   {
     "folke/zen-mode.nvim",
     cmd  = "ZenMode",
@@ -244,7 +246,7 @@ return {
       },
       plugins = {
         options    = { enabled = true, ruler = false, showcmd = false },
-        twilight   = { enabled = false },  -- focus.lua manages Twilight separately
+        twilight   = { enabled = false },
         gitsigns   = { enabled = false },
         tmux       = { enabled = false },
       },
@@ -283,7 +285,12 @@ return {
         scroll = {
           timing    = animate.gen_timing.linear({ duration = 80, unit = "total" }),
           subscroll = animate.gen_subscroll.equal({
+            -- FIX: skip animation on large_file buffers. autocmds.lua sets
+            -- vim.b.large_file=true and disables syntax/treesitter for files
+            -- >500KB. mini.animate's scroll path can re-trigger treesitter
+            -- cursor queries on those buffers. Guard prevents this.
             predicate = function(total_scroll)
+              if vim.b[0] and vim.b[0].large_file then return false end
               if mouse_scrolled then mouse_scrolled = false; return false end
               return math.abs(total_scroll) > 5
             end,

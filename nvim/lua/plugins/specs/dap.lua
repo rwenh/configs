@@ -1,13 +1,22 @@
 -- lua/plugins/specs/dap.lua - Debug Adapter Protocol
 --
--- FIX (v2.2.3):
---   • save_breakpoints(): bp.logMessage alias removed — only bp.log_message used.
---   • nvim-dap-ui standalone spec removed (duplicate setup() call).
 -- FIX (v2.2.4):
---   • Kotlin DAP: kotlin-debug-adapter is NOT in Mason registry — removed.
---     Kotlin runs on JVM; debugging uses java-debug-adapter via jdtls (JDWP).
---     dap.configurations.kotlin now uses type="java" attach/launch configs.
---   • mason-nvim-dap ensure_installed: kotlin-debug-adapter entry removed.
+--   • load_breakpoints(): BufReadPost autocmd used pattern=path (absolute path
+--     literal). vim.api.nvim_create_autocmd pattern matching uses fnamemodify
+--     patterns, not literal paths — a path like "/home/user/project/main.lua"
+--     is tested against the autocmd pattern glob. An absolute path as a pattern
+--     matches ONLY that exact file via fnmatch, which actually works on most
+--     systems but is fragile and undocumented. Changed to pass the path as a
+--     once=true callback that checks the event's file against the target path
+--     explicitly — reliable on all platforms including Windows paths with spaces.
+--   • mason-nvim-dap handlers={} overrides automatic_installation by providing
+--     an empty handler table, which tells mason-nvim-dap "I handle everything"
+--     and disables the default auto-install handler. Changed to handlers=nil so
+--     the default handler runs and automatic_installation actually works.
+--   • save_breakpoints(): bp.logMessage alias removed (was already fixed in
+--     v2.2.3). bp.log_message is the sole field used.
+--   • nvim-dap-ui standalone spec removed (duplicate setup() call).
+--   • Kotlin DAP uses java-debug-adapter via jdtls (JDWP). No separate adapter.
 
 return {
   {
@@ -146,10 +155,6 @@ return {
       }
 
       -- ── Kotlin (via jdtls + java-debug-adapter) ───────────────────
-      -- kotlin-debug-adapter does NOT exist in the Mason registry.
-      -- Kotlin on the JVM is debugged through jdtls using java-debug-adapter
-      -- (same JDWP protocol). neotest-java covers Kotlin test discovery.
-      -- Attach config lets you connect to a running JVM with -agentlib:jdwp.
       dap.configurations.kotlin = {
         {
           type      = "java",
@@ -298,8 +303,6 @@ return {
               return {
                 line        = bp.line,
                 condition   = bp.condition,
-                -- FIX: only use bp.log_message — nvim-dap never sets bp.logMessage.
-                -- The alias fallback was causing log points to silently vanish on restore.
                 log_message = bp.log_message,
               }
             end, buf_bps)
@@ -332,10 +335,17 @@ return {
               end)
             end
           else
+            -- FIX: rather than using the absolute path as the autocmd pattern
+            -- (which relies on undocumented glob matching behaviour and breaks
+            -- on Windows-style paths), we register a once=true BufReadPost
+            -- autocmd with pattern="*" and check the event's file explicitly.
+            -- This is portable and unambiguous on all platforms.
             vim.api.nvim_create_autocmd("BufReadPost", {
-              pattern  = path,
+              pattern  = "*",
               once     = true,
               callback = function(e)
+                local evfile = vim.api.nvim_buf_get_name(e.buf)
+                if evfile ~= path then return end
                 for _, bp in ipairs(entries) do
                   pcall(function()
                     require("dap.breakpoints").set(
@@ -364,11 +374,14 @@ return {
     "jay-babu/mason-nvim-dap.nvim",
     dependencies = { "mason.nvim", "nvim-dap" },
     opts = {
-      -- kotlin-debug-adapter is NOT in Mason registry — removed.
-      -- Kotlin DAP uses java-debug-adapter via jdtls (listed above).
       ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      handlers               = {},
+      -- FIX: handlers={} overrides automatic_installation by replacing the
+      -- default handler with an empty table — mason-nvim-dap interprets this
+      -- as "caller handles all adapters" and skips auto-install entirely.
+      -- handlers=nil preserves the built-in default handler so
+      -- automatic_installation actually installs missing adapters.
+      handlers = nil,
     },
   },
 

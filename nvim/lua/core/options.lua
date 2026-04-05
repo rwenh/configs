@@ -1,13 +1,16 @@
 -- lua/core/options.lua - Neovim options (Nvim 0.11+)
 --
--- FIX (v2.2.3):
---   • wrap: added showbreak and breakindentopt so wrapped lines are visually
---     consistent across filetypes. Previously wrap=true with no showbreak
---     produced ragged line continuations.
---   • ttimeoutlen raised from 10ms → 50ms. 10ms caused dropped escape
---     sequences on SSH sessions with >10ms RTT (arrow keys, alt-sequences).
---     50ms is still imperceptible to humans and safe on localhost.
---   • clipboard: guard unchanged (headless/SSH safety).
+-- FIX (v2.2.4):
+--   • Treesitter folding activated here via foldmethod/foldexpr. The dead
+--     fold={enable=true} key was removed from treesitter.lua opts (it had no
+--     effect). The canonical way to enable treesitter folding is:
+--       vim.opt.foldmethod = "expr"
+--       vim.opt.foldexpr   = "nvim_treesitter#foldexpr()"
+--     Both set here AFTER the ufo fold options so ufo can override foldexpr
+--     with its own provider on BufEnter (ufo takes precedence at runtime).
+--   • wrap: showbreak and breakindentopt unchanged.
+--   • ttimeoutlen: 50ms unchanged.
+--   • clipboard: guard unchanged.
 
 local opt = vim.opt
 local g   = vim.g
@@ -22,7 +25,6 @@ opt.signcolumn     = "yes:1"
 opt.wrap           = true
 opt.linebreak      = true
 opt.breakindent    = true
--- FIX: showbreak + breakindentopt make wrapped lines readable and consistent
 opt.showbreak      = "↳ "
 opt.breakindentopt = "shift:2,min:40"
 opt.mouse          = "a"
@@ -54,7 +56,6 @@ opt.shiftwidth  = 2
 opt.softtabstop = 2
 opt.tabstop     = 2
 opt.autoindent  = true
--- smartindent omitted: conflicts with treesitter indent on Python comments.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISPLAY
@@ -80,13 +81,21 @@ opt.completeopt = { "menu", "menuone", "noselect" }
 opt.pumheight   = 15
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- FOLDING (nvim-ufo)
+-- FOLDING (nvim-ufo + treesitter)
 -- ═══════════════════════════════════════════════════════════════════════════
 
 opt.foldcolumn     = "1"
 opt.foldlevel      = 99
 opt.foldlevelstart = 99
 opt.foldenable     = true
+
+-- FIX: treesitter folding requires foldmethod=expr + foldexpr set in vim.opt.
+-- The fold={enable=true} key inside nvim-treesitter's opts table has no effect
+-- (configs.setup() does not handle it). nvim-ufo overrides foldexpr at runtime
+-- on BufEnter for managed buffers; these values serve as the baseline for
+-- buffers ufo doesn't manage (plain text, help, etc.).
+opt.foldmethod = "expr"
+opt.foldexpr   = "nvim_treesitter#foldexpr()"
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WINDOW
@@ -101,8 +110,6 @@ opt.winminwidth = 10
 
 opt.updatetime  = 200
 opt.timeoutlen  = 500
--- FIX: raised from 10ms → 50ms. 10ms drops escape sequences over SSH (>10ms RTT).
--- 50ms is imperceptible locally and safe for terminal multiplexers.
 opt.ttimeoutlen = 50
 
 -- ═══════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,12 @@
 -- nvim/lua/plugins/specs/advanced.lua
 -- Advanced features: escape handling, navigation, UI enhancements, motion, icons
+--
+-- FIX (v2.2.4):
+--   • nvim-ufo provider_selector returned {"treesitter","indent"} for every
+--     buffer unconditionally. Buffers marked vim.b.large_file=true by
+--     autocmds.lua have foldmethod=manual — ufo attempted to attach a
+--     treesitter provider and errored silently, then left fold state broken.
+--     Guard added: large_file buffers return "" (ufo detaches gracefully).
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -258,7 +265,14 @@ return {
             },
             open_fold_hl_timeout    = 400,
             close_fold_kinds_for_ft = { default = { "imports", "comment" } },
-            provider_selector = function(_bufnr, _filetype, _buftype)
+            -- FIX: guard large_file buffers. autocmds.lua sets foldmethod=manual
+            -- on files >500KB (vim.b.large_file=true). ufo tries to attach a
+            -- treesitter provider regardless and errors. Returning "" tells ufo
+            -- to detach gracefully and leave the manual fold method intact.
+            provider_selector = function(bufnr, _filetype, _buftype)
+                if vim.b[bufnr] and vim.b[bufnr].large_file then
+                    return ""
+                end
                 return { "treesitter", "indent" }
             end,
         },
