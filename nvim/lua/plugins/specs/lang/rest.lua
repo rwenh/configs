@@ -1,4 +1,10 @@
 -- lua/plugins/specs/lang/rest.lua - REST client (v2 API)
+--
+-- FIX (v2.2.3):
+--   • rest-nvim v2 dropped the Lua require("rest-nvim").run() / .preview() /
+--     .run_last() / .select_env() API entirely. All calls are now command-
+--     based: :Rest run, :Rest run last, :Rest preview, :Rest env select.
+--     The old Lua calls returned nil/error silently — requests never fired.
 
 return {
   {
@@ -26,16 +32,22 @@ return {
         behavior = {
           decode_url        = true,
           show_info         = { url = true, headers = true, http_info = true, curl_command = true },
-          statistics        = { enable = true, stats = { { "total_time", "Time taken:" }, { "size_download_t", "Download size:" } } },
-          formatters        = { json = "jq", html = { cmd = { "prettier", "--parser", "html" } } },
+          statistics        = { enable = true, stats = {
+            { "total_time", "Time taken:" },
+            { "size_download_t", "Download size:" },
+          }},
+          formatters = {
+            json = "jq",
+            html = { cmd = { "prettier", "--parser", "html" } },
+          },
         },
       },
       highlight = { enable = true, timeout = 750 },
       request = {
         hooks = {
-          encode_url     = true,
-          user_agent     = "rest.nvim",
-          set_content_type = true,
+          encode_url        = true,
+          user_agent        = "rest.nvim",
+          set_content_type  = true,
         },
       },
     },
@@ -43,39 +55,34 @@ return {
       pcall(function() require("rest-nvim").setup(opts) end)
     end,
     keys = {
+      -- FIX: v2 API is command-based — :Rest run / run last / preview / env select
       {
         "<leader>rer",
-        function() pcall(function() require("rest-nvim").run() end) end,
+        "<cmd>Rest run<cr>",
         desc = "REST Run Request",
         ft   = "http",
       },
       {
         "<leader>rel",
-        function() pcall(function() require("rest-nvim").run_last() end) end,
+        "<cmd>Rest run last<cr>",
         desc = "REST Run Last",
         ft   = "http",
       },
       {
         "<leader>rep",
-        function() pcall(function() require("rest-nvim").preview() end) end,
+        "<cmd>Rest preview<cr>",
         desc = "REST Preview Request",
         ft   = "http",
       },
       {
         "<leader>ree",
-        function()
-          local env = vim.fn.input("Env file: ", ".env", "file")
-          if env ~= "" then
-            pcall(function() require("rest-nvim").select_env(env) end)
-          end
-        end,
+        "<cmd>Rest env select<cr>",
         desc = "REST Select Env",
         ft   = "http",
       },
     },
   },
 
-  -- Treesitter parser for .http files
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,

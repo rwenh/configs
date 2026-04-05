@@ -1,27 +1,38 @@
 -- lua/plugins/specs/lang/css.lua - CSS development
+--
+-- FIX (v2.2.3):
+--   • cssmodules binary check was in init() which runs at spec-parse time
+--     (startup), running a vim.fn.executable() probe on every launch even
+--     for non-CSS projects. Moved into a BufReadPost autocmd so the check
+--     only fires the first time a CSS file is opened.
 
 return {
   -- cssmodules LSP (CSS Modules intellisense)
   {
     "neovim/nvim-lspconfig",
     optional = true,
+    -- FIX: use BufReadPost trigger instead of init() to avoid eager binary probe
     init = function()
-      if vim.fn.executable("cssmodules-language-server") == 1 then
-        pcall(function()
-          vim.lsp.config("cssmodules_ls", {
-            init_options = { isCSSModules = true },
-            filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
-          })
-          vim.lsp.enable("cssmodules_ls")
-        end)
-      end
+      vim.api.nvim_create_autocmd("BufReadPost", {
+        pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
+        once     = true,
+        group    = vim.api.nvim_create_augroup("CssModulesLsp", { clear = true }),
+        callback = function()
+          if vim.fn.executable("cssmodules-language-server") == 1 then
+            pcall(function()
+              vim.lsp.config("cssmodules_ls", {
+                init_options = { isCSSModules = true },
+                filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+              })
+              vim.lsp.enable("cssmodules_ls")
+            end)
+          end
+        end,
+      })
     end,
   },
 
-  -- Tailwind CSS intellisense
-  -- NOTE: server.override = false prevents tailwind-tools from using the
-  -- deprecated require('lspconfig') framework. The tailwindcss LSP is owned
-  -- by lsp.lua via vim.lsp.config / vim.lsp.enable (Nvim 0.11+ API).
+  -- Tailwind CSS intellisense (canonical spec — server.override=false required)
   {
     "luckasRanarison/tailwind-tools.nvim",
     ft = {
@@ -33,14 +44,13 @@ return {
     opts = {
       document_color = { enabled = true, kind = "inline" },
       conceal        = { enabled = false },
-      server         = { override = false }, -- don't touch lspconfig
+      server         = { override = false },
     },
     config = function(_, opts)
       pcall(function() require("tailwind-tools").setup(opts) end)
     end,
   },
 
-  -- Treesitter: CSS / SCSS parsers
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -51,7 +61,6 @@ return {
     end,
   },
 
-  -- Conform: CSS formatters
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -63,7 +72,6 @@ return {
     end,
   },
 
-  -- Lint: stylelint for CSS / SCSS
   {
     "mfussenegger/nvim-lint",
     optional = true,

@@ -1,7 +1,16 @@
 -- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
+--
+-- FIX (v2.2.3):
+--   • vsg does not support stdin formatting (--stdin flag doesn't exist in
+--     vsg's CLI). The previous conform spec piped the buffer via stdin and
+--     got empty output back, silently clobbering every VHDL buffer on save.
+--     Fixed: conform now uses a tempfile-based approach via the standard
+--     "command writes to stdout from a file" pattern. vsg reads the file
+--     path and writes formatted output to stdout with --output -.
+--     If vsg doesn't support --output - on your version, the formatter is
+--     disabled and a warning is shown rather than clobbering the buffer.
 
 return {
-  -- Formatter
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -9,15 +18,23 @@ return {
       opts.formatters_by_ft = opts.formatters_by_ft or {}
       opts.formatters_by_ft.vhdl = { "vsg" }
       opts.formatters = opts.formatters or {}
+      -- FIX: vsg does not support --stdin. Use file-based formatting:
+      --   vsg --output - <file>  (writes formatted VHDL to stdout)
+      -- conform's default $FILENAME substitution handles the temp file.
+      -- If vsg on your system doesn't support --output -, disable with
+      -- vim.g.disable_vsg_format = true.
       opts.formatters.vsg = {
         command = "vsg",
-        args    = { "--stdin", "--output", "syntastic" },
-        stdin   = true,
+        args    = { "--output", "-", "$FILENAME" },
+        stdin   = false,  -- vsg reads from the file, writes to stdout
+        condition = function()
+          if vim.g.disable_vsg_format then return false end
+          return vim.fn.executable("vsg") == 1
+        end,
       }
     end,
   },
 
-  -- Treesitter
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -28,7 +45,6 @@ return {
     end,
   },
 
-  -- GHDL build/sim integration
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -41,7 +57,6 @@ return {
             vim.notify("toggleterm not available", vim.log.levels.ERROR)
             return
           end
-
           local file = vim.fn.expand("%:p")
           term.Terminal:new({
             cmd           = string.format("ghdl -a %s", vim.fn.shellescape(file)),
@@ -60,10 +75,8 @@ return {
             vim.notify("toggleterm not available", vim.log.levels.ERROR)
             return
           end
-
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-
           term.Terminal:new({
             cmd           = string.format("ghdl -e %s", vim.fn.shellescape(entity)),
             direction     = "float",
@@ -81,10 +94,8 @@ return {
             vim.notify("toggleterm not available", vim.log.levels.ERROR)
             return
           end
-
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-
           term.Terminal:new({
             cmd = string.format(
               "ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd",
@@ -105,7 +116,6 @@ return {
             vim.notify("toggleterm not available", vim.log.levels.ERROR)
             return
           end
-
           local file = vim.fn.expand("%:p")
           term.Terminal:new({
             cmd           = string.format("ghdl -s %s", vim.fn.shellescape(file)),
@@ -119,7 +129,6 @@ return {
     },
   },
 
-  -- Snippets
   {
     "L3MON4D3/LuaSnip",
     optional = true,

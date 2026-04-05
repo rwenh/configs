@@ -1,7 +1,5 @@
 -- lua/plugins/init.lua - Lazy plugin manager setup
 
--- RECALIBRATION: Safe lazy.nvim initialization with comprehensive error handling
-
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 if not vim.uv.fs_stat(lazypath) then
@@ -25,59 +23,52 @@ end
 
 vim.opt.rtp:prepend(lazypath)
 
--- Safe lazy setup with proper error handling
-local ok, lazy = pcall(function()
-  return require("lazy")
-end)
-
+local ok, lazy = pcall(require, "lazy")
 if not ok then
   vim.notify("Failed to load lazy.nvim", vim.log.levels.ERROR)
   return
 end
 
--- RECALIBRATION: Safe setup with defensive options
 local setup_ok = pcall(function()
   lazy.setup("plugins.specs", {
     defaults = {
-      lazy = true,
+      lazy    = true,
       version = false,
     },
     performance = {
       reset_packpath = true,
       rtp = {
         reset = true,
-        paths = {
-          vim.fn.stdpath("config") .. "/lua",
-        },
+        paths = {},
       },
     },
     checker = {
-      enabled = true,
-      notify = true,
+      enabled   = true,
+      notify    = true,
       frequency = 3600,
     },
     change_detection = {
       enabled = true,
-      notify = true,
+      notify  = true,
     },
     ui = {
-      size = { width = 0.8, height = 0.8 },
-      wrap = true,
+      size   = { width = 0.8, height = 0.8 },
+      wrap   = true,
       border = "rounded",
-      icons = {
-        cmd = "⌘",
-        config = "🔧",
-        event = "📅",
-        ft = "📂",
-        init = "⚙",
-        keys = "🔑",
-        plugin = "🔌",
+      icons  = {
+        cmd     = "⌘",
+        config  = "🔧",
+        event   = "📅",
+        ft      = "📂",
+        init    = "⚙",
+        keys    = "🔑",
+        plugin  = "🔌",
         runtime = "💻",
         require = "🌙",
-        source = "📄",
-        start = "🚀",
-        task = "📋",
-        lazy = "💤",
+        source  = "📄",
+        start   = "🚀",
+        task    = "📋",
+        lazy    = "💤",
       },
     },
     debug = false,

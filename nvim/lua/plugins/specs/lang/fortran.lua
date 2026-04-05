@@ -36,7 +36,6 @@ return {
       {
         "<leader>ftb",
         function()
-          -- RECALIBRATION: Safe toggleterm require
           local ok, term = pcall(require, "toggleterm.terminal")
           if not ok then
             vim.notify("toggleterm not available", vim.log.levels.ERROR)
@@ -47,7 +46,7 @@ return {
           local exe  = vim.fn.expand("%:p:r")
 
           term.Terminal:new({
-            cmd = string.format("gfortran -Wall -o %s %s && %s",
+            cmd           = string.format("gfortran -Wall -o %s %s && %s",
               vim.fn.shellescape(exe),
               vim.fn.shellescape(file),
               vim.fn.shellescape(exe)),

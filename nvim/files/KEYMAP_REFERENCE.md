@@ -303,3 +303,19 @@ Space (` `)
 
 ## EMMET (HTML/CSS/JS/TS)
 - `Ctrl+e` — Expand emmet abbreviation
+
+### Task Runner (Overseer) (`<leader>o*`)
+- `<leader>ot` — Toggle task list
+- `<leader>or` — Run task (picker)
+- `<leader>ob` — Build
+- `<leader>oa` — Task action
+- `<leader>oc` — Clear cache
+- `<leader>os` — Shell command
+
+### HUD Extras
+- `<leader>uF` — Deep focus mode (strips all chrome + Twilight + Zen)
+- `<leader>uT` — Twilight (dim non-active block)
+- `<leader>un` — Dismiss all notifications
+- `<leader>uN` — Notification history
+- `<leader>.B` — Git blame virtual text toggle
+- `<leader>eo` / `-` — Oil inline file editor

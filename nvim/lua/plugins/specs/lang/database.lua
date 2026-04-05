@@ -1,4 +1,10 @@
 -- lua/plugins/specs/lang/database.lua - Database tools
+--
+-- FIX (v2.2.3):
+--   • vim-dadbod-completion ft trigger listed "psql" — Neovim's filetype for
+--     PostgreSQL is "sql" (set via autocmd or ftdetect), never "psql".
+--     The completion source never loaded for .sql files opened as PostgreSQL.
+--     Fixed: "psql" removed; canonical filetypes are sql/mysql/plsql.
 
 return {
   {
@@ -23,15 +29,15 @@ return {
     end,
   },
 
-  -- DB completion source
   {
     "kristijanhusak/vim-dadbod-completion",
-    ft     = { "sql", "mysql", "plsql", "psql" },
+    -- FIX: "psql" is not a Neovim filetype — removed.
+    -- Neovim detects PostgreSQL files as "sql". "plsql" covers PL/SQL (Oracle).
+    ft     = { "sql", "mysql", "plsql" },
     config = function()
-      -- RECALIBRATION: Safe autocmd with augroup
       vim.api.nvim_create_autocmd("FileType", {
         group    = vim.api.nvim_create_augroup("DadbodCompletion", { clear = true }),
-        pattern  = { "sql", "mysql", "plsql", "psql" },
+        pattern  = { "sql", "mysql", "plsql" },
         callback = function()
           pcall(function()
             vim.opt_local.omnifunc = "vim_dadbod_completion#omni"
@@ -41,7 +47,6 @@ return {
     end,
   },
 
-  -- Treesitter parsers for SQL dialects
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,

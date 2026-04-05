@@ -1,18 +1,17 @@
 -- lua/core/bootstrap.lua - Bootstrap configuration (loads FIRST)
+-- Responsibility: set leader keys + clone lazy.nvim if missing.
+-- rtp prepend happens in plugins/init.lua to avoid double-prepend.
 
--- RECALIBRATION: Leader keys set FIRST, before any plugin loading
-
--- Set leader keys (must be before lazy.nvim)
+-- Leader keys MUST be set before any plugin loading
 vim.g.mapleader      = " "
 vim.g.maplocalleader = " "
 
--- Bootstrap lazy.nvim
+-- Clone lazy.nvim if not present
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 if not vim.uv.fs_stat(lazypath) then
   vim.notify("Bootstrapping lazy.nvim — cloning from GitHub…", vim.log.levels.INFO)
 
-  -- RECALIBRATION: Safe git clone with error capture and detailed messaging
   local out = vim.fn.system({
     "git", "clone", "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
@@ -34,7 +33,7 @@ if not vim.uv.fs_stat(lazypath) then
   vim.notify("lazy.nvim bootstrap successful!", vim.log.levels.INFO)
 end
 
--- Prepend lazy to runtimepath
-pcall(function()
-  vim.opt.rtp:prepend(lazypath)
-end)
+-- FIX: rtp prepend moved to plugins/init.lua.
+-- Previously both bootstrap.lua and plugins/init.lua called rtp:prepend(lazypath),
+-- inserting lazy.nvim twice into &runtimepath. Double entries confuse module
+-- resolution on some systems. plugins/init.lua is the sole owner of prepend.

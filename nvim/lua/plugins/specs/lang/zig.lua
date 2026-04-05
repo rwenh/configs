@@ -39,7 +39,6 @@ return {
 
           local codelldb = vim.fn.stdpath("data") .. "/mason/bin/codelldb"
 
-          -- Safe exepath checks with empty string guards
           local lldb = vim.fn.exepath("lldb-vscode")
           if lldb == "" then lldb = vim.fn.exepath("lldb-dap") end
           if lldb == "" then lldb = nil end
@@ -81,7 +80,6 @@ return {
       {
         "<leader>zb",
         function()
-          -- RECALIBRATION: Safe toggleterm require
           local ok, term = pcall(require, "toggleterm.terminal")
           if not ok then
             vim.notify("toggleterm not available", vim.log.levels.ERROR)

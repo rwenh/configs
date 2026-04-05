@@ -1,4 +1,16 @@
--- nvim/lua/plugins/specs/lang/rust.lua - Rust language support
+-- lua/plugins/specs/lang/rust.lua - Rust language support
+--
+-- FIX (v2.2.3):
+--   • rustaceanvim v5 renamed commands:
+--       :RustHoverActions  → :RustLsp hover
+--       :RustCodeAction    → :RustLsp codeAction
+--       :RustDebuggables   → :RustLsp debuggables
+--       :RustTest          → :RustLsp testables
+--     The old names are deprecated stubs; they may be removed in a future
+--     patch. All keymaps updated to the v5 canonical form.
+--   • nvim-coverage duplicate removed. test.lua is the sole owner.
+--     Having it here caused two config() calls; the last one won, silently
+--     resetting any test.lua customisation.
 
 return {
   {
@@ -7,7 +19,6 @@ return {
     lazy = false,
     ft = { "rust" },
     init = function()
-      -- RECALIBRATION: Safe vim.g.rustaceanvim setup
       vim.g.rustaceanvim = {
         server = {
           on_attach = function(client, bufnr)
@@ -32,20 +43,20 @@ return {
                 extraArgs = { "--all-targets", "--all-features" },
               },
               inlayHints = {
-                bindingModeHints = { enable = false },
-                closingBraceHints = { minLines = 25 },
-                closureCaptureHints = { enable = false },
-                closureReturnTypeHints = { enable = false },
-                discriminantHints = { enable = "fieldless" },
-                implicitDrops = { enable = false },
-                lifetimeElisionHints = { enable = "never" },
-                parameterHints = { enable = true },
-                rangeHints = { enable = false },
+                bindingModeHints            = { enable = false },
+                closingBraceHints           = { minLines = 25 },
+                closureCaptureHints         = { enable = false },
+                closureReturnTypeHints      = { enable = false },
+                discriminantHints           = { enable = "fieldless" },
+                implicitDrops               = { enable = false },
+                lifetimeElisionHints        = { enable = "never" },
+                parameterHints              = { enable = true },
+                rangeHints                  = { enable = false },
                 renderColonAfterFunctionParameter = false,
                 typeHints = {
-                  enable = true,
+                  enable                    = true,
                   hideClosureInitialization = false,
-                  hideNamedConstructor = false,
+                  hideNamedConstructor      = false,
                 },
               },
             },
@@ -65,28 +76,13 @@ return {
         },
       }
     end,
+    -- FIX: v5 canonical command syntax — :RustLsp <subcommand>
     keys = {
-      { "<leader>rh", "<cmd>RustHoverActions<CR>", desc = "Rust Hover Actions" },
-      { "<leader>ra", "<cmd>RustCodeAction<CR>", desc = "Rust Code Action" },
-      { "<leader>rd", "<cmd>RustDebuggables<CR>", desc = "Rust Debuggables" },
-      { "<leader>rt", "<cmd>RustTest<CR>", desc = "Rust Test" },
+      { "<leader>rh", "<cmd>RustLsp hover<cr>",        desc = "Rust Hover Actions" },
+      { "<leader>ra", "<cmd>RustLsp codeAction<cr>",   desc = "Rust Code Action" },
+      { "<leader>rd", "<cmd>RustLsp debuggables<cr>",  desc = "Rust Debuggables" },
+      { "<leader>rt", "<cmd>RustLsp testables<cr>",    desc = "Rust Test" },
     },
   },
-
-  {
-    "andythigpen/nvim-coverage",
-    dependencies = { "nvim-lua/plenary.nvim" },
-    cmd = {
-      "Coverage",
-      "CoverageLoad",
-      "CoverageClear",
-      "CoverageHide",
-      "CoverageShow",
-      "CoverageToggle",
-      "CoverageSummary",
-    },
-    opts = {
-      auto_reload = true,
-    },
-  },
+  -- nvim-coverage intentionally removed — test.lua is the sole owner.
 }

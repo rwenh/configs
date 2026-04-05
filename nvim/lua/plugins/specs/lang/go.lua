@@ -7,7 +7,6 @@ return {
     ft    = { "go", "gomod" },
     build = ":lua require('go.install').update_all_sync()",
     config = function()
-      -- RECALIBRATION: Safe setup with defensive options
       local ok = pcall(function()
         require("go").setup({
           lsp_cfg = false,
@@ -24,7 +23,7 @@ return {
       { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go Coverage",      ft = "go" },
       { "<leader>gor", "<cmd>GoRun<cr>",      desc = "Go Run",           ft = "go" },
       { "<leader>gob", "<cmd>GoBuild<cr>",    desc = "Go Build",         ft = "go" },
-      { "<leader>goi", "<cmd>GoImpl<cr>",     desc = "Go Impl",          ft = "go" },
+      { "<leader>goi", "<cmd>GoImpl<cr>",      desc = "Go Impl",          ft = "go" },
       { "<leader>goa", "<cmd>GoAddTag<cr>",   desc = "Go Add Tag",       ft = "go" },
       { "<leader>gom", "<cmd>GoMod<cr>",      desc = "Go Mod",           ft = "go" },
     },

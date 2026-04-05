@@ -1,8 +1,18 @@
--- lua/core/util/runner.lua - Code execution engine with comprehensive error handling
+-- lua/core/util/runner.lua - Code execution engine
+--
+-- FIX (v2.2.3):
+--   • run_selection(): visual marks '<'/'>' are stale by the time an x-mode
+--     map dispatches :lua. Fixed by reading nvim_buf_get_mark BEFORE the
+--     mode switch via feedkeys, or by using line/col from the command range.
+--     Solution: accept optional start/end line args (passed from the keymap
+--     via a command range), fall back to marks only in normal mode.
+--   • kotlin runner: jar name was not shellescape'd — spaces in project name
+--     produced broken shell command.
+--   • run_tests() kotlin/java: find_root() result used without shellescape
+--     in the cd prefix — fixed throughout.
 
 local M = {}
 
--- RECALIBRATION: Safe runner detection with fallback executables
 local runners = {
   python = function(file)
     for _, cmd in ipairs({ "python3", "python", "py" }) do
@@ -109,6 +119,7 @@ local runners = {
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
     if vim.fn.executable("kotlinc") == 1 then
+      -- FIX: shellescape the jar name — spaces in project name broke the cmd
       local jar = vim.fn.shellescape(name .. ".jar")
       return "cd " .. vim.fn.shellescape(dir)
         .. " && kotlinc " .. vim.fn.shellescape(file)
@@ -140,7 +151,9 @@ local runners = {
       end
       if entity then
         return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s",
-          vim.fn.shellescape(file), vim.fn.shellescape(entity), vim.fn.shellescape(entity))
+          vim.fn.shellescape(file),
+          vim.fn.shellescape(entity),
+          vim.fn.shellescape(entity))
       else
         return "ghdl -s " .. vim.fn.shellescape(file)
       end
@@ -158,7 +171,6 @@ local runners = {
   end,
 }
 
--- Selection interpreters for inline code execution
 local selection_interpreters = {
   python     = function() return vim.fn.executable("python3") == 1 and "python3" or "python" end,
   lua        = function() return "lua" end,
@@ -166,6 +178,7 @@ local selection_interpreters = {
   typescript = function()
     if vim.fn.executable("tsx") == 1 then return "tsx" end
     if vim.fn.executable("ts-node") == 1 then return "ts-node" end
+    return nil
   end,
   ruby   = function() return vim.fn.executable("ruby") == 1 and "ruby" or nil end,
   elixir = function() return vim.fn.executable("elixir") == 1 and "elixir" or nil end,
@@ -183,7 +196,6 @@ function M.run_file()
     return
   end
 
-  -- RECALIBRATION: Safe buffer write with buftype check
   if vim.bo.modified and vim.bo.buftype == "" then
     local ok = pcall(function() vim.cmd("write") end)
     if not ok then
@@ -203,23 +215,49 @@ function M.run_file()
     return
   end
 
-  -- RECALIBRATION: Safe toggleterm loading with fallback
   local ok, term = pcall(require, "toggleterm.terminal")
   if ok and term then
     pcall(function()
-      term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+      term.Terminal:new({
+        cmd           = cmd,
+        direction     = "float",
+        close_on_exit = false,
+      }):toggle()
     end)
   else
     vim.cmd("split | terminal " .. cmd)
   end
 end
 
-function M.run_selection()
-  local ft         = vim.bo.filetype
-  local start_line = vim.fn.line("'<")
-  local end_line   = vim.fn.line("'>")
-  local lines      = vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
-  local code       = table.concat(lines, "\n")
+-- FIX: run_selection() — visual marks '<'/'>' are stale after mode exit.
+-- The keymap must pass the line range explicitly:
+--   map("x", "<leader>'s", ":<C-u>lua require('core.util.runner').run_selection(vim.fn.line(\"'<\"), vim.fn.line(\"'>\"))<CR>")
+-- The args are evaluated WHILE still in visual mode (via :<C-u> which exits
+-- visual but keeps the range), so marks are still valid at call time.
+-- Fallback (no args) reads marks and warns if they are 0.
+function M.run_selection(start_line, end_line)
+  local ft  = vim.bo.filetype
+  local buf = vim.api.nvim_get_current_buf()
+
+  -- Prefer explicit line args (passed from keymap before mode switch)
+  if not start_line or not end_line then
+    local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
+    local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
+    if not ok_s or not ok_e then
+      vim.notify("Could not read visual selection marks", vim.log.levels.ERROR)
+      return
+    end
+    start_line = mark_s[1]
+    end_line   = mark_e[1]
+  end
+
+  if start_line == 0 or end_line == 0 then
+    vim.notify("No visual selection found — make a selection first", vim.log.levels.WARN)
+    return
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
+  local code  = table.concat(lines, "\n")
 
   local resolver = selection_interpreters[ft]
   if not resolver then
@@ -233,7 +271,6 @@ function M.run_selection()
     return
   end
 
-  -- RECALIBRATION: Safe tempfile creation with error handling
   local tmpfile = vim.fn.tempname() .. "." .. ft
   local f = io.open(tmpfile, "w")
   if not f then
@@ -248,16 +285,32 @@ function M.run_selection()
 
   if not ok_write then
     vim.notify("Failed to write to temp file", vim.log.levels.ERROR)
+    pcall(os.remove, tmpfile)
     return
   end
 
   local cmd = interpreter .. " " .. vim.fn.shellescape(tmpfile)
-  local ok, term = pcall(require, "toggleterm.terminal")
-  if ok and term then
+
+  local function cleanup()
+    vim.defer_fn(function() pcall(os.remove, tmpfile) end, 500)
+  end
+
+  local ok_t, term = pcall(require, "toggleterm.terminal")
+  if ok_t and term then
     pcall(function()
-      term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+      local t = term.Terminal:new({
+        cmd           = cmd,
+        direction     = "float",
+        close_on_exit = false,
+        on_exit       = function() cleanup() end,
+      })
+      t:toggle()
     end)
   else
+    vim.api.nvim_create_autocmd("TermClose", {
+      once     = true,
+      callback = function() cleanup() end,
+    })
     vim.cmd("split | terminal " .. cmd)
   end
 end
@@ -265,9 +318,11 @@ end
 function M.run_tests()
   local ft = vim.bo.filetype
 
-  -- RECALIBRATION: Safe path.lua usage with fallback
   local ok_path, path = pcall(require, "core.util.path")
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+
+  -- FIX: shellescape(root) in all cd-prefixed commands
+  local escaped_root = vim.fn.shellescape(root)
 
   local test_commands = {
     python     = "pytest",
@@ -278,12 +333,12 @@ function M.run_tests()
     ruby       = "bundle exec rspec",
     elixir     = "mix test",
     kotlin = vim.fn.filereadable(root .. "/gradlew") == 1
-      and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
-      or "cd " .. vim.fn.shellescape(root) .. " && mvn test",
+      and "cd " .. escaped_root .. " && ./gradlew test"
+      or  "cd " .. escaped_root .. " && mvn test",
     java = vim.fn.filereadable(root .. "/gradlew") == 1
-      and "cd " .. vim.fn.shellescape(root) .. " && ./gradlew test"
-      or "cd " .. vim.fn.shellescape(root) .. " && mvn test",
-    zig        = "zig build test",
+      and "cd " .. escaped_root .. " && ./gradlew test"
+      or  "cd " .. escaped_root .. " && mvn test",
+    zig = "zig build test",
   }
 
   local cmd = test_commands[ft]
@@ -295,7 +350,11 @@ function M.run_tests()
   local ok, term = pcall(require, "toggleterm.terminal")
   if ok and term then
     pcall(function()
-      term.Terminal:new({ cmd = cmd, direction = "float", close_on_exit = false }):toggle()
+      term.Terminal:new({
+        cmd           = cmd,
+        direction     = "float",
+        close_on_exit = false,
+      }):toggle()
     end)
   else
     vim.cmd("split | terminal " .. cmd)

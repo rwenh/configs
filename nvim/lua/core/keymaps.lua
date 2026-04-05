@@ -1,5 +1,16 @@
 -- lua/core/keymaps.lua - Safe Keybindings (No motion conflicts)
--- Strategy: Use punctuation keys after leader to avoid conflicts with vim motions
+--
+-- FIX (v2.2.3):
+--   • run_selection: visual marks '<'/'>' are stale after mode exit. The map
+--     now uses :<C-u> to capture the range while still in visual mode, then
+--     passes start/end lines as explicit args. Line numbers are read via
+--     vim.fn.line("'<") and vim.fn.line("'>") inside the visual range — both
+--     are valid at that point.
+--   • <leader>'d (test debug nearest): was in KEYMAP_REFERENCE but missing
+--     from keymaps.lua. Added.
+--   • KEYMAP_REFERENCE updated: <leader>pyrc = send motion, <leader>pyrv =
+--     visual send (python.lua fix). No change needed here; iron keymaps are
+--     defined in python.lua's iron config block.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -8,36 +19,29 @@ local opts = { noremap = true, silent = true }
 -- BASIC EDITING
 -- ============================================================================
 
--- NOTE: jk/kj insert escape handled by better-escape.nvim (advanced.lua)
--- Native mappings removed to prevent double-handling and redundant timeoutlen lag.
-
--- Better indenting (keep selection)
 map("v", "<", "<gv", opts)
 map("v", ">", ">gv", opts)
 
--- Move lines (Alt+j/k)
 map("n", "<A-j>", "<cmd>move .+1<cr>==", opts)
 map("n", "<A-k>", "<cmd>move .-2<cr>==", opts)
--- Use "x" (visual only) not "v" (visual + select)
 map("x", "<A-j>", ":move '>+1<cr>gv=gv", opts)
 map("x", "<A-k>", ":move '<-2<cr>gv=gv", opts)
 
--- Clear search highlight
 map("n", "<Esc>", "<cmd>nohlsearch<cr>", opts)
 
 -- ============================================================================
 -- WINDOW MANAGEMENT
 -- ============================================================================
 
-map("n", "<leader>wq", "<cmd>wq<cr>", { desc = "Save & Quit" })
-map("n", "<leader>ww", "<cmd>w<cr>",  { desc = "Save" })
-map("n", "<leader>qq", "<cmd>q<cr>",  { desc = "Quit" })
-map("n", "<leader>qa", "<cmd>qa<cr>", { desc = "Quit all" })
+map("n", "<leader>wq", "<cmd>wq<cr>",  { desc = "Save & Quit" })
+map("n", "<leader>ww", "<cmd>w<cr>",   { desc = "Save" })
+map("n", "<leader>qq", "<cmd>q<cr>",   { desc = "Quit" })
+map("n", "<leader>qa", "<cmd>qa<cr>",  { desc = "Quit all" })
 
-map("n", "<leader>sv", "<cmd>vsplit<cr>",  { desc = "Vertical split" })
-map("n", "<leader>sh", "<cmd>split<cr>",   { desc = "Horizontal split" })
-map("n", "<leader>se", "<C-w>=",           { desc = "Equal splits" })
-map("n", "<leader>sx", "<cmd>close<cr>",   { desc = "Close split" })
+map("n", "<leader>sv", "<cmd>vsplit<cr>",          { desc = "Vertical split" })
+map("n", "<leader>sh", "<cmd>split<cr>",           { desc = "Horizontal split" })
+map("n", "<leader>se", "<C-w>=",                   { desc = "Equal splits" })
+map("n", "<leader>sx", "<cmd>close<cr>",           { desc = "Close split" })
 map("n", "<leader>sm", "<cmd>MaximizerToggle<cr>", { desc = "Maximize split" })
 
 map("n", "<C-h>", "<C-w>h", opts)
@@ -65,10 +69,10 @@ map("n", "[b", "<cmd>bprev<cr>", { desc = "Prev buffer" })
 -- FILE EXPLORER
 -- ============================================================================
 
-map("n", "<leader>ee", "<cmd>NvimTreeToggle<cr>",   { desc = "Toggle explorer" })
-map("n", "<leader>ef", "<cmd>NvimTreeFindFile<cr>", { desc = "Find file in explorer" })
-map("n", "<leader>ec", "<cmd>NvimTreeCollapse<cr>", { desc = "Collapse explorer" })
-map("n", "<leader>er", "<cmd>NvimTreeRefresh<cr>",  { desc = "Refresh explorer" })
+map("n", "<leader>ee", "<cmd>Neotree reveal<cr>",  { desc = "Toggle explorer" })
+map("n", "<leader>ef", "<cmd>Neotree focus<cr>",   { desc = "Focus explorer" })
+map("n", "<leader>ec", "<cmd>Neotree close<cr>",   { desc = "Close explorer" })
+map("n", "<leader>er", "<cmd>Neotree refresh<cr>", { desc = "Refresh explorer" })
 
 -- ============================================================================
 -- TELESCOPE FIND
@@ -85,19 +89,10 @@ map("n", "<leader>fc", "<cmd>Telescope commands<cr>",    { desc = "Find commands
 map("n", "<leader>fr", "<cmd>TelescopeResume<cr>",       { desc = "Resume last search" })
 map("n", "<leader>fo", "<cmd>Telescope oldfiles<cr>",    { desc = "Recent files" })
 
--- NOTE: <C-s> is XOFF in some terminals over SSH — may freeze in remote sessions.
 map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
 
 -- ============================================================================
--- LSP & CODE ACTIONS
--- NOTE: All LSP buffer-local keymaps (gd, gD, gi, gr, K, <leader>k,
--- <leader>,*, ]d, [d) are defined in lsp.lua's LspAttach autocmd — sole owner.
--- ============================================================================
-
--- ============================================================================
 -- GIT OPERATIONS
--- NOTE: ]h/[h hunk navigation is defined in git.lua's gitsigns on_attach —
--- sole owner. Defining them here caused double registration on every git buffer.
 -- ============================================================================
 
 map("n", "<leader>.g", "<cmd>LazyGit<cr>",                { desc = "LazyGit" })
@@ -113,7 +108,8 @@ map("n", "<leader>.r", "<cmd>Gitsigns reset_hunk<cr>",    { desc = "Reset hunk" 
 -- DEBUG (DAP)
 -- ============================================================================
 
-map("n", "<leader>;b", "<cmd>lua require('dap').toggle_breakpoint()<cr>", { desc = "Toggle breakpoint" })
+map("n", "<leader>;b", "<cmd>lua require('dap').toggle_breakpoint()<cr>",
+  { desc = "Toggle breakpoint" })
 map("n", "<leader>;B", function()
   require("dap").set_breakpoint(vim.fn.input("Breakpoint condition: "))
 end, { desc = "Conditional breakpoint" })
@@ -132,7 +128,7 @@ map("n", "<leader>;x", "<cmd>lua require('dap').terminate()<cr>",      { desc = 
 map("n", "<leader>;h", "<cmd>lua require('dap.ui.widgets').hover()<cr>",   { desc = "Debug hover" })
 map("n", "<leader>;p", "<cmd>lua require('dap.ui.widgets').preview()<cr>", { desc = "Debug preview" })
 
-map("n", "<F5>",  "<cmd>lua require('dap').continue()<cr>",        { desc = "Continue" })
+map("n", "<F5>",  "<cmd>lua require('dap').continue()<cr>",         { desc = "Continue" })
 map("n", "<F6>",  "<cmd>lua require('dap').toggle_breakpoint()<cr>",{ desc = "Toggle breakpoint" })
 map("n", "<F7>",  "<cmd>lua require('dap').step_into()<cr>",        { desc = "Step into" })
 map("n", "<F8>",  "<cmd>lua require('dap').step_over()<cr>",        { desc = "Step over" })
@@ -144,16 +140,36 @@ map("n", "<F11>", "<cmd>lua require('dap').terminate()<cr>",        { desc = "Te
 -- RUN & TEST
 -- ============================================================================
 
-map("n", "<leader>'r", "<cmd>lua require('core.util.runner').run_file()<cr>",     { desc = "Run file" })
-map("x", "<leader>'s", "<cmd>lua require('core.util.runner').run_selection()<cr>",{ desc = "Run selection" })
-map("n", "<leader>'t", "<cmd>lua require('core.util.runner').run_tests()<cr>",    { desc = "Run tests" })
+map("n", "<leader>'r", "<cmd>lua require('core.util.runner').run_file()<cr>",
+  { desc = "Run file" })
 
-map("n", "<leader>'n", function() require("neotest").run.run() end,                  { desc = "Test nearest" })
-map("n", "<leader>'f", function() require("neotest").run.run(vim.fn.expand("%")) end, { desc = "Test file" })
-map("n", "<leader>'a", function() require("neotest").run.run(vim.uv.cwd()) end,      { desc = "Test all" })
-map("n", "<leader>'o", function() require("neotest").output.open() end,              { desc = "Test output" })
-map("n", "<leader>'p", function() require("neotest").output_panel.toggle() end,      { desc = "Test panel" })
-map("n", "<leader>'u", function() require("neotest").summary.toggle() end,           { desc = "Test summary" })
+-- FIX: visual marks '<'/'>' are stale after mode exit. Use :<C-u> to capture
+-- line numbers while still in visual mode, pass them as explicit args.
+map("x", "<leader>'s",
+  ":<C-u>lua require('core.util.runner').run_selection(vim.fn.line(\"'<\"), vim.fn.line(\"'>\"))<CR>",
+  { desc = "Run selection" })
+
+map("n", "<leader>'t", "<cmd>lua require('core.util.runner').run_tests()<cr>",
+  { desc = "Run tests" })
+
+map("n", "<leader>'n", function() require("neotest").run.run() end,
+  { desc = "Test nearest" })
+map("n", "<leader>'f", function() require("neotest").run.run(vim.fn.expand("%")) end,
+  { desc = "Test file" })
+map("n", "<leader>'a", function() require("neotest").run.run(vim.uv.cwd()) end,
+  { desc = "Test all" })
+map("n", "<leader>'o", function() require("neotest").output.open() end,
+  { desc = "Test output" })
+map("n", "<leader>'p", function() require("neotest").output_panel.toggle() end,
+  { desc = "Test panel" })
+map("n", "<leader>'u", function() require("neotest").summary.toggle() end,
+  { desc = "Test summary" })
+-- FIX: <leader>'d was in KEYMAP_REFERENCE but missing from this file.
+-- lazy never registered it because test.lua's keys table only covers
+-- the neotest module load trigger, not this global map.
+map("n", "<leader>'d", function()
+  pcall(function() require("neotest").run.run({ strategy = "dap" }) end)
+end, { desc = "Test debug nearest" })
 
 -- ============================================================================
 -- TERMINAL
@@ -171,33 +187,42 @@ map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 -- UI TOGGLES
 -- ============================================================================
 
-map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>", { desc = "Toggle theme" })
-map("n", "<leader>uw", "<cmd>ToggleWrap<cr>",                         { desc = "Toggle wrap" })
-map("n", "<leader>us", "<cmd>ToggleSpell<cr>",                        { desc = "Toggle spell" })
-map("n", "<leader>un", "<cmd>set number! relativenumber!<cr>",        { desc = "Toggle line numbers" })
-map("n", "<leader>uz", "<cmd>ZenMode<cr>",                            { desc = "Zen mode" })
--- NOTE: <leader>uu removed — undotree canonical binding is <leader>xu (advanced.lua)
+map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>",
+  { desc = "Toggle theme" })
+map("n", "<leader>uw", "<cmd>ToggleWrap<cr>",
+  { desc = "Toggle wrap" })
+map("n", "<leader>us", "<cmd>ToggleSpell<cr>",
+  { desc = "Toggle spell" })
+map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",
+  { desc = "Toggle line numbers" })
+map("n", "<leader>uz", "<cmd>ZenMode<cr>",
+  { desc = "Zen mode" })
 
 -- ============================================================================
 -- SEARCH & REPLACE
 -- ============================================================================
 
-map("n", "<leader>/s", function() require("spectre").open() end,                             { desc = "Search & replace" })
-map("n", "<leader>/w", function() require("spectre").open_visual({ select_word = true }) end,{ desc = "Replace word" })
-map("n", "<leader>/f", function() require("spectre").open_file_search() end,                 { desc = "Replace in file" })
+map("n", "<leader>/s", function() require("spectre").open() end,
+  { desc = "Search & replace" })
+map("n", "<leader>/w", function() require("spectre").open_visual({ select_word = true }) end,
+  { desc = "Replace word" })
+map("n", "<leader>/f", function() require("spectre").open_file_search() end,
+  { desc = "Replace in file" })
 
 -- ============================================================================
 -- HARPOON
 -- ============================================================================
 
-map("n", "<leader>ha", function() require("harpoon"):list():add() end,                                    { desc = "Harpoon add" })
-map("n", "<leader>hm", function() require("harpoon").ui:toggle_quick_menu(require("harpoon"):list()) end, { desc = "Harpoon menu" })
+map("n", "<leader>ha", function() require("harpoon"):list():add() end,
+  { desc = "Harpoon add" })
+map("n", "<leader>hm", function()
+  require("harpoon").ui:toggle_quick_menu(require("harpoon"):list())
+end, { desc = "Harpoon menu" })
 map("n", "<leader>h1", function() require("harpoon"):list():select(1) end, { desc = "Harpoon 1" })
 map("n", "<leader>h2", function() require("harpoon"):list():select(2) end, { desc = "Harpoon 2" })
 map("n", "<leader>h3", function() require("harpoon"):list():select(3) end, { desc = "Harpoon 3" })
 map("n", "<leader>h4", function() require("harpoon"):list():select(4) end, { desc = "Harpoon 4" })
 
--- <M-number> (Alt+number) — widely supported vs <C-number> which most terminals don't transmit
 map("n", "<M-1>", function() require("harpoon"):list():select(1) end, opts)
 map("n", "<M-2>", function() require("harpoon"):list():select(2) end, opts)
 map("n", "<M-3>", function() require("harpoon"):list():select(3) end, opts)
@@ -220,17 +245,17 @@ end, { desc = "Flash jump" })
 -- MISC UTILITIES
 -- ============================================================================
 
-map("n", "<leader>xc", "<cmd>CopyPath<cr>",     { desc = "Copy file path" })
-map("n", "<leader>xr", "<cmd>CopyRelPath<cr>",  { desc = "Copy relative path" })
-map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",     { desc = "Change to file dir" })
-map("n", "<leader>xe", "<cmd>!chmod +x %<cr>",  { desc = "Make executable" })
-map("n", "<leader>xm", "<cmd>CleanUp<cr>",       { desc = "Clean memory" })
-map("n", "<leader>xh", "<cmd>Health<cr>",        { desc = "Health check" })
-map("n", "<leader>xp", "<cmd>ProjectRoot<cr>",   { desc = "Go to project root" })
-map("n", "<leader>xl", "<cmd>Lazy<cr>",          { desc = "Lazy" })
-map("n", "<leader>xn", "<cmd>Mason<cr>",         { desc = "Mason" })
-map("n", "<leader>xx", "<cmd>Trouble<cr>",       { desc = "Trouble diagnostics" })
-map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>",{ desc = "Undo tree" })
+map("n", "<leader>xc", "<cmd>CopyPath<cr>",      { desc = "Copy file path" })
+map("n", "<leader>xr", "<cmd>CopyRelPath<cr>",   { desc = "Copy relative path" })
+map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",      { desc = "Change to file dir" })
+map("n", "<leader>xe", "<cmd>!chmod +x %<cr>",   { desc = "Make executable" })
+map("n", "<leader>xm", "<cmd>CleanUp<cr>",        { desc = "Clean memory" })
+map("n", "<leader>xh", "<cmd>Health<cr>",         { desc = "Health check" })
+map("n", "<leader>xp", "<cmd>ProjectRoot<cr>",    { desc = "Go to project root" })
+map("n", "<leader>xl", "<cmd>Lazy<cr>",           { desc = "Lazy" })
+map("n", "<leader>xn", "<cmd>Mason<cr>",          { desc = "Mason" })
+map("n", "<leader>xx", "<cmd>Trouble<cr>",        { desc = "Trouble diagnostics" })
+map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
 
 -- ============================================================================
 -- TODO COMMENTS
@@ -240,7 +265,37 @@ map("n", "]t", function() require("todo-comments").jump_next() end, { desc = "Ne
 map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "Previous todo" })
 
 -- ============================================================================
--- LANGUAGE-SPECIFIC
--- These are set in language-specific plugin files:
--- Python: <leader>py*  Rust: <leader>rs*  Go: <leader>go*  Java: <leader>jv*
+-- OVERSEER
 -- ============================================================================
+
+map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
+map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
+map("n", "<leader>ob", "<cmd>OverseerBuild<cr>",  { desc = "Build" })
+
+-- ============================================================================
+-- OIL
+-- ============================================================================
+
+map("n", "<leader>eo", "<cmd>Oil<cr>", { desc = "Oil file editor" })
+map("n", "-",          "<cmd>Oil<cr>", { desc = "Open parent dir" })
+
+-- ============================================================================
+-- NOICE
+-- ============================================================================
+
+map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications" })
+map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history" })
+
+-- ============================================================================
+-- FOCUS & TWILIGHT
+-- ============================================================================
+
+map("n", "<leader>uF", function() require("core.focus").toggle() end,
+  { desc = "Deep focus mode" })
+map("n", "<leader>uT", "<cmd>Twilight<cr>", { desc = "Twilight" })
+
+-- ============================================================================
+-- BLAME
+-- ============================================================================
+
+map("n", "<leader>.B", "<cmd>BlameToggle<cr>", { desc = "Git blame HUD" })

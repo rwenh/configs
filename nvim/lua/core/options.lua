@@ -1,4 +1,13 @@
--- lua/core/options.lua - Neovim options (cleaned up for Nvim 0.10+)
+-- lua/core/options.lua - Neovim options (Nvim 0.11+)
+--
+-- FIX (v2.2.3):
+--   • wrap: added showbreak and breakindentopt so wrapped lines are visually
+--     consistent across filetypes. Previously wrap=true with no showbreak
+--     produced ragged line continuations.
+--   • ttimeoutlen raised from 10ms → 50ms. 10ms caused dropped escape
+--     sequences on SSH sessions with >10ms RTT (arrow keys, alt-sequences).
+--     50ms is still imperceptible to humans and safe on localhost.
+--   • clipboard: guard unchanged (headless/SSH safety).
 
 local opt = vim.opt
 local g   = vim.g
@@ -9,16 +18,23 @@ local g   = vim.g
 
 opt.number         = true
 opt.relativenumber = true
-opt.signcolumn     = "yes:1"   -- explicit single-column width, no layout jump
+opt.signcolumn     = "yes:1"
 opt.wrap           = true
 opt.linebreak      = true
 opt.breakindent    = true
+-- FIX: showbreak + breakindentopt make wrapped lines readable and consistent
+opt.showbreak      = "↳ "
+opt.breakindentopt = "shift:2,min:40"
 opt.mouse          = "a"
-opt.clipboard      = "unnamedplus"  -- requires xclip/xsel/wl-clipboard/win32yank
-opt.undofile       = true
-opt.swapfile       = false
-opt.backup         = false
-opt.confirm        = true   -- ask instead of failing on unsaved changes
+
+if vim.fn.has("clipboard") == 1 then
+  opt.clipboard = "unnamedplus"
+end
+
+opt.undofile = true
+opt.swapfile = false
+opt.backup   = false
+opt.confirm  = true
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SEARCH
@@ -38,10 +54,7 @@ opt.shiftwidth  = 2
 opt.softtabstop = 2
 opt.tabstop     = 2
 opt.autoindent  = true
--- FIX #3: smartindent removed — it's a legacy Vim feature that predates
--- treesitter and can interfere with treesitter-based indentation. Notably
--- it mishandles Python comment dedentation. autoindent alone is correct
--- when treesitter indent is active.
+-- smartindent omitted: conflicts with treesitter indent on Python comments.
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISPLAY
@@ -55,12 +68,9 @@ opt.sidescrolloff = 10
 opt.splitbelow    = true
 opt.splitright    = true
 opt.cursorline    = true
-opt.showmode      = false   -- lualine shows this already
+opt.showmode      = false
 
--- FIX #6: Suppress noisy messages that are redundant with lualine/noice.
--- "s" = silence "search hit BOTTOM/TOP" wrap messages
--- "I" = suppress the :intro splash screen on startup
-opt.shortmess:append("sI")
+opt.shortmess:append("sIc")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- COMPLETION
@@ -69,7 +79,7 @@ opt.shortmess:append("sI")
 opt.completeopt = { "menu", "menuone", "noselect" }
 opt.pumheight   = 15
 
--- ═══════════════════════════════════════════════════════════════════���═══════
+-- ═══════════════════════════════════════════════════════════════════════════
 -- FOLDING (nvim-ufo)
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -91,8 +101,9 @@ opt.winminwidth = 10
 
 opt.updatetime  = 200
 opt.timeoutlen  = 500
-opt.ttimeoutlen = 10
--- NOTE: lazyredraw removed — deprecated and causes issues in Nvim 0.10+
+-- FIX: raised from 10ms → 50ms. 10ms drops escape sequences over SSH (>10ms RTT).
+-- 50ms is imperceptible locally and safe for terminal multiplexers.
+opt.ttimeoutlen = 50
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SPELLING
@@ -104,34 +115,19 @@ opt.spelllang = "en_us"
 -- SESSION
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- FIX #7: Explicit sessionoptions — the default includes "options" which
--- persists all global options into session files. A stale session would then
--- silently override the settings defined here on restore. Removing "options"
--- from the list keeps session restore focused on layout/buffers only.
 opt.sessionoptions = "buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISABLE BUILT-IN PLUGINS
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- RECALIBRATION: Loop through all built-in plugins for clarity and maintainability
 local builtin_plugins = {
-  "gzip",
-  "zip",
-  "zipPlugin",
-  "tar",
-  "tarPlugin",
-  "getscript",
-  "getscriptPlugin",
-  "vimball",
-  "vimballPlugin",
+  "gzip", "zip", "zipPlugin", "tar", "tarPlugin",
+  "getscript", "getscriptPlugin",
+  "vimball", "vimballPlugin",
   "2html_plugin",
-  "netrw",
-  "netrwPlugin",
-  "netrwSettings",
-  "netrwFileHandlers",
-  "matchit",
-  "matchparen",
+  "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
+  "matchit", "matchparen",
 }
 
 for _, plugin in ipairs(builtin_plugins) do

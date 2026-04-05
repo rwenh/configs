@@ -1,4 +1,15 @@
 -- lua/plugins/specs/lang/java.lua - Java development (cross-platform)
+--
+-- FIX (v2.2.3):
+--   • Re-attach guard: checking client.name == "jdtls" before start_or_attach
+--     fires too early on slow machines — jdtls registers under its name only
+--     after full initialisation. Guard now checks vim.b[0].jdtls_started flag
+--     set synchronously before start_or_attach(), which is reliable regardless
+--     of init speed.
+--   • Workspace path collision: using :p:h:t (last path component) means two
+--     projects with the same directory name share a workspace — class
+--     resolution breaks. Fixed: use a hash of the full root_dir path so each
+--     project gets a unique workspace regardless of name.
 
 return {
   {
@@ -6,11 +17,16 @@ return {
     ft           = "java",
     dependencies = { "mfussenegger/nvim-dap", "williamboman/mason.nvim" },
     config = function()
-      -- RECALIBRATION: Safe jdtls with comprehensive error handling
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "java",
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
         callback = function()
+          -- FIX: use a buffer-local flag set before start_or_attach().
+          -- client.name == "jdtls" is only true after full LSP init, which
+          -- can take seconds — the guard fired too early and allowed double-start.
+          if vim.b[0].jdtls_started then return end
+          vim.b[0].jdtls_started = true
+
           local ok, jdtls = pcall(require, "jdtls")
           if not ok then
             vim.notify("nvim-jdtls failed to load", vim.log.levels.ERROR)
@@ -30,17 +46,26 @@ return {
           )
           root_dir = root_dir or vim.fn.getcwd()
 
-          local workspace = data_dir .. "/jdtls-workspace/"
-            .. vim.fn.fnamemodify(root_dir, ":p:h:t")
+          -- FIX: unique workspace per project using full path hash.
+          -- :p:h:t only keeps the last directory component — two projects
+          -- in different paths but with the same folder name share a workspace.
+          local function hash_path(path)
+            local h = 5381
+            for i = 1, #path do
+              h = ((h * 33) + string.byte(path, i)) % 2^32
+            end
+            return string.format("%x", h)
+          end
 
-          -- Cross-platform OS detection
+          local workspace = data_dir .. "/jdtls-workspace/" .. hash_path(root_dir)
+
           local os_map    = { Linux = "linux", Darwin = "mac", Windows_NT = "win" }
           local os_key    = os_map[vim.uv.os_uname().sysname] or "linux"
           local config_dir = data_dir .. "/mason/packages/jdtls/config_" .. os_key
 
-          -- Safe glob for bundles
           local bundles = vim.split(
-            vim.fn.glob(data_dir .. "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar"),
+            vim.fn.glob(data_dir
+              .. "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar"),
             "\n", { plain = true, trimempty = true }
           )
           vim.list_extend(bundles, vim.split(
@@ -53,7 +78,10 @@ return {
           )
 
           if launcher == "" then
-            vim.notify("[java] jdtls launcher not found — run :MasonInstall jdtls", vim.log.levels.ERROR)
+            vim.notify(
+              "[java] jdtls launcher not found — run :MasonInstall jdtls",
+              vim.log.levels.ERROR
+            )
             return
           end
 
@@ -93,14 +121,30 @@ return {
                 vim.keymap.set("v", lhs, rhs, { buffer = bufnr, desc = desc })
               end
 
-              map("<leader>jvo",  function() pcall(function() jdtls.organize_imports() end) end,           "Java Organize Imports")
-              map("<leader>jvv",  function() pcall(function() jdtls.extract_variable() end) end,           "Java Extract Variable")
-              map("<leader>jvc",  function() pcall(function() jdtls.extract_constant() end) end,           "Java Extract Constant")
-              map("<leader>jvt",  function() pcall(function() jdtls.test_class() end) end,                 "Java Test Class")
-              map("<leader>jvn",  function() pcall(function() jdtls.test_nearest_method() end) end,        "Java Test Nearest Method")
-              mapv("<leader>jvv", function() pcall(function() jdtls.extract_variable(true) end) end,       "Java Extract Variable")
-              mapv("<leader>jvc", function() pcall(function() jdtls.extract_constant(true) end) end,       "Java Extract Constant")
-              mapv("<leader>jvm", function() pcall(function() jdtls.extract_method(true) end) end,         "Java Extract Method")
+              map("<leader>jvo",
+                function() pcall(function() jdtls.organize_imports() end) end,
+                "Java Organize Imports")
+              map("<leader>jvv",
+                function() pcall(function() jdtls.extract_variable() end) end,
+                "Java Extract Variable")
+              map("<leader>jvc",
+                function() pcall(function() jdtls.extract_constant() end) end,
+                "Java Extract Constant")
+              map("<leader>jvt",
+                function() pcall(function() jdtls.test_class() end) end,
+                "Java Test Class")
+              map("<leader>jvn",
+                function() pcall(function() jdtls.test_nearest_method() end) end,
+                "Java Test Nearest Method")
+              mapv("<leader>jvv",
+                function() pcall(function() jdtls.extract_variable(true) end) end,
+                "Java Extract Variable")
+              mapv("<leader>jvc",
+                function() pcall(function() jdtls.extract_constant(true) end) end,
+                "Java Extract Constant")
+              mapv("<leader>jvm",
+                function() pcall(function() jdtls.extract_method(true) end) end,
+                "Java Extract Method")
             end,
           }
 

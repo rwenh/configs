@@ -16,6 +16,8 @@ return {
   { import = "plugins.specs.dap" },
   { import = "plugins.specs.test" },
   { import = "plugins.specs.advanced" },
+  { import = "plugins.specs.hud" },
+  { import = "plugins.specs.workflow" },
 
   -- Languages (order preserved from original for stability)
   { import = "plugins.specs.lang.c" },

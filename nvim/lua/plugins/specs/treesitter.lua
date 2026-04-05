@@ -1,31 +1,9 @@
 -- nvim/lua/plugins/specs/treesitter.lua
--- Treesitter configuration for syntax highlighting, indentation, and text objects
---
--- FIX #1: Consolidated ALL nvim-treesitter.configs.setup() calls into the single
--- main spec. Previously, nvim-treesitter-textobjects and nvim-treesitter-refactor
--- each called ts_config.setup() independently — each reinitialisation races
--- against parser compilation and was the true source of the
--- "nvim-treesitter.configs module failed to load" error on first boot.
---
--- FIX #2 (FINAL): nvim-treesitter-refactor has been removed entirely.
--- The plugin ships a plugin/nvim-treesitter-refactor.vim that unconditionally
--- calls init() before the config function runs. Every attempt to suppress it
--- (delete, overwrite, git assume-unchanged) mutates the plugin's git working
--- tree and causes lazy.nvim to block updates permanently.
---
--- All functionality it provided is already covered by existing plugins:
---   highlight_definitions  → vim-illuminate (editor.lua)
---   smart_rename           → vim.lsp.buf.rename, <leader>,r (lsp.lua)
---   navigation (gnd/gnD)   → vim.lsp.buf.definition/references (lsp.lua)
---
--- After saving this file run :Lazy clean to remove the plugin from disk.
 
 return {
-  -- ┌─────────────────────────────────────────────────────┐
-  -- │               CORE TREESITTER                        │
-  -- └─────────────────────────────────────────────────────┘
   {
     "nvim-treesitter/nvim-treesitter",
+    tag      = "v0.9.3",          -- last version supporting Neovim 0.11.x
     build    = ":TSUpdate",
     lazy     = false,
     priority = 100,
@@ -33,6 +11,10 @@ return {
       "nvim-treesitter/nvim-treesitter-textobjects",
     },
     config = function(_, opts)
+      -- Override the broken vim highlights query that references a
+      -- non-existent (parameter) node on Neovim 0.11.x
+      pcall(vim.treesitter.query.set, "vim", "highlights", "")
+
       local ok, ts_configs = pcall(require, "nvim-treesitter.configs")
       if not ok then
         vim.notify(
@@ -41,17 +23,10 @@ return {
         )
         return
       end
-
       ts_configs.setup(opts)
-
-      local ok_hl = pcall(require, "nvim-treesitter.highlight")
-      if not ok_hl then
-        vim.notify("Treesitter highlight module failed to load", vim.log.levels.WARN)
-      end
     end,
     opts = {
       ensure_installed = {
-        -- Core languages
         "bash", "c", "cmake", "cpp", "css", "diff",
         "git_rebase", "gitcommit", "go", "html", "http",
         "javascript", "jsdoc", "json", "json5", "jsonc",
@@ -59,8 +34,7 @@ return {
         "markdown", "markdown_inline",
         "python", "query", "regex", "rust",
         "sql", "toml", "typescript",
-        "vim", "vimdoc", "yaml",
-        -- Extended languages
+        "vimdoc", "yaml",             -- removed "vim" (broken query on 0.11.x)
         "fortran", "julia", "zig", "ruby",
         "elixir", "heex", "eex",
         "kotlin", "vhdl", "java", "scala",
@@ -70,13 +44,13 @@ return {
 
       auto_install   = true,
       sync_install   = false,
-      ignore_install = { "comment" },
+      ignore_install = { "comment", "vim" },  -- explicitly ignore vim parser
 
       highlight = {
         enable  = true,
         disable = function(lang, buf)
           local max_filesize = 100 * 1024
-          local ok, stats = pcall(vim.loop.fs_stat, vim.api.nvim_buf_get_name(buf))
+          local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
           if ok and stats and stats.size > max_filesize then return true end
           return lang == "vim"
         end,
@@ -101,7 +75,6 @@ return {
       rainbow = { enable = false },
       fold    = { enable = true },
 
-      -- ── Textobjects (owned here, not in the sub-plugin spec) ──────────────
       textobjects = {
         select = {
           enable    = true,
@@ -144,25 +117,19 @@ return {
           },
         },
         swap = {
-          enable        = true,
-          swap_next     = { ["<leader>a"] = "@parameter.inner" },
-          swap_previous = { ["<leader>A"] = "@parameter.inner" },
+          enable = true,
+          swap_next     = { ["<leader>sa"] = "@parameter.inner" },
+          swap_previous = { ["<leader>sA"] = "@parameter.inner" },
         },
       },
     },
   },
 
-  -- ┌─────────────────────────────────────────────────────┐
-  -- │           TEXTOBJECTS (no config — main owns it)     │
-  -- └─────────────────────────────────────────────────────┘
   {
     "nvim-treesitter/nvim-treesitter-textobjects",
     lazy = true,
   },
 
-  -- ┌─────────────────────────────────────────────────────┐
-  -- │               TREESITTER CONTEXT                     │
-  -- └─────────────────────────────────────────────────────┘
   {
     "nvim-treesitter/nvim-treesitter-context",
     event        = "BufReadPost",
@@ -180,22 +147,9 @@ return {
       local ok, ctx = pcall(require, "treesitter-context")
       if ok then
         ctx.setup(opts)
-        vim.keymap.set("n", "[c", ctx.go_to_context, { silent = true, desc = "Go to context start" })
+        vim.keymap.set("n", "<leader>uc", ctx.go_to_context,
+          { silent = true, desc = "Go to context start" })
       end
     end,
-  },
-
-  -- ┌─────────────────────────────────────────────────────┐
-  -- │                  TS PLAYGROUND                       │
-  -- └─────────────────────────────────────────────────────┘
-  {
-    "nvim-treesitter/playground",
-    lazy         = true,
-    cmd          = { "TSPlaygroundToggle", "TSHighlightCapturesUnderCursor" },
-    keys         = {
-      { "<leader>xp", "<cmd>TSPlaygroundToggle<CR>",             desc = "TS Playground" },
-      { "<leader>xh", "<cmd>TSHighlightCapturesUnderCursor<CR>", desc = "TS Highlight Captures" },
-    },
-    dependencies = { "nvim-treesitter/nvim-treesitter" },
   },
 }

@@ -17,14 +17,12 @@ return {
       },
     },
     config = function(_, opts)
-      -- RECALIBRATION: Safe setup
       local ok = pcall(function() require("clangd_extensions").setup(opts) end)
       if not ok then
         vim.notify("clangd_extensions setup failed", vim.log.levels.WARN)
         return
       end
 
-      -- Enable inlay hints safely
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("ClangdInlayHints", { clear = true }),
         pattern  = { "*.c", "*.cpp", "*.h", "*.hpp" },

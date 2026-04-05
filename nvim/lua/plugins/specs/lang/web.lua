@@ -1,47 +1,43 @@
--- nvim/lua/plugins/specs/lang/web.lua - Web development
+-- lua/plugins/specs/lang/web.lua - Web development
+--
+-- FIX (v2.2.3):
+--   • nvim-ts-autotag v0.4+ changed its API: calling setup() with no opts
+--     results in all features (close, rename, replace) being disabled by
+--     default. Explicit opts table added to enable all features.
+--     Ref: https://github.com/windwp/nvim-ts-autotag#setup
 
 return {
   {
-    "luckasRanarison/tailwind-tools.nvim",
-    lazy = true,
-    event = "VeryLazy",
-    ft = { "html", "javascript", "javascriptreact", "typescript", "typescriptreact", "css", "vue", "svelte", "jsx", "tsx" },
+    "windwp/nvim-ts-autotag",
+    ft = {
+      "html", "javascript", "javascriptreact",
+      "typescriptreact", "jsx", "tsx", "vue", "svelte",
+    },
+    -- FIX: explicit opts — v0.4+ defaults all features to disabled without them
     opts = {
-      document_color = {
-        enabled = true,
-        kind = "background",
-        inline_strategy = "none",
+      opts = {
+        enable_close          = true,
+        enable_rename         = true,
+        enable_close_on_slash = false,
       },
-      cmp = {
-        enabled = true,
-        min_priority = 2,
-      },
-      conceal = {
-        enabled = false,
-      },
-      custom_filetypes = {},
+      per_filetype = {},
     },
     config = function(_, opts)
-      pcall(function() require("tailwind-tools").setup(opts) end)
-    end,
-  },
-
-  {
-    "windwp/nvim-ts-autotag",
-    ft = { "html", "javascript", "javascriptreact", "typescriptreact", "jsx", "tsx", "vue", "svelte" },
-    config = function()
-      pcall(function() require("nvim-ts-autotag").setup() end)
+      pcall(function() require("nvim-ts-autotag").setup(opts) end)
     end,
   },
 
   {
     "mattn/emmet-vim",
-    ft = { "html", "css", "javascript", "javascriptreact", "typescriptreact", "vue", "svelte" },
+    ft = {
+      "html", "css", "javascript", "javascriptreact",
+      "typescriptreact", "vue", "svelte",
+    },
     init = function()
-      vim.g.user_emmet_leader_key = "<C-y>"
+      vim.g.user_emmet_leader_key = "<C-e>"
     end,
   },
-  -- NOTE: colorizer is owned by advanced.lua (NvChad/nvim-colorizer.lua).
-  -- That plugin is a maintained fork of norcalli/nvim-colorizer.lua;
-  -- speccing both causes a startup conflict — removed here.
+
+  -- colorizer owned by advanced.lua (NvChad/nvim-colorizer.lua) — not here.
+  -- tailwind-tools owned by css.lua with server.override=false — not here.
 }
