@@ -516,7 +516,7 @@ Cancels any existing timer first to avoid duplicates on reload."
 
 ;; Start the timer after startup is complete so it doesn't compete
 ;; with the initial startup check.
-(add-hook 'emacs-startup-hook #'emacs-ide-health--start-periodic-timer 110))
+(add-hook 'emacs-startup-hook #'emacs-ide-health--start-periodic-timer 110)
 
 (provide 'emacs-ide-health)
 ;;; emacs-ide-health.el ends here

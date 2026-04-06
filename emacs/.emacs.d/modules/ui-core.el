@@ -158,7 +158,7 @@
   (when (fboundp 'set-fontset-font)
     ;; FIX-EMOJI-FONT: guard with font availability check
     (when (member "Noto Color Emoji" (font-family-list))
-      (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend)))
+      (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))))
 
 ;; ============================================================================
 ;; SMOOTH SCROLLING (Emacs 29+ pixel precision)

@@ -392,7 +392,7 @@ Returns association list of configuration."
                           (setcdr sub-entry
                                   (append (cdr sub-entry)
                                           (list (cons key val)))))))))
-                 )))))
+                 ))))
 
                ;; FIX-INDENT4-WARN: indent-4 line present but no active
                ;; subsection — would have been silently dropped. Warn so
@@ -439,7 +439,7 @@ Returns association list of configuration."
                  ))))
 
           (forward-line 1))
-        (nreverse data)))))
+        (nreverse data))))
 
 ;; ============================================================================
 ;; CONFIGURATION LOADING & APPLICATION
