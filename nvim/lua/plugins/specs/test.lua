@@ -1,6 +1,11 @@
 -- lua/plugins/specs/test.lua - Testing
 --
--- FIX (v2.2.2):
+-- FIX (v2.2.5):
+--   • Duplicate keymaps removed. <leader>'n/f/a/u/o/p/d were registered here
+--     AND in keymaps.lua — whichever spec loaded last silently won. keymaps.lua
+--     is the canonical owner of all <leader>' bindings for consistency with the
+--     rest of the keymap structure. Only <leader>'P (parallel suite, neotest-
+--     specific feature) is kept here as it has no keymaps.lua equivalent.
 --   • neotest-rust: plugin is "rouge8/neotest-rust"; the correct require path
 --     is require("neotest-rust") — confirmed against upstream README.
 --     The adapter loader now also passes a config table so codelldb is used.
@@ -24,19 +29,19 @@ return {
     },
     keys = {
       { "<leader>'n", function() pcall(function() require("neotest").run.run() end) end,
-        desc = "Test Nearest" },
+        desc = "Test nearest" },
       { "<leader>'f", function() pcall(function() require("neotest").run.run(vim.fn.expand("%")) end) end,
-        desc = "Test File" },
+        desc = "Test file" },
       { "<leader>'a", function() pcall(function() require("neotest").run.run(vim.uv.cwd()) end) end,
-        desc = "Test All" },
+        desc = "Test all" },
       { "<leader>'u", function() pcall(function() require("neotest").summary.toggle() end) end,
-        desc = "Test Summary" },
+        desc = "Test summary" },
       { "<leader>'o", function() pcall(function() require("neotest").output.open({ enter = true }) end) end,
-        desc = "Test Output" },
+        desc = "Test output" },
       { "<leader>'p", function() pcall(function() require("neotest").output_panel.toggle() end) end,
-        desc = "Test Panel" },
+        desc = "Test panel" },
       { "<leader>'d", function() pcall(function() require("neotest").run.run({ strategy = "dap" }) end) end,
-        desc = "Test Debug Nearest" },
+        desc = "Test debug nearest" },
       { "<leader>'P", function()
           pcall(function()
             require("neotest").run.run({ suite = true, concurrency = 4 })

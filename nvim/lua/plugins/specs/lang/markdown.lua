@@ -63,7 +63,11 @@ return {
       enabled      = true,
       -- FIX: "c" removed — not a valid render mode; caused startup warning.
       render_modes = { "n" },
-      anti_conceal = { enabled = true },
+      anti_conceal = {
+        enabled = true,
+        -- ignore code block backgrounds so they still render while cursor is inside
+        ignore  = { code_background = true, sign = true },
+      },
       heading = {
         enabled = true,
         signs   = { "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 " },

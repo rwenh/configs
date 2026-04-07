@@ -1,8 +1,10 @@
 -- lua/plugins/specs/completion.lua - blink.cmp completion
 --
--- FIX (v2.2.4):
---   • version pinned to "1.*" (was "*"). blink.cmp is on 0.x → 1.x semver;
---     "*" would pull any major including breaking 2.0 changes silently.
+-- FIX (v2.2.5):
+--   • version changed from "1.*" to false. blink.cmp uses a rolling semver
+--     where 1.x is not yet a published stable tag on most systems — "1.*"
+--     resolves to nothing and lazy refuses to install. false = track HEAD
+--     of the default branch (stable in practice; blink tags every release).
 --   • sources.providers previously declared ONLY "cmdline". The default
 --     sources list ("lsp","path","snippets","buffer") references these names
 --     as provider keys — blink silently drops any source whose key has no
@@ -13,7 +15,7 @@
 return {
   {
     "saghen/blink.cmp",
-    version      = "1.*",
+    version      = false,
     event        = { "InsertEnter", "CmdlineEnter" },
     dependencies = {
       "rafamadriz/friendly-snippets",

@@ -20,12 +20,12 @@ return {
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "java",
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
-        callback = function()
-          -- FIX: use a buffer-local flag set before start_or_attach().
-          -- client.name == "jdtls" is only true after full LSP init, which
-          -- can take seconds — the guard fired too early and allowed double-start.
-          if vim.b[0].jdtls_started then return end
-          vim.b[0].jdtls_started = true
+        callback = function(e)
+          -- FIX: vim.b[e.buf] not vim.b[0]. Inside an autocmd callback,
+          -- buffer 0 refers to the current window's buffer at dispatch time
+          -- which may differ from e.buf if another autocmd shifted focus.
+          if vim.b[e.buf].jdtls_started then return end
+          vim.b[e.buf].jdtls_started = true
 
           local ok, jdtls = pcall(require, "jdtls")
           if not ok then

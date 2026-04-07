@@ -1,6 +1,10 @@
 -- lua/plugins/specs/workflow.lua
 --
--- FIX (v2.2.3):
+-- FIX (v2.2.5):
+--   • OverseerBuild command does not exist in overseer.nvim. The correct
+--     approach is OverseerRun which surfaces all templates including build
+--     ones. Removed from cmd table and keymap; <leader>ob now calls
+--     OverseerRun with a "build" name filter so it pre-selects build tasks.
 --   • overseer-community-tasks removed — that repo does not exist. All
 --     templates (cargo, cmake, go, npm, make, mix, rake, tox, python) are
 --     built into overseer.nvim and auto-discovered from the working directory.
@@ -11,11 +15,13 @@ return {
 
   {
     "stevearc/overseer.nvim",
-    cmd  = { "OverseerRun", "OverseerToggle", "OverseerBuild", "OverseerTaskAction" },
+    cmd  = { "OverseerRun", "OverseerToggle", "OverseerTaskAction", "OverseerClearCache" },
     keys = {
       { "<leader>ot", "<cmd>OverseerToggle<cr>",     desc = "Overseer: task list" },
       { "<leader>or", "<cmd>OverseerRun<cr>",        desc = "Overseer: run task" },
-      { "<leader>ob", "<cmd>OverseerBuild<cr>",      desc = "Overseer: build" },
+      { "<leader>ob", function()
+          require("overseer").run_template({ name = "build" })
+        end, desc = "Overseer: build" },
       { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
       { "<leader>oc", "<cmd>OverseerClearCache<cr>", desc = "Overseer: clear cache" },
       { "<leader>os", function()

@@ -264,7 +264,7 @@ return {
                 },
             },
             open_fold_hl_timeout    = 400,
-            close_fold_kinds_for_ft = { default = { "imports", "comment" } },
+            close_fold_kinds        = { "imports", "comment" },
             -- FIX: guard large_file buffers. autocmds.lua sets foldmethod=manual
             -- on files >500KB (vim.b.large_file=true). ufo tries to attach a
             -- treesitter provider regardless and errors. Returning "" tells ufo

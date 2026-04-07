@@ -126,7 +126,6 @@ return {
     },
     opts = {
       use_local_fs = false,
-      enable_builtin = true,
       default_remote = { "upstream", "origin" },
       ssh_aliases    = {},
       picker         = "telescope",

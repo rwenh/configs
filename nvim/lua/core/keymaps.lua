@@ -151,22 +151,6 @@ map("x", "<leader>'s",
 map("n", "<leader>'t", "<cmd>lua require('core.util.runner').run_tests()<cr>",
   { desc = "Run tests" })
 
-map("n", "<leader>'n", function() require("neotest").run.run() end,
-  { desc = "Test nearest" })
-map("n", "<leader>'f", function() require("neotest").run.run(vim.fn.expand("%")) end,
-  { desc = "Test file" })
-map("n", "<leader>'a", function() require("neotest").run.run(vim.uv.cwd()) end,
-  { desc = "Test all" })
-map("n", "<leader>'o", function() require("neotest").output.open() end,
-  { desc = "Test output" })
-map("n", "<leader>'p", function() require("neotest").output_panel.toggle() end,
-  { desc = "Test panel" })
-map("n", "<leader>'u", function() require("neotest").summary.toggle() end,
-  { desc = "Test summary" })
-map("n", "<leader>'d", function()
-  pcall(function() require("neotest").run.run({ strategy = "dap" }) end)
-end, { desc = "Test debug nearest" })
-
 -- ============================================================================
 -- TERMINAL
 -- ============================================================================
@@ -275,7 +259,9 @@ map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "P
 
 map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
 map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
-map("n", "<leader>ob", "<cmd>OverseerBuild<cr>",  { desc = "Build" })
+map("n", "<leader>ob", function()
+  require("overseer").run_template({ name = "build" })
+end, { desc = "Build" })
 
 -- ============================================================================
 -- OIL

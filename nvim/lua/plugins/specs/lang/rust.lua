@@ -63,7 +63,7 @@ return {
           },
         },
         dap = {
-          adapter = "rt_lldb",
+          adapter = "codelldb",
         },
         tools = {
           test_executor = "swole",

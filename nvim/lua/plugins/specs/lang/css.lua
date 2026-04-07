@@ -1,6 +1,11 @@
 -- lua/plugins/specs/lang/css.lua - CSS development
 --
--- FIX (v2.2.3):
+-- FIX (v2.2.5):
+--   • vim.lsp.config() + vim.lsp.enable() are Nvim 0.11-only API — calling
+--     them unguarded on 0.10 stable raises "attempt to call nil value".
+--     Both call sites now check vim.fn.has("nvim-0.11") and fall back to
+--     lspconfig.setup() on 0.10 (which mason-lspconfig already wires for
+--     cssmodules_ls if the binary is present).
 --   • cssmodules binary check was in init() which runs at spec-parse time
 --     (startup), running a vim.fn.executable() probe on every launch even
 --     for non-CSS projects. Moved into a BufReadPost autocmd so the check
@@ -11,14 +16,14 @@ return {
   {
     "neovim/nvim-lspconfig",
     optional = true,
-    -- FIX: use BufReadPost trigger instead of init() to avoid eager binary probe
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
         once     = true,
         group    = vim.api.nvim_create_augroup("CssModulesLsp", { clear = true }),
         callback = function()
-          if vim.fn.executable("cssmodules-language-server") == 1 then
+          if vim.fn.executable("cssmodules-language-server") ~= 1 then return end
+          if vim.fn.has("nvim-0.11") == 1 then
             pcall(function()
               vim.lsp.config("cssmodules_ls", {
                 init_options = { isCSSModules = true },
@@ -26,6 +31,16 @@ return {
               })
               vim.lsp.enable("cssmodules_ls")
             end)
+          else
+            local ok, lspconfig = pcall(require, "lspconfig")
+            if ok then
+              pcall(function()
+                lspconfig.cssmodules_ls.setup({
+                  init_options = { isCSSModules = true },
+                  filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+                })
+              end)
+            end
           end
         end,
       })

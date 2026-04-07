@@ -272,11 +272,23 @@ return {
       }
 
       -- ── Elixir (ElixirLS debugger) ────────────────────────────────
-      local elixir_dbg = vim.fn.exepath("elixir-ls-debugger")
+      -- The Mason "elixir-ls" package ships both the LSP and DAP adapter.
+      -- The DAP executable is named "elixir-ls-debugger" inside the package
+      -- bin dir on some versions, but the reliable path is the package-relative
+      -- script. Prefer the Mason package path; fall back to PATH lookup of
+      -- either known binary name.
+      local elixir_dbg = (function()
+        local pkg_bin = mason_pkg("elixir-ls/debugger.sh")
+        if vim.fn.filereadable(pkg_bin) == 1 then return pkg_bin end
+        local a = vim.fn.exepath("elixir-ls-debugger")
+        if a ~= "" then return a end
+        local b = vim.fn.exepath("elixir-ls")
+        if b ~= "" then return b end
+        return mason_bin("elixir-ls")
+      end)()
       dap.adapters.mix_task = {
         type    = "executable",
-        command = elixir_dbg ~= "" and elixir_dbg
-                  or mason_bin("elixir-ls-debugger"),
+        command = elixir_dbg,
         args    = {},
       }
       dap.configurations.elixir = {
@@ -335,14 +347,17 @@ return {
               end)
             end
           else
-            -- FIX: rather than using the absolute path as the autocmd pattern
-            -- (which relies on undocumented glob matching behaviour and breaks
-            -- on Windows-style paths), we register a once=true BufReadPost
-            -- autocmd with pattern="*" and check the event's file explicitly.
-            -- This is portable and unambiguous on all platforms.
+            -- Register a persistent (not once=true) BufReadPost autocmd that
+            -- checks e.buf's name explicitly and self-removes after a match.
+            -- once=true on pattern="*" fires for the FIRST file opened after
+            -- load_breakpoints() runs — if that file is not `path`, the autocmd
+            -- self-removes and all remaining breakpoint files are never restored.
+            local aug = vim.api.nvim_create_augroup(
+              "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 8), { clear = true }
+            )
             vim.api.nvim_create_autocmd("BufReadPost", {
               pattern  = "*",
-              once     = true,
+              group    = aug,
               callback = function(e)
                 local evfile = vim.api.nvim_buf_get_name(e.buf)
                 if evfile ~= path then return end
@@ -353,6 +368,8 @@ return {
                       e.buf, bp.line)
                   end)
                 end
+                -- matched — clean up this specific autocmd group
+                pcall(vim.api.nvim_del_augroup_by_id, aug)
               end,
             })
           end

@@ -23,7 +23,7 @@ return {
         save_on_toggle  = true,
         save_on_change  = true,
         enter_on_select = false,
-        key = function() return vim.loop.cwd() end,
+        key = function() return vim.uv.cwd() end,
       },
     },
     config = function(_, opts)
@@ -331,17 +331,6 @@ return {
         })
       end)
     end,
-  },
-
-  {
-    "jay-babu/mason-null-ls.nvim",
-    event        = { "BufReadPre", "BufNewFile" },
-    dependencies = { "mason.nvim", "nvim-lint" },
-    opts = {
-      ensure_installed       = nil,
-      automatic_installation = true,
-      handlers               = {},
-    },
   },
 
   {

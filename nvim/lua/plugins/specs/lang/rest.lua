@@ -1,17 +1,18 @@
--- lua/plugins/specs/lang/rest.lua - REST client (v2 API)
+-- lua/plugins/specs/lang/rest.lua - REST client (v3 API)
 --
--- FIX (v2.2.3):
---   • rest-nvim v2 dropped the Lua require("rest-nvim").run() / .preview() /
---     .run_last() / .select_env() API entirely. All calls are now command-
---     based: :Rest run, :Rest run last, :Rest preview, :Rest env select.
---     The old Lua calls returned nil/error silently — requests never fired.
+-- FIX (v2.2.5):
+--   • version = "^2" removed. rest-nvim is now on v3+; the ^2 semver
+--     constraint blocked installation entirely on systems with v3 in the
+--     registry, and forced a downgrade on systems that already had v3.
+--     version=false tracks the default branch (v3 stable).
+--   • v2 API note retained: all calls are command-based (:Rest run etc.)
+--     which is compatible with both v2 and v3.
 
 return {
   {
     "rest-nvim/rest.nvim",
     ft           = "http",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-treesitter/nvim-treesitter" },
-    version = "^2",
     opts = {
       client = "curl",
       env_file     = ".env",

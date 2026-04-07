@@ -1,4 +1,9 @@
 -- lua/plugins/specs/lang/html.lua - HTML development
+--
+-- FIX (v2.2.5):
+--   • vim.lsp.config() is Nvim 0.11-only API — calling it unguarded on 0.10
+--     stable raises "attempt to call nil value" at BufReadPost. Guarded behind
+--     vim.fn.has("nvim-0.11"); falls back to lspconfig.setup() on 0.10.
 
 return {
   -- HTMLHint linting
@@ -45,14 +50,23 @@ return {
     "neovim/nvim-lspconfig",
     optional = true,
     init = function()
-      pcall(function()
-        vim.lsp.config("html", {
-          filetypes    = { "html", "htmldjango", "jinja.html" },
-          init_options = {
-            provideFormatter = false,
-          },
+      local cfg = {
+        filetypes    = { "html", "htmldjango", "jinja.html" },
+        init_options = { provideFormatter = false },
+      }
+      if vim.fn.has("nvim-0.11") == 1 then
+        pcall(function() vim.lsp.config("html", cfg) end)
+      else
+        vim.api.nvim_create_autocmd("BufReadPost", {
+          pattern = { "*.html", "*.htmldjango" },
+          once    = true,
+          group   = vim.api.nvim_create_augroup("HtmlLspCfg", { clear = true }),
+          callback = function()
+            local ok, lspconfig = pcall(require, "lspconfig")
+            if ok then pcall(function() lspconfig.html.setup(cfg) end) end
+          end,
         })
-      end)
+      end
     end,
   },
 }
