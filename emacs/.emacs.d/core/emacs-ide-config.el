@@ -297,7 +297,6 @@ Returns association list of configuration."
                         (line-end-position)))
                  (indent (- (length line) (length (string-trim-left line))))
                  (trimmed (string-trim line)))
-
             (unless (or (string-empty-p trimmed)
                         (string-prefix-p "#" trimmed))
 
@@ -308,7 +307,6 @@ Returns association list of configuration."
                      (string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed))
                 (let ((name (intern (match-string 1 trimmed))))
                   (setq current-section name
-                        ;; C-13 FIX: always clear subsection at level-0 boundary
                         current-subsection nil)
                   (unless (assoc name data)
                     (push (cons name '()) data))))
@@ -316,7 +314,6 @@ Returns association list of configuration."
                ;; ── Level 2: sub-section header OR key-value ────────────────
                ((and (= indent 2) current-section)
                 (cond
-                 ;; Sub-section header (e.g. "  work:" or "  python:")
                  ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trimmed)
                   (let* ((name (intern (match-string 1 trimmed)))
                          (sec-entry (assoc current-section data)))
@@ -326,8 +323,6 @@ Returns association list of configuration."
                         (setcdr sec-entry
                                 (append (cdr sec-entry)
                                         (list (cons name '()))))))))
-
-                 ;; List item under section (no subsection active)
                  ((and (string-prefix-p "- " trimmed) (null current-subsection))
                   (let* ((val (emacs-ide-config-parse-value
                                (string-trim (substring trimmed 2))))
@@ -335,8 +330,6 @@ Returns association list of configuration."
                     (when sec-entry
                       (setcdr sec-entry
                               (append (cdr sec-entry) (list val))))))
-
-                 ;; Key-value pair at indent 2
                  ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
                   (let* ((key (intern (match-string 1 trimmed)))
                          (val (emacs-ide-config-parse-value
@@ -344,17 +337,12 @@ Returns association list of configuration."
                          (sec-entry (assoc current-section data)))
                     (when sec-entry
                       (if (null current-subsection)
-                          ;; Normal flat key under section
                           (let ((existing (assoc key (cdr sec-entry))))
                             (if existing
                                 (setcdr existing val)
                               (setcdr sec-entry
                                       (append (cdr sec-entry)
                                               (list (cons key val))))))
-                        ;; C-13 FIX: a plain key=value at indent 2 while
-                        ;; current-subsection is set means the subsection
-                        ;; block has ended.  Write into the parent section
-                        ;; and clear the subsection context.
                         (setq current-subsection nil)
                         (let ((existing (assoc key (cdr sec-entry))))
                           (if existing
@@ -366,49 +354,40 @@ Returns association list of configuration."
                ;; ── Level 4: key-value inside a sub-section ─────────────────
                ((and (= indent 4) current-section current-subsection)
                 (cond
-                 ;; List item under subsection
                  ((string-prefix-p "- " trimmed)
                   (let* ((val (emacs-ide-config-parse-value
                                (string-trim (substring trimmed 2))))
-                         (sec-entry  (assoc current-section data))
-                         (sub-entry  (and sec-entry
-                                          (assoc current-subsection (cdr sec-entry)))))
+                         (sec-entry (assoc current-section data))
+                         (sub-entry (and sec-entry
+                                         (assoc current-subsection
+                                                (cdr sec-entry)))))
                     (when sub-entry
                       (setcdr sub-entry
                               (append (cdr sub-entry) (list val))))))
-
-                 ;; Key-value under subsection
                  ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
                   (let* ((key (intern (match-string 1 trimmed)))
                          (val (emacs-ide-config-parse-value
                                (string-trim (match-string 2 trimmed))))
-                         (sec-entry  (assoc current-section data))
-                         (sub-entry  (and sec-entry
-                                          (assoc current-subsection (cdr sec-entry)))))
+                         (sec-entry (assoc current-section data))
+                         (sub-entry (and sec-entry
+                                         (assoc current-subsection
+                                                (cdr sec-entry)))))
                     (when sub-entry
                       (let ((existing (assoc key (cdr sub-entry))))
                         (if existing
                             (setcdr existing val)
                           (setcdr sub-entry
                                   (append (cdr sub-entry)
-                                          (list (cons key val)))))))))
-                 ))))
+                                          (list (cons key val)))))))))))
 
-               ;; FIX-INDENT4-WARN: indent-4 line present but no active
-               ;; subsection — would have been silently dropped. Warn so
-               ;; parser gaps are visible during debugging.
+               ;; ── Level 4 no-subsection: warn and drop ────────────────────
                ((and (= indent 4) current-section (null current-subsection))
                 (warn "emacs-ide-config: indent-4 line dropped (no subsection): %s"
                       trimmed))
 
-               ;; ── Level 6: list items / keys inside a sub-section ──────────
-               ;; FIX-INDENT6: Previously all indent-6 lines were silently
-               ;; dropped. This handles list items such as org-agenda-files
-               ;; entries nested under environments.work / environments.home,
-               ;; and any future 3rd-level key-value pairs.
+               ;; ── Level 6: list items / keys inside sub-sub-section ───────
                ((and (= indent 6) current-section current-subsection)
                 (cond
-                 ;; List item at indent 6 (e.g. "      - ~/work/org/work.org")
                  ((string-prefix-p "- " trimmed)
                   (let* ((val (emacs-ide-config-parse-value
                                (string-trim (substring trimmed 2))))
@@ -419,8 +398,6 @@ Returns association list of configuration."
                     (when sub-entry
                       (setcdr sub-entry
                               (append (cdr sub-entry) (list val))))))
-
-                 ;; Key-value at indent 6
                  ((string-match "^\\([a-z][a-z0-9_-]*\\):[ \t]*\\(.*\\)$" trimmed)
                   (let* ((key (intern (match-string 1 trimmed)))
                          (val (emacs-ide-config-parse-value
@@ -435,11 +412,13 @@ Returns association list of configuration."
                             (setcdr existing val)
                           (setcdr sub-entry
                                   (append (cdr sub-entry)
-                                          (list (cons key val)))))))))
-                 ))))
+                                          (list (cons key val))))))))))))
 
-          (forward-line 1))
-        (nreverse data))))
+              )) ;; end: cond / unless
+
+          (forward-line 1))       ;; end: let* / while body
+        (nreverse data)))))       ;; end: let / with-temp-buffer / when / defun
+
 
 ;; ============================================================================
 ;; CONFIGURATION LOADING & APPLICATION
