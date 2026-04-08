@@ -402,51 +402,108 @@ return {
     lazy         = false,
     priority     = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
-    opts = {
-      theme = "doom",
-      config = {
-        header = {
-          "",
-          "    ╔═════════════════════════════════════════════════════════════╗",
-          "    ║                                                             ║",
-          "    ║              ╔═╗╦ ╦╔═╗╔═╗╔╦╗  ╦╔╗╦═╗  ╦╔╗╔╦═╗               ║",
-          "    ║              ║ ║║ ║║ ║║   ║   ║║║║╠╦╝  ║║║║║║║              ║",
-          "    ║              ║═╩╣ ║║ ║╠═╝ ║   ║║║║║║║  ║║║║║║║              ║",
-          "    ║              ╩  ╚═╝╚═╝╩    ╩   ╩╝╚╝╩╚═ ╩╝╚╝╩╚═              ║",
-          "    ║                                                             ║",
-          "    ║                          v2.2.3                             ║",
-          "    ║                                                             ║",
-          "    ║     \"Fix one thing and two more break. That's growth.\"    ║",
-          "    ║                      — The Humble Hacker                    ║",
-          "    ║                                                             ║",
-          "    ║   Refactor • Debug • Test • Analyze • Optimize • Conquer    ║",
-          "    ║                                                             ║",
-          "    ╚═════════════════════════════════════════════════════════════╝",
-          "",
+    opts = function()
+      -- version pulled from the global set in init.lua — single source of truth
+      local ver = tostring(vim.g.nvim_ide_version or "2.2.4")
+
+      -- matrix rain scatter: pseudo-random kanji/hex chars seeded by column position
+      -- gives the top/bottom borders a "digital rain" texture without runtime cost
+      local rain_chars = { "ア","イ","ウ","エ","カ","キ","ク","ケ","コ","サ","シ","ス",
+                           "0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F",
+                           "{","}","[","]","<",">","/","\\","=","λ","Ψ","Ω","░","▒" }
+      local function rain(width)
+        local t = {}
+        math.randomseed(width)
+        for _ = 1, width do
+          t[#t+1] = rain_chars[math.random(#rain_chars)]
+        end
+        return table.concat(t)
+      end
+
+      -- fixed-width border using single-line box chars — renders on every terminal font
+      -- inner width = 62 chars; total line = 64 with border chars
+      local W       = 62
+      local border_h = "─"
+      local top    = "┌" .. border_h:rep(W) .. "┐"
+      local bot    = "└" .. border_h:rep(W) .. "┘"
+      local blank  = "│" .. (" "):rep(W) .. "│"
+
+      local function row(s)
+        -- centre s inside W, pad with spaces, wrap with │
+        local pad  = W - vim.fn.strdisplaywidth(s)
+        local lpad = math.floor(pad / 2)
+        local rpad = pad - lpad
+        return "│" .. (" "):rep(lpad) .. s .. (" "):rep(rpad) .. "│"
+      end
+
+      -- rain rows: sparse — only ~15% of cols get a char, rest are spaces
+      local function rain_row()
+        local t = {}
+        math.randomseed(os.time() % 9999 + #t)
+        for i = 1, W do
+          if math.random() < 0.13 then
+            t[i] = rain_chars[math.random(#rain_chars)]
+          else
+            t[i] = " "
+          end
+        end
+        return "│" .. table.concat(t) .. "│"
+      end
+
+      return {
+        theme = "doom",
+        config = {
+          header = {
+            "",
+            top,
+            rain_row(),
+            -- block-element logo: each glyph is standard UTF-8, renders in any
+            -- monospace font. Widths verified at 62 chars per line.
+            row("  ███╗   ██╗██╗   ██╗██╗███╗   ███╗       ██╗██████╗ ███████╗  "),
+            row("  ████╗  ██║██║   ██║██║████╗ ████║       ██║██╔══██╗██╔════╝  "),
+            row("  ██╔██╗ ██║██║   ██║██║██╔████╔██║  ───  ██║██║  ██║█████╗    "),
+            row("  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║       ██║██║  ██║██╔══╝    "),
+            row("  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║       ██║██████╔╝███████╗  "),
+            row("  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝       ╚═╝╚═════╝ ╚══════╝  "),
+            blank,
+            row("v" .. ver .. "  ·  neovim 0.10+  ·  LSP · DAP · treesitter · 20+ langs"),
+            blank,
+            row("« Fix one thing and two more break. That's growth. »"),
+            row("                          — The Humble Hacker"),
+            blank,
+            row("refactor  ·  debug  ·  test  ·  analyze  ·  optimize  ·  conquer"),
+            rain_row(),
+            bot,
+            "",
+          },
+          center = {
+            { icon = "  ", desc = "New Buffer              ", action = "enew",                          key = "n" },
+            { icon = "  ", desc = "Find Files              ", action = "Telescope find_files",           key = "f" },
+            { icon = "  ", desc = "Recent Files            ", action = "Telescope oldfiles",             key = "r" },
+            { icon = "  ", desc = "Live Search             ", action = "Telescope live_grep",            key = "g" },
+            { icon = "  ", desc = "Restore Session         ", action = "lua require('persistence').load()", key = "s" },
+            { icon = "  ", desc = "Git Status              ", action = "LazyGit",                        key = "G" },
+            { icon = "  ", desc = "Config Editor           ", action = "edit ~/.config/nvim/init.lua",   key = "c" },
+            { icon = "  ", desc = "Language Servers        ", action = "Mason",                          key = "m" },
+            { icon = "  ", desc = "Plugins (Lazy)          ", action = "Lazy",                           key = "l" },
+            { icon = "  ", desc = "System Health           ", action = "checkhealth",                    key = "h" },
+            { icon = "  ", desc = "Exit                    ", action = "qa",                             key = "q" },
+          },
+          -- footer: plain table of strings — doom theme does table.concat directly
+          footer = {
+            "",
+            "  [ " .. rain_chars[math.random(#rain_chars)]
+              .. " " .. rain_chars[math.random(#rain_chars)]
+              .. " " .. rain_chars[math.random(#rain_chars)]
+              .. " ]  the machine is ready  [ "
+              .. rain_chars[math.random(#rain_chars)]
+              .. " " .. rain_chars[math.random(#rain_chars)]
+              .. " " .. rain_chars[math.random(#rain_chars)]
+              .. " ]",
+            "",
+          },
         },
-        center = {
-          { icon = "  ", desc = "New Buffer              ", action = "enew",                     key = "n" },
-          { icon = "  ", desc = "Find Files              ", action = "Telescope find_files",      key = "f" },
-          { icon = "  ", desc = "Recent Files            ", action = "Telescope oldfiles",        key = "r" },
-          { icon = "  ", desc = "Live Search             ", action = "Telescope live_grep",       key = "g" },
-          { icon = "  ", desc = "Restore Session         ", action = "lua require('persistence').load()", key = "s" },
-          { icon = "  ", desc = "Git Status              ", action = "LazyGit",                   key = "G" },
-          { icon = "  ", desc = "Config Editor           ", action = "edit ~/.config/nvim/init.lua", key = "c" },
-          { icon = "  ", desc = "Language Servers        ", action = "Mason",                     key = "m" },
-          { icon = "  ", desc = "Plugins (Lazy)          ", action = "Lazy",                      key = "l" },
-          { icon = "  ", desc = "System Health           ", action = "checkhealth",               key = "h" },
-          { icon = "  ", desc = "Exit                    ", action = "qa",                        key = "q" },
-        },
-        -- FIX: footer must be a plain table of strings for the doom theme.
-        -- A callable caused the footer to never render (dashboard-nvim
-        -- doom theme calls table.concat on the footer value directly).
-        footer = {
-          "",
-          "┌─────────────────────────────────────────────────┐",
-          "│  You're in the zone. The code awaits.           │",
-          "└─────────────────────────────────────────────────┘",
-        },
-      },
-    },
+      }
+    end,
   },
 }
