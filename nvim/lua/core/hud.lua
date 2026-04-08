@@ -30,9 +30,17 @@ local overrides = {
   DapStopped      = { fg = "#9ece6a", bold = true },
   DapStoppedLine  = { bg = "#1a2b1a" },
 
-  -- Dashboard
-  DashboardHeader = { fg = "#7aa2f7" },
-  DashboardFooter = { fg = "#565f89" },
+  -- Dashboard — full matrix hacker palette
+  -- Header: matrix green for borders/rain/logo lines
+  -- Footer: dim phosphor green
+  -- Center items use DashboardCenter/Key/Desc/Icon
+  DashboardHeader     = { fg = "#00cc44" },
+  DashboardFooter     = { fg = "#1a6632" },
+  DashboardCenter     = { fg = "#7dcfff" },
+  DashboardShortCut   = { fg = "#00ff41", bold = true },
+  DashboardKey        = { fg = "#00ff41", bold = true },
+  DashboardDesc       = { fg = "#888888" },
+  DashboardIcon       = { fg = "#7dcfff" },
 
   -- Indent lines — barely visible grid
   IblIndent      = { fg = "#1e2030" },

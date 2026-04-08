@@ -402,108 +402,154 @@ return {
     lazy         = false,
     priority     = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
-    opts = function()
-      -- version pulled from the global set in init.lua — single source of truth
-      local ver = tostring(vim.g.nvim_ide_version or "2.2.4")
+    config = function()
+      -- ── helpers ────────────────────────────────────────────────────────
+      local ver = tostring(vim.g.nvim_ide_version or "2.2.5")
 
-      -- matrix rain scatter: pseudo-random kanji/hex chars seeded by column position
-      -- gives the top/bottom borders a "digital rain" texture without runtime cost
-      local rain_chars = { "ア","イ","ウ","エ","カ","キ","ク","ケ","コ","サ","シ","ス",
-                           "0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F",
-                           "{","}","[","]","<",">","/","\\","=","λ","Ψ","Ω","░","▒" }
-      local function rain(width)
+      -- rain charset: kanji + hex + symbols
+      local RC = {
+        "ア","イ","ウ","エ","オ","カ","キ","ク","ケ","コ",
+        "サ","シ","ス","セ","ソ","タ","チ","ツ","テ","ト",
+        "0","1","2","3","4","5","6","7","8","9",
+        "A","B","C","D","E","F","λ","Ψ","Ω","∑",
+        "{","}","[","]","<",">","/","\\","=","#","░","▒","▓",
+      }
+      local function rc() return RC[math.random(#RC)] end
+
+      -- sparse rain row: ~13% density, dot fill for the rest
+      local W = 64 -- inner content width (no border chars)
+      local function rain_row(density)
+        density = density or 0.13
         local t = {}
-        math.randomseed(width)
-        for _ = 1, width do
-          t[#t+1] = rain_chars[math.random(#rain_chars)]
+        for _ = 1, W do
+          t[#t+1] = math.random() < density and rc() or "·"
         end
-        return table.concat(t)
+        return " " .. table.concat(t) .. " "
       end
 
-      -- fixed-width border using single-line box chars — renders on every terminal font
-      -- inner width = 62 chars; total line = 64 with border chars
-      local W       = 62
-      local border_h = "─"
-      local top    = "┌" .. border_h:rep(W) .. "┐"
-      local bot    = "└" .. border_h:rep(W) .. "┘"
-      local blank  = "│" .. (" "):rep(W) .. "│"
-
-      local function row(s)
-        -- centre s inside W, pad with spaces, wrap with │
-        local pad  = W - vim.fn.strdisplaywidth(s)
-        local lpad = math.floor(pad / 2)
-        local rpad = pad - lpad
-        return "│" .. (" "):rep(lpad) .. s .. (" "):rep(rpad) .. "│"
+      -- centre a string inside W, no border chars (dashboard centres itself)
+      local function c(s)
+        local pad = W - vim.fn.strdisplaywidth(s)
+        local lp  = math.floor(pad / 2)
+        return string.rep(" ", lp) .. s
       end
 
-      -- rain rows: sparse — only ~15% of cols get a char, rest are spaces
-      local function rain_row()
-        local t = {}
-        math.randomseed(os.time() % 9999 + #t)
-        for i = 1, W do
-          if math.random() < 0.13 then
-            t[i] = rain_chars[math.random(#rain_chars)]
-          else
-            t[i] = " "
-          end
-        end
-        return "│" .. table.concat(t) .. "│"
+      -- separator line: ── style with corner glyphs
+      local function sep(l, r)
+        l = l or "├"
+        r = r or "┤"
+        return " " .. l .. string.rep("─", W - 2) .. r .. " "
       end
 
-      return {
+      -- ── rotating hacker quotes ─────────────────────────────────────────
+      local quotes = {
+        { '"Fix one thing and two more break.',
+          " That's growth.",
+          "                    — The Humble Hacker" },
+        { '"Debugging is twice as hard as writing',
+          ' the code in the first place."',
+          "                    — Brian Kernighan" },
+        { '"Any fool can write code a computer',
+          ' can understand. Good code humans can."',
+          "                    — Martin Fowler" },
+        { '"First, solve the problem.',
+          ' Then, write the code."',
+          "                    — John Johnson" },
+        { '"The best error message is the one',
+          ' that never shows up."',
+          "                    — Thomas Fuchs" },
+        { '"Programs must be written for people',
+          ' to read, and only incidentally for machines."',
+          "                    — Harold Abelson" },
+      }
+      math.randomseed(os.time())
+      local q = quotes[math.random(#quotes)]
+
+      -- ── system status line ─────────────────────────────────────────────
+      local function status_line()
+        local ok, lazy = pcall(require, "lazy")
+        local plugin_count = ok and lazy.stats().count or 0
+        local time = os.date("%H:%M")
+        local host = vim.fn.hostname()
+        return string.format(
+          " ● ONLINE  ·  %d plugins  ·  %s  ·  %s ",
+          plugin_count, host, time
+        )
+      end
+
+      -- ── header assembly ────────────────────────────────────────────────
+      local header = {
+        "",
+        -- top rain band (denser)
+        rain_row(0.20),
+        rain_row(0.15),
+        -- top bar: version + mode indicator
+        c("┌─[ NVIM-IDE v" .. ver .. " ]" .. string.rep("─", 30) .. "[ SYS::READY ]─┐"),
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        -- logo: alternating bright/dim lines for scanline effect
+        c("│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │"),
+        c("│  ███╗   ██╗██╗   ██╗██╗███╗   ███╗  ██╗██████╗ ███████╗ │"),
+        c("│  ████╗  ██║██║   ██║██║████╗ ████║  ██║██╔══██╗██╔════╝ │"),
+        c("│  ██╔██╗ ██║██║   ██║██║██╔████╔██║  ██║██║  ██║█████╗   │"),
+        c("│  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║  ██║██║  ██║██╔══╝   │"),
+        c("│  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║  ██║██████╔╝███████╗ │"),
+        c("│  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═════╝ ╚══════╝ │"),
+        c("│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │"),
+        -- meta pills
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        c("│     [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]     │"),
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        -- scanline separator
+        c("├" .. string.rep("·", W - 2) .. "┤"),
+        -- quote block
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        c("│  ▎ " .. q[1]),
+        c("│  ▎ " .. q[2]),
+        c("│  ▎ " .. q[3]),
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        -- scanline separator
+        c("├" .. string.rep("·", W - 2) .. "┤"),
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        -- refactor tagline
+        c("│    refactor · debug · test · analyze · optimize · conquer   │"),
+        c("│" .. string.rep(" ", W - 2) .. "│"),
+        -- status bar
+        c("│  " .. status_line()),
+        c("└" .. string.rep("─", W - 2) .. "┘"),
+        -- bottom rain band
+        rain_row(0.15),
+        rain_row(0.20),
+        "",
+      }
+
+      -- ── dashboard setup ────────────────────────────────────────────────
+      require("dashboard").setup({
         theme = "doom",
         config = {
-          header = {
-            "",
-            top,
-            rain_row(),
-            -- block-element logo: each glyph is standard UTF-8, renders in any
-            -- monospace font. Widths verified at 62 chars per line.
-            row("  ███╗   ██╗██╗   ██╗██╗███╗   ███╗       ██╗██████╗ ███████╗  "),
-            row("  ████╗  ██║██║   ██║██║████╗ ████║       ██║██╔══██╗██╔════╝  "),
-            row("  ██╔██╗ ██║██║   ██║██║██╔████╔██║  ───  ██║██║  ██║█████╗    "),
-            row("  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║       ██║██║  ██║██╔══╝    "),
-            row("  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║       ██║██████╔╝███████╗  "),
-            row("  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝       ╚═╝╚═════╝ ╚══════╝  "),
-            blank,
-            row("v" .. ver .. "  ·  neovim 0.10+  ·  LSP · DAP · treesitter · 20+ langs"),
-            blank,
-            row("« Fix one thing and two more break. That's growth. »"),
-            row("                          — The Humble Hacker"),
-            blank,
-            row("refactor  ·  debug  ·  test  ·  analyze  ·  optimize  ·  conquer"),
-            rain_row(),
-            bot,
-            "",
-          },
+          header = header,
           center = {
-            { icon = "  ", desc = "New Buffer              ", action = "enew",                          key = "n" },
-            { icon = "  ", desc = "Find Files              ", action = "Telescope find_files",           key = "f" },
-            { icon = "  ", desc = "Recent Files            ", action = "Telescope oldfiles",             key = "r" },
-            { icon = "  ", desc = "Live Search             ", action = "Telescope live_grep",            key = "g" },
+            { icon = "  ", desc = "New Buffer              ", action = "enew",                             key = "n" },
+            { icon = "  ", desc = "Find Files              ", action = "Telescope find_files",              key = "f" },
+            { icon = "  ", desc = "Recent Files            ", action = "Telescope oldfiles",                key = "r" },
+            { icon = "  ", desc = "Live Search             ", action = "Telescope live_grep",               key = "g" },
             { icon = "  ", desc = "Restore Session         ", action = "lua require('persistence').load()", key = "s" },
-            { icon = "  ", desc = "Git Status              ", action = "LazyGit",                        key = "G" },
-            { icon = "  ", desc = "Config Editor           ", action = "edit ~/.config/nvim/init.lua",   key = "c" },
-            { icon = "  ", desc = "Language Servers        ", action = "Mason",                          key = "m" },
-            { icon = "  ", desc = "Plugins (Lazy)          ", action = "Lazy",                           key = "l" },
-            { icon = "  ", desc = "System Health           ", action = "checkhealth",                    key = "h" },
-            { icon = "  ", desc = "Exit                    ", action = "qa",                             key = "q" },
+            { icon = "  ", desc = "Git Status              ", action = "LazyGit",                           key = "G" },
+            { icon = "  ", desc = "Config Editor           ", action = "edit ~/.config/nvim/init.lua",      key = "c" },
+            { icon = "  ", desc = "Language Servers        ", action = "Mason",                             key = "m" },
+            { icon = "  ", desc = "Plugins (Lazy)          ", action = "Lazy",                              key = "l" },
+            { icon = "  ", desc = "System Health           ", action = "checkhealth",                       key = "h" },
+            { icon = "  ", desc = "Exit                    ", action = "qa",                                key = "q" },
           },
           -- footer: plain table of strings — doom theme does table.concat directly
           footer = {
             "",
-            "  [ " .. rain_chars[math.random(#rain_chars)]
-              .. " " .. rain_chars[math.random(#rain_chars)]
-              .. " " .. rain_chars[math.random(#rain_chars)]
-              .. " ]  the machine is ready  [ "
-              .. rain_chars[math.random(#rain_chars)]
-              .. " " .. rain_chars[math.random(#rain_chars)]
-              .. " " .. rain_chars[math.random(#rain_chars)]
-              .. " ]",
+            "  " .. rc() .. " " .. rc() .. " " .. rc()
+              .. "  ·  the machine is ready  ·  "
+              .. rc() .. " " .. rc() .. " " .. rc(),
             "",
           },
         },
-      }
+      })
     end,
   },
 }
