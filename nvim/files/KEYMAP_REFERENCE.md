@@ -1,4 +1,4 @@
-# NEOVIM KEYMAP REFERENCE
+# NEOVIM KEYMAP REFERENCE — v2.3.0
 
 ## LEADER KEY
 Space (` `)
@@ -6,9 +6,9 @@ Space (` `)
 ---
 
 ## CORE EDITING
-- `jk` / `kj` — Exit insert mode *(handled by better-escape.nvim, zero lag)*
+- `jk` / `kj` — Exit insert mode *(better-escape.nvim, zero lag)*
 - `<Esc>` — Clear search highlight
-- `Alt+j` / `Alt+k` — Move lines up/down (normal + visual, not select mode)
+- `Alt+j` / `Alt+k` — Move lines up/down (normal + visual)
 - `<` / `>` (visual) — Indent left/right (keeps selection)
 
 ---
@@ -38,8 +38,8 @@ Space (` `)
 
 ## FILE EXPLORER
 - `<leader>ee` — Toggle explorer
-- `<leader>ef` — Find file in explorer
-- `<leader>ec` — Collapse explorer
+- `<leader>ef` — Focus explorer
+- `<leader>ec` — Close explorer
 - `<leader>er` — Refresh explorer
 
 ---
@@ -54,28 +54,29 @@ Space (` `)
 - `<leader>fk` — Find keymaps
 - `<leader>fc` — Find commands
 - `<leader>fr` — Resume last search
-- `<leader>fo` — Recent files  ← sole owner; Fortran uses `<leader>ft*` to avoid conflict
+- `<leader>fo` — Recent files  ← sole owner; Fortran uses `<leader>ft*`
 - `Ctrl+s` — Live grep
 
 ---
 
 ## LSP & CODE
-*(keymaps set on LspAttach in lsp.lua)*
+*(keymaps set on LspAttach — lsp.lua)*
 - `gd` — Go to definition
 - `gD` — Go to declaration
 - `gi` — Go to implementation
-- `gr` — Go to references
+- `gr` — References
 - `K` — Hover documentation
 - `<leader>k` — Signature help
 - `<leader>,a` — Code action (normal + visual)
 - `<leader>,r` — Rename symbol
-- `<leader>,f` — Format code (normal + visual)
+- `<leader>,f` — Format (normal + visual)
 - `<leader>,o` — Code outline (Aerial)
-- `]d` / `[d` — Next/previous diagnostic
-- `<leader>,d` — Show diagnostic float
+- `<leader>,i` — Toggle inlay hints
+- `<leader>,d` — Diagnostic float
 - `<leader>,l` — Diagnostics list
 - `<leader>,t` — Toggle diagnostics
 - `<leader>ty` — Type definition
+- `]d` / `[d` — Next / prev diagnostic
 
 ---
 
@@ -86,10 +87,22 @@ Space (` `)
 - `<leader>.s` — Git status
 - `<leader>.d` — Git diff (Diffview)
 - `<leader>.h` — File history (Diffview)
-- `]h` / `[h` — Next/previous hunk
+- `<leader>.N` — Neogit UI
+- `<leader>.C` — Git commit (Neogit)
+- `<leader>.v` — Git history (GV)
+- `<leader>.B` — Git blame HUD
+- `<leader>.oi` — GitHub issues (Octo)
+- `<leader>.op` — GitHub PRs (Octo)
+- `<leader>.or` — Start PR review (Octo)
+- `<leader>.oc` — Checkout PR (Octo)
+- `]h` / `[h` — Next / prev hunk
 - `<leader>.p` — Preview hunk
 - `<leader>.r` — Reset hunk
 - `<leader>.S` — Stage hunk
+- `<leader>gco` — Conflict: choose ours
+- `<leader>gct` — Conflict: choose theirs
+- `<leader>gcb` — Conflict: choose both
+- `<leader>gc0` — Conflict: choose neither
 
 ---
 
@@ -128,6 +141,9 @@ Space (` `)
 - `<leader>'p` — Test panel
 - `<leader>'u` — Test summary
 - `<leader>'d` — Test debug nearest (Neotest + DAP)
+- `<leader>'P` — Test all parallel (Neotest, concurrency=4)
+- `<leader>'w` — Neotest watch file
+- `<leader>'W` — Neotest watch nearest
 - `<leader>tcv` — Coverage load
 - `<leader>tcs` — Coverage summary
 - `<leader>tct` — Coverage toggle
@@ -148,8 +164,12 @@ Space (` `)
 - `<leader>ut` — Toggle theme (dark/light)
 - `<leader>uw` — Toggle wrap
 - `<leader>us` — Toggle spell
-- `<leader>un` — Toggle line numbers
+- `<leader>ul` — Toggle line numbers
 - `<leader>uz` — Zen mode
+- `<leader>uF` — Deep focus mode
+- `<leader>uT` — Twilight
+- `<leader>un` — Dismiss notifications  ← `<cmd>Noice dismiss<cr>`
+- `<leader>uN` — Notification history
 
 ---
 
@@ -164,24 +184,26 @@ Space (` `)
 - `<leader>ha` — Add file
 - `<leader>hm` — Toggle menu
 - `<leader>h1`–`h4` — Jump to file 1–4
-- `Alt+1`–`4` — Jump to file 1–4 (alternative)
+- `Alt+1`–`4` — Jump to file 1–4
 
 ---
 
 ## MISC UTILITIES
 - `s` — Flash jump
-- `]t` / `[t` — Next/previous todo
+- `]t` / `[t` — Next / prev todo
 - `<leader>xc` — Copy file path
 - `<leader>xr` — Copy relative path
 - `<leader>xd` — Change to file directory
 - `<leader>xe` — Make executable
-- `<leader>xm` — Clean memory
+- `<leader>xm` — Clean memory (GC)
 - `<leader>xh` — Health check
 - `<leader>xp` — Go to project root
-- `<leader>xl` — Lazy (plugin manager)
-- `<leader>xn` — Mason (LSP installer)
+- `<leader>xl` — Lazy
+- `<leader>xn` — Mason
 - `<leader>xx` — Trouble diagnostics
 - `<leader>xu` — Undo tree
+- `<leader>xg` — Generate docstring (Neogen)
+- `<leader>ft` — Find TODOs
 
 ---
 
@@ -195,8 +217,10 @@ Space (` `)
 - `<leader>pyds` — Debug selection
 - `<leader>pyrs` — REPL start
 - `<leader>pyrr` — REPL restart
-- `<leader>pyrc` — REPL send motion/visual
+- `<leader>pyrc` — REPL send motion
+- `<leader>pyrv` — REPL send visual
 - `<leader>pyrl` — REPL send line
+- `<leader>pyru` — REPL send until cursor
 - `<leader>pyri` — REPL interrupt
 - `<leader>pyrq` — REPL quit
 - `<leader>pyrx` — REPL clear
@@ -212,7 +236,7 @@ Space (` `)
 - `<leader>rh` — Hover actions
 - `<leader>ra` — Code action
 - `<leader>rd` — Debuggables
-- `<leader>rt` — Test
+- `<leader>rt` — Testables
 
 ### Go (`<leader>go*`)
 - `<leader>got` — Test
@@ -252,8 +276,10 @@ Space (` `)
 - `<leader>jpc` — Change version
 
 ### Elixir (`<leader>ex*`)
-- *(Elixir tests use the global `<leader>'*` bindings — neotest-elixir adapter
-  is registered centrally in test.lua)*
+- `<leader>ext` — mix test
+- `<leader>exf` — mix format
+- `<leader>exp` — Phoenix server
+- `<leader>exi` — IEx session
 
 ### C++ / CMake (`<leader>cc*`)
 - `<leader>ccg` — CMake generate
@@ -264,7 +290,7 @@ Space (` `)
 - `<leader>ccs` — CMake select target
 - `<leader>ccd` — Generate docstring
 
-### Fortran (`<leader>ft*`)  ← uses `ft*` not `fo*` to avoid shadowing `<leader>fo` (Telescope recent files)
+### Fortran (`<leader>ft*`)  ← `ft*` avoids shadowing `<leader>fo` (Telescope recent files)
 - `<leader>ftb` — Build & run
 - `<leader>ftc` — Check syntax
 - `<leader>ftm` — Make
@@ -289,7 +315,7 @@ Space (` `)
 - `<leader>dba` — Add connection
 - `<leader>dbf` — Find buffer
 
-### REST (`<leader>re*`)  ← uses `re*` not `h*` to avoid collision with Harpoon's `<leader>h` namespace
+### REST (`<leader>re*`)  ← `re*` avoids collision with Harpoon `<leader>h*`
 - `<leader>rer` — Run request
 - `<leader>rep` — Preview request
 - `<leader>rel` — Run last request
@@ -304,7 +330,9 @@ Space (` `)
 ## EMMET (HTML/CSS/JS/TS)
 - `Ctrl+e` — Expand emmet abbreviation
 
-### Task Runner (Overseer) (`<leader>o*`)
+---
+
+## TASK RUNNER (Overseer) (`<leader>o*`)
 - `<leader>ot` — Toggle task list
 - `<leader>or` — Run task (picker)
 - `<leader>ob` — Build
@@ -312,10 +340,33 @@ Space (` `)
 - `<leader>oc` — Clear cache
 - `<leader>os` — Shell command
 
-### HUD Extras
+---
+
+## HUD / FOCUS
 - `<leader>uF` — Deep focus mode (strips all chrome + Twilight + Zen)
 - `<leader>uT` — Twilight (dim non-active block)
 - `<leader>un` — Dismiss all notifications
 - `<leader>uN` — Notification history
 - `<leader>.B` — Git blame virtual text toggle
 - `<leader>eo` / `-` — Oil inline file editor
+- `<leader>uc` — Go to treesitter context start
+
+---
+
+## TREESITTER TEXT OBJECTS
+- `af` / `if` — Function outer/inner
+- `ac` / `ic` — Class outer/inner
+- `al` / `il` — Loop outer/inner
+- `aa` / `ia` — Parameter outer/inner
+- `ai` / `ii` — Conditional outer/inner
+- `]f` / `[f` — Next/prev function start
+- `]c` / `[c` — Next/prev class start
+- `]a` / `[a` — Next/prev parameter start
+- `<leader>sa` / `<leader>sA` — Swap parameter next/prev
+
+---
+
+## SESSIONS (persistence.nvim)
+- `<leader>qs` — Restore session (cwd)
+- `<leader>ql` — Restore last session
+- `<leader>qd` — Don't save session on exit

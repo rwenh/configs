@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.0
 
 ---
 
@@ -126,6 +126,10 @@ gem install solargraph rubocop debug
 echo "→ Rust"
 cargo install stylua vhdl_ls
 
+echo "→ Go"
+go install golang.org/x/tools/cmd/goimports@latest
+go install mvdan.cc/gofumpt@latest
+
 echo "→ Nerd Font (FiraCode)"
 mkdir -p ~/.local/share/fonts && cd ~/.local/share/fonts
 wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/FiraCode.zip
@@ -156,21 +160,25 @@ echo "✓ Done — run: nvim"
     │   ├── autocmds.lua        # autocommands
     │   ├── commands.lua        # user commands (:MasonInstallAll etc.)
     │   ├── theme.lua           # theme management + dark/light toggle
+    │   ├── focus.lua           # deep focus mode (strips chrome + Twilight + Zen)
+    │   ├── hud.lua             # synthwave accent highlight overrides
     │   └── util/
     │       ├── path.lua        # project root detection + caching
     │       └── runner.lua      # file/selection/test runner engine
     └── plugins/
         ├── init.lua            # lazy.nvim setup
         └── specs/
-            ├── ui.lua          # themes, statusline, bufferline, dashboard
+            ├── ui.lua          # themes, statusline, bufferline, snacks dashboard
             ├── editor.lua      # telescope, tree, flash, harpoon, sessions
             ├── lsp.lua         # LSP, Mason, conform, nvim-lint
             ├── completion.lua  # blink.cmp
             ├── treesitter.lua  # treesitter + context + textobjects
-            ├── git.lua         # gitsigns, lazygit, diffview
+            ├── git.lua         # gitsigns, lazygit, diffview, octo
             ├── dap.lua         # nvim-dap + UI + adapters (all languages)
             ├── test.lua        # neotest + coverage (all adapters)
             ├── advanced.lua    # colorizer, navic, rainbow, better-escape, ufo
+            ├── hud.lua         # indent-blankline, neoscroll, noice, barbecue…
+            ├── workflow.lua    # overseer task runner
             └── lang/           # per-language plugin specs (20+ languages)
 ```
 
@@ -185,7 +193,7 @@ echo "✓ Done — run: nvim"
 | Rust | rust-analyzer *(rustaceanvim)* | codelldb | rustfmt | clippy | cargo |
 | Go | gopls | delve | goimports + gofumpt | staticcheck | go test |
 | TypeScript | typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
-| JavaScript | ts_ls | pwa-node | prettier | eslint_d | vitest / jest |
+| JavaScript | typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
 | Java | jdtls | java-debug | — | — | JUnit |
 | Kotlin | kotlin_language_server | — | ktlint | ktlint | JUnit |
 | Ruby | solargraph | rdbg | rubocop | rubocop | rspec |
@@ -289,6 +297,25 @@ M.config = {
 Available: `tokyonight` · `catppuccin` · `rose-pine` · `kanagawa` · `gruvbox-material` · `solarized` · `solarized-osaka`
 
 Toggle at runtime: `<leader>ut`
+
+---
+
+## Known Issues / Pending Fixes (v2.3.0)
+
+The following modules have known bugs being tracked for v2.3.1:
+
+| Module | Issue |
+|--------|-------|
+| `completion.lua` | `version=false` tracks HEAD — pin to latest stable blink.cmp tag |
+| `lsp.lua` | nvim-0.11 `vim.lsp.enable()` + mason-lspconfig double-attach on some servers |
+| `dap.lua` | `load_breakpoints()` restores on large files before treesitter parses — marks land on wrong lines |
+| `python.lua` | iron.nvim REPL keymaps (`send_motion`, `visual_send`) set globally at load time, not per-buffer |
+| `test.lua` | neotest-rust race condition if rustaceanvim not yet attached on first Rust file open |
+| `workflow.lua` | `overseer.run_template({ name="build" })` unhandled error when no build template matches |
+| `autocmds.lua` | `TrimWhitespace` calls `nvim_buf_set_lines` per line in a loop — should be batched in one call |
+| `treesitter.lua` | `foldexpr` uses deprecated v3 API — should be `v:lua.vim.treesitter.foldexpr()` |
+| `advanced.lua` | `close_fold_kinds` field renamed to `close_fold_kinds_for_ft` in recent nvim-ufo |
+| `keymaps.lua` | `<leader>un` collision — mapped to both "toggle line numbers" and "Noice dismiss" |
 
 ---
 

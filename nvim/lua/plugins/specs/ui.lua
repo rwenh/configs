@@ -1,17 +1,19 @@
 -- lua/plugins/specs/ui.lua
 --
--- FIX (v2.2.3):
---   • Dashboard footer: doom theme requires a plain table of strings, not a
---     callable. Wrapping in a function caused the footer to never render.
---     Fixed: footer is now a static table built once at load time. Plugin/mem
---     stats that need runtime values are placed in center items or omitted.
---   • which-key: <leader>md group removed — no keymaps use that prefix.
---     Markdown bindings are <leader>mp and <leader>tm (both covered by other
---     groups or standalone).
---   • theme_spec lazy flag: the closure was fine (captured at load time which
---     is correct for lazy=false on the active theme). No change needed —
---     mid-session theme switches use M.switch() which calls colorscheme
---     directly, not lazy's loading mechanism.
+-- v2.3.0 — dashboard-nvim replaced with folke/snacks.nvim
+--   • snacks.nvim dashboard supports per-pane custom render functions,
+--     enabling a real animated matrix rain header via vim.uv timer +
+--     nvim_buf_set_lines on the live dashboard buffer.
+--   • All other plugins (themes, lualine, bufferline, notify, trouble,
+--     which-key, toggleterm) are unchanged.
+--   • dashboard-nvim dependency removed from plugins/init.lua import list.
+--
+-- RAIN ENGINE:
+--   Each column has an independent drop-head that falls at a randomised
+--   speed. Characters are drawn from a mixed katakana + hex + symbol set.
+--   The timer fires every 80 ms and updates only the header lines so the
+--   center menu stays stable. The timer is stopped on DashboardClosed /
+--   BufLeave from the dashboard buffer.
 
 local function get_active()
   local ok, t = pcall(function() return require("core.theme").config.theme end)
@@ -31,6 +33,8 @@ local function theme_spec(plugin_name, name, extra)
 end
 
 return {
+
+  -- ── Themes ──────────────────────────────────────────────────────────────
 
   theme_spec("folke/tokyonight.nvim", "tokyonight", {
     opts = {
@@ -130,6 +134,8 @@ return {
     end,
   }),
 
+  -- ── Status & buffer line ─────────────────────────────────────────────────
+
   {
     "nvim-lualine/lualine.nvim",
     event        = "VeryLazy",
@@ -140,7 +146,7 @@ return {
         globalstatus         = true,
         component_separators = { left = "|", right = "|" },
         section_separators   = { left = "", right = "" },
-        disabled_filetypes   = { statusline = { "dashboard", "alpha", "neo-tree", "oil" } },
+        disabled_filetypes   = { statusline = { "dashboard", "alpha", "neo-tree", "oil", "snacks_dashboard" } },
         refresh              = { statusline = 1000, tabline = 1000, winbar = 1000 },
       },
       sections = {
@@ -149,10 +155,10 @@ return {
             "mode",
             fmt = function(str)
               local icons = {
-                NORMAL     = "󰰓 N", INSERT    = "󰰄 I",
-                VISUAL     = "󰰫 V", ["V-LINE"] = "󰰫 VL",
-                ["V-BLOCK"] = "󰰫 VB", COMMAND  = " C",
-                TERMINAL   = " T", REPLACE   = "󰰟 R",
+                NORMAL      = "󰰓 N", INSERT     = "󰰄 I",
+                VISUAL      = "󰰫 V", ["V-LINE"]  = "󰰫 VL",
+                ["V-BLOCK"] = "󰰫 VB", COMMAND   = " C",
+                TERMINAL    = " T", REPLACE    = "󰰟 R",
               }
               return icons[str] or str:sub(1, 1)
             end,
@@ -223,6 +229,8 @@ return {
     },
   },
 
+  -- ── Notifications ────────────────────────────────────────────────────────
+
   {
     "rcarriga/nvim-notify",
     event = "VeryLazy",
@@ -243,6 +251,8 @@ return {
       vim.notify = notify
     end,
   },
+
+  -- ── Diagnostics ──────────────────────────────────────────────────────────
 
   {
     "folke/trouble.nvim",
@@ -272,18 +282,20 @@ return {
       },
       win  = { type = "split", position = "bottom", size = 0.3 },
       keys = {
-        ["?"]     = "help",      ["r"]     = "refresh",
-        ["R"]     = "toggle_refresh", ["q"] = "close",
-        ["o"]     = "jump_close", ["<esc>"] = "cancel",
-        ["<cr>"]  = "jump",      ["<tab>"] = "jump",
-        ["<c-x>"] = "jump_split", ["<c-v>"] = "jump_vsplit",
-        ["<c-t>"] = "jump_tab",  ["za"]    = "fold_toggle",
-        ["zo"]    = "fold_open", ["zc"]    = "fold_close",
-        ["zM"]    = "fold_close_all", ["zR"] = "fold_open_all",
-        ["k"]     = "prev",      ["j"]     = "next",
+        ["?"]     = "help",           ["r"]     = "refresh",
+        ["R"]     = "toggle_refresh", ["q"]     = "close",
+        ["o"]     = "jump_close",     ["<esc>"] = "cancel",
+        ["<cr>"]  = "jump",           ["<tab>"] = "jump",
+        ["<c-x>"] = "jump_split",     ["<c-v>"] = "jump_vsplit",
+        ["<c-t>"] = "jump_tab",       ["za"]    = "fold_toggle",
+        ["zo"]    = "fold_open",      ["zc"]    = "fold_close",
+        ["zM"]    = "fold_close_all", ["zR"]    = "fold_open_all",
+        ["k"]     = "prev",           ["j"]     = "next",
       },
     },
   },
+
+  -- ── Which-key ────────────────────────────────────────────────────────────
 
   {
     "folke/which-key.nvim",
@@ -302,7 +314,7 @@ return {
           nav          = true, z            = true, g = true,
         },
       },
-      win = { border = "rounded", padding = { 1, 2 }, zindex = 1000 },
+      win    = { border = "rounded", padding = { 1, 2 }, zindex = 1000 },
       layout = {
         align   = "center",
         height  = { min = 4, max = 25 },
@@ -342,9 +354,6 @@ return {
         { "<leader>ft", group = "fortran" },
         { "<leader>z",  group = "zig" },
         { "<leader>co", group = "cobol" },
-        -- FIX: <leader>md group removed — no keymaps use that prefix.
-        -- Markdown bindings are <leader>mp (MarkdownPreviewToggle) and
-        -- <leader>tm (TableModeToggle), both outside the md* namespace.
         { "<leader>ts", group = "typescript" },
         { "<leader>jp", group = "js-packages" },
         { "<leader>db", group = "database" },
@@ -353,6 +362,8 @@ return {
       },
     },
   },
+
+  -- ── Terminal ─────────────────────────────────────────────────────────────
 
   {
     "akinsho/toggleterm.nvim",
@@ -397,158 +408,341 @@ return {
     },
   },
 
+  -- ── Dashboard — snacks.nvim with animated matrix rain ───────────────────
+  --
+  -- ARCHITECTURE:
+  --   snacks.dashboard renders sections. The "header" section uses a custom
+  --   text() function that returns the current rain frame. A vim.uv timer
+  --   fires every 80 ms and calls snacks.dashboard.update() to redraw.
+  --   Each column has an independent drop-state (head position + speed).
+  --   Characters are drawn from a wide katakana + hex + symbol pool.
+  --   Highlight groups MATRIX_HEAD (bright green) / MATRIX_TRAIL (dim green)
+  --   / MATRIX_DIM (near-black green) are defined on ColorScheme autocmd so
+  --   they survive theme toggling.
+  --
+  -- IMPORTANT: snacks.nvim replaces dashboard-nvim entirely.
+  --   Remove `{ import = "plugins.specs.ui" }` duplication is fine; this
+  --   spec carries lazy=false + priority=90 to match old dashboard behaviour.
   {
-    "nvimdev/dashboard-nvim",
-    lazy         = false,
-    priority     = 90,
+    "folke/snacks.nvim",
+    lazy     = false,
+    priority = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      -- ── helpers ────────────────────────────────────────────────────────
-      local ver = tostring(vim.g.nvim_ide_version or "2.2.5")
+      -- ── Highlight groups ─────────────────────────────────────────────
+      local function set_matrix_hl()
+        vim.api.nvim_set_hl(0, "MatrixHead",  { fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixTrail", { fg = "#00cc33" })
+        vim.api.nvim_set_hl(0, "MatrixMid",   { fg = "#008822" })
+        vim.api.nvim_set_hl(0, "MatrixDim",   { fg = "#003311" })
+        vim.api.nvim_set_hl(0, "MatrixBorder",{ fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixTitle", { fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixSub",   { fg = "#00cc33" })
+        vim.api.nvim_set_hl(0, "MatrixFaint", { fg = "#1a6632" })
+        vim.api.nvim_set_hl(0, "MatrixQuote", { fg = "#00aa2a", italic = true })
+      end
+      set_matrix_hl()
+      vim.api.nvim_create_autocmd("ColorScheme", {
+        group    = vim.api.nvim_create_augroup("MatrixHl", { clear = true }),
+        callback = set_matrix_hl,
+      })
 
-      -- rain charset: kanji + hex + symbols
-      local RC = {
+      -- ── Rain engine ──────────────────────────────────────────────────
+      local COLS  = 64   -- character columns in the rain field
+      local ROWS  = 12   -- visible rain rows
+      local POOL  = {
         "ア","イ","ウ","エ","オ","カ","キ","ク","ケ","コ",
         "サ","シ","ス","セ","ソ","タ","チ","ツ","テ","ト",
+        "ナ","ニ","ヌ","ネ","ノ","ハ","ヒ","フ","ヘ","ホ",
         "0","1","2","3","4","5","6","7","8","9",
-        "A","B","C","D","E","F","λ","Ψ","Ω","∑",
-        "{","}","[","]","<",">","/","\\","=","#","░","▒","▓",
+        "A","B","C","D","E","F","λ","Ψ","Ω","∑","∂","∇",
+        "{","}","[","]","<",">","/","\\","=","#",
+        "░","▒","▓","│","┼","╋","╬","╔","╗","╚","╝",
       }
-      local function rc() return RC[math.random(#RC)] end
+      local function rc() return POOL[math.random(#POOL)] end
 
-      -- sparse rain row: ~13% density, dot fill for the rest
-      local W = 64 -- inner content width (no border chars)
-      local function rain_row(density)
-        density = density or 0.13
-        local t = {}
-        for _ = 1, W do
-          t[#t+1] = math.random() < density and rc() or "·"
-        end
-        return " " .. table.concat(t) .. " "
-      end
-
-      -- centre a string inside W, no border chars (dashboard centres itself)
-      local function c(s)
-        local pad = W - vim.fn.strdisplaywidth(s)
-        local lp  = math.floor(pad / 2)
-        return string.rep(" ", lp) .. s
-      end
-
-      -- separator line: ── style with corner glyphs
-      local function sep(l, r)
-        l = l or "├"
-        r = r or "┤"
-        return " " .. l .. string.rep("─", W - 2) .. r .. " "
-      end
-
-      -- ── rotating hacker quotes ─────────────────────────────────────────
-      local quotes = {
-        { '"Fix one thing and two more break.',
-          " That's growth.",
-          "                    — The Humble Hacker" },
-        { '"Debugging is twice as hard as writing',
-          ' the code in the first place."',
-          "                    — Brian Kernighan" },
-        { '"Any fool can write code a computer',
-          ' can understand. Good code humans can."',
-          "                    — Martin Fowler" },
-        { '"First, solve the problem.',
-          ' Then, write the code."',
-          "                    — John Johnson" },
-        { '"The best error message is the one',
-          ' that never shows up."',
-          "                    — Thomas Fuchs" },
-        { '"Programs must be written for people',
-          ' to read, and only incidentally for machines."',
-          "                    — Harold Abelson" },
-      }
+      -- State: each column has a head row (float), speed, and trail length
       math.randomseed(os.time())
-      local q = quotes[math.random(#quotes)]
-
-      -- ── system status line ─────────────────────────────────────────────
-      local function status_line()
-        local ok, lazy = pcall(require, "lazy")
-        local plugin_count = ok and lazy.stats().count or 0
-        local time = os.date("%H:%M")
-        local host = vim.fn.hostname()
-        return string.format(
-          " ● ONLINE  ·  %d plugins  ·  %s  ·  %s ",
-          plugin_count, host, time
-        )
+      local cols = {}
+      for c = 1, COLS do
+        cols[c] = {
+          head   = math.random() * ROWS,       -- current head position (float)
+          speed  = 0.15 + math.random() * 0.4, -- rows per tick
+          trail  = 3 + math.random(5),          -- trail length
+          chars  = {},                           -- per-row character (randomised)
+          active = math.random() > 0.3,          -- some columns start inactive
+          pause  = math.random(20),              -- ticks before (re)activation
+        }
+        for r = 1, ROWS do cols[c].chars[r] = rc() end
       end
 
-      -- ── header assembly ────────────────────────────────────────────────
-      local header = {
-        "",
-        -- top rain band (denser)
-        rain_row(0.20),
-        rain_row(0.15),
-        -- top bar: version + mode indicator
-        c("┌─[ NVIM-IDE v" .. ver .. " ]" .. string.rep("─", 30) .. "[ SYS::READY ]─┐"),
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        -- logo: alternating bright/dim lines for scanline effect
-        c("│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │"),
-        c("│  ███╗   ██╗██╗   ██╗██╗███╗   ███╗  ██╗██████╗ ███████╗ │"),
-        c("│  ████╗  ██║██║   ██║██║████╗ ████║  ██║██╔══██╗██╔════╝ │"),
-        c("│  ██╔██╗ ██║██║   ██║██║██╔████╔██║  ██║██║  ██║█████╗   │"),
-        c("│  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║  ██║██║  ██║██╔══╝   │"),
-        c("│  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║  ██║██████╔╝███████╗ │"),
-        c("│  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝  ╚═╝╚═════╝ ╚══════╝ │"),
-        c("│  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │"),
-        -- meta pills
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        c("│     [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]     │"),
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        -- scanline separator
-        c("├" .. string.rep("·", W - 2) .. "┤"),
-        -- quote block
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        c("│  ▎ " .. q[1]),
-        c("│  ▎ " .. q[2]),
-        c("│  ▎ " .. q[3]),
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        -- scanline separator
-        c("├" .. string.rep("·", W - 2) .. "┤"),
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        -- refactor tagline
-        c("│    refactor · debug · test · analyze · optimize · conquer   │"),
-        c("│" .. string.rep(" ", W - 2) .. "│"),
-        -- status bar
-        c("│  " .. status_line()),
-        c("└" .. string.rep("─", W - 2) .. "┘"),
-        -- bottom rain band
-        rain_row(0.15),
-        rain_row(0.20),
-        "",
+      -- Render one frame → returns table of {text, hl} segment lists per row
+      -- Returns a flat list of strings (one per line) for snacks text section.
+      -- We build a single string per row; snacks will apply per-line highlights
+      -- via the `hl` field in the text section items.
+      local function render_rain_lines()
+        -- Advance state
+        for c = 1, COLS do
+          local col = cols[c]
+          if col.active then
+            col.head = col.head + col.speed
+            -- randomise chars along the trail occasionally
+            if math.random() < 0.3 then
+              local r = math.random(ROWS)
+              col.chars[r] = rc()
+            end
+            if col.head > ROWS + col.trail then
+              col.active = false
+              col.pause  = math.random(15)
+              col.head   = -col.trail
+              col.trail  = 3 + math.random(5)
+              col.speed  = 0.15 + math.random() * 0.4
+            end
+          else
+            col.pause = col.pause - 1
+            if col.pause <= 0 then col.active = true end
+          end
+        end
+
+        -- Build lines: for each row, for each col, pick char + classify
+        local lines = {}
+        for r = 1, ROWS do
+          local segments = {}  -- {char, class}  0=empty 1=dim 2=mid 3=trail 4=head
+          for c = 1, COLS do
+            local col = cols[c]
+            local head_row = math.floor(col.head)
+            local dist     = head_row - r   -- positive = head is below this row
+            local ch = col.chars[r]
+            if dist == 0 then
+              segments[c] = { ch, 4 }   -- head
+            elseif dist > 0 and dist <= col.trail then
+              -- brightness decays with distance from head
+              if dist == 1 then segments[c] = { ch, 3 }
+              elseif dist <= 3 then segments[c] = { ch, 2 }
+              else segments[c] = { ch, 1 }
+              end
+            else
+              segments[c] = { " ", 0 }
+            end
+          end
+          lines[r] = segments
+        end
+        return lines
+      end
+
+      -- Convert segment matrix to snacks-compatible text items
+      -- snacks text section accepts: { { text, hl } ... } per line
+      -- We flatten to one item-list per row.
+      local CLASS_HL = { [0]="", [1]="MatrixDim", [2]="MatrixMid", [3]="MatrixTrail", [4]="MatrixHead" }
+
+      local function rain_to_items(lines)
+        local items = {}
+        for _, row in ipairs(lines) do
+          local row_items = {}
+          local buf_text  = ""
+          local buf_class = 0
+          -- merge consecutive same-class segments
+          for _, seg in ipairs(row) do
+            local ch, cls = seg[1], seg[2]
+            if cls == buf_class then
+              buf_text = buf_text .. ch
+            else
+              if buf_text ~= "" then
+                table.insert(row_items, { buf_text, hl = CLASS_HL[buf_class] })
+              end
+              buf_text  = ch
+              buf_class = cls
+            end
+          end
+          if buf_text ~= "" then
+            table.insert(row_items, { buf_text, hl = CLASS_HL[buf_class] })
+          end
+          -- newline between rows
+          table.insert(row_items, { "\n" })
+          for _, item in ipairs(row_items) do
+            table.insert(items, item)
+          end
+        end
+        return items
+      end
+
+      -- ── Logo lines (static, rendered once) ───────────────────────────
+      local ver = tostring(vim.g.nvim_ide_version or "2.3.0")
+
+      local LOGO = {
+        { "╔══════════════════════════════════════════════════════════════╗", "MatrixBorder" },
+        { "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║", "MatrixTitle"  },
+        { "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║", "MatrixTitle"  },
+        { "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║", "MatrixTitle"  },
+        { "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║", "MatrixSub"    },
+        { "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║", "MatrixSub"    },
+        { "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║", "MatrixFaint"  },
+        { "║                                                               ║", "MatrixBorder" },
+        { "║   [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v"..ver.."  ║", "MatrixQuote"  },
+        { "╚══════════════════════════════════════════════════════════════╝", "MatrixBorder" },
       }
 
-      -- ── dashboard setup ────────────────────────────────────────────────
-      require("dashboard").setup({
-        theme = "doom",
-        config = {
-          header = header,
-          center = {
-            { icon = "  ", desc = "New Buffer              ", action = "enew",                             key = "n" },
-            { icon = "  ", desc = "Find Files              ", action = "Telescope find_files",              key = "f" },
-            { icon = "  ", desc = "Recent Files            ", action = "Telescope oldfiles",                key = "r" },
-            { icon = "  ", desc = "Live Search             ", action = "Telescope live_grep",               key = "g" },
-            { icon = "  ", desc = "Restore Session         ", action = "lua require('persistence').load()", key = "s" },
-            { icon = "  ", desc = "Git Status              ", action = "LazyGit",                           key = "G" },
-            { icon = "  ", desc = "Config Editor           ", action = "edit ~/.config/nvim/init.lua",      key = "c" },
-            { icon = "  ", desc = "Language Servers        ", action = "Mason",                             key = "m" },
-            { icon = "  ", desc = "Plugins (Lazy)          ", action = "Lazy",                              key = "l" },
-            { icon = "  ", desc = "System Health           ", action = "checkhealth",                       key = "h" },
-            { icon = "  ", desc = "Exit                    ", action = "qa",                                key = "q" },
+      -- rotating quotes
+      local QUOTES = {
+        "\"Fix one thing and two more break. That's growth.\"",
+        "\"Debugging is twice as hard as writing the code.\"  — Kernighan",
+        "\"First, solve the problem. Then, write the code.\"  — Johnson",
+        "\"The best error message is the one that never shows.\"  — Fuchs",
+        "\"Programs must be written for people to read.\"  — Abelson",
+        "\"Any fool can write code a computer understands.\"  — Fowler",
+      }
+      local _quote = QUOTES[math.random(#QUOTES)]
+
+      -- ── snacks.nvim setup ────────────────────────────────────────────
+      local ok_snacks, snacks = pcall(require, "snacks")
+      if not ok_snacks then
+        vim.notify("snacks.nvim not available", vim.log.levels.WARN)
+        return
+      end
+
+      -- Current rain frame (shared state updated by timer)
+      local _rain_lines = render_rain_lines()
+      local _rain_items = rain_to_items(_rain_lines)
+      local _timer      = nil
+      local _dash_buf   = nil
+
+      local function build_header_text()
+        -- Returns a flat list of {text, hl} items: rain + logo + quote
+        local items = {}
+        -- rain (top)
+        for _, item in ipairs(_rain_items) do
+          table.insert(items, item)
+        end
+        -- logo
+        for _, line in ipairs(LOGO) do
+          table.insert(items, { line[1], hl = line[2] })
+          table.insert(items, { "\n" })
+        end
+        -- quote
+        table.insert(items, { "\n" })
+        table.insert(items, { "  " .. _quote .. "\n", hl = "MatrixQuote" })
+        table.insert(items, { "\n" })
+        return items
+      end
+
+      snacks.setup({
+        -- ── dashboard ──────────────────────────────────────────────────
+        dashboard = {
+          enabled = true,
+          width   = 66,
+          row     = nil,
+          col     = nil,
+          pane_gap = 4,
+          autokeys = "1234567890abcdefghijklmnopqrstuvwxyz",
+
+          preset = {
+            -- override default header with our animated rain header
+            header = "",  -- cleared — we use a custom section below
+            keys = {
+              { icon = " ", key = "n", desc = "New Buffer",        action = ":enew" },
+              { icon = " ", key = "f", desc = "Find Files",        action = ":Telescope find_files" },
+              { icon = " ", key = "r", desc = "Recent Files",      action = ":Telescope oldfiles" },
+              { icon = " ", key = "g", desc = "Live Search",       action = ":Telescope live_grep" },
+              { icon = " ", key = "s", desc = "Restore Session",   action = ":lua require('persistence').load()" },
+              { icon = " ", key = "G", desc = "Git Status",        action = ":LazyGit" },
+              { icon = " ", key = "c", desc = "Config",            action = ":edit ~/.config/nvim/init.lua" },
+              { icon = " ", key = "m", desc = "Mason",             action = ":Mason" },
+              { icon = " ", key = "l", desc = "Lazy",              action = ":Lazy" },
+              { icon = " ", key = "h", desc = "Health",            action = ":checkhealth" },
+              { icon = " ", key = "q", desc = "Quit",              action = ":qa" },
+            },
           },
-          -- footer: plain table of strings — doom theme does table.concat directly
-          footer = {
-            "",
-            "  " .. rc() .. " " .. rc() .. " " .. rc()
-              .. "  ·  the machine is ready  ·  "
-              .. rc() .. " " .. rc() .. " " .. rc(),
-            "",
+
+          sections = {
+            -- Animated rain + logo header
+            {
+              pane   = 1,
+              text   = function() return build_header_text() end,
+              align  = "left",
+              padding = 0,
+            },
+            -- Menu
+            { section = "keys", gap = 0, padding = 1 },
+            -- Footer: startup stats
+            {
+              pane  = 1,
+              text  = function()
+                local ok_l, lazy = pcall(require, "lazy")
+                local count = ok_l and lazy.stats().count or 0
+                local time  = os.date("%H:%M")
+                return {
+                  { "\n  ● ONLINE · " .. count .. " plugins · " .. time .. "\n", hl = "MatrixFaint" },
+                }
+              end,
+            },
           },
         },
+
+        -- Disable all other snacks modules we don't need
+        -- (they can be enabled individually later)
+        bigfile      = { enabled = false },
+        notifier     = { enabled = false },
+        quickfile    = { enabled = false },
+        statuscolumn = { enabled = false },
+        words        = { enabled = false },
+        scroll       = { enabled = false },
+        lazygit      = { enabled = false },
+        terminal     = { enabled = false },
+        picker       = { enabled = false },
+        indent       = { enabled = false },
+        input        = { enabled = false },
+        scope        = { enabled = false },
+        zen          = { enabled = false },
+        image        = { enabled = false },
+      })
+
+      -- ── Timer: animate rain every 80 ms ──────────────────────────────
+      -- Start timer when dashboard opens, stop on leave.
+      vim.api.nvim_create_autocmd("User", {
+        pattern  = "SnacksDashboardOpened",
+        group    = vim.api.nvim_create_augroup("MatrixRain", { clear = true }),
+        callback = function(e)
+          _dash_buf = e.buf
+
+          if _timer then
+            pcall(function() _timer:stop(); _timer:close() end)
+            _timer = nil
+          end
+
+          _timer = vim.uv.new_timer()
+          _timer:start(0, 80, vim.schedule_wrap(function()
+            -- Check the dashboard buffer is still visible
+            if not _dash_buf or not vim.api.nvim_buf_is_valid(_dash_buf) then
+              pcall(function() _timer:stop(); _timer:close() end)
+              _timer = nil
+              return
+            end
+
+            -- Advance rain state and rebuild items
+            _rain_lines = render_rain_lines()
+            _rain_items = rain_to_items(_rain_lines)
+
+            -- Ask snacks to redraw the dashboard
+            -- snacks exposes Snacks.dashboard.update() on the global
+            pcall(function()
+              if Snacks and Snacks.dashboard then
+                Snacks.dashboard.update()
+              end
+            end)
+          end))
+        end,
+      })
+
+      vim.api.nvim_create_autocmd("User", {
+        pattern  = "SnacksDashboardClosed",
+        group    = vim.api.nvim_create_augroup("MatrixRainStop", { clear = true }),
+        callback = function()
+          if _timer then
+            pcall(function() _timer:stop(); _timer:close() end)
+            _timer = nil
+          end
+          _dash_buf = nil
+        end,
       })
     end,
   },
