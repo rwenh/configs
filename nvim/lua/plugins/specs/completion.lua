@@ -1,21 +1,21 @@
 -- lua/plugins/specs/completion.lua - blink.cmp completion
 --
--- FIX (v2.2.5):
---   • version changed from "1.*" to false. blink.cmp uses a rolling semver
---     where 1.x is not yet a published stable tag on most systems — "1.*"
---     resolves to nothing and lazy refuses to install. false = track HEAD
---     of the default branch (stable in practice; blink tags every release).
---   • sources.providers previously declared ONLY "cmdline". The default
---     sources list ("lsp","path","snippets","buffer") references these names
---     as provider keys — blink silently drops any source whose key has no
---     providers entry. All four default sources now have explicit entries so
---     blink actually registers and fires them.
---   • cmdline sources wired correctly via explicit providers.cmdline entry.
+-- FIX (v2.3.1):
+--   • version pinned to "1.*" using Cargo-style semver that lazy understands.
+--     version=false tracked HEAD which has breaking API changes between commits.
+--     blink.cmp publishes tagged releases; "1.*" resolves to the latest 1.x
+--     stable tag, giving reproducible installs without manual pin maintenance.
+--   • min_keyword_length added per-source: LSP fires at 0 chars (dot-trigger),
+--     buffer/snippets at 2 chars to avoid noise on short words.
+--   • score_offset on buffer source set to -3 so LSP results rank above buffer
+--     matches when both are present.
+--   • cmdline preset switched to "enter" so <CR> in command mode confirms
+--     without also running the command twice.
 
 return {
   {
     "saghen/blink.cmp",
-    version      = false,
+    version      = "1.*",
     event        = { "InsertEnter", "CmdlineEnter" },
     dependencies = {
       "rafamadriz/friendly-snippets",
@@ -52,26 +52,26 @@ return {
 
       sources = {
         default = { "lsp", "path", "snippets", "buffer" },
-        -- FIX: all four default sources need explicit provider entries.
-        -- Without them blink resolves the source name but finds no module
-        -- to back it and silently drops the source from the completion menu.
-        -- "cmdline" added so command-line completion also fires correctly.
         providers = {
           lsp = {
-            name   = "LSP",
-            module = "blink.cmp.sources.lsp",
+            name              = "LSP",
+            module            = "blink.cmp.sources.lsp",
+            min_keyword_length = 0,   -- trigger on dot, colon, etc.
           },
           path = {
             name   = "Path",
             module = "blink.cmp.sources.path",
           },
           snippets = {
-            name   = "Snippets",
-            module = "blink.cmp.sources.snippets",
+            name              = "Snippets",
+            module            = "blink.cmp.sources.snippets",
+            min_keyword_length = 2,
           },
           buffer = {
-            name   = "Buffer",
-            module = "blink.cmp.sources.buffer",
+            name              = "Buffer",
+            module            = "blink.cmp.sources.buffer",
+            min_keyword_length = 2,
+            score_offset      = -3,   -- rank below LSP matches
           },
           cmdline = {
             name   = "cmdline",
@@ -81,6 +81,10 @@ return {
       },
 
       cmdline = {
+        -- FIX: "enter" preset — <CR> confirms selection without double-running
+        -- the command. The default preset triggers both accept and fallback
+        -- which in cmdline mode fires the command a second time.
+        keymap  = { preset = "enter" },
         sources = { "cmdline" },
       },
 

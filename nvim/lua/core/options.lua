@@ -1,16 +1,15 @@
 -- lua/core/options.lua - Neovim options (Nvim 0.11+)
 --
--- FIX (v2.2.4):
---   • Treesitter folding activated here via foldmethod/foldexpr. The dead
---     fold={enable=true} key was removed from treesitter.lua opts (it had no
---     effect). The canonical way to enable treesitter folding is:
---       vim.opt.foldmethod = "expr"
---       vim.opt.foldexpr   = "nvim_treesitter#foldexpr()"
---     Both set here AFTER the ufo fold options so ufo can override foldexpr
---     with its own provider on BufEnter (ufo takes precedence at runtime).
---   • wrap: showbreak and breakindentopt unchanged.
---   • ttimeoutlen: 50ms unchanged.
---   • clipboard: guard unchanged.
+-- FIX (v2.3.1):
+--   • foldexpr updated from deprecated "nvim_treesitter#foldexpr()" vimscript
+--     function (nvim-treesitter v3 removed it) to the canonical Neovim 0.10+
+--     built-in: "v:lua.vim.treesitter.foldexpr()".
+--     The old string caused E117 (Unknown function) on nvim-treesitter v3+,
+--     silently falling back to foldmethod=manual and breaking all folds.
+--     The new expression calls vim.treesitter.foldexpr() directly via v:lua,
+--     which is available on Neovim 0.10+ without any plugin dependency.
+--     nvim-ufo overrides this at runtime on BufEnter for its managed buffers;
+--     this value is the baseline for unmanaged buffers (text, help, etc.).
 
 local opt = vim.opt
 local g   = vim.g
@@ -89,13 +88,12 @@ opt.foldlevel      = 99
 opt.foldlevelstart = 99
 opt.foldenable     = true
 
--- FIX: treesitter folding requires foldmethod=expr + foldexpr set in vim.opt.
--- The fold={enable=true} key inside nvim-treesitter's opts table has no effect
--- (configs.setup() does not handle it). nvim-ufo overrides foldexpr at runtime
--- on BufEnter for managed buffers; these values serve as the baseline for
--- buffers ufo doesn't manage (plain text, help, etc.).
 opt.foldmethod = "expr"
-opt.foldexpr   = "nvim_treesitter#foldexpr()"
+-- FIX: "v:lua.vim.treesitter.foldexpr()" replaces the deprecated
+-- "nvim_treesitter#foldexpr()" vimscript shim removed in nvim-treesitter v3.
+-- vim.treesitter.foldexpr is a built-in Neovim 0.10+ function; no plugin
+-- needed. nvim-ufo overrides this on BufEnter for its own managed buffers.
+opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WINDOW

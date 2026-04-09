@@ -1,19 +1,22 @@
 -- lua/plugins/specs/ui.lua
 --
--- v2.3.0 — dashboard-nvim replaced with folke/snacks.nvim
---   • snacks.nvim dashboard supports per-pane custom render functions,
---     enabling a real animated matrix rain header via vim.uv timer +
---     nvim_buf_set_lines on the live dashboard buffer.
---   • All other plugins (themes, lualine, bufferline, notify, trouble,
---     which-key, toggleterm) are unchanged.
---   • dashboard-nvim dependency removed from plugins/init.lua import list.
+-- v2.3.1 — snacks dashboard: text=function() → preset.header string mutation
 --
--- RAIN ENGINE:
---   Each column has an independent drop-head that falls at a randomised
---   speed. Characters are drawn from a mixed katakana + hex + symbol set.
---   The timer fires every 80 ms and updates only the header lines so the
---   center menu stays stable. The timer is stopped on DashboardClosed /
---   BufLeave from the dashboard buffer.
+-- ROOT CAUSE of "attempt to index local 'texts' (a function value)":
+--   snacks dashboard section `text` field MUST be a static table of
+--   {text, hl} items — passing `text = function()` makes snacks try to
+--   index the function as a table (dashboard.lua:372), crashing.
+--
+-- FIX:
+--   • preset.header = function() return _header end
+--     This IS the supported callable form: snacks calls preset.header()
+--     on every render() and uses the returned string as the header content.
+--   • section.text is only ever a static table (or absent). Never a function.
+--   • The rain engine builds _header as a plain string each 80ms tick and
+--     calls Snacks.dashboard.update() to trigger a re-render and re-call
+--     of preset.header() so the new frame appears.
+--   • Per-character rain colours are applied as nvim_buf_set_extmark calls
+--     after each render, using the class matrix from render_rain().
 
 local function get_active()
   local ok, t = pcall(function() return require("core.theme").config.theme end)
@@ -409,37 +412,24 @@ return {
   },
 
   -- ── Dashboard — snacks.nvim with animated matrix rain ───────────────────
-  --
-  -- ARCHITECTURE:
-  --   snacks.dashboard renders sections. The "header" section uses a custom
-  --   text() function that returns the current rain frame. A vim.uv timer
-  --   fires every 80 ms and calls snacks.dashboard.update() to redraw.
-  --   Each column has an independent drop-state (head position + speed).
-  --   Characters are drawn from a wide katakana + hex + symbol pool.
-  --   Highlight groups MATRIX_HEAD (bright green) / MATRIX_TRAIL (dim green)
-  --   / MATRIX_DIM (near-black green) are defined on ColorScheme autocmd so
-  --   they survive theme toggling.
-  --
-  -- IMPORTANT: snacks.nvim replaces dashboard-nvim entirely.
-  --   Remove `{ import = "plugins.specs.ui" }` duplication is fine; this
-  --   spec carries lazy=false + priority=90 to match old dashboard behaviour.
   {
     "folke/snacks.nvim",
     lazy     = false,
     priority = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
+
       -- ── Highlight groups ─────────────────────────────────────────────
       local function set_matrix_hl()
-        vim.api.nvim_set_hl(0, "MatrixHead",  { fg = "#00ff41", bold  = true })
-        vim.api.nvim_set_hl(0, "MatrixTrail", { fg = "#00cc33" })
-        vim.api.nvim_set_hl(0, "MatrixMid",   { fg = "#008822" })
-        vim.api.nvim_set_hl(0, "MatrixDim",   { fg = "#003311" })
-        vim.api.nvim_set_hl(0, "MatrixBorder",{ fg = "#00ff41", bold  = true })
-        vim.api.nvim_set_hl(0, "MatrixTitle", { fg = "#00ff41", bold  = true })
-        vim.api.nvim_set_hl(0, "MatrixSub",   { fg = "#00cc33" })
-        vim.api.nvim_set_hl(0, "MatrixFaint", { fg = "#1a6632" })
-        vim.api.nvim_set_hl(0, "MatrixQuote", { fg = "#00aa2a", italic = true })
+        vim.api.nvim_set_hl(0, "MatrixHead",   { fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixTrail",  { fg = "#00cc33" })
+        vim.api.nvim_set_hl(0, "MatrixMid",    { fg = "#008822" })
+        vim.api.nvim_set_hl(0, "MatrixDim",    { fg = "#003311" })
+        vim.api.nvim_set_hl(0, "MatrixBorder", { fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixTitle",  { fg = "#00ff41", bold  = true })
+        vim.api.nvim_set_hl(0, "MatrixSub",    { fg = "#00cc33" })
+        vim.api.nvim_set_hl(0, "MatrixFaint",  { fg = "#1a6632" })
+        vim.api.nvim_set_hl(0, "MatrixQuote",  { fg = "#00aa2a", italic = true })
       end
       set_matrix_hl()
       vim.api.nvim_create_autocmd("ColorScheme", {
@@ -448,9 +438,9 @@ return {
       })
 
       -- ── Rain engine ──────────────────────────────────────────────────
-      local COLS  = 64   -- character columns in the rain field
-      local ROWS  = 12   -- visible rain rows
-      local POOL  = {
+      local COLS = 64
+      local ROWS = 12
+      local POOL = {
         "ア","イ","ウ","エ","オ","カ","キ","ク","ケ","コ",
         "サ","シ","ス","セ","ソ","タ","チ","ツ","テ","ト",
         "ナ","ニ","ヌ","ネ","ノ","ハ","ヒ","フ","ヘ","ホ",
@@ -461,35 +451,28 @@ return {
       }
       local function rc() return POOL[math.random(#POOL)] end
 
-      -- State: each column has a head row (float), speed, and trail length
       math.randomseed(os.time())
-      local cols = {}
+      local rain_cols = {}
       for c = 1, COLS do
-        cols[c] = {
-          head   = math.random() * ROWS,       -- current head position (float)
-          speed  = 0.15 + math.random() * 0.4, -- rows per tick
-          trail  = 3 + math.random(5),          -- trail length
-          chars  = {},                           -- per-row character (randomised)
-          active = math.random() > 0.3,          -- some columns start inactive
-          pause  = math.random(20),              -- ticks before (re)activation
+        rain_cols[c] = {
+          head   = math.random() * ROWS,
+          speed  = 0.15 + math.random() * 0.4,
+          trail  = 3 + math.random(5),
+          chars  = {},
+          active = math.random() > 0.3,
+          pause  = math.random(20),
         }
-        for r = 1, ROWS do cols[c].chars[r] = rc() end
+        for r = 1, ROWS do rain_cols[c].chars[r] = rc() end
       end
 
-      -- Render one frame → returns table of {text, hl} segment lists per row
-      -- Returns a flat list of strings (one per line) for snacks text section.
-      -- We build a single string per row; snacks will apply per-line highlights
-      -- via the `hl` field in the text section items.
-      local function render_rain_lines()
-        -- Advance state
+      -- Returns: plain string (ROWS lines of COLS chars), class matrix
+      local function render_rain()
         for c = 1, COLS do
-          local col = cols[c]
+          local col = rain_cols[c]
           if col.active then
             col.head = col.head + col.speed
-            -- randomise chars along the trail occasionally
             if math.random() < 0.3 then
-              local r = math.random(ROWS)
-              col.chars[r] = rc()
+              col.chars[math.random(ROWS)] = rc()
             end
             if col.head > ROWS + col.trail then
               col.active = false
@@ -504,182 +487,152 @@ return {
           end
         end
 
-        -- Build lines: for each row, for each col, pick char + classify
-        local lines = {}
+        local str_lines    = {}
+        local class_matrix = {}
         for r = 1, ROWS do
-          local segments = {}  -- {char, class}  0=empty 1=dim 2=mid 3=trail 4=head
+          local row_chars = {}
+          local row_cls   = {}
           for c = 1, COLS do
-            local col = cols[c]
+            local col      = rain_cols[c]
             local head_row = math.floor(col.head)
-            local dist     = head_row - r   -- positive = head is below this row
-            local ch = col.chars[r]
+            local dist     = head_row - r
+            local ch       = col.chars[r]
+            local cls
             if dist == 0 then
-              segments[c] = { ch, 4 }   -- head
+              cls = 4
             elseif dist > 0 and dist <= col.trail then
-              -- brightness decays with distance from head
-              if dist == 1 then segments[c] = { ch, 3 }
-              elseif dist <= 3 then segments[c] = { ch, 2 }
-              else segments[c] = { ch, 1 }
-              end
+              cls = dist == 1 and 3 or (dist <= 3 and 2 or 1)
             else
-              segments[c] = { " ", 0 }
+              cls = 0
+              ch  = " "
             end
+            row_chars[c] = ch
+            row_cls[c]   = cls
           end
-          lines[r] = segments
+          str_lines[r]    = table.concat(row_chars)
+          class_matrix[r] = row_cls
         end
-        return lines
+
+        return table.concat(str_lines, "\n"), class_matrix
       end
 
-      -- Convert segment matrix to snacks-compatible text items
-      -- snacks text section accepts: { { text, hl } ... } per line
-      -- We flatten to one item-list per row.
-      local CLASS_HL = { [0]="", [1]="MatrixDim", [2]="MatrixMid", [3]="MatrixTrail", [4]="MatrixHead" }
-
-      local function rain_to_items(lines)
-        local items = {}
-        for _, row in ipairs(lines) do
-          local row_items = {}
-          local buf_text  = ""
-          local buf_class = 0
-          -- merge consecutive same-class segments
-          for _, seg in ipairs(row) do
-            local ch, cls = seg[1], seg[2]
-            if cls == buf_class then
-              buf_text = buf_text .. ch
-            else
-              if buf_text ~= "" then
-                table.insert(row_items, { buf_text, hl = CLASS_HL[buf_class] })
-              end
-              buf_text  = ch
-              buf_class = cls
-            end
-          end
-          if buf_text ~= "" then
-            table.insert(row_items, { buf_text, hl = CLASS_HL[buf_class] })
-          end
-          -- newline between rows
-          table.insert(row_items, { "\n" })
-          for _, item in ipairs(row_items) do
-            table.insert(items, item)
-          end
-        end
-        return items
-      end
-
-      -- ── Logo lines (static, rendered once) ───────────────────────────
+      -- ── Logo ─────────────────────────────────────────────────────────
       local ver = tostring(vim.g.nvim_ide_version or "2.3.0")
-
-      local LOGO = {
-        { "╔══════════════════════════════════════════════════════════════╗", "MatrixBorder" },
-        { "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║", "MatrixTitle"  },
-        { "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║", "MatrixTitle"  },
-        { "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║", "MatrixTitle"  },
-        { "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║", "MatrixSub"    },
-        { "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║", "MatrixSub"    },
-        { "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║", "MatrixFaint"  },
-        { "║                                                               ║", "MatrixBorder" },
-        { "║   [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v"..ver.."  ║", "MatrixQuote"  },
-        { "╚══════════════════════════════════════════════════════════════╝", "MatrixBorder" },
+      local LOGO_LINES = {
+        "╔══════════════════════════════════════════════════════════════╗",
+        "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",
+        "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║",
+        "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║",
+        "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║",
+        "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║",
+        "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║",
+        "║                                                               ║",
+        "║   [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v"..ver.."  ║",
+        "╚══════════════════════════════════════════════════════════════╝",
       }
-
-      -- rotating quotes
       local QUOTES = {
-        "\"Fix one thing and two more break. That's growth.\"",
-        "\"Debugging is twice as hard as writing the code.\"  — Kernighan",
-        "\"First, solve the problem. Then, write the code.\"  — Johnson",
-        "\"The best error message is the one that never shows.\"  — Fuchs",
-        "\"Programs must be written for people to read.\"  — Abelson",
-        "\"Any fool can write code a computer understands.\"  — Fowler",
+        '"Fix one thing and two more break. That\'s growth."',
+        '"Debugging is twice as hard as writing the code."  — Kernighan',
+        '"First, solve the problem. Then, write the code."  — Johnson',
+        '"The best error message is the one that never shows."  — Fuchs',
+        '"Programs must be written for people to read."  — Abelson',
+        '"Any fool can write code a computer understands."  — Fowler',
       }
-      local _quote = QUOTES[math.random(#QUOTES)]
+      local _quote    = QUOTES[math.random(#QUOTES)]
+      local _logo_str = table.concat(LOGO_LINES, "\n")
 
-      -- ── snacks.nvim setup ────────────────────────────────────────────
+      -- ── Shared state ─────────────────────────────────────────────────
+      local _rain_str, _class_matrix = render_rain()
+
+      local function build_header()
+        return _rain_str .. "\n" .. _logo_str .. "\n\n  " .. _quote .. "\n"
+      end
+
+      -- _header is updated each tick; preset.header() returns it.
+      local _header   = build_header()
+      local _timer    = nil
+      local _dash_buf = nil
+
+      -- ── Extmark highlighter ───────────────────────────────────────────
+      -- Applied after each Snacks.dashboard.update() to colour rain chars.
+      local CLASS_HL = {
+        [0] = nil,
+        [1] = "MatrixDim",
+        [2] = "MatrixMid",
+        [3] = "MatrixTrail",
+        [4] = "MatrixHead",
+      }
+      local _ns = vim.api.nvim_create_namespace("MatrixRainHl")
+
+      local function apply_extmarks(buf)
+        if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
+        pcall(function()
+          vim.api.nvim_buf_clear_namespace(buf, _ns, 0, ROWS)
+          for r, row_cls in ipairs(_class_matrix) do
+            local line_idx = r - 1
+            local byte_col = 0
+            for c = 1, COLS do
+              local cls = row_cls[c]
+              local ch  = rain_cols[c].chars[r] or " "
+              if cls == 0 then ch = " " end
+              local blen = #ch
+              if cls and cls > 0 then
+                pcall(vim.api.nvim_buf_set_extmark, buf, _ns,
+                  line_idx, byte_col, {
+                    end_col  = byte_col + blen,
+                    hl_group = CLASS_HL[cls],
+                    priority = 200,
+                  })
+              end
+              byte_col = byte_col + blen
+            end
+          end
+        end)
+      end
+
+      -- ── snacks setup ─────────────────────────────────────────────────
       local ok_snacks, snacks = pcall(require, "snacks")
       if not ok_snacks then
         vim.notify("snacks.nvim not available", vim.log.levels.WARN)
         return
       end
 
-      -- Current rain frame (shared state updated by timer)
-      local _rain_lines = render_rain_lines()
-      local _rain_items = rain_to_items(_rain_lines)
-      local _timer      = nil
-      local _dash_buf   = nil
-
-      local function build_header_text()
-        -- Returns a flat list of {text, hl} items: rain + logo + quote
-        local items = {}
-        -- rain (top)
-        for _, item in ipairs(_rain_items) do
-          table.insert(items, item)
-        end
-        -- logo
-        for _, line in ipairs(LOGO) do
-          table.insert(items, { line[1], hl = line[2] })
-          table.insert(items, { "\n" })
-        end
-        -- quote
-        table.insert(items, { "\n" })
-        table.insert(items, { "  " .. _quote .. "\n", hl = "MatrixQuote" })
-        table.insert(items, { "\n" })
-        return items
-      end
-
       snacks.setup({
-        -- ── dashboard ──────────────────────────────────────────────────
         dashboard = {
-          enabled = true,
-          width   = 66,
-          row     = nil,
-          col     = nil,
+          enabled  = true,
+          width    = 66,
+          row      = nil,
+          col      = nil,
           pane_gap = 4,
           autokeys = "1234567890abcdefghijklmnopqrstuvwxyz",
 
           preset = {
-            -- override default header with our animated rain header
-            header = "",  -- cleared — we use a custom section below
+            -- FIX: preset.header as a FUNCTION is the correct dynamic API.
+            -- snacks calls this on every render() and uses the returned string.
+            -- section.text = function() is NOT supported and causes the crash.
+            header = function() return _header end,
             keys = {
-              { icon = " ", key = "n", desc = "New Buffer",        action = ":enew" },
-              { icon = " ", key = "f", desc = "Find Files",        action = ":Telescope find_files" },
-              { icon = " ", key = "r", desc = "Recent Files",      action = ":Telescope oldfiles" },
-              { icon = " ", key = "g", desc = "Live Search",       action = ":Telescope live_grep" },
-              { icon = " ", key = "s", desc = "Restore Session",   action = ":lua require('persistence').load()" },
-              { icon = " ", key = "G", desc = "Git Status",        action = ":LazyGit" },
-              { icon = " ", key = "c", desc = "Config",            action = ":edit ~/.config/nvim/init.lua" },
-              { icon = " ", key = "m", desc = "Mason",             action = ":Mason" },
-              { icon = " ", key = "l", desc = "Lazy",              action = ":Lazy" },
-              { icon = " ", key = "h", desc = "Health",            action = ":checkhealth" },
-              { icon = " ", key = "q", desc = "Quit",              action = ":qa" },
+              { icon = " ", key = "n", desc = "New Buffer",      action = ":enew" },
+              { icon = " ", key = "f", desc = "Find Files",      action = ":Telescope find_files" },
+              { icon = " ", key = "r", desc = "Recent Files",    action = ":Telescope oldfiles" },
+              { icon = " ", key = "g", desc = "Live Search",     action = ":Telescope live_grep" },
+              { icon = " ", key = "s", desc = "Restore Session", action = ":lua require('persistence').load()" },
+              { icon = " ", key = "G", desc = "Git Status",      action = ":LazyGit" },
+              { icon = " ", key = "c", desc = "Config",          action = ":edit ~/.config/nvim/init.lua" },
+              { icon = " ", key = "m", desc = "Mason",           action = ":Mason" },
+              { icon = " ", key = "l", desc = "Lazy",            action = ":Lazy" },
+              { icon = " ", key = "h", desc = "Health",          action = ":checkhealth" },
+              { icon = " ", key = "q", desc = "Quit",            action = ":qa" },
             },
           },
 
           sections = {
-            -- Animated rain + logo header
-            {
-              pane   = 1,
-              text   = function() return build_header_text() end,
-              align  = "left",
-              padding = 0,
-            },
-            -- Menu
-            { section = "keys", gap = 0, padding = 1 },
-            -- Footer: startup stats
-            {
-              pane  = 1,
-              text  = function()
-                local ok_l, lazy = pcall(require, "lazy")
-                local count = ok_l and lazy.stats().count or 0
-                local time  = os.date("%H:%M")
-                return {
-                  { "\n  ● ONLINE · " .. count .. " plugins · " .. time .. "\n", hl = "MatrixFaint" },
-                }
-              end,
-            },
+            { section = "header" },
+            { section = "keys",  gap = 0, padding = 1 },
+            { section = "startup" },
           },
         },
 
-        -- Disable all other snacks modules we don't need
-        -- (they can be enabled individually later)
         bigfile      = { enabled = false },
         notifier     = { enabled = false },
         quickfile    = { enabled = false },
@@ -696,8 +649,7 @@ return {
         image        = { enabled = false },
       })
 
-      -- ── Timer: animate rain every 80 ms ──────────────────────────────
-      -- Start timer when dashboard opens, stop on leave.
+      -- ── Timer: advance rain every 80ms ───────────────────────────────
       vim.api.nvim_create_autocmd("User", {
         pattern  = "SnacksDashboardOpened",
         group    = vim.api.nvim_create_augroup("MatrixRain", { clear = true }),
@@ -711,24 +663,24 @@ return {
 
           _timer = vim.uv.new_timer()
           _timer:start(0, 80, vim.schedule_wrap(function()
-            -- Check the dashboard buffer is still visible
             if not _dash_buf or not vim.api.nvim_buf_is_valid(_dash_buf) then
               pcall(function() _timer:stop(); _timer:close() end)
               _timer = nil
               return
             end
 
-            -- Advance rain state and rebuild items
-            _rain_lines = render_rain_lines()
-            _rain_items = rain_to_items(_rain_lines)
+            _rain_str, _class_matrix = render_rain()
+            _header = build_header()
 
-            -- Ask snacks to redraw the dashboard
-            -- snacks exposes Snacks.dashboard.update() on the global
+            -- trigger snacks to re-render (re-calls preset.header())
             pcall(function()
               if Snacks and Snacks.dashboard then
                 Snacks.dashboard.update()
               end
             end)
+
+            -- apply colour extmarks on top of the rendered buffer
+            apply_extmarks(_dash_buf)
           end))
         end,
       })

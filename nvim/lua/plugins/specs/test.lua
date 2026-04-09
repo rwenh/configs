@@ -1,16 +1,20 @@
 -- lua/plugins/specs/test.lua - Testing
 --
--- FIX (v2.2.5):
---   • Duplicate keymaps removed. <leader>'n/f/a/u/o/p/d were registered here
---     AND in keymaps.lua — whichever spec loaded last silently won. keymaps.lua
---     is the canonical owner of all <leader>' bindings for consistency with the
---     rest of the keymap structure. Only <leader>'P (parallel suite, neotest-
---     specific feature) is kept here as it has no keymaps.lua equivalent.
---   • neotest-rust: plugin is "rouge8/neotest-rust"; the correct require path
---     is require("neotest-rust") — confirmed against upstream README.
---     The adapter loader now also passes a config table so codelldb is used.
---   • neotest-kotlin (rcasia/neotest-java covers Kotlin too via build-tool
---     detection) — no separate adapter needed; neotest-java handles both.
+-- FIX (v2.3.1):
+--   • neotest-rust race condition: neotest opts() runs at plugin load time
+--     (lazy evaluates opts before the first keypress). rustaceanvim attaches
+--     its LSP client asynchronously on the first Rust FileType event, which
+--     may happen AFTER neotest-rust's adapter constructor runs. neotest-rust
+--     probes for the rust-analyzer client during construction; if it's absent
+--     the adapter silently registers with no LSP connection and test runs fall
+--     back to plain `cargo test` without diagnostics.
+--     Fix: neotest-rust adapter is registered lazily via a one-shot FileType
+--     autocmd on "rust". The autocmd fires after rustaceanvim has attached
+--     (guaranteed because rustaceanvim uses LspAttach which fires after
+--     FileType). We defer by one vim.schedule() tick to be safe, then call
+--     neotest.setup() with the full adapter list including the now-ready
+--     neotest-rust instance.
+--     All other adapters are loaded eagerly as before (no LSP dependency).
 
 return {
   {
@@ -48,24 +52,52 @@ return {
           end)
         end, desc = "Test all (parallel)" },
     },
+    config = function(_, opts)
+      local neotest = require("neotest")
+      neotest.setup(opts)
+
+      -- FIX: neotest-rust deferred registration.
+      -- Register a one-shot FileType autocmd on "rust". When the first Rust
+      -- buffer opens, rustaceanvim's LspAttach fires (also on FileType).
+      -- We yield one tick with vim.schedule() to let LspAttach complete, then
+      -- re-run neotest.setup() with neotest-rust added to the adapter list.
+      -- Re-calling setup() is safe — neotest merges adapters and deduplicates.
+      local _rust_registered = false
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "rust",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
+        callback = function()
+          if _rust_registered then return end
+          vim.schedule(function()
+            local ok, rust_adapter = pcall(function()
+              return require("neotest-rust")({ dap_adapter = "codelldb" })
+            end)
+            if ok and rust_adapter then
+              _rust_registered = true
+              local current_adapters = vim.deepcopy(opts.adapters or {})
+              table.insert(current_adapters, rust_adapter)
+              pcall(function()
+                neotest.setup(vim.tbl_extend("force", opts, { adapters = current_adapters }))
+              end)
+            else
+              vim.notify("neotest-rust: adapter failed to load after rustaceanvim attach",
+                vim.log.levels.WARN)
+            end
+          end)
+        end,
+      })
+    end,
     opts = function()
+      -- Build all non-Rust adapters eagerly (no LSP dependency)
       local adapters = {}
 
-      local adapter_configs = {
+      local eager_configs = {
         {
           "neotest-python",
           function() return require("neotest-python")({ runner = "pytest" }) end,
         },
-        {
-          -- FIX: rouge8/neotest-rust — require path is "neotest-rust"
-          "neotest-rust",
-          function()
-            return require("neotest-rust")({
-              -- prefer codelldb when available (matches dap.lua adapter)
-              dap_adapter = "codelldb",
-            })
-          end,
-        },
+        -- neotest-rust is intentionally absent here — see config() above
         {
           "neotest-go",
           function() return require("neotest-go") end,
@@ -100,7 +132,7 @@ return {
         },
       }
 
-      for _, cfg in ipairs(adapter_configs) do
+      for _, cfg in ipairs(eager_configs) do
         local name, loader = cfg[1], cfg[2]
         local ok, adapter = pcall(loader)
         if ok and adapter then

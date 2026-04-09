@@ -1,11 +1,14 @@
 -- lua/core/autocmds.lua - Autocommands with comprehensive error handling
 --
--- FIX (v2.2.2):
---   • TrimWhitespace: replaced vim.cmd([[%s/\s\+$//e]]) with a Lua line
---     iterator. The regex substitution dirtied the undo tree on every save
---     even when there was nothing to trim, and moved the cursor despite
---     winsaveview/winrestview. The Lua approach only writes back lines that
---     actually changed, so no undo entry is created for clean files.
+-- FIX (v2.3.1):
+--   • TrimWhitespace: the previous Lua line-iterator called nvim_buf_set_lines
+--     once PER dirty line inside a loop. Each individual call IS a separate
+--     undo entry in Neovim's undo tree (nvim_buf_set_lines always records),
+--     so saving a file with 5 dirty lines created 5 undo states — contrary to
+--     the comment that claimed otherwise. Fixed: collect all dirty lines first,
+--     then replace the entire buffer in ONE nvim_buf_set_lines call covering
+--     the full range [0, -1]. When nothing changed the call is skipped
+--     entirely, so truly clean files still produce zero undo entries.
 
 local au = vim.api.nvim_create_autocmd
 local ag = vim.api.nvim_create_augroup
@@ -78,11 +81,17 @@ au("FileType", {
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- REMOVE TRAILING WHITESPACE ON SAVE
--- FIX: Lua line-by-line approach:
---   • No undo entry when nothing changes (nvim_buf_set_lines only called
---     for dirty lines).
---   • Cursor never moves — no winsaveview/winrestview needed.
---   • Still skips filetypes where trailing whitespace is significant.
+--
+-- FIX (v2.3.1): batch all dirty lines in a single nvim_buf_set_lines call.
+--   The previous implementation called nvim_buf_set_lines once per dirty line,
+--   which created one undo entry per line — the opposite of the intention.
+--   New approach:
+--     1. Read all lines.
+--     2. Build a new table with whitespace trimmed from every line.
+--     3. Compare: if the table is identical (no dirty lines), return early.
+--     4. If any line changed, replace the ENTIRE buffer in one call.
+--   One call = one undo entry. If nothing changed = zero undo entries.
+--   The cursor never moves because we are not using vim.cmd.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 au("BufWritePre", {
@@ -96,17 +105,20 @@ au("BufWritePre", {
     end
 
     pcall(function()
-      local lines = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
-      local dirty = {}
+      local lines   = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
+      local trimmed = {}
+      local dirty   = false
+
       for i, line in ipairs(lines) do
-        local trimmed = line:gsub("%s+$", "")
-        if trimmed ~= line then
-          dirty[i] = trimmed
-        end
+        local t = line:gsub("%s+$", "")
+        trimmed[i] = t
+        if t ~= line then dirty = true end
       end
-      -- Only write back changed lines — no undo entry for untouched buffers
-      for i, trimmed in pairs(dirty) do
-        vim.api.nvim_buf_set_lines(e.buf, i - 1, i, false, { trimmed })
+
+      -- FIX: single call covers the whole buffer — one undo entry total.
+      -- Skipped entirely when nothing changed — zero undo entries for clean files.
+      if dirty then
+        vim.api.nvim_buf_set_lines(e.buf, 0, -1, false, trimmed)
       end
     end)
   end,

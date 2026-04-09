@@ -7,6 +7,13 @@
 --     autocmds.lua have foldmethod=manual — ufo attempted to attach a
 --     treesitter provider and errored silently, then left fold state broken.
 --     Guard added: large_file buffers return "" (ufo detaches gracefully).
+--
+-- FIX (v2.3.1):
+--   • nvim-ufo: close_fold_kinds renamed to close_fold_kinds_for_ft in recent
+--     ufo releases. The old key was silently ignored — imports and comments were
+--     never auto-closed on buffer open. Updated to the new per-filetype table
+--     format: { _ = { "imports", "comment" } } which applies to all filetypes.
+--     The "_" key is ufo's wildcard filetype selector.
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -263,9 +270,12 @@ return {
                     jumpTop = "[{",    jumpBot = "]}",
                 },
             },
-            open_fold_hl_timeout    = 400,
-            close_fold_kinds        = { "imports", "comment" },
-            -- FIX: guard large_file buffers. autocmds.lua sets foldmethod=manual
+            open_fold_hl_timeout = 400,
+            -- FIX (v2.3.1): close_fold_kinds renamed to close_fold_kinds_for_ft.
+            -- The old key was silently dropped by ufo — imports/comments were
+            -- never auto-closed on buffer open. "_" is ufo's wildcard ft selector.
+            close_fold_kinds_for_ft = { _ = { "imports", "comment" } },
+            -- FIX (v2.2.4): guard large_file buffers. autocmds.lua sets foldmethod=manual
             -- on files >500KB (vim.b.large_file=true). ufo tries to attach a
             -- treesitter provider regardless and errors. Returning "" tells ufo
             -- to detach gracefully and leave the manual fold method intact.

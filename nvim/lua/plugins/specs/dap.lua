@@ -1,22 +1,15 @@
 -- lua/plugins/specs/dap.lua - Debug Adapter Protocol
 --
--- FIX (v2.2.4):
---   • load_breakpoints(): BufReadPost autocmd used pattern=path (absolute path
---     literal). vim.api.nvim_create_autocmd pattern matching uses fnamemodify
---     patterns, not literal paths — a path like "/home/user/project/main.lua"
---     is tested against the autocmd pattern glob. An absolute path as a pattern
---     matches ONLY that exact file via fnmatch, which actually works on most
---     systems but is fragile and undocumented. Changed to pass the path as a
---     once=true callback that checks the event's file against the target path
---     explicitly — reliable on all platforms including Windows paths with spaces.
---   • mason-nvim-dap handlers={} overrides automatic_installation by providing
---     an empty handler table, which tells mason-nvim-dap "I handle everything"
---     and disables the default auto-install handler. Changed to handlers=nil so
---     the default handler runs and automatic_installation actually works.
---   • save_breakpoints(): bp.logMessage alias removed (was already fixed in
---     v2.2.3). bp.log_message is the sole field used.
---   • nvim-dap-ui standalone spec removed (duplicate setup() call).
---   • Kotlin DAP uses java-debug-adapter via jdtls (JDWP). No separate adapter.
+-- FIX (v2.3.1):
+--   • load_breakpoints() BufReadPost callback now wraps dap.breakpoints.set()
+--     in vim.schedule() so marks are applied AFTER the buffer's treesitter
+--     parser finishes attaching. On large files or remote filesystems the
+--     parser runs asynchronously after BufReadPost; setting breakpoints before
+--     it completes caused line numbers to shift by the number of fold-change
+--     operations treesitter applied. vim.schedule() yields to the event loop
+--     once, guaranteeing the parser has run before we write marks.
+--   • Same vim.schedule() fix applied to the "already loaded" bufnr path at
+--     the top of load_breakpoints() — not just the autocmd path.
 
 return {
   {
@@ -272,11 +265,6 @@ return {
       }
 
       -- ── Elixir (ElixirLS debugger) ────────────────────────────────
-      -- The Mason "elixir-ls" package ships both the LSP and DAP adapter.
-      -- The DAP executable is named "elixir-ls-debugger" inside the package
-      -- bin dir on some versions, but the reliable path is the package-relative
-      -- script. Prefer the Mason package path; fall back to PATH lookup of
-      -- either known binary name.
       local elixir_dbg = (function()
         local pkg_bin = mason_pkg("elixir-ls/debugger.sh")
         if vim.fn.filereadable(pkg_bin) == 1 then return pkg_bin end
@@ -329,6 +317,24 @@ return {
         end
       end
 
+      -- FIX: breakpoint restore wraps dap.breakpoints.set() in vim.schedule()
+      -- so marks land AFTER treesitter finishes attaching on BufReadPost.
+      -- Without the schedule(), set() fires while the parser is still running;
+      -- treesitter then adjusts extmarks during fold computation, shifting
+      -- every breakpoint line by the number of fold changes applied.
+      -- vim.schedule() costs one event-loop tick and guarantees parser is done.
+      local function set_bps_scheduled(bufnr, entries)
+        vim.schedule(function()
+          for _, bp in ipairs(entries) do
+            pcall(function()
+              require("dap.breakpoints").set(
+                { condition = bp.condition, log_message = bp.log_message },
+                bufnr, bp.line)
+            end)
+          end
+        end)
+      end
+
       local function load_breakpoints()
         local f = io.open(bp_file, "r")
         if not f then return end
@@ -339,19 +345,10 @@ return {
         for path, entries in pairs(bps) do
           local bufnr = vim.fn.bufnr(path)
           if bufnr ~= -1 then
-            for _, bp in ipairs(entries) do
-              pcall(function()
-                require("dap.breakpoints").set(
-                  { condition = bp.condition, log_message = bp.log_message },
-                  bufnr, bp.line)
-              end)
-            end
+            -- FIX: schedule even for already-loaded buffers — treesitter may
+            -- still be attaching if the file was opened on the command line.
+            set_bps_scheduled(bufnr, entries)
           else
-            -- Register a persistent (not once=true) BufReadPost autocmd that
-            -- checks e.buf's name explicitly and self-removes after a match.
-            -- once=true on pattern="*" fires for the FIRST file opened after
-            -- load_breakpoints() runs — if that file is not `path`, the autocmd
-            -- self-removes and all remaining breakpoint files are never restored.
             local aug = vim.api.nvim_create_augroup(
               "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 8), { clear = true }
             )
@@ -361,14 +358,8 @@ return {
               callback = function(e)
                 local evfile = vim.api.nvim_buf_get_name(e.buf)
                 if evfile ~= path then return end
-                for _, bp in ipairs(entries) do
-                  pcall(function()
-                    require("dap.breakpoints").set(
-                      { condition = bp.condition, log_message = bp.log_message },
-                      e.buf, bp.line)
-                  end)
-                end
-                -- matched — clean up this specific autocmd group
+                -- FIX: schedule so treesitter parser finishes before marks land
+                set_bps_scheduled(e.buf, entries)
                 pcall(vim.api.nvim_del_augroup_by_id, aug)
               end,
             })
@@ -393,11 +384,6 @@ return {
     opts = {
       ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      -- FIX: handlers={} overrides automatic_installation by replacing the
-      -- default handler with an empty table — mason-nvim-dap interprets this
-      -- as "caller handles all adapters" and skips auto-install entirely.
-      -- handlers=nil preserves the built-in default handler so
-      -- automatic_installation actually installs missing adapters.
       handlers = nil,
     },
   },

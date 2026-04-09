@@ -1,15 +1,13 @@
 -- lua/plugins/specs/workflow.lua
 --
--- FIX (v2.2.5):
---   • OverseerBuild command does not exist in overseer.nvim. The correct
---     approach is OverseerRun which surfaces all templates including build
---     ones. Removed from cmd table and keymap; <leader>ob now calls
---     OverseerRun with a "build" name filter so it pre-selects build tasks.
---   • overseer-community-tasks removed — that repo does not exist. All
---     templates (cargo, cmake, go, npm, make, mix, rake, tox, python) are
---     built into overseer.nvim and auto-discovered from the working directory.
---     The `templates` key simply controls which built-in modules are active.
---     No extra dependency is needed.
+-- FIX (v2.3.1):
+--   • overseer.run_template({ name = "build" }) throws an unhandled error when
+--     no template matching "build" exists in the current project (e.g. a plain
+--     Python project with no Makefile or CMakeLists.txt). The error propagated
+--     to the user as a red stacktrace. Fixed: wrapped in pcall; on failure
+--     falls back to OverseerRun (the full picker) with a brief notify so the
+--     user understands why the direct build shortcut didn't fire.
+--     Same fix applied to the shell template shortcut for consistency.
 
 return {
 
@@ -19,14 +17,39 @@ return {
     keys = {
       { "<leader>ot", "<cmd>OverseerToggle<cr>",     desc = "Overseer: task list" },
       { "<leader>or", "<cmd>OverseerRun<cr>",        desc = "Overseer: run task" },
-      { "<leader>ob", function()
-          require("overseer").run_template({ name = "build" })
-        end, desc = "Overseer: build" },
+      {
+        "<leader>ob",
+        function()
+          -- FIX: pcall + fallback — run_template throws if no "build" template
+          -- matches the current project. Fall back to the full picker.
+          local ok = pcall(function()
+            require("overseer").run_template({ name = "build" })
+          end)
+          if not ok then
+            vim.notify("[overseer] No 'build' template found — opening task picker",
+              vim.log.levels.INFO)
+            vim.cmd("OverseerRun")
+          end
+        end,
+        desc = "Overseer: build",
+      },
       { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
       { "<leader>oc", "<cmd>OverseerClearCache<cr>", desc = "Overseer: clear cache" },
-      { "<leader>os", function()
-          require("overseer").run_template({ name = "shell" })
-        end, desc = "Overseer: shell command" },
+      {
+        "<leader>os",
+        function()
+          -- FIX: same pcall guard for shell template
+          local ok = pcall(function()
+            require("overseer").run_template({ name = "shell" })
+          end)
+          if not ok then
+            vim.notify("[overseer] No 'shell' template found — opening task picker",
+              vim.log.levels.INFO)
+            vim.cmd("OverseerRun")
+          end
+        end,
+        desc = "Overseer: shell command",
+      },
     },
     opts = {
       strategy = {
@@ -35,10 +58,7 @@ return {
         close_on_exit = false,
         open_on_start = true,
       },
-      -- All entries are built-in to overseer.nvim — no extra plugin needed.
-      -- "builtin" covers: shell, vscode tasks.json, make, npm, cargo, cmake,
-      -- go, mix, rake, tox, python, just, mise — auto-discovered per project.
-      templates = { "builtin" },
+      templates  = { "builtin" },
       auto_scroll = true,
       task_list = {
         direction      = "bottom",

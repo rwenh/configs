@@ -1,16 +1,15 @@
 -- lua/plugins/specs/lang/python.lua - Python development
 --
--- FIX (v2.2.4):
---   • iron repl_open_cmd: require("iron.view").bottom(20) was called eagerly
---     at config() execution time. If iron.nvim hadn't finished loading yet
---     (e.g. first open of a .py file on a slow machine), the require errored
---     inside the pcall, setup() was skipped entirely, and iron silently never
---     configured. Wrapped in a function so evaluation is deferred to the
---     moment iron actually opens a REPL — guaranteed to be after load.
---   • iron send_motion and visual_send: both were bound to <leader>pyrc.
---     visual_send moved to <leader>pyrv (unchanged from v2.2.3 fix).
---   • dap-python async race: PythonDapKeymaps autocmd fires inside the
---     vim.system success callback (unchanged from v2.2.3 fix).
+-- FIX (v2.3.1):
+--   • iron.nvim keymaps (send_motion, visual_send, send_line, etc.) were
+--     passed via the `keymaps` table in iron.core.setup(). iron registers
+--     these as GLOBAL normal/visual mappings at setup() time — not per-buffer.
+--     If any non-Python file triggers iron loading (e.g. a .py import opened
+--     while editing a .lua file), those keymaps pollute every buffer.
+--     Fix: keymaps table removed from iron.core.setup(). Keymaps are now
+--     registered per-buffer via a FileType autocmd on "python", and also
+--     retroactively applied to any already-open Python buffers.
+--     iron's send functions accept a bufnr argument so per-buffer binding works.
 
 return {
   {
@@ -85,9 +84,7 @@ return {
           vim.schedule(function()
             if result.code == 0 then
               local ok = pcall(function() require("dap-python").setup(python) end)
-              if ok then
-                register_dap_keymaps()
-              end
+              if ok then register_dap_keymaps() end
             else
               try_setup(index + 1)
             end
@@ -129,25 +126,56 @@ return {
                 format  = require("iron.fts.common").bracketed_paste,
               },
             },
-            -- FIX: iron.view.bottom(20) wrapped in a function so it is
-            -- evaluated lazily when iron opens a REPL, not at config time.
-            -- Eager evaluation at setup() called require("iron.view") before
-            -- the module was guaranteed loaded, causing the entire iron setup
-            -- to silently fail inside pcall on the first .py open.
             repl_open_cmd = function()
               return require("iron.view").bottom(20)
             end,
           },
-          keymaps = {
-            send_motion       = "<leader>pyrc",
-            visual_send       = "<leader>pyrv",
-            send_line         = "<leader>pyrl",
-            send_until_cursor = "<leader>pyru",
-            exit              = "<leader>pyrq",
-            clear             = "<leader>pyrx",
-          },
+          -- FIX: keymaps table removed from iron.core.setup().
+          -- iron registers these as GLOBAL mappings at setup() time regardless
+          -- of filetype — they leak into every buffer.
+          -- Keymaps are now applied per-buffer in the FileType autocmd below.
+          keymaps = {},
         })
       end)
+
+      -- FIX: per-buffer iron keymaps via FileType autocmd.
+      -- iron's send functions work fine called from buffer-local mappings.
+      local function register_iron_keymaps(buf)
+        local function imap(lhs, fn, desc, mode)
+          vim.keymap.set(mode or "n", lhs, fn, { buffer = buf, desc = desc })
+        end
+        imap("<leader>pyrc", function()
+          pcall(function() require("iron.core").send_motion(vim.api.nvim_get_current_buf()) end)
+        end, "REPL send motion")
+        imap("<leader>pyrv", function()
+          pcall(function() require("iron.core").visual_send(vim.api.nvim_get_current_buf()) end)
+        end, "REPL send visual", "v")
+        imap("<leader>pyrl", function()
+          pcall(function() require("iron.core").send_line(vim.api.nvim_get_current_buf()) end)
+        end, "REPL send line")
+        imap("<leader>pyru", function()
+          pcall(function() require("iron.core").send_until_cursor(vim.api.nvim_get_current_buf()) end)
+        end, "REPL send until cursor")
+        imap("<leader>pyrq", function()
+          pcall(function() require("iron.core").close_repl(vim.api.nvim_get_current_buf()) end)
+        end, "REPL quit")
+        imap("<leader>pyrx", function()
+          pcall(function() require("iron.core").send(vim.api.nvim_get_current_buf(), string.char(12)) end)
+        end, "REPL clear")
+      end
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "python",
+        group    = vim.api.nvim_create_augroup("IronPythonKeymaps", { clear = true }),
+        callback = function(e) register_iron_keymaps(e.buf) end,
+      })
+
+      -- Apply to already-open Python buffers (e.g. opened via CLI)
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.bo[buf].filetype == "python" then
+          register_iron_keymaps(buf)
+        end
+      end
     end,
     keys = {
       { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start" },
