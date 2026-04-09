@@ -138,7 +138,7 @@ Removes itself from `find-file-hook' after first run (one-shot)."
   (use-package dashboard
     :demand t
     :init
-    (setq dashboard-startup-banner      'logo
+    (setq dashboard-startup-banner      'ascii
           dashboard-center-content      t
           dashboard-set-heading-icons   t
           dashboard-set-file-icons      t

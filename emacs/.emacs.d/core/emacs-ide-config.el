@@ -23,8 +23,12 @@
 ;;;   - FIX-PROJECTILE: projectile-indexing-method now set via
 ;;;     with-eval-after-load to avoid being overwritten when projectile's
 ;;;     defcustom initialises after config-apply runs.
-;;;   - FIX-INDENT4-WARN: Added warn when indent-4 line is dropped because
-;;;     current-subsection is nil — makes silent parser drops detectable.
+;;;   - FIX-INDENT4-LIST: indent-4 list items (- value) with no current-subsection
+;;;     are now appended to the parent section's value list rather than dropped.
+;;;     Fixes search-paths, auth-sources, and similar flat list keys whose children
+;;;     end up at indent 4 after the parser treats the key as a subsection header.
+;;;     Non-list indent-4 lines with no subsection are silently skipped (not warned)
+;;;     to avoid noise from internal structural lines.
 ;;;   - FIX-PKG-THRESHOLD: performance.slow-package-threshold added to
 ;;;     emacs-ide-config-apply, emacs-ide-config-defaults, and the template.
 ;;;     Wires config.yml value to emacs-ide-package-slow-threshold when the
@@ -380,10 +384,26 @@ Returns association list of configuration."
                                   (append (cdr sub-entry)
                                           (list (cons key val)))))))))))
 
-               ;; ── Level 4 no-subsection: warn and drop ────────────────────
+               ;; ── Level 4 no-subsection: list items under a bare list key ──
+               ;; Occurs when an indent-2 key with no inline value (e.g.
+               ;; search-paths:, auth-sources:) was parsed as a subsection
+               ;; header and current-subsection later reset to nil, but its
+               ;; "- item" children arrive here at indent 4.  Append each list
+               ;; value into the most-recently-created list-valued sub-entry.
+               ;; Non-list lines at this level are silently skipped.
                ((and (= indent 4) current-section (null current-subsection))
-                (warn "emacs-ide-config: indent-4 line dropped (no subsection): %s"
-                      trimmed))
+                (when (string-prefix-p "- " trimmed)
+                  (let* ((val (emacs-ide-config-parse-value
+                               (string-trim (substring trimmed 2))))
+                         (sec-entry (assoc current-section data))
+                         (children  (and sec-entry (cdr sec-entry)))
+                         (last-list (and children
+                                         (cl-find-if
+                                          (lambda (c)
+                                            (and (consp c) (listp (cdr c))))
+                                          (reverse children)))))
+                    (when last-list
+                      (setcdr last-list (append (cdr last-list) (list val)))))))
 
                ;; ── Level 6: list items / keys inside sub-sub-section ───────
                ((and (= indent 6) current-section current-subsection)
