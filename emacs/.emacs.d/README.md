@@ -27,72 +27,11 @@ async formatting, Git integration, and full recovery system.
 | Git | any | Required — health check fails without it |
 | ripgrep (`rg`) | any | Recommended for project search |
 | `fd` | any | Recommended for file finding |
-
-**Fonts** (install once):
-
-```bash
-# Nerd-icons font (required for icons in dashboard, dired, corfu)
-M-x nerd-icons-install-fonts
-```
-
-**LSP servers** (install only for languages you use):
-
-```bash
-# Tier 1 — daily
-pip install pyright                              # Python (preferred over pylsp)
-rustup component add rust-analyzer              # Rust
-go install golang.org/x/tools/gopls@latest     # Go
-npm install -g typescript-language-server       # JS / TS
-# C/C++: clangd via system package manager (apt/brew/pacman)
-
-# Tier 2 — regular
-pip install python-lsp-server                   # Python fallback (pylsp)
-npm install -g bash-language-server             # Shell
-npm install -g yaml-language-server             # YAML
-# Java: eclipse.jdt.ls (lsp-java installs automatically)
-# Kotlin: kotlin-language-server (brew/sdkman)
-# Lua: lua-language-server (brew/cargo)
-# SQL: sqls (go install github.com/sqls-server/sqls@latest)
-
-# Tier 3 — occasional
-# Haskell: haskell-language-server (ghcup install hls)
-# Clojure: clojure-lsp (brew install clojure-lsp/brew/clojure-lsp)
-# Elixir: elixir-ls (see https://github.com/elixir-lsp/elixir-ls)
-# Nix: nil (nix-env -i nil)
-# Zig: zls (zig build or from zls releases)
-```
-
-**Formatters** (install only what you use):
-
-```bash
-# Tier 1
-pip install black isort                         # Python
-npm install -g prettier                         # JS/TS/HTML/CSS/JSON/YAML/MD
-# rustfmt ships with rustup
-go install golang.org/x/tools/cmd/goimports@latest  # Go
-# clang-format: system package manager
-
-# Tier 2
-pip install pg_format                           # SQL (or apt install pgformatter)
-go install mvdan.cc/sh/v3/cmd/shfmt@latest     # Shell
-cargo install stylua                            # Lua
-brew install ktlint                             # Kotlin
-brew install google-java-format                 # Java
-
-# Tier 3
-cabal install ormolu                            # Haskell
-nix-env -i nixpkgs-fmt                         # Nix
-# Zig: zigfmt ships with zig
-```
-
-**Debug adapters:**
-
-```bash
-pip install debugpy                             # Python
-go install github.com/go-delve/delve/cmd/dlv@latest  # Go
-# LLDB/GDB: system package manager (C/C++/Rust)
-# Node.js: dap-node installs automatically via npm
-```
+| Node.js + npm | any | Required for JS/TS LSP and prettier |
+| Go | 1.21+ | Required for Go LSP/tools |
+| Rust + cargo | any | Required for Rust LSP/tools |
+| Python 3 + pip | 3.9+ | Required for Python LSP/tools |
+| Java 21+ | 21 | Required for Java/Kotlin LSP |
 
 ---
 
@@ -103,8 +42,7 @@ git clone <your-repo> ~/.emacs.d
 emacs --init-directory ~/.emacs.d
 ```
 
-On first launch straight.el bootstraps itself and installs all packages.
-This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in practice (lang modules are lazy). The `startup-time-target: 3.0` in `config.yml` is the warning threshold — a notification fires if startup exceeds it, not a goal in itself.
+On first launch straight.el bootstraps itself and installs all packages. This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in practice (lang modules are lazy). The `startup-time-target: 3.0` in `config.yml` is the warning threshold — a notification fires if startup exceeds it, not a goal in itself.
 
 > **After upgrading Emacs** (e.g. 29 → 30), always purge stale bytecode
 > before restarting — old `.elc`/`.eln` files cause `M-x emacs-ide-*`
@@ -118,9 +56,191 @@ This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in p
 To boot in safe mode (minimal config, no packages):
 
 ```bash
-emacs --safe
+emacs --emacs-ide-safe
 # or: EMACS_SAFE_MODE=1 emacs
 ```
+
+---
+
+## Tool Installation by Distro
+
+Install only the tools for languages you actually use. After installing, run
+`M-x emacs-ide-health-check-all` to confirm everything is detected.
+
+### openSUSE Leap / Tumbleweed
+
+```bash
+# Base tools
+sudo zypper install git ripgrep fd emacs
+
+# Language runtimes
+sudo zypper install nodejs npm go java-21-openjdk
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
+
+# Ensure PATH includes cargo and go bins
+echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# LSP servers — Tier 1
+pip install pyright --break-system-packages      # Python
+rustup component add rust-analyzer               # Rust
+go install golang.org/x/tools/gopls@latest      # Go
+npm install -g typescript-language-server        # JS/TS
+sudo zypper install clang                        # C/C++ (clangd included)
+
+# LSP servers — Tier 2
+npm install -g bash-language-server              # Shell
+npm install -g yaml-language-server              # YAML
+go install github.com/sqls-server/sqls@latest   # SQL
+# Kotlin LSP
+curl -sSLO https://github.com/fwcd/kotlin-language-server/releases/latest/download/server.zip
+unzip server.zip -d ~/.local/kotlin-language-server
+sudo ln -sf ~/.local/kotlin-language-server/server/bin/kotlin-language-server /usr/local/bin/
+# Java LSP (jdtls) — manual, lsp-mode does not auto-install it
+sudo zypper install java-21-openjdk
+VERSION=$(curl -sSL https://download.eclipse.org/jdtls/milestones/ | grep -oP '[\d]+\.[\d]+\.[\d]+' | sort -V | tail -1)
+mkdir -p ~/.local/share/jdtls
+FILENAME=$(curl -sSL "https://download.eclipse.org/jdtls/milestones/${VERSION}/" | grep -oP 'jdt-language-server-[\d.\-]+\.tar\.gz' | head -1)
+curl -L "https://download.eclipse.org/jdtls/milestones/${VERSION}/${FILENAME}" | tar xz -C ~/.local/share/jdtls
+cat << 'EOF' | sudo tee /usr/local/bin/jdtls
+#!/bin/sh
+exec python3 ~/.local/share/jdtls/bin/jdtls \
+  -configuration ~/.cache/jdtls \
+  -data ~/.local/share/jdtls/workspace "$@"
+EOF
+sudo chmod +x /usr/local/bin/jdtls
+
+# Formatters — Tier 1
+pip install black isort --break-system-packages  # Python
+npm install -g prettier                          # JS/TS/HTML/CSS/JSON/YAML/MD
+# rustfmt ships with rustup
+go install golang.org/x/tools/cmd/goimports@latest  # Go
+sudo zypper install clang                        # clang-format included
+
+# Formatters — Tier 2
+pip install pgformatter --break-system-packages  # SQL (or: sudo zypper install pgformatter)
+go install mvdan.cc/sh/v3/cmd/shfmt@latest      # Shell
+cargo install stylua                             # Lua
+curl -sSLO https://github.com/pinterest/ktlint/releases/latest/download/ktlint
+chmod +x ktlint && sudo mv ktlint /usr/local/bin/  # Kotlin
+# Java formatter
+curl -sSLO https://github.com/google/google-java-format/releases/latest/download/google-java-format-all-deps.jar
+sudo mkdir -p /usr/local/lib
+sudo mv google-java-format-all-deps.jar /usr/local/lib/
+echo '#!/bin/sh\nexec java -jar /usr/local/lib/google-java-format-all-deps.jar "$@"' | sudo tee /usr/local/bin/google-java-format
+sudo chmod +x /usr/local/bin/google-java-format
+
+# Debug adapters
+pip install debugpy --break-system-packages      # Python
+go install github.com/go-delve/delve/cmd/dlv@latest  # Go
+sudo zypper install lldb                         # C/C++/Rust
+```
+
+### Ubuntu / Debian
+
+```bash
+# Base tools
+sudo apt install git ripgrep fd-find emacs
+
+# Language runtimes
+sudo apt install nodejs npm golang-go default-jdk-21
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# LSP servers — Tier 1
+pip install pyright
+rustup component add rust-analyzer
+go install golang.org/x/tools/gopls@latest
+npm install -g typescript-language-server
+sudo apt install clangd
+
+# LSP servers — Tier 2
+npm install -g bash-language-server yaml-language-server
+go install github.com/sqls-server/sqls@latest
+# Kotlin LSP and Java LSP: same as openSUSE steps above
+
+# Formatters — Tier 1
+pip install black isort
+npm install -g prettier
+go install golang.org/x/tools/cmd/goimports@latest
+sudo apt install clang-format
+
+# Formatters — Tier 2
+sudo apt install pgformatter
+go install mvdan.cc/sh/v3/cmd/shfmt@latest
+cargo install stylua
+# ktlint and google-java-format: same as openSUSE steps above
+
+# Debug adapters
+pip install debugpy
+go install github.com/go-delve/delve/cmd/dlv@latest
+sudo apt install lldb
+```
+
+### macOS (Homebrew)
+
+```bash
+# Base tools
+brew install git ripgrep fd emacs
+
+# Language runtimes
+brew install node go openjdk@21
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$(brew --prefix openjdk@21)/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# LSP servers — Tier 1
+pip install pyright
+rustup component add rust-analyzer
+go install golang.org/x/tools/gopls@latest
+npm install -g typescript-language-server
+brew install llvm   # provides clangd
+
+# LSP servers — Tier 2
+npm install -g bash-language-server yaml-language-server
+go install github.com/sqls-server/sqls@latest
+brew install kotlin-language-server
+# Java LSP: same manual jdtls steps as openSUSE above
+
+# Formatters — Tier 1
+pip install black isort
+npm install -g prettier
+go install golang.org/x/tools/cmd/goimports@latest
+brew install clang-format
+
+# Formatters — Tier 2
+pip install pgformatter
+go install mvdan.cc/sh/v3/cmd/shfmt@latest
+cargo install stylua
+brew install ktlint
+brew install google-java-format
+
+# Debug adapters
+pip install debugpy
+go install github.com/go-delve/delve/cmd/dlv@latest
+# LLDB ships with Xcode Command Line Tools
+```
+
+### Fonts (all distros)
+
+After first Emacs launch, install the nerd-icons font:
+
+```
+M-x nerd-icons-install-fonts
+```
+
+### LSP servers not in lsp-install-server
+
+`lsp-mode`'s `M-x lsp-install-server` does **not** include these — install manually:
+
+| Server | Language | Install method |
+|---|---|---|
+| `jdtls` | Java | Manual — see openSUSE steps above |
+
+All other Tier 1/2 servers listed above are detected automatically by `lsp-mode` once on PATH.
 
 ---
 
