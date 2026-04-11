@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.0
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.4
 
 ---
 
@@ -300,22 +300,13 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.0)
-
-The following modules have known bugs being tracked for v2.3.1:
+## Known Issues / Pending Fixes (v2.3.4)
 
 | Module | Issue |
 |--------|-------|
-| `completion.lua` | `version=false` tracks HEAD — pin to latest stable blink.cmp tag |
-| `lsp.lua` | nvim-0.11 `vim.lsp.enable()` + mason-lspconfig double-attach on some servers |
-| `dap.lua` | `load_breakpoints()` restores on large files before treesitter parses — marks land on wrong lines |
-| `python.lua` | iron.nvim REPL keymaps (`send_motion`, `visual_send`) set globally at load time, not per-buffer |
+| `dap.lua` | Breakpoint restore on large files lands on wrong lines (treesitter not yet parsed at restore time) |
 | `test.lua` | neotest-rust race condition if rustaceanvim not yet attached on first Rust file open |
-| `workflow.lua` | `overseer.run_template({ name="build" })` unhandled error when no build template matches |
-| `autocmds.lua` | `TrimWhitespace` calls `nvim_buf_set_lines` per line in a loop — should be batched in one call |
-| `treesitter.lua` | `foldexpr` uses deprecated v3 API — should be `v:lua.vim.treesitter.foldexpr()` |
-| `advanced.lua` | `close_fold_kinds` field renamed to `close_fold_kinds_for_ft` in recent nvim-ufo |
-| `keymaps.lua` | `<leader>un` collision — mapped to both "toggle line numbers" and "Noice dismiss" |
+| `runner.lua` | `run_tests()` has no entry for c, cpp, fortran, vhdl, cobol — calling `<leader>'t` in those filetypes notifies "No test runner" |
 
 ---
 
