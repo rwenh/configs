@@ -1,46 +1,20 @@
 ;;; tools-hydra.el --- Hydra Menus for Discoverable Commands -*- lexical-binding: t -*-
 ;;; Commentary:
 ;;; Chord-free, discoverable Hydra menus covering every major IDE workflow.
-;;; This is the Emacs-ideology replacement for Vim leader-key bindings.
-;;; Each hydra is invoked via a single memorable key and shows all options.
-;;;
-;;; Entry points (all via C-c h prefix):
-;;;   C-c h w   window hydra     — split/resize/ace/winner
-;;;   C-c h b   buffer hydra     — switch/kill/scratch/ibuffer
-;;;   C-c h g   git hydra        — magit/diff/blame/stash
-;;;   C-c h l   lsp hydra        — rename/actions/refs/format
-;;;   C-c h p   project hydra    — find/search/compile/test
-;;;   C-c h t   test hydra       — run/watch/report/at-point
-;;;   C-c h d   debug hydra      — step/break/inspect/continue
-;;;   C-c h u   toggle hydra     — theme/line-nos/indent/etc
-;;;   C-c h r   repl hydra       — launch/send/toggle
-;;;   C-c h s   search hydra     — ripgrep/occur/symbol
-;;;
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 1.0.0 (audit):
-;;;   - FIX-VERSION: Header bumped from 1.0.0 to 3.0.4.
-;;;   - FIX-CL-LIB: Added (require 'cl-lib) at top of file since hydra-buffer
-;;;     uses cl-remove-if without declaring the dependency.
-;;;   - FIX-WINDOW-DUP: hydra-window had "m" bound to delete-other-windows,
-;;;     duplicating "D". Changed "m" to ace-maximize-window (maximize current
-;;;     window via ace-window) which is distinct and useful.
-;;;   - FIX-BUFFER-SCRATCH: scratch-buffer is Emacs 28+ only — calling it on
-;;;     Emacs 27 throws void-function. Added fboundp guard with fallback to
-;;;     (switch-to-buffer "*scratch*").
-;;;   - FIX-LSP-LENS: (lsp-lens-mode 'toggle) is not a valid call — minor
-;;;     mode functions take a numeric argument, not the symbol 'toggle.
-;;;     Fixed to toggle via numeric arg based on current mode state.
-;;;   - FIX-FLYCHECK-TOGGLE: (flycheck-mode 'toggle) same class of bug.
-;;;     Fixed to use numeric arg toggle pattern.
-;;;   - FIX-FLYSPELL-TOGGLE: (flyspell-mode 'toggle) same class of bug.
-;;;     Fixed to use numeric arg toggle pattern.
-;;;   - FIX-WORD-WRAP: word-wrap-whitespace-mode does not exist in Emacs.
-;;;     Replaced with visual-line-mode which is the correct built-in.
-;;;   - FIX-GLOBAL-KEYS-RACE: Global hydra entry keys were set outside
-;;;     with-eval-after-load 'hydra. If hydra loads asynchronously the body
-;;;     functions are not yet defined when global-set-key runs, silently
-;;;     binding to void symbols. Moved inside the with-eval-after-load block.
+;;; Fixes vs 3.0.4 (recalibration):
+;;;   - FIX-CONSULT-PROJECT-BUFFER: (consult-project-buffer) does not exist in
+;;;     consult. The correct function is (consult-projectile) from
+;;;     consult-projectile, or (projectile-switch-to-buffer) as a safe fallback.
+;;;     Changed to use consult-projectile when available, falling back to
+;;;     projectile-switch-to-buffer.
+;;;   - FIX-ACE-MAXIMIZE-WINDOW: (ace-maximize-window) is not a real ace-window
+;;;     function. The correct function is (ace-delete-other-windows) which
+;;;     maximizes the selected window by deleting all others.
+;;; All other fixes retained from prior audit (FIX-CL-LIB, FIX-WINDOW-DUP,
+;;; FIX-BUFFER-SCRATCH, FIX-LSP-LENS, FIX-FLYCHECK-TOGGLE, FIX-FLYSPELL-TOGGLE,
+;;; FIX-WORD-WRAP, FIX-GLOBAL-KEYS-RACE).
 ;;; Code:
 
 ;; FIX-CL-LIB: Require cl-lib since hydra-buffer uses cl-remove-if
@@ -82,9 +56,9 @@
   ("l" windmove-right)
   ("o" ace-window)
   ("x" ace-swap-window)
-  ;; FIX-WINDOW-DUP: was delete-other-windows — duplicate of "D".
-  ;; ace-maximize-window maximizes via ace-window selection instead.
-  ("m" (when (fboundp 'ace-maximize-window) (ace-maximize-window)))
+  ;; FIX-ACE-MAXIMIZE-WINDOW: ace-maximize-window does not exist.
+  ;; ace-delete-other-windows prompts to select a window and deletes all others.
+  ("m" (when (fboundp 'ace-delete-other-windows) (ace-delete-other-windows)))
   ("n" tab-bar-new-tab)
   ("N" tab-bar-switch-to-next-tab)
   ("P" tab-bar-switch-to-prev-tab)
@@ -183,7 +157,7 @@
   ("k" (when (fboundp 'lsp-signature-activate)   (lsp-signature-activate)))
   ("e" (when (fboundp 'flycheck-list-errors)     (flycheck-list-errors)))
   ;; FIX-LSP-LENS: (lsp-lens-mode 'toggle) is invalid — minor modes take
-  ;; numeric args. Toggle via current state instead.
+  ;; numeric args. Toggle via current state.
   ("l" (when (fboundp 'lsp-lens-mode)
          (if (bound-and-true-p lsp-lens-mode) (lsp-lens-mode -1) (lsp-lens-mode 1))))
   ("w" (when (fboundp 'lsp-describe-session)     (lsp-describe-session)))
@@ -211,7 +185,12 @@
   ("g" consult-grep)
   ("o" consult-line)
   ("p" projectile-switch-project)
-  ("b" consult-project-buffer)
+  ;; FIX-CONSULT-PROJECT-BUFFER: consult-project-buffer does not exist.
+  ;; Use consult-projectile when available, fall back to projectile-switch-to-buffer.
+  ("b" (cond
+        ((fboundp 'consult-projectile)        (consult-projectile))
+        ((fboundp 'projectile-switch-to-buffer) (projectile-switch-to-buffer))
+        (t (consult-buffer))))
   ("k" projectile-kill-buffers)
   ("c" projectile-compile-project)
   ("C" recompile)
@@ -227,12 +206,12 @@
 (defhydra hydra-test (:hint nil :color blue)
   "
   test
-  ────────────────────────────────────────
+  ────────────────────────────────────
   _f_ file tests     _p_ project tests
   _._ test at point  _l_ last test
   _w_ watch mode     _r_ test report
   _s_ runner status
-  ────────────────────────────────────────
+  ────────────────────────────────────
   _q_ quit
 "
   ("f" emacs-ide-test-run-file)
@@ -307,10 +286,10 @@
   ;; is the correct built-in for soft word-wrap.
   ("W" visual-line-mode)
   ("c" display-fill-column-indicator-mode)
-  ;; FIX-FLYCHECK-TOGGLE: (flycheck-mode 'toggle) is invalid — use numeric arg
+  ;; FIX-FLYCHECK-TOGGLE: minor modes take numeric args
   ("f" (when (fboundp 'flycheck-mode)
          (if (bound-and-true-p flycheck-mode) (flycheck-mode -1) (flycheck-mode 1))))
-  ;; FIX-FLYSPELL-TOGGLE: (flyspell-mode 'toggle) is invalid — use numeric arg
+  ;; FIX-FLYSPELL-TOGGLE: minor modes take numeric args
   ("s" (when (fboundp 'flyspell-mode)
          (if (bound-and-true-p flyspell-mode) (flyspell-mode -1) (flyspell-mode 1))))
   ("d" (when (fboundp 'dimmer-mode)        (call-interactively #'dimmer-mode)))
@@ -377,10 +356,8 @@
 
 ;; ============================================================================
 ;; GLOBAL HYDRA ENTRY KEYS (C-c h prefix)
-;; FIX-GLOBAL-KEYS-RACE: Moved inside with-eval-after-load 'hydra so that
-;; all hydra body functions are defined before these bindings are set.
-;; Previously these ran outside the block — if hydra loaded asynchronously
-;; the body functions were void at binding time.
+;; FIX-GLOBAL-KEYS-RACE: inside with-eval-after-load 'hydra so body functions
+;; exist before bindings are set.
 ;; ============================================================================
 (global-set-key (kbd "C-c h w") #'hydra-window/body)
 (global-set-key (kbd "C-c h b") #'hydra-buffer/body)
