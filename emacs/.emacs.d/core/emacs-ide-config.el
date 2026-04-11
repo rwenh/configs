@@ -35,6 +35,9 @@
 ;;;     package module is loaded.
 ;;;   - FIX-TELEMETRY-SIZE: telemetry.max-log-size wired to
 ;;;     emacs-ide-telemetry-max-log-size in emacs-ide-config-apply.
+;;;   - FIX-RELOAD-HOOK: emacs-ide-config-reload-hook now properly defined as
+;;;     defvar and fired after config reload. Fixes cascading issues #14-18
+;;;     where modules could not register handlers for config changes.
 ;;;   - DOC-ENV: Added comment recommending EMACS_ENVIRONMENT env var over
 ;;;     hostname-based auto-detection.
 ;;; Fixes vs 2.2.8:
@@ -159,6 +162,22 @@
 (defvar emacs-ide-config-environment nil)
 (defvar emacs-ide-config-loaded-p nil)
 
+;; ============================================================================
+;; CONFIGURATION RELOAD HOOK — FIX-RELOAD-HOOK CRITICAL
+;; ============================================================================
+;; FIX-RELOAD-HOOK: emacs-ide-config-reload-hook was referenced by 5 modules
+;; (tools-org.el, tools-notes.el, tools-project.el, tools-repl.el, core-dev.el)
+;; but was never declared. All add-hook calls silently created the hook on first
+;; use, but no code ever fired it. With the hook undefined at load time, modules
+;; could not register handlers. Firing it manually after config-apply now lets
+;; all modules re-sync their state whenever config.yml is reloaded.
+(defvar emacs-ide-config-reload-hook nil
+  "Hook run after configuration is reloaded via M-x emacs-ide-config-reload.
+Modules add handlers here to re-apply settings that depend on config.yml
+changes (e.g., org-agenda-files, notes-directory, project search-paths,
+repl window display rules, language enable/disable toggles, etc.).
+Fired by emacs-ide-config-reload after emacs-ide-config-apply completes.")
+
 (defvar emacs-ide-config-defaults
   '((general
      ;; FIX-DEFAULT-THEME: was modus-vivendi — updated to ef-dark for v3.0.0+
@@ -269,7 +288,6 @@ Strips inline YAML comments before parsing."
                           "rg" "ripgrep" "grep" "ag" "fd" "find"
                           "aspell" "hunspell" "ispell"
                           "flake8" "pylint" "mypy"
-                          ;; FIX-ESLINT-DUP: "eslint" was duplicated here
                           "tsc" "node" "npm" "npx"
                           "cargo" "rustc" "go" "python" "python3"
                           "ruby" "php" "java" "mvn" "gradle"
@@ -481,7 +499,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
   (cl-flet ((section (key) (cdr (assoc key config)))
             (val (key alist) (when (assoc key alist) (cdr (assoc key alist)))))
 
-    ;; ── General ──────────────────────────────────────────────────────────────
+    ;; ── General ─────────────────────────────────────────────────────────────
     (let ((general (section 'general)))
       (when general
         (when (assoc 'theme general)
@@ -493,7 +511,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'safe-mode general)
           (setq emacs-ide-safe-mode (val 'safe-mode general)))))
 
-    ;; ── Completion ───────────────────────────────────────────────────────────
+    ;; ── Completion ──────────────────────────────────────────────────────────
     (let ((completion (section 'completion)))
       (when completion
         (when (assoc 'backend completion)
@@ -501,7 +519,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'delay completion)
           (setq emacs-ide-completion-delay (val 'delay completion)))))
 
-    ;; ── LSP ──────────────────────────────────────────────────────────────────
+    ;; ── LSP ─────────────────────────────────────────────────────────────────
     (let ((lsp (section 'lsp)))
       (when lsp
         (when (assoc 'enable lsp)
@@ -512,7 +530,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
           (setq emacs-ide-lsp-large-file-threshold
                 (val 'large-file-threshold lsp)))))
 
-    ;; ── Performance ──────────────────────────────────────────────────────────
+    ;; ── Performance ─────────────────────────────────────────────────────────
     ;; C-14 FIX: Only apply gc-cons-threshold during startup window OR when
     ;; the configured value is >= the current threshold (safe to raise GC
     ;; at any time; dangerous to lower it mid-session during active work).
@@ -536,7 +554,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
                        (boundp 'emacs-ide-package-slow-threshold))
               (setq emacs-ide-package-slow-threshold threshold))))))
 
-    ;; ── Features ─────────────────────────────────────────────────────────────
+    ;; ── Features ────────────────────────────────────────────────────────────
     (let ((features (section 'features)))
       (when features
         (when (assoc 'dashboard features)
@@ -544,13 +562,13 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'which-key features)
           (setq emacs-ide-feature-which-key (val 'which-key features)))))
 
-    ;; ── Formatting ───────────────────────────────────────────────────────────
+    ;; ── Formatting ──────────────────────────────────────────────────────────
     (let ((formatting (section 'formatting)))
       (when formatting
         (when (assoc 'on-save formatting)
           (setq emacs-ide-format-on-save (val 'on-save formatting)))))
 
-    ;; ── Git ──────────────────────────────────────────────────────────────────
+    ;; ── Git ─────────────────────────────────────────────────────────────────
     (let ((git (section 'git)))
       (when git
         (when (assoc 'enable git)
@@ -558,7 +576,7 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'gutter git)
           (setq emacs-ide-git-gutter (val 'gutter git)))))
 
-    ;; ── Terminal ─────────────────────────────────────────────────────────────
+    ;; ── Terminal ────────────────────────────────────────────────────────────
     (let ((terminal (section 'terminal)))
       (when terminal
         (when (assoc 'enable terminal)
@@ -566,13 +584,13 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
         (when (assoc 'shell terminal)
           (setq emacs-ide-terminal-shell (or (val 'shell terminal) "")))))
 
-    ;; ── Debug ────────────────────────────────────────────────────────────────
+    ;; ── Debug ───────────────────────────────────────────────────────────────
     (let ((debug (section 'debug)))
       (when debug
         (when (assoc 'enable debug)
           (setq emacs-ide-debug-enable (val 'enable debug)))))
 
-    ;; ── Project ──────────────────────────────────────────────────────────────
+    ;; ── Project ─────────────────────────────────────────────────────────────
     (let ((project (section 'project)))
       (when project
         (when (assoc 'enable project)
@@ -590,14 +608,14 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
               (with-eval-after-load 'projectile
                 (setq projectile-indexing-method method)))))))
 
-    ;; ── Security ─────────────────────────────────────────────────────────────
+    ;; ── Security ────────────────────────────────────────────────────────────
     (let ((security (section 'security)))
       (when security
         (when (assoc 'tls-verify security)
           (require 'gnutls)
           (setq gnutls-verify-error (val 'tls-verify security)))))
 
-    ;; ── Telemetry ────────────────────────────────────────────────────────────
+    ;; ── Telemetry ───────────────────────────────────────────────────────────
     (let ((telemetry (section 'telemetry)))
       (when telemetry
         (when (assoc 'enabled telemetry)
@@ -832,6 +850,8 @@ keybindings:
   "Reload configuration from file."
   (interactive)
   (emacs-ide-config-load)
+  ;; FIX-RELOAD-HOOK: Fire the hook so all modules can re-apply config-dependent state
+  (run-hooks 'emacs-ide-config-reload-hook)
   (message "✓ Configuration reloaded"))
 
 (defun emacs-ide-config-show ()

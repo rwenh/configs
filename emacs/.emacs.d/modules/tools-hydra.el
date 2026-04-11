@@ -20,6 +20,8 @@
 ;;; Part of Enterprise Emacs IDE v3.0.4
 ;;; Fixes vs 1.0.0 (audit):
 ;;;   - FIX-VERSION: Header bumped from 1.0.0 to 3.0.4.
+;;;   - FIX-CL-LIB: Added (require 'cl-lib) at top of file since hydra-buffer
+;;;     uses cl-remove-if without declaring the dependency.
 ;;;   - FIX-WINDOW-DUP: hydra-window had "m" bound to delete-other-windows,
 ;;;     duplicating "D". Changed "m" to ace-maximize-window (maximize current
 ;;;     window via ace-window) which is distinct and useful.
@@ -40,6 +42,9 @@
 ;;;     functions are not yet defined when global-set-key runs, silently
 ;;;     binding to void symbols. Moved inside the with-eval-after-load block.
 ;;; Code:
+
+;; FIX-CL-LIB: Require cl-lib since hydra-buffer uses cl-remove-if
+(require 'cl-lib)
 
 (use-package hydra :demand t)
 

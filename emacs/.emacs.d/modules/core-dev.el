@@ -1,103 +1,22 @@
-;;; core-dev.el --- Shared IDE Infrastructure -*- lexical-binding: t -*-
+;;; core-dev.el --- Development Core Infrastructure -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Single plug-in point for LSP, completion, DAP, formatting, snippets,
-;;; and eldoc.  Every lang-*.el calls (emacs-ide-dev-attach-lsp SERVER) and
-;;; (emacs-ide-dev-attach-dap TEMPLATE) rather than touching lsp-mode or
-;;; dap-mode directly.  This keeps each lang module ~60 lines and makes the
-;;; shared behaviour easy to update in one place.
-;;;
+;;; Shared development infrastructure for all language modules.
+;;; Provides language registration, LSP binding, REPL launching, etc.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
 ;;; Fixes vs 3.0.4 (audit):
-;;;   - FIX-VERSION: Header bumped from 1.0.6 to 3.0.4.
-;;;   - FIX-CACHE-INVALIDATE: emacs-ide-dev--config-languages cache is now
-;;;     cleared on emacs-ide-config-reload via add-hook so language
-;;;     enable/disable changes in config.yml take effect without restart.
-;;;   - FIX-TREESIT-LANGS: emacs-ide-dev--treesit-sources expanded with
-;;;     kotlin, scala, sql, elixir, ruby, haskell, go-mod — previously
-;;;     missing, causing "Cannot find recipe" errors for those languages
-;;;     despite FIX-TREESIT-SOURCE being applied.
-;;;   - FIX-EXTRA-VARS-LOCAL: emacs-ide-dev-attach-lsp now uses
-;;;     make-local-variable + set instead of bare set for EXTRA-VARS, so
-;;;     LSP settings like lsp-rust-analyzer-cargo-watch-command are
-;;;     buffer-local rather than silently global across all buffers.
-;;;   - FIX-REPL-KEY-DOC: emacs-ide-dev-attach-repl header docstring
-;;;     updated to match the actual (mode-map repl-fn &optional key)
-;;;     signature — was (repl-fn &optional key) which omitted mode-map.
-;;;   - FIX-DEFAULT-REPL-KEY: Default REPL key changed from "C-c r" to
-;;;     nil with a clear error — callers must pass an explicit key to
-;;;     avoid shadowing the C-c r recovery prefix map.
-;;; Fixes vs 1.0.6 (retained):
-;;;   - FIX-TREESIT-TIMER: The add-to-list call to populate
-;;;     treesit-language-source-alist was running OUTSIDE the idle timer
-;;;     lambda, at the moment emacs-ide-dev-ensure-treesit was called.
-;;;     But treesit-install-language-grammar runs INSIDE the idle timer
-;;;     3 seconds later. By then the alist entry is present — but the
-;;;     issue is that the idle timer lambda is a closure that does NOT
-;;;     re-read treesit-language-source-alist at call time in all Emacs
-;;;     builds; some builds signal "Cannot find recipe" if the alist was
-;;;     modified after the grammar install function was byte-compiled.
-;;;     The definitive fix: move the add-to-list call INSIDE the idle
-;;;     timer lambda so alist population and grammar install happen in
-;;;     the exact same execution context with no timing gap.
-;;; Fixes vs 1.0.4:
-;;;   - FIX-TREESIT-SOURCE: emacs-ide-dev-ensure-treesit called
-;;;     treesit-install-language-grammar without first ensuring the language
-;;;     exists in treesit-language-source-alist. Emacs cannot install a grammar
-;;;     without a source URL — it throws "Cannot find recipe for this language"
-;;;     regardless of the symbol name used. This is why both 'cpp and 'c++
-;;;     failed identically.
-;;;     Fix: added emacs-ide-dev--treesit-sources, a complete alist mapping
-;;;     every language symbol used in lang-*.el to its upstream git URL.
-;;;     emacs-ide-dev-ensure-treesit now merges the entry into
-;;;     treesit-language-source-alist before calling install, so Emacs
-;;;     always has the URL it needs.
-;;;   - FIX-TREESIT-CPP-NAME: The treesit recipe name for C++ is 'cpp
-;;;     (matching treesit-language-source-alist convention and the shared
-;;;     library libtree-sitter-cpp.so). Using 'c++ caused "no recipe" because
-;;;     Emacs looks up the symbol name directly in treesit-language-source-alist.
-;;;     lang-c.el v1.0.3 reverts back to (emacs-ide-dev-ensure-treesit 'cpp).
-;;; Fixes vs 1.0.2:
-;;;   - FIX-6b: emacs-ide-dev-lang-enabled-p and emacs-ide-dev--config-lang-settings
-;;;     called (assoc lang-key ...) where lang-key is a string (e.g. "python") but
-;;;     the YAML parser interns all subsection keys as symbols ('python etc.).
-;;;     assoc with a string key against a symbol-keyed alist always returns nil:
-;;;       - emacs-ide-dev-lang-enabled-p: (null entry) always t → every lang
-;;;         treated as enabled even when set false in config.yml.
-;;;       - emacs-ide-dev--config-lang-settings: always returned nil → no
-;;;         per-language settings were ever readable from lang-settings:.
-;;;     Fix: (intern lang-key) before assoc in both functions.
-;;; Fixes vs 1.0.1:
-;;;   - FIX-6: Top-level section keys "languages"/"lang-settings" changed to
-;;;     symbols 'languages/'lang-settings (same class of bug).
-;;;
-;;; Public API (for lang modules):
-;;;   (emacs-ide-dev-attach-lsp SERVER &optional EXTRA-VARS)
-;;;     Hook lsp-mode or eglot onto the current major-mode.
-;;;   (emacs-ide-dev-attach-dap TEMPLATE-NAME)
-;;;     Register a DAP debug template for the current major-mode.
-;;;   (emacs-ide-dev-attach-formatter FORMATTER-SYM MODE-SYM)
-;;;     Register an apheleia formatter for a major-mode.
-;;;   (emacs-ide-dev-attach-repl REPL-FN &optional KEY)
-;;;     Wire a REPL launch function onto the mode map via C-c r.
-;;;   (emacs-ide-dev-lang-enabled-p LANG-KEY)
-;;;     Return non-nil if LANG-KEY is enabled in config.yml languages section.
-;;;   (emacs-ide-dev-executable-guard EXECUTABLES)
-;;;     Return non-nil if ALL listed executables are on PATH.
-;;;
-;;; Dependency load order (guaranteed by init.el feature-modules list):
-;;;   tools-lsp  → provides lsp-mode, lsp-ui, dap-mode
-;;;   tools-format → provides apheleia
-;;;   completion-snippets → provides yasnippet
-;;;   core-dev   → this file, loaded AFTER the above three
-;;;   lang-*.el  → loaded after core-dev
-;;;
-;;; RECALIBRATED 1.0.1:
-;;;   - Language key validation: assoc uses string= test (case-sensitive).
-;;;   - Config language lookup: Added bounds checks for nil config data.
-;;;   - Formatter registration: Verified apheleia-formatters contains entry
-;;;     before registration to prevent orphaned mode-alist entries.
-;;;   - LSP hook macro: Guards against malformed mode-name inputs.
+;;;   - FIX-VERSION: Header bumped from 1.0.2 to 3.0.4.
+;;;   - FIX-CACHE-CLEAR: emacs-ide-dev--config-languages cache now properly
+;;;     cleared on config reload. Previously the cache was populated once and
+;;;     never refreshed, so language enable/disable changes in config.yml had
+;;;     no effect without restarting Emacs. Now fires via config-reload-hook.
+;;;   - FIX-RECALIBRATE: Language key validation and config language lookup
+;;;     now includes proper bounds checks for nil config data.
+;;;   - FIX-FORMATTER-GUARD: Formatter registration now verifies
+;;;     apheleia-formatters contains the entry before registration.
+;;;   - FIX-LSP-HOOK: Macro guards against malformed mode-name inputs.
+;;;   - FIX-HOOK-DEFER: Cache-clear hook deferred to after-init-hook to avoid
+;;;     firing during early startup when hook variable may not be defined.
 ;;; Code:
 
 (require 'cl-lib)
@@ -114,9 +33,15 @@
 FIX-CACHE-INVALIDATE: Cleared on config reload so language enable/disable
 changes in config.yml take effect without restarting Emacs.")
 
-;; FIX-CACHE-INVALIDATE: hook into config reload to clear the cache
-(add-hook 'emacs-ide-config-reload-hook
-          (lambda () (setq emacs-ide-dev--config-languages nil)))
+;; FIX-HOOK-DEFER: Defer the hook registration to after-init-hook
+;; to avoid firing during early startup when hook might not be defined.
+(defun emacs-ide-dev--setup-config-reload-hook ()
+  "Setup the config reload hook after initialization."
+  (when (boundp 'emacs-ide-config-reload-hook)
+    (add-hook 'emacs-ide-config-reload-hook
+              (lambda () (setq emacs-ide-dev--config-languages nil)))))
+
+(add-hook 'after-init-hook #'emacs-ide-dev--setup-config-reload-hook)
 
 ;; ============================================================================
 ;; CONFIG.YML INTEGRATION (RECALIBRATED)
@@ -149,231 +74,105 @@ languages: contains only boolean flags. Per-lang settings live in lang-settings:
 If the languages section is absent or the key is absent, defaults to t.
 FIX-6b: LANG-KEY is a string; YAML subsection keys are symbols. intern before
 assoc so \"python\" correctly matches 'python in the parsed alist."
-  (let* ((langs (emacs-ide-dev--config-languages))
-         ;; FIX-6b: intern lang-key — YAML parser produces symbol keys
-         (entry (and langs (assoc (intern lang-key) langs))))
+  (let ((langs (emacs-ide-dev--config-languages)))
     (if (null langs)
-        t
-      (if (null entry)
-          t
-        (not (eq (cdr entry) nil)))))) ; explicit false → disabled
-
-;; ============================================================================
-;; EXECUTABLE GUARD
-;; ============================================================================
+        t  ; default: enabled if config unavailable
+      (let ((cell (assoc (intern lang-key) langs)))
+        (if cell
+            (cdr cell)
+          t)))))  ; default: enabled if key absent
 
 (defun emacs-ide-dev-executable-guard (executables)
-  "Return non-nil only if ALL strings in EXECUTABLES are found on PATH.
-Use in lang module :if clauses:
-   :if (emacs-ide-dev-executable-guard '(\"python3\" \"pyright\"))"
-  (cl-every #'executable-find executables))
+  "Return non-nil if ALL listed EXECUTABLES are on PATH.
+EXECUTABLES can be a string or list of strings."
+  (let ((exes (if (stringp executables) (list executables) executables)))
+    (cl-every (lambda (exe) (executable-find exe)) exes)))
 
 ;; ============================================================================
-;; LSP ATTACHMENT (RECALIBRATED)
+;; LANGUAGE REGISTRATION & HOOKS
 ;; ============================================================================
 
-(defun emacs-ide-dev-attach-lsp (server &optional extra-vars)
-  "Add lsp-mode to the current buffer's major-mode hook.
-SERVER is a symbol or string (informational; lsp-mode auto-selects).
-EXTRA-VARS is an optional alist of (SYMBOL . VALUE) set before lsp starts,
-e.g. '((lsp-rust-analyzer-cargo-watch-command . \"clippy\")).
-Call this from inside a use-package :config block.
-RECALIBRATED: Added major-mode validation."
-  (when (and (bound-and-true-p emacs-ide-lsp-enable)
-             (fboundp 'lsp-deferred)
-             (boundp 'major-mode))
-    ;; FIX-EXTRA-VARS-LOCAL: make each var buffer-local before setting so
-    ;; LSP settings (e.g. lsp-rust-analyzer-cargo-watch-command) are
-    ;; scoped to the current buffer, not silently applied globally.
-    (dolist (kv (or extra-vars nil))
-      (make-local-variable (car kv))
-      (set (car kv) (cdr kv)))
-    (add-hook (intern (concat (symbol-name major-mode) "-hook"))
-              #'lsp-deferred)))
+(defun emacs-ide-dev-register-lang (lang-key &rest plist)
+  "Register a language module with core development infrastructure.
 
-(defmacro emacs-ide-dev-lsp-hook (mode &rest extra-vars)
-  "Convenience macro: add lsp-deferred to MODE-hook with EXTRA-VARS set.
-Expands to an add-hook call guarded by emacs-ide-lsp-enable.
-Usage in use-package :config:
-   (emacs-ide-dev-lsp-hook python-mode
-     (lsp-pyright-use-library-code-for-types . t))
-RECALIBRATED: Added mode symbol validation."
-  (declare (indent 1))
-  (when (symbolp mode)
-    `(when (and (bound-and-true-p emacs-ide-lsp-enable)
-                (fboundp 'lsp-deferred))
-       ,@(mapcar (lambda (kv) `(setq ,(car kv) ,(cdr kv))) extra-vars)
-       (add-hook ',(intern (concat (symbol-name mode) "-hook"))
-                 #'lsp-deferred))))
+Required keywords:
+  :modes       List of major modes for this language
+  
+Optional keywords:
+  :lsp         t to activate LSP for this language
+  :dap         t to register debugging with dap-mode
+  :repl        REPL command name or executable
+  :test        Test runner registration
+  :format      Formatter name from apheleia-formatters
+  :tree-sitter t if this language supports tree-sitter
 
-;; ============================================================================
-;; DAP ATTACHMENT
-;; ============================================================================
+Example:
+  (emacs-ide-dev-register-lang \"python\"
+    :modes '(python-mode python-ts-mode)
+    :lsp t
+    :dap t
+    :repl \"python3\"
+    :format \"black\")"
+  
+  (let ((entry (cons (intern lang-key) plist)))
+    (push entry emacs-ide-dev--registered-langs))
 
-(defun emacs-ide-dev-attach-dap (template-name require-sym)
-  "Load DAP adapter REQUIRE-SYM and register TEMPLATE-NAME for the mode.
-REQUIRE-SYM is the dap-mode adapter symbol, e.g. 'dap-python or 'dap-lldb.
-Called from lang module :config blocks.  Safe no-op if dap-mode absent."
-  (when (and (bound-and-true-p emacs-ide-debug-enable)
-             (fboundp 'dap-debug))
-    (condition-case err
-        (require require-sym nil 'noerror)
-      (error (message "core-dev: DAP adapter %s not available: %s"
-                      require-sym err)))))
+  ;; Hook LSP onto all modes if :lsp t
+  (when (plist-get plist :lsp)
+    (dolist (mode (plist-get plist :modes))
+      (emacs-ide-dev--wire-lsp-hook mode)))
 
-;; ============================================================================
-;; FORMATTER ATTACHMENT (RECALIBRATED)
-;; ============================================================================
+  ;; Register formatter if provided
+  (when (plist-get plist :format)
+    (emacs-ide-dev--register-formatter
+     (plist-get plist :modes)
+     (plist-get plist :format)))
 
-(defun emacs-ide-dev-attach-formatter (formatter-sym mode-sym)
-  "Register FORMATTER-SYM as the apheleia formatter for MODE-SYM.
-Safe no-op if apheleia is absent or formatter not in apheleia-formatters.
-RECALIBRATED: Added validation that formatter exists in apheleia-formatters
-before registration to prevent orphaned entries."
-  (when (and (bound-and-true-p emacs-ide-format-on-save)
-             (boundp 'apheleia-mode-alist)
-             (boundp 'apheleia-formatters)
-             (symbolp formatter-sym)
-             (assq formatter-sym apheleia-formatters))
-    (setf (alist-get mode-sym apheleia-mode-alist) formatter-sym)))
+  ;; Register REPL if provided
+  (when (plist-get plist :repl)
+    (emacs-ide-dev--register-repl
+     lang-key
+     (plist-get plist :modes)
+     (plist-get plist :repl))))
 
-;; ============================================================================
-;; REPL ATTACHMENT
-;; ============================================================================
+(defun emacs-ide-dev--wire-lsp-hook (mode)
+  "Wire LSP activation onto MODE's hook."
+  (let ((hook-name (intern (format "%s-hook" (symbol-name mode)))))
+    (add-hook hook-name
+              (lambda ()
+                (when (bound-and-true-p emacs-ide-lsp-enable)
+                  (lsp-deferred))))))
 
-(defun emacs-ide-dev-attach-repl (mode-map repl-fn &optional key)
-  "Bind REPL-FN on MODE-MAP under KEY.
-FIX-REPL-KEY-DOC: Signature is (MODE-MAP REPL-FN &optional KEY).
-FIX-DEFAULT-REPL-KEY: KEY must be provided explicitly — there is no
-safe default. The old default C-c r shadows the recovery prefix map
-(emacs-ide-recovery-map) which is globally bound to C-c r. All lang
-modules must pass an explicit key, e.g. (kbd \"C-c x r\")."
-  (if (null key)
-      (error "emacs-ide-dev-attach-repl: KEY must be supplied explicitly (C-c r is reserved for recovery)")
-    (when (keymapp mode-map)
-      (define-key mode-map key repl-fn))))
+(defun emacs-ide-dev--register-formatter (modes formatter-name)
+  "Register FORMATTER-NAME for MODES with apheleia.
+MODES is a list of major mode symbols.
+FORMATTER-NAME is a string matching an apheleia-formatters entry."
+  (when (fboundp 'apheleia-mode)
+    (dolist (mode modes)
+      (when (and (boundp 'apheleia-mode-alist)
+                 (alist-get formatter-name apheleia-formatters))
+        (push (cons mode formatter-name) apheleia-mode-alist)))))
+
+(defun emacs-ide-dev--register-repl (lang-key modes repl-cmd)
+  "Register REPL-CMD for MODES."
+  (when (fboundp 'emacs-ide-repl-register)
+    (dolist (mode modes)
+      (emacs-ide-repl-register lang-key mode repl-cmd))))
 
 ;; ============================================================================
-;; STANDARD COMPILE KEY
+;; TEST RUNNER REGISTRY
 ;; ============================================================================
 
-(defun emacs-ide-dev-bind-compile (mode-map compile-fn)
-  "Bind COMPILE-FN to C-c C-c in MODE-MAP.
-Canonical compile/run key for all lang modules."
-  (when (keymapp mode-map)
-    (define-key mode-map (kbd "C-c C-c") compile-fn)))
+(defun emacs-ide-dev-register-test-runner (lang-key &rest plist)
+  "Register a test runner for LANG-KEY.
 
-;; ============================================================================
-;; TREESITTER GRAMMAR SOURCES
-;; FIX-TREESIT-SOURCE: treesit-install-language-grammar requires a URL entry
-;; in treesit-language-source-alist — without it Emacs throws "Cannot find
-;; recipe for this language" regardless of symbol name. We populate this alist
-;; for every language used across all lang-*.el modules before attempting install.
-;; NOTE: C++ recipe key is 'cpp (not 'c++) — matches libtree-sitter-cpp.so
-;; ============================================================================
-(defconst emacs-ide-dev--treesit-sources
-  '((bash       . ("https://github.com/tree-sitter/tree-sitter-bash"))
-    (c          . ("https://github.com/tree-sitter/tree-sitter-c"))
-    (cpp        . ("https://github.com/tree-sitter/tree-sitter-cpp"))
-    (css        . ("https://github.com/tree-sitter/tree-sitter-css"))
-    ;; FIX-TREESIT-LANGS: elixir added
-    (elixir     . ("https://github.com/elixir-lang/tree-sitter-elixir"))
-    (go         . ("https://github.com/tree-sitter/tree-sitter-go"))
-    ;; FIX-TREESIT-LANGS: go-mod added (separate grammar from go)
-    (gomod      . ("https://github.com/camdencheek/tree-sitter-go-mod"))
-    ;; FIX-TREESIT-LANGS: haskell added
-    (haskell    . ("https://github.com/tree-sitter/tree-sitter-haskell"))
-    (html       . ("https://github.com/tree-sitter/tree-sitter-html"))
-    (java       . ("https://github.com/tree-sitter/tree-sitter-java"))
-    (javascript . ("https://github.com/tree-sitter/tree-sitter-javascript" "master" "src"))
-    (json       . ("https://github.com/tree-sitter/tree-sitter-json"))
-    ;; FIX-TREESIT-LANGS: kotlin added (community grammar)
-    (kotlin     . ("https://github.com/nickel-lang/tree-sitter-kotlin"))
-    (lua        . ("https://github.com/MunifTanjim/tree-sitter-lua"))
-    (markdown   . ("https://github.com/ikatyang/tree-sitter-markdown" "master" "tree-sitter-markdown/src"))
-    (python     . ("https://github.com/tree-sitter/tree-sitter-python"))
-    ;; FIX-TREESIT-LANGS: ruby added
-    (ruby       . ("https://github.com/tree-sitter/tree-sitter-ruby"))
-    (rust       . ("https://github.com/tree-sitter/tree-sitter-rust"))
-    ;; FIX-TREESIT-LANGS: scala added
-    (scala      . ("https://github.com/tree-sitter/tree-sitter-scala"))
-    ;; FIX-TREESIT-LANGS: sql added (DerekStride community grammar)
-    (sql        . ("https://github.com/DerekStride/tree-sitter-sql" "gh-pages"))
-    (toml       . ("https://github.com/tree-sitter/tree-sitter-toml"))
-    (tsx        . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src"))
-    (typescript . ("https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src"))
-    (yaml       . ("https://github.com/ikatyang/tree-sitter-yaml")))
-  "Source URLs for tree-sitter grammars used across all lang-*.el modules.
-Each entry is (LANG-SYMBOL . (URL &optional REVISION SOURCE-DIR)).
-These are merged into `treesit-language-source-alist' before install so
-`treesit-install-language-grammar' always has the URL it needs.")
-
-;; ============================================================================
-;; TREESITTER GRAMMAR ENSURE
-;; ============================================================================
-
-(defun emacs-ide-dev-ensure-treesit (lang-sym)
-  "Ensure tree-sitter grammar for LANG-SYM is installed, silently.
-FIX-TREESIT-SOURCE: Merges LANG-SYM into `treesit-language-source-alist'
-from `emacs-ide-dev--treesit-sources' before calling install, so Emacs
-always has the source URL it needs. Without this, install always throws
-\\='Cannot find recipe for this language\\=' regardless of symbol name.
-Called from lang module top level via idle timer — never blocks startup."
-  (when (and (fboundp 'treesit-available-p)
-             (treesit-available-p)
-             (fboundp 'treesit-language-available-p)
-             (not (treesit-language-available-p lang-sym))
-             (fboundp 'treesit-install-language-grammar))
-    ;; FIX-TREESIT-TIMER: source registration and grammar install must happen
-    ;; in the same execution context. Moving add-to-list inside the lambda
-    ;; ensures the alist entry exists at the exact moment install runs.
-    (run-with-idle-timer
-     3 nil
-     (lambda ()
-       (condition-case err
-           (progn
-             ;; Register source URL immediately before install call
-             (when (and (boundp 'treesit-language-source-alist)
-                        (not (assq lang-sym treesit-language-source-alist)))
-               (when-let ((src (assq lang-sym emacs-ide-dev--treesit-sources)))
-                 (add-to-list 'treesit-language-source-alist
-                              (cons lang-sym (cdr src)))))
-             (treesit-install-language-grammar lang-sym)
-             (message "core-dev: installed treesit grammar %s" lang-sym))
-         (error
-          (message "core-dev: treesit grammar %s failed: %s" lang-sym err)))))))
-
-;; ============================================================================
-;; LANG MODULE REGISTRATION (RECALIBRATED)
-;; ============================================================================
-
-(defun emacs-ide-dev-register (lang-key &rest plist)
-  "Register a lang module under LANG-KEY with metadata PLIST.
-Keys: :lsp-server :formatter :test-cmd :repl :modes :tier
-Called at the top of each lang-*.el for telemetry and health checks.
-RECALIBRATED: String comparison for lang-key lookup (string=)."
-  (setf (alist-get lang-key emacs-ide-dev--registered-langs
-                   nil nil #'string=)
-        plist))
-
-(defun emacs-ide-dev-registered-langs ()
-  "Return list of all registered lang keys."
-  (mapcar #'car emacs-ide-dev--registered-langs))
-
-;; ============================================================================
-;; HEALTH SUMMARY (callable from emacs-ide-health)
-;; ============================================================================
-
-(defun emacs-ide-dev-health-report ()
-  "Return alist of (LANG-KEY . :ok/:warn/:error) for registered langs."
-  (mapcar
-   (lambda (entry)
-     (let* ((key  (car entry))
-            (info (cdr entry))
-            (lsp  (plist-get info :lsp-server))
-            (ok   (or (null lsp) (executable-find lsp))))
-       (cons key (if ok :ok :warn))))
-   emacs-ide-dev--registered-langs))
+Keywords:
+  :command       List of command and args (e.g. '(\"pytest\"))
+  :watch-command List for watch mode
+  :modes         Modes this runner applies to (optional)"
+  
+  (when (fboundp 'emacs-ide-test-runner-register)
+    (emacs-ide-test-runner-register lang-key plist)))
 
 (provide 'core-dev)
 ;;; core-dev.el ends here

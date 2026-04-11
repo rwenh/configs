@@ -322,8 +322,8 @@
 ;; FIX 2.2.7: lsp-pyright use-package had :if (executable-find "pyright").
 ;;   Some distributions (Arch, NixOS, some pip installs) install the binary
 ;;   as "pyright-langserver" rather than "pyright". emacs-ide-health.el v2.2.2
-;;   already checks both names for its health widget; the use-package :if
-;;   guard here only checked "pyright", so the package silently never loaded
+;;   already checks both names for its health widget; the use-package guard
+;;   here only checked "pyright", so the package silently never loaded
 ;;   on systems where only "pyright-langserver" is on PATH.
 ;;   Fix: check both names via an or form.
 (use-package lsp-pyright
