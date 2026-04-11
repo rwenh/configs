@@ -4,12 +4,13 @@
 --   • foldexpr updated to "v:lua.vim.treesitter.foldexpr()".
 --
 -- FIX (v2.3.2):
---   • vim.g.auto_cd_root was never initialised. The AutoCdRoot autocmd in
---     autocmds.lua gates on `if not vim.g.auto_cd_root then return end`, so
---     the feature was permanently disabled on every startup — users had no
---     way to know it existed or that :ToggleAutoCd could enable it.
---     Initialised to false here (opt-in, same behaviour as before) with a
---     comment explaining how to enable it persistently.
+--   • vim.g.auto_cd_root initialised to false (opt-in, discoverable).
+--
+-- FIX (v2.3.3):
+--   • sessionoptions: removed "terminal". Restoring terminal buffers almost
+--     always fails and leaves dead "[Process exited]" windows in every session.
+--     "help" also removed — help buffers are ephemeral and should not be
+--     persisted across sessions.
 
 local opt = vim.opt
 local g   = vim.g
@@ -117,16 +118,17 @@ opt.spelllang = "en_us"
 -- SESSION
 -- ═══════════════════════════════════════════════════════════════════════════
 
-opt.sessionoptions = "buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
+-- FIX (v2.3.3): "terminal" removed — persisting terminal buffers almost always
+-- fails, leaving dead "[Process exited]" windows on every session restore.
+-- "help" removed — help buffers are ephemeral and should not be persisted.
+opt.sessionoptions = "buffers,curdir,folds,tabpages,winsize,winpos,localoptions"
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- GLOBAL FLAGS
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- FIX (v2.3.2): auto_cd_root was never initialised, making the AutoCdRoot
--- autocmd in autocmds.lua permanently inactive. Explicitly set to false so
--- the feature is opt-in but discoverable. Toggle at runtime with:
---   :ToggleAutoCd
+-- FIX (v2.3.2): auto_cd_root initialised to false (opt-in).
+-- Toggle at runtime with :ToggleAutoCd
 -- To enable by default on every startup, change false → true here.
 g.auto_cd_root = false
 

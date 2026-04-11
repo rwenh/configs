@@ -1,14 +1,21 @@
 -- lua/core/autocmds.lua - Autocommands with comprehensive error handling
 --
 -- FIX (v2.3.1):
---   • TrimWhitespace: the previous Lua line-iterator called nvim_buf_set_lines
---     once PER dirty line inside a loop. Each individual call IS a separate
---     undo entry in Neovim's undo tree (nvim_buf_set_lines always records),
---     so saving a file with 5 dirty lines created 5 undo states — contrary to
---     the comment that claimed otherwise. Fixed: collect all dirty lines first,
---     then replace the entire buffer in ONE nvim_buf_set_lines call covering
---     the full range [0, -1]. When nothing changed the call is skipped
---     entirely, so truly clean files still produce zero undo entries.
+--   • TrimWhitespace: batch all dirty lines in a single nvim_buf_set_lines call.
+--
+-- FIX (v2.3.2):
+--   • Checktime: use vim.bo.buftype (buffer-local) not vim.o.buftype (always "").
+--
+-- FIX (v2.3.3):
+--   • LargeFile: foldmethod=manual alone is insufficient when options.lua sets
+--     foldmethod="expr" globally. The expr foldmethod re-activates on BufWinEnter
+--     for large files because the global option is applied after BufReadPre.
+--     Added a BufWinEnter autocmd that re-applies foldmethod=manual for any
+--     buffer marked large_file=true so the override survives window enter.
+--   • LargeFile: treesitter highlights were only disabled via syntax="off" which
+--     has no effect on treesitter (it bypasses the syntax engine). Added an
+--     explicit vim.treesitter.stop(e.buf) call so highlight parsing is actually
+--     halted on large files.
 
 local au = vim.api.nvim_create_autocmd
 local ag = vim.api.nvim_create_augroup
@@ -81,17 +88,6 @@ au("FileType", {
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- REMOVE TRAILING WHITESPACE ON SAVE
---
--- FIX (v2.3.1): batch all dirty lines in a single nvim_buf_set_lines call.
---   The previous implementation called nvim_buf_set_lines once per dirty line,
---   which created one undo entry per line — the opposite of the intention.
---   New approach:
---     1. Read all lines.
---     2. Build a new table with whitespace trimmed from every line.
---     3. Compare: if the table is identical (no dirty lines), return early.
---     4. If any line changed, replace the ENTIRE buffer in one call.
---   One call = one undo entry. If nothing changed = zero undo entries.
---   The cursor never moves because we are not using vim.cmd.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 au("BufWritePre", {
@@ -115,8 +111,6 @@ au("BufWritePre", {
         if t ~= line then dirty = true end
       end
 
-      -- FIX: single call covers the whole buffer — one undo entry total.
-      -- Skipped entirely when nothing changed — zero undo entries for clean files.
       if dirty then
         vim.api.nvim_buf_set_lines(e.buf, 0, -1, false, trimmed)
       end
@@ -131,10 +125,7 @@ au("BufWritePre", {
 au({ "FocusGained", "TermClose", "TermLeave" }, {
   group    = ag("Checktime", { clear = true }),
   callback = function()
-    -- FIX (v2.3.2): was vim.o.buftype (global option) which is always "".
-    -- The guard never fired, so checktime ran unconditionally in every
-    -- window including terminals and floating windows. vim.bo.buftype reads
-    -- the buffer-local value for the current buffer, which is correct.
+    -- FIX (v2.3.2): vim.bo.buftype reads the buffer-local value (correct).
     if vim.bo.buftype == "" then
       pcall(function() vim.cmd("checktime") end)
     end
@@ -256,9 +247,28 @@ au("BufReadPre", {
         vim.opt_local.syntax     = "off"
       end)
 
+      -- FIX (v2.3.3): syntax="off" has no effect on treesitter-based
+      -- highlighting. Explicitly stop the treesitter parser for this buffer.
+      pcall(function() vim.treesitter.stop(e.buf) end)
+
       vim.schedule(function()
         vim.notify("Large file — some features disabled", vim.log.levels.WARN)
       end)
+    end
+  end,
+})
+
+-- FIX (v2.3.3): Re-apply foldmethod=manual on BufWinEnter for large files.
+-- options.lua sets foldmethod="expr" globally. That global default is
+-- re-applied when a buffer enters a new window (BufWinEnter fires after
+-- window-local options are reset), overriding the manual fold set in
+-- BufReadPre above. This autocmd re-stamps the override every time the
+-- large-file buffer enters any window.
+au("BufWinEnter", {
+  group    = ag("LargeFileFold", { clear = true }),
+  callback = function(e)
+    if vim.b[e.buf] and vim.b[e.buf].large_file then
+      pcall(function() vim.opt_local.foldmethod = "manual" end)
     end
   end,
 })

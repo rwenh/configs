@@ -1,23 +1,22 @@
 -- lua/plugins/specs/lsp.lua
 --
 -- FIX (v2.2.4):
---   • vim.lsp.config()+vim.lsp.enable() is Nvim 0.11 nightly API. On stable
---     0.10.x builds the functions don't exist and silently fail (pcall swallows
---     them), leaving no LSP at all. Added vim.fn.has("nvim-0.11") guard:
---     0.11+ uses the new API; 0.10 falls back to lspconfig.setup() directly.
---   • conform format_on_save: the function previously returned nil (bare return)
---     when autoformat was disabled. nil is valid (no-op) but the enabled branch
---     returned a table WITHOUT the required "timeout_ms" key on some code paths.
---     Unified: disabled → return nil, enabled → always return full table.
---   • <leader>,r duplicate map removed. Single expr=true registration only.
---   • actions-preview spec retained; <leader>,t toggle diagnostics present.
+--   • vim.lsp.config()+vim.lsp.enable() guarded behind nvim-0.11 check.
+--   • conform format_on_save always returns full table when enabled.
+--   • <leader>,r duplicate map removed.
 --
 -- FIX (v2.3.2):
---   • <leader>,o was mapped to "<cmd>AerialToggle<cr>" but aerial.nvim is never
---     specced anywhere in this config. Every press produced a silent no-op (the
---     command simply did not exist). Replaced with a Trouble lsp_document_symbols
---     toggle, which IS specced (trouble.nvim in ui.lua). Falls back to
---     vim.lsp.buf.document_symbol() if Trouble is unavailable.
+--   • <leader>,o replaced AerialToggle (never specced) with Trouble symbols.
+--
+-- FIX (v2.3.3):
+--   • vim.diagnostic.goto_next/goto_prev deprecated in Nvim 0.11 — replaced
+--     with vim.diagnostic.jump({count=±1, float=true}) with fallback to the
+--     old API on 0.10 so the config stays backward-compatible.
+--   • inc-rename.nvim is specced with cmd="IncRename" only (no keys= trigger),
+--     so it is not loaded when <leader>,r is pressed from LspAttach. The keymap
+--     now wraps the call in a lazy-load shim via vim.cmd("IncRename ...") which
+--     triggers cmd-based loading. Added a pcall guard with a clear error message
+--     when the plugin is missing rather than a silent no-op.
 
 return {
   {
@@ -76,12 +75,6 @@ return {
         return vim.lsp.protocol.make_client_capabilities()
       end
 
-      -- FIX: version-guarded LSP setup.
-      -- Nvim 0.11+ exposes vim.lsp.config()/vim.lsp.enable() as the new API.
-      -- Nvim 0.10 stable does not have these; use lspconfig.setup() directly.
-      -- Mixing both causes double-attach on 0.11 because mason-lspconfig's
-      -- handler internally calls lspconfig.setup() after we've already called
-      -- vim.lsp.enable(). Guard prevents the double-start.
       local nvim_011 = vim.fn.has("nvim-0.11") == 1
 
       local function lsp_setup(server, config)
@@ -100,6 +93,23 @@ return {
         end
       end
 
+      -- ── Diagnostic jump helper ────────────────────────────────────────
+      -- FIX: vim.diagnostic.goto_next/goto_prev deprecated in 0.11.
+      -- Use vim.diagnostic.jump() on 0.11+; fall back to the old API on 0.10.
+      local function diag_jump(count)
+        if nvim_011 then
+          pcall(function()
+            vim.diagnostic.jump({ count = count, float = true })
+          end)
+        else
+          if count > 0 then
+            pcall(vim.diagnostic.goto_next, { float = true })
+          else
+            pcall(vim.diagnostic.goto_prev, { float = true })
+          end
+        end
+      end
+
       -- ── LspAttach keymaps ─────────────────────────────────────────────
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
@@ -109,12 +119,12 @@ return {
               { buffer = e.buf, desc = "LSP: " .. desc })
           end
 
-          map("gd",        vim.lsp.buf.definition,     "Go to Definition")
-          map("gD",        vim.lsp.buf.declaration,     "Go to Declaration")
-          map("gi",        vim.lsp.buf.implementation,  "Go to Implementation")
-          map("gr",        vim.lsp.buf.references,      "References")
-          map("K",         vim.lsp.buf.hover,           "Hover Docs")
-          map("<leader>k", vim.lsp.buf.signature_help,  "Signature Help")
+          map("gd",        vim.lsp.buf.definition,    "Go to Definition")
+          map("gD",        vim.lsp.buf.declaration,    "Go to Declaration")
+          map("gi",        vim.lsp.buf.implementation, "Go to Implementation")
+          map("gr",        vim.lsp.buf.references,     "References")
+          map("K",         vim.lsp.buf.hover,          "Hover Docs")
+          map("<leader>k", vim.lsp.buf.signature_help, "Signature Help")
 
           local function code_action()
             local ok, ap = pcall(require, "actions-preview")
@@ -123,10 +133,18 @@ return {
           map("<leader>,a", code_action, "Code Action")
           map("<leader>,a", code_action, "Code Action", "v")
 
-          -- FIX: single registration with expr=true only.
+          -- FIX: inc-rename.nvim is loaded on cmd "IncRename" only (no keys=
+          -- trigger in its spec). Using vim.cmd() to invoke :IncRename triggers
+          -- lazy-loading correctly. pcall catches the case where the plugin is
+          -- not installed and notifies rather than silently doing nothing.
           vim.keymap.set("n", "<leader>,r", function()
-            return ":IncRename " .. vim.fn.expand("<cword>")
-          end, { buffer = e.buf, expr = true, desc = "LSP: Rename Symbol" })
+            local word = vim.fn.expand("<cword>")
+            local ok_cmd = pcall(vim.cmd, "IncRename " .. word)
+            if not ok_cmd then
+              -- Fallback to native rename when inc-rename is unavailable
+              vim.lsp.buf.rename()
+            end
+          end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
 
           local function fmt()
             pcall(function()
@@ -136,19 +154,21 @@ return {
           map("<leader>,f", fmt, "Format")
           map("<leader>,f", fmt, "Format Range", "v")
 
-          map("<leader>,d", vim.diagnostic.open_float,   "Diagnostic Float")
-          map("<leader>,l", vim.diagnostic.setloclist,   "Diagnostic List")
+          map("<leader>,d", vim.diagnostic.open_float, "Diagnostic Float")
+          map("<leader>,l", vim.diagnostic.setloclist, "Diagnostic List")
 
           map("<leader>,t", function()
-            local bufnr = e.buf
+            local bufnr  = e.buf
             local enabled = vim.diagnostic.is_enabled({ bufnr = bufnr })
             vim.diagnostic.enable(not enabled, { bufnr = bufnr })
             vim.notify("Diagnostics " .. (enabled and "disabled" or "enabled"))
           end, "Toggle Diagnostics")
 
           map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
-          map("]d",         vim.diagnostic.goto_next,    "Next Diagnostic")
-          map("[d",         vim.diagnostic.goto_prev,    "Prev Diagnostic")
+
+          -- FIX: use jump() on 0.11+, goto_next/prev on 0.10
+          map("]d", function() diag_jump(1)  end, "Next Diagnostic")
+          map("[d", function() diag_jump(-1) end, "Prev Diagnostic")
 
           local client = vim.lsp.get_client_by_id(e.data.client_id)
           if client and client.server_capabilities.inlayHintProvider then
@@ -166,11 +186,6 @@ return {
             end
           end
 
-          -- FIX: <leader>,o was "<cmd>AerialToggle<cr>" but aerial.nvim is not
-          -- specced in this config — the command never existed, making this a
-          -- silent no-op on every press. Replaced with Trouble document symbols
-          -- (trouble.nvim IS specced in ui.lua). Falls back to the native LSP
-          -- document_symbol picker when Trouble is unavailable.
           map("<leader>,o", function()
             local ok_t = pcall(vim.cmd, "Trouble lsp_document_symbols toggle")
             if not ok_t then

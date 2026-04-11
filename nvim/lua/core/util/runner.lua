@@ -1,17 +1,45 @@
 -- lua/core/util/runner.lua - Code execution engine
 --
 -- FIX (v2.2.3):
---   • run_selection(): visual marks stale fix; explicit line args from keymap.
+--   • run_selection(): visual marks stale fix.
 --   • kotlin runner: shellescape jar name.
---   • run_tests() kotlin/java: shellescape root in cd prefix.
+--   • run_tests() kotlin/java: shellescape root.
 --
 -- FIX (v2.3.2):
---   • run_tests() javascript/typescript: hardcoded "npm test" ignored yarn,
---     pnpm, and bun projects entirely. Now probes for lockfiles in the project
---     root (yarn.lock → yarn, pnpm-lock.yaml → pnpm, bun.lockb → bun) and
---     falls back to npm only when none of the others are present.
+--   • run_tests() JS/TS: detect yarn/pnpm/bun lockfiles.
+--
+-- FIX (v2.3.3):
+--   • java runner: `java ClassName` used the raw unescaped name directly in a
+--     shell string. Class names can't have spaces but the concatenation was
+--     inconsistent with the rest of the codebase. Kept unescaped (correct for
+--     Java class names) but added a comment explaining why.
+--   • rust runner: only checked for Cargo.toml in the file's immediate parent
+--     directory. A file in src/bin/foo.rs would not find the project root
+--     Cargo.toml. Now walks up to 5 levels to find the nearest Cargo.toml,
+--     matching how rustaceanvim and cargo itself locate the manifest.
+--   • elixir/ruby run_tests(): these commands need to run from the project
+--     root to pick up their config files (mix.exs, .rspec). Added
+--     "cd <root> && " prefix, consistent with kotlin/java entries.
+--   • detect_js_test_cmd: also check for bun.lock (text lockfile added in
+--     Bun v1.1) alongside bun.lockb (binary lockfile).
 
 local M = {}
+
+-- Walk up from dir, return first ancestor containing marker file (up to N levels)
+local function find_ancestor_with(dir, marker, levels)
+  levels = levels or 5
+  local current = dir
+  for _ = 1, levels do
+    if vim.fn.filereadable(current .. "/" .. marker) == 1
+    or vim.fn.isdirectory(current .. "/" .. marker) == 1 then
+      return current
+    end
+    local parent = vim.fn.fnamemodify(current, ":h")
+    if parent == current then break end
+    current = parent
+  end
+  return nil
+end
 
 local runners = {
   python = function(file)
@@ -25,9 +53,13 @@ local runners = {
 
   rust = function(file)
     local dir = vim.fn.fnamemodify(file, ":h")
-    if vim.fn.filereadable(dir .. "/Cargo.toml") == 1 then
-      return "cd " .. vim.fn.shellescape(dir) .. " && cargo run"
+    -- FIX: walk up to find the Cargo.toml, not just the immediate parent.
+    -- Files in src/bin/ or deeper would miss the project root Cargo.toml.
+    local cargo_root = find_ancestor_with(dir, "Cargo.toml", 5)
+    if cargo_root then
+      return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
     end
+    -- No Cargo.toml found — compile single file directly
     local exe = vim.fn.fnamemodify(file, ":r")
     return "rustc " .. vim.fn.shellescape(file) .. " -o " .. vim.fn.shellescape(exe)
       .. " && " .. vim.fn.shellescape(exe)
@@ -72,6 +104,8 @@ local runners = {
   java = function(file)
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
+    -- Java class names cannot contain spaces, so no shellescape needed for `name`.
+    -- The dir and file paths are properly escaped.
     return "cd " .. vim.fn.shellescape(dir)
       .. " && javac " .. vim.fn.shellescape(file)
       .. " && java " .. name
@@ -307,11 +341,12 @@ function M.run_selection(start_line, end_line)
   end
 end
 
--- ── JS/TS package manager detection ────────────────────────────────────────
--- FIX (v2.3.2): probe lockfiles in project root to pick the right test runner.
--- Priority: bun > pnpm > yarn > npm (most specific first).
+-- ── JS/TS package manager detection ──────────────────────────────────────────
+-- FIX (v2.3.2): probe lockfiles in project root.
+-- FIX (v2.3.3): also check bun.lock (text lockfile, Bun v1.1+).
 local function detect_js_test_cmd(root)
-  if vim.fn.filereadable(root .. "/bun.lockb") == 1 then
+  if vim.fn.filereadable(root .. "/bun.lockb") == 1
+  or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
     return "bun test"
   elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
     return "pnpm test"
@@ -333,11 +368,11 @@ function M.run_tests()
     python     = "pytest",
     rust       = "cargo test",
     go         = "go test ./...",
-    -- FIX: detect yarn/pnpm/bun before falling back to npm
     javascript = detect_js_test_cmd(root),
     typescript = detect_js_test_cmd(root),
-    ruby       = "bundle exec rspec",
-    elixir     = "mix test",
+    -- FIX: add cd prefix so rspec/mix pick up their config from project root.
+    ruby       = "cd " .. escaped_root .. " && bundle exec rspec",
+    elixir     = "cd " .. escaped_root .. " && mix test",
     kotlin = vim.fn.filereadable(root .. "/gradlew") == 1
       and "cd " .. escaped_root .. " && ./gradlew test"
       or  "cd " .. escaped_root .. " && mvn test",

@@ -6,12 +6,15 @@
 --   • cmdline preset switched to "enter".
 --
 -- FIX (v2.3.2):
---   • cmdline source removed from sources.default. sources.default is the
---     list used during INSERT mode. Including "cmdline" there caused blink to
---     attempt loading the cmdline provider on every InsertEnter, producing a
---     "source not found" warning on some blink versions and polluting insert
---     completions with command-line items. The cmdline source belongs only in
---     the cmdline{} block, which blink activates exclusively on CmdlineEnter.
+--   • cmdline source removed from sources.default.
+--
+-- FIX (v2.3.3):
+--   • <C-p>/<C-n> had "fallback" as last action. With preset="default" already
+--     defining these keys, the fallback leaked through to Vim's native
+--     ins-completion (i-^N/^P), opening a second competing menu. Removed
+--     "fallback" and replaced with "show" so the menu opens if closed.
+--   • <C-j>/<C-k> added as ergonomic aliases — consistent with Telescope,
+--     fzf, and every other picker in this config.
 
 return {
   {
@@ -40,8 +43,15 @@ return {
         ["<CR>"]      = { "accept", "fallback" },
         ["<Tab>"]     = { "snippet_forward", "select_next", "fallback" },
         ["<S-Tab>"]   = { "snippet_backward", "select_prev", "fallback" },
-        ["<C-p>"]     = { "select_prev", "fallback" },
-        ["<C-n>"]     = { "select_next", "fallback" },
+        -- FIX: removed "fallback" — it leaked to Vim native ins-completion
+        -- (i-^P/^N), opening a second competing menu when blink was active.
+        -- "show" opens the menu if it is currently closed, so the key is
+        -- always useful regardless of completion menu state.
+        ["<C-p>"]     = { "select_prev", "show" },
+        ["<C-n>"]     = { "select_next", "show" },
+        -- Ergonomic aliases: same directional logic as Telescope / fzf.
+        ["<C-k>"]     = { "select_prev", "show" },
+        ["<C-j>"]     = { "select_next", "show" },
         ["<C-b>"]     = { "scroll_documentation_up", "fallback" },
         ["<C-f>"]     = { "scroll_documentation_down", "fallback" },
       },
@@ -52,16 +62,13 @@ return {
       },
 
       sources = {
-        -- FIX: "cmdline" removed from the default insert-mode source list.
-        -- It belongs only in the cmdline{} block below, which blink uses
-        -- exclusively when the command line is open. Listing it here caused
-        -- blink to probe the cmdline provider on every InsertEnter.
+        -- "cmdline" intentionally absent — belongs only in cmdline{} block.
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
           lsp = {
             name               = "LSP",
             module             = "blink.cmp.sources.lsp",
-            min_keyword_length = 0,   -- trigger on dot, colon, etc.
+            min_keyword_length = 0,
           },
           path = {
             name   = "Path",
@@ -76,10 +83,8 @@ return {
             name               = "Buffer",
             module             = "blink.cmp.sources.buffer",
             min_keyword_length = 2,
-            score_offset       = -3,  -- rank below LSP matches
+            score_offset       = -3,
           },
-          -- cmdline provider defined here so the cmdline{} block can reference
-          -- it, but NOT listed in sources.default (insert mode).
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",
@@ -88,7 +93,6 @@ return {
       },
 
       cmdline = {
-        -- "enter" preset: <CR> confirms selection without double-running.
         keymap  = { preset = "enter" },
         sources = { "cmdline" },
       },

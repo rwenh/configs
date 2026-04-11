@@ -1,17 +1,22 @@
--- lua/core/keymaps.lua - Safe Keybindings (No motion conflicts)
+-- lua/core/keymaps.lua - Safe Keybindings
 --
 -- FIX (v2.2.4):
---   • flash.nvim not specced anywhere in editor.lua or advanced.lua — the `s`
---     map called require("flash") which always failed inside pcall, producing
---     a silent no-op. flash.nvim spec added to editor.lua (see that file).
---     The map here now has a fallback message on the first call if flash
---     isn't installed, rather than a silent no-op.
---   • `s` vs mini.surround: mini.surround uses gsa/gsd/gsf/gsF/gsh/gsr — none
---     of which collide with `s`. Confirmed safe. NOTE: if you ever enable
---     mini.surround with operator-pending `s` mode, move flash to <leader>s
---     or a different key.
---   • run_selection visual marks fix unchanged from v2.2.3.
---   • <leader>'d (test debug nearest) present (was missing pre-v2.2.3).
+--   • flash.nvim specced in editor.lua; `s` map has clear fallback notify.
+--
+-- FIX (v2.3.3):
+--   • <leader>xx was "<cmd>Trouble<cr>" — ":Trouble" with no subcommand is
+--     not valid in trouble.nvim v3+; it requires a mode argument. Changed to
+--     "<cmd>Trouble diagnostics toggle<cr>" matching the spec in ui.lua.
+--   • <C-j>/<C-k> are mapped here to window navigation. completion.lua now
+--     also maps <C-j>/<C-k> as blink.cmp aliases. These are insert-mode only
+--     in blink (InsertEnter event) while the window nav maps are normal-mode
+--     only — no conflict. Added a comment to make this explicit.
+--   • <leader>'n/<leader>'f/<leader>'a neotest keys were defined only in
+--     test.lua keys= table. They are also useful to trigger from keymaps.lua
+--     for which-key visibility. Left as-is (test.lua keys= is sufficient and
+--     avoids double-registration). No change needed here.
+--   • <leader>xg (Neogen) added — was documented in KEYMAP_REFERENCE.md but
+--     missing from keymaps.lua entirely.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -45,6 +50,8 @@ map("n", "<leader>se", "<C-w>=",                   { desc = "Equal splits" })
 map("n", "<leader>sx", "<cmd>close<cr>",           { desc = "Close split" })
 map("n", "<leader>sm", "<cmd>MaximizerToggle<cr>", { desc = "Maximize split" })
 
+-- NOTE: <C-j>/<C-k> are normal-mode only here. completion.lua maps them in
+-- insert-mode only (via blink.cmp's InsertEnter event). No conflict.
 map("n", "<C-h>", "<C-w>h", opts)
 map("n", "<C-j>", "<C-w>j", opts)
 map("n", "<C-k>", "<C-w>k", opts)
@@ -210,12 +217,6 @@ map("n", "<M-4>", function() require("harpoon"):list():select(4) end, opts)
 
 -- ============================================================================
 -- FLASH
--- FIX: flash.nvim was never specced — require("flash") always failed inside
--- pcall, making `s` a silent no-op. flash.nvim is now specced in editor.lua
--- (folke/flash.nvim, event=VeryLazy). The map below will work once the spec
--- loads. The pcall+notify pattern provides a clear error on first use if
--- flash somehow fails to install, rather than silent swallowing.
--- NOTE: mini.surround uses gsa/gsd/gsf/gsF/gsh/gsr — no conflict with `s`.
 -- ============================================================================
 
 map({ "n", "x", "o" }, "s", function()
@@ -243,8 +244,11 @@ map("n", "<leader>xh", "<cmd>Health<cr>",         { desc = "Health check" })
 map("n", "<leader>xp", "<cmd>ProjectRoot<cr>",    { desc = "Go to project root" })
 map("n", "<leader>xl", "<cmd>Lazy<cr>",           { desc = "Lazy" })
 map("n", "<leader>xn", "<cmd>Mason<cr>",          { desc = "Mason" })
-map("n", "<leader>xx", "<cmd>Trouble<cr>",        { desc = "Trouble diagnostics" })
+-- FIX: ":Trouble" with no subcommand is invalid in trouble.nvim v3+.
+map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Trouble diagnostics" })
 map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
+-- FIX: was documented in KEYMAP_REFERENCE.md but missing from keymaps.lua.
+map("n", "<leader>xg", "<cmd>Neogen<cr>",         { desc = "Generate docstring" })
 
 -- ============================================================================
 -- TODO COMMENTS
@@ -259,9 +263,6 @@ map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "P
 
 map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
 map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
--- FIX (v2.3.2): run_template throws when no "build" template matches the
--- current project. Wrapped in pcall with OverseerRun fallback, matching
--- the same fix already applied in workflow.lua.
 map("n", "<leader>ob", function()
   local ok = pcall(function()
     require("overseer").run_template({ name = "build" })

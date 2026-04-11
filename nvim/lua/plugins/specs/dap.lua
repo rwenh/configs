@@ -1,18 +1,21 @@
 -- lua/plugins/specs/dap.lua - Debug Adapter Protocol
 --
 -- FIX (v2.3.1):
---   • load_breakpoints() BufReadPost callback now wraps dap.breakpoints.set()
---     in vim.schedule() so marks are applied AFTER the buffer's treesitter
---     parser finishes attaching.
---   • Same vim.schedule() fix applied to the "already loaded" bufnr path.
+--   • load_breakpoints() wraps dap.breakpoints.set() in vim.schedule().
 --
 -- FIX (v2.3.2):
---   • mason-nvim-dap: handlers=nil disabled ALL automatic adapter setup,
---     meaning ensure_installed packages were downloaded by Mason but never
---     configured as DAP adapters. nil tells mason-nvim-dap to skip its
---     default handler entirely. Changed to handlers={} (empty table), which
---     preserves the default handler for every adapter that does not have an
---     explicit override — the correct behaviour for automatic installation.
+--   • mason-nvim-dap handlers={} restores default adapter setup.
+--
+-- FIX (v2.3.3):
+--   • load_breakpoints() was called via vim.defer_fn(fn, 100) on VimEnter.
+--     100ms is fragile — on fast machines it fires before lazy.nvim finishes
+--     loading nvim-dap, so require("dap.breakpoints") fails silently. Fixed:
+--     hook into the "User LazyDone" event instead, which fires only after ALL
+--     plugins are fully initialised. No arbitrary timer needed.
+--   • JS/TS dap config: require("dap.utils").pick_process was called eagerly
+--     at config time (not inside a function). If nvim-dap hadn't finished
+--     loading yet this would error. Wrapped in a function so it's evaluated
+--     lazily at debug-session start time.
 
 return {
   {
@@ -230,7 +233,12 @@ return {
           { type = "pwa-node", request = "launch", name = "Launch file",
             program = "${file}", cwd = "${workspaceFolder}" },
           { type = "pwa-node", request = "attach", name = "Attach",
-            processId = require("dap.utils").pick_process,
+            -- FIX: was require("dap.utils").pick_process (eager, at config time).
+            -- Wrapped in a function so it is evaluated lazily at session start,
+            -- after nvim-dap is guaranteed to be fully loaded.
+            processId = function()
+              return require("dap.utils").pick_process()
+            end,
             cwd = "${workspaceFolder}" },
         }
         dap.configurations.typescript = {
@@ -365,9 +373,17 @@ return {
         group    = vim.api.nvim_create_augroup("DapBreakpointsSave", { clear = true }),
         callback = save_breakpoints,
       })
-      vim.api.nvim_create_autocmd("VimEnter", {
+
+      -- FIX: was vim.defer_fn(load_breakpoints, 100) on VimEnter.
+      -- 100ms is fragile — on fast machines nvim-dap may not be fully
+      -- initialised yet, causing require("dap.breakpoints") to fail silently.
+      -- "User LazyDone" fires only after every plugin's config() has run,
+      -- so nvim-dap is guaranteed ready at that point.
+      vim.api.nvim_create_autocmd("User", {
+        pattern  = "LazyDone",
+        once     = true,
         group    = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true }),
-        callback = function() vim.defer_fn(load_breakpoints, 100) end,
+        callback = load_breakpoints,
       })
     end,
   },
@@ -378,11 +394,7 @@ return {
     opts = {
       ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      -- FIX: was `handlers = nil` which disabled ALL default adapter setup —
-      -- packages were installed by Mason but never configured as DAP adapters.
-      -- `handlers = {}` (empty table) preserves the default handler for every
-      -- adapter without an explicit override, which is the intended behaviour.
-      handlers = {},
+      handlers               = {},
     },
   },
 
