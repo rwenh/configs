@@ -259,8 +259,18 @@ map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "P
 
 map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
 map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
+-- FIX (v2.3.2): run_template throws when no "build" template matches the
+-- current project. Wrapped in pcall with OverseerRun fallback, matching
+-- the same fix already applied in workflow.lua.
 map("n", "<leader>ob", function()
-  require("overseer").run_template({ name = "build" })
+  local ok = pcall(function()
+    require("overseer").run_template({ name = "build" })
+  end)
+  if not ok then
+    vim.notify("[overseer] No 'build' template found — opening task picker",
+      vim.log.levels.INFO)
+    vim.cmd("OverseerRun")
+  end
 end, { desc = "Build" })
 
 -- ============================================================================

@@ -1,16 +1,17 @@
 -- lua/plugins/specs/completion.lua - blink.cmp completion
 --
 -- FIX (v2.3.1):
---   • version pinned to "1.*" using Cargo-style semver that lazy understands.
---     version=false tracked HEAD which has breaking API changes between commits.
---     blink.cmp publishes tagged releases; "1.*" resolves to the latest 1.x
---     stable tag, giving reproducible installs without manual pin maintenance.
---   • min_keyword_length added per-source: LSP fires at 0 chars (dot-trigger),
---     buffer/snippets at 2 chars to avoid noise on short words.
---   • score_offset on buffer source set to -3 so LSP results rank above buffer
---     matches when both are present.
---   • cmdline preset switched to "enter" so <CR> in command mode confirms
---     without also running the command twice.
+--   • version pinned to "1.*".
+--   • min_keyword_length per-source; score_offset on buffer.
+--   • cmdline preset switched to "enter".
+--
+-- FIX (v2.3.2):
+--   • cmdline source removed from sources.default. sources.default is the
+--     list used during INSERT mode. Including "cmdline" there caused blink to
+--     attempt loading the cmdline provider on every InsertEnter, producing a
+--     "source not found" warning on some blink versions and polluting insert
+--     completions with command-line items. The cmdline source belongs only in
+--     the cmdline{} block, which blink activates exclusively on CmdlineEnter.
 
 return {
   {
@@ -51,11 +52,15 @@ return {
       },
 
       sources = {
+        -- FIX: "cmdline" removed from the default insert-mode source list.
+        -- It belongs only in the cmdline{} block below, which blink uses
+        -- exclusively when the command line is open. Listing it here caused
+        -- blink to probe the cmdline provider on every InsertEnter.
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
           lsp = {
-            name              = "LSP",
-            module            = "blink.cmp.sources.lsp",
+            name               = "LSP",
+            module             = "blink.cmp.sources.lsp",
             min_keyword_length = 0,   -- trigger on dot, colon, etc.
           },
           path = {
@@ -63,16 +68,18 @@ return {
             module = "blink.cmp.sources.path",
           },
           snippets = {
-            name              = "Snippets",
-            module            = "blink.cmp.sources.snippets",
+            name               = "Snippets",
+            module             = "blink.cmp.sources.snippets",
             min_keyword_length = 2,
           },
           buffer = {
-            name              = "Buffer",
-            module            = "blink.cmp.sources.buffer",
+            name               = "Buffer",
+            module             = "blink.cmp.sources.buffer",
             min_keyword_length = 2,
-            score_offset      = -3,   -- rank below LSP matches
+            score_offset       = -3,  -- rank below LSP matches
           },
+          -- cmdline provider defined here so the cmdline{} block can reference
+          -- it, but NOT listed in sources.default (insert mode).
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",
@@ -81,9 +88,7 @@ return {
       },
 
       cmdline = {
-        -- FIX: "enter" preset — <CR> confirms selection without double-running
-        -- the command. The default preset triggers both accept and fallback
-        -- which in cmdline mode fires the command a second time.
+        -- "enter" preset: <CR> confirms selection without double-running.
         keymap  = { preset = "enter" },
         sources = { "cmdline" },
       },

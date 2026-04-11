@@ -1,20 +1,18 @@
 -- lua/plugins/specs/test.lua - Testing
 --
 -- FIX (v2.3.1):
---   • neotest-rust race condition: neotest opts() runs at plugin load time
---     (lazy evaluates opts before the first keypress). rustaceanvim attaches
---     its LSP client asynchronously on the first Rust FileType event, which
---     may happen AFTER neotest-rust's adapter constructor runs. neotest-rust
---     probes for the rust-analyzer client during construction; if it's absent
---     the adapter silently registers with no LSP connection and test runs fall
---     back to plain `cargo test` without diagnostics.
---     Fix: neotest-rust adapter is registered lazily via a one-shot FileType
---     autocmd on "rust". The autocmd fires after rustaceanvim has attached
---     (guaranteed because rustaceanvim uses LspAttach which fires after
---     FileType). We defer by one vim.schedule() tick to be safe, then call
---     neotest.setup() with the full adapter list including the now-ready
---     neotest-rust instance.
---     All other adapters are loaded eagerly as before (no LSP dependency).
+--   • neotest-rust race condition: deferred via one-shot FileType autocmd.
+--     All other adapters loaded eagerly.
+--
+-- FIX (v2.3.2):
+--   • neotest-go loader was `function() return require("neotest-go") end` —
+--     this returns the raw module table, not an instantiated adapter. Every
+--     other adapter in the list is called as a function (e.g.
+--     require("neotest-python")({...})). neotest-go exports a callable that
+--     accepts an optional opts table; not calling it means neotest receives
+--     the module itself rather than the adapter object, so Go tests silently
+--     never run through neotest. Fixed: require("neotest-go")({}) to invoke
+--     the constructor with an empty opts table (all defaults).
 
 return {
   {
@@ -57,11 +55,9 @@ return {
       neotest.setup(opts)
 
       -- FIX: neotest-rust deferred registration.
-      -- Register a one-shot FileType autocmd on "rust". When the first Rust
-      -- buffer opens, rustaceanvim's LspAttach fires (also on FileType).
-      -- We yield one tick with vim.schedule() to let LspAttach complete, then
-      -- re-run neotest.setup() with neotest-rust added to the adapter list.
-      -- Re-calling setup() is safe — neotest merges adapters and deduplicates.
+      -- One-shot FileType autocmd fires after rustaceanvim's LspAttach.
+      -- vim.schedule() yields one tick so the LSP client is fully attached
+      -- before neotest-rust's constructor probes for it.
       local _rust_registered = false
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "rust",
@@ -89,7 +85,6 @@ return {
       })
     end,
     opts = function()
-      -- Build all non-Rust adapters eagerly (no LSP dependency)
       local adapters = {}
 
       local eager_configs = {
@@ -97,10 +92,13 @@ return {
           "neotest-python",
           function() return require("neotest-python")({ runner = "pytest" }) end,
         },
-        -- neotest-rust is intentionally absent here — see config() above
+        -- neotest-rust is intentionally absent here — registered in config() above
         {
           "neotest-go",
-          function() return require("neotest-go") end,
+          -- FIX: was `return require("neotest-go")` (returned the module table).
+          -- neotest-go exports a constructor; it must be called to produce the
+          -- adapter object. Passing {} uses all defaults.
+          function() return require("neotest-go")({}) end,
         },
         {
           "neotest-rspec",
@@ -112,6 +110,8 @@ return {
         },
         {
           "neotest-elixir",
+          -- neotest-elixir also exports a plain table adapter (no constructor),
+          -- so returning the module directly is correct here.
           function() return require("neotest-elixir") end,
         },
         {

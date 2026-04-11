@@ -81,7 +81,7 @@ return {
       transparent_background = false,
       show_end_of_buffer     = false,
       integrations = {
-        aerial = true, alpha = true, cmp = true, dap = true, dap_ui = true,
+        cmp = true, dap = true, dap_ui = true,
         dashboard = true, fidget = true, gitsigns = true, illuminate = true,
         indent_blankline = { enabled = true }, lsp_trouble = true, mason = true,
         native_lsp = { enabled = true }, navic = { enabled = true },
@@ -962,7 +962,7 @@ return {
           close_rain(); return
         end
 
-        local now = vim.loop.hrtime() / 1e6   -- ms
+        local now = vim.uv.hrtime() / 1e6   -- ms
 
         if _phase == "decode" then
           -- Advance reveal cursor proportionally through DECODE_MS
@@ -1002,12 +1002,12 @@ return {
           local blend = math.floor((1.0 - alpha) * 100)
           if _rwin and vim.api.nvim_win_is_valid(_rwin) then
             pcall(function()
-              vim.api.nvim_win_set_option(_rwin, "winblend", blend)
+              vim.wo[_rwin].winblend = blend
             end)
           end
           if _xwin and vim.api.nvim_win_is_valid(_xwin) then
             pcall(function()
-              vim.api.nvim_win_set_option(_xwin, "winblend", math.min(100, 92 + math.floor((1-alpha)*8)))
+              vim.wo[_xwin].winblend = math.min(100, 92 + math.floor((1 - alpha) * 8))
             end)
           end
 
@@ -1067,7 +1067,7 @@ return {
       local function trigger_drain()
         if _phase ~= "rain" and _phase ~= "decode" then return end
         _phase = "drain"
-        _drain_start = vim.loop.hrtime() / 1e6
+        _drain_start = vim.uv.hrtime() / 1e6
         -- Switch to fast drain timer
         if _timer then
           pcall(function() _timer:stop(); _timer:close() end)
@@ -1164,7 +1164,7 @@ return {
 
         -- ── Start decode phase ────────────────────────────────────────
         _phase        = "decode"
-        _decode_start = vim.loop.hrtime() / 1e6
+        _decode_start = vim.uv.hrtime() / 1e6
         _decode_cells = 0
 
         -- First frame
@@ -1284,11 +1284,10 @@ return {
         pattern  = "SnacksDashboardOpened",
         group    = vim.api.nvim_create_augroup("MatrixRainDrainKey", { clear = true }),
         callback = function(e)
-          -- Listen for any key in the dashboard buffer and trigger drain
-          vim.keymap.set("n", "<expr><buffer>", function()
-            trigger_drain()
-            return nil
-          end, { buffer = e.buf, silent = true })
+          -- FIX: removed vim.keymap.set("n", "<expr><buffer>", ...) — that
+          -- string is not a valid key sequence and was never triggered.
+          -- CursorMoved and BufLeave are sufficient to catch all real
+          -- user interactions on the dashboard reliably.
 
           vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
             buffer   = e.buf,
@@ -1296,8 +1295,7 @@ return {
             callback = function() trigger_drain() end,
           })
 
-          -- KeyPress-level intercept: wrap any feedkey with drain trigger
-          -- Use BufLeave as the reliable "user did something" signal
+          -- BufLeave: reliable "user navigated away" signal
           vim.api.nvim_create_autocmd("BufLeave", {
             buffer   = e.buf,
             once     = true,

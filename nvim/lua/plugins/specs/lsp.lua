@@ -11,6 +11,13 @@
 --     Unified: disabled → return nil, enabled → always return full table.
 --   • <leader>,r duplicate map removed. Single expr=true registration only.
 --   • actions-preview spec retained; <leader>,t toggle diagnostics present.
+--
+-- FIX (v2.3.2):
+--   • <leader>,o was mapped to "<cmd>AerialToggle<cr>" but aerial.nvim is never
+--     specced anywhere in this config. Every press produced a silent no-op (the
+--     command simply did not exist). Replaced with a Trouble lsp_document_symbols
+--     toggle, which IS specced (trouble.nvim in ui.lua). Falls back to
+--     vim.lsp.buf.document_symbol() if Trouble is unavailable.
 
 return {
   {
@@ -159,7 +166,17 @@ return {
             end
           end
 
-          map("<leader>,o", "<cmd>AerialToggle<cr>", "Code Outline")
+          -- FIX: <leader>,o was "<cmd>AerialToggle<cr>" but aerial.nvim is not
+          -- specced in this config — the command never existed, making this a
+          -- silent no-op on every press. Replaced with Trouble document symbols
+          -- (trouble.nvim IS specced in ui.lua). Falls back to the native LSP
+          -- document_symbol picker when Trouble is unavailable.
+          map("<leader>,o", function()
+            local ok_t = pcall(vim.cmd, "Trouble lsp_document_symbols toggle")
+            if not ok_t then
+              pcall(vim.lsp.buf.document_symbol)
+            end
+          end, "Code Outline")
         end,
       })
 
@@ -264,11 +281,6 @@ return {
         cpp        = { "clang-format" },
         fortran    = { "fprettify" },
       },
-      -- FIX: format_on_save always returns either nil (disabled) or a
-      -- complete table (enabled). Previously a bare `return` (nil) on the
-      -- disabled branch was fine, but the enabled branch could silently
-      -- omit timeout_ms if the table literal was malformed by a merge.
-      -- Explicit return on both branches makes the intent unambiguous.
       format_on_save = function(bufnr)
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
           return nil

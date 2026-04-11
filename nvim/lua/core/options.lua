@@ -1,15 +1,15 @@
 -- lua/core/options.lua - Neovim options (Nvim 0.11+)
 --
 -- FIX (v2.3.1):
---   • foldexpr updated from deprecated "nvim_treesitter#foldexpr()" vimscript
---     function (nvim-treesitter v3 removed it) to the canonical Neovim 0.10+
---     built-in: "v:lua.vim.treesitter.foldexpr()".
---     The old string caused E117 (Unknown function) on nvim-treesitter v3+,
---     silently falling back to foldmethod=manual and breaking all folds.
---     The new expression calls vim.treesitter.foldexpr() directly via v:lua,
---     which is available on Neovim 0.10+ without any plugin dependency.
---     nvim-ufo overrides this at runtime on BufEnter for its managed buffers;
---     this value is the baseline for unmanaged buffers (text, help, etc.).
+--   • foldexpr updated to "v:lua.vim.treesitter.foldexpr()".
+--
+-- FIX (v2.3.2):
+--   • vim.g.auto_cd_root was never initialised. The AutoCdRoot autocmd in
+--     autocmds.lua gates on `if not vim.g.auto_cd_root then return end`, so
+--     the feature was permanently disabled on every startup — users had no
+--     way to know it existed or that :ToggleAutoCd could enable it.
+--     Initialised to false here (opt-in, same behaviour as before) with a
+--     comment explaining how to enable it persistently.
 
 local opt = vim.opt
 local g   = vim.g
@@ -89,10 +89,7 @@ opt.foldlevelstart = 99
 opt.foldenable     = true
 
 opt.foldmethod = "expr"
--- FIX: "v:lua.vim.treesitter.foldexpr()" replaces the deprecated
--- "nvim_treesitter#foldexpr()" vimscript shim removed in nvim-treesitter v3.
--- vim.treesitter.foldexpr is a built-in Neovim 0.10+ function; no plugin
--- needed. nvim-ufo overrides this on BufEnter for its own managed buffers.
+-- FIX (v2.3.1): replaces deprecated "nvim_treesitter#foldexpr()" shim.
 opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -121,6 +118,17 @@ opt.spelllang = "en_us"
 -- ═══════════════════════════════════════════════════════════════════════════
 
 opt.sessionoptions = "buffers,curdir,folds,help,tabpages,winsize,winpos,terminal,localoptions"
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- GLOBAL FLAGS
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- FIX (v2.3.2): auto_cd_root was never initialised, making the AutoCdRoot
+-- autocmd in autocmds.lua permanently inactive. Explicitly set to false so
+-- the feature is opt-in but discoverable. Toggle at runtime with:
+--   :ToggleAutoCd
+-- To enable by default on every startup, change false → true here.
+g.auto_cd_root = false
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISABLE BUILT-IN PLUGINS

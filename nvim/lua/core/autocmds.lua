@@ -131,7 +131,11 @@ au("BufWritePre", {
 au({ "FocusGained", "TermClose", "TermLeave" }, {
   group    = ag("Checktime", { clear = true }),
   callback = function()
-    if vim.o.buftype ~= "nofile" then
+    -- FIX (v2.3.2): was vim.o.buftype (global option) which is always "".
+    -- The guard never fired, so checktime ran unconditionally in every
+    -- window including terminals and floating windows. vim.bo.buftype reads
+    -- the buffer-local value for the current buffer, which is correct.
+    if vim.bo.buftype == "" then
       pcall(function() vim.cmd("checktime") end)
     end
   end,

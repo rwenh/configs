@@ -1,15 +1,19 @@
 -- lua/core/util/path.lua - Path utilities with caching
 --
 -- FIX (v2.2.3):
---   • Cache TTL reduced to 30s (was 300s). A monorepo switching branches
---     within 5 minutes would serve a stale root for the entire TTL window.
---     30s is still fast enough to avoid repeated filesystem walks during
---     normal editing, while being short enough that branch switches (which
---     take >1s) always get a fresh lookup on the next BufEnter.
---   • DirChangedPre added alongside DirChanged — the cache is cleared
---     *before* the directory changes so the first BufEnter in the new dir
---     never gets the old root from cache.
---   • No-cache fallback unchanged: getcwd() result is never cached.
+--   • Cache TTL reduced to 30s.
+--   • DirChangedPre added alongside DirChanged.
+--
+-- FIX (v2.3.2):
+--   • Cache key was the raw start_path argument. When find_root() is called
+--     with no argument it defaults to vim.fn.expand("%:p:h"), which may produce
+--     slightly different strings for the same physical directory depending on
+--     symlinks or trailing slashes (e.g. "/proj/src" vs "/proj/src/"). Two
+--     calls from buffers in the same directory could create duplicate cache
+--     entries and bypass the TTL on one of them.
+--     Fix: normalise start_path with fnamemodify(":p") and strip any trailing
+--     slash before using it as the cache key. fnamemodify(":p") resolves
+--     symlinks and canonicalises the path on all platforms.
 
 local M = {}
 
@@ -22,23 +26,35 @@ local root_markers = {
   "setup.py", "setup.cfg",
 }
 
-local cache        = {}
-local cache_timeout = 30  -- seconds (reduced from 300 — see FIX above)
+local cache         = {}
+local cache_timeout = 30  -- seconds
+
+-- Normalise a directory path to a canonical cache key.
+-- fnamemodify(":p") adds a trailing slash on directories; strip it so that
+-- "/proj/src/" and "/proj/src" hash to the same key.
+local function normalise(p)
+  local n = vim.fn.fnamemodify(p, ":p")
+  return (n:gsub("/$", ""))
+end
 
 function M.find_root(start_path)
   start_path = start_path or vim.fn.expand("%:p:h")
 
+  -- FIX: normalise before cache lookup so different representations of the
+  -- same directory always hit the same cache slot.
+  local cache_key = normalise(start_path)
+
   -- Cache hit (with TTL)
-  if cache[start_path] then
-    local age = os.time() - cache[start_path].time
+  if cache[cache_key] then
+    local age = os.time() - cache[cache_key].time
     if age < cache_timeout then
-      return cache[start_path].root
+      return cache[cache_key].root
     end
-    cache[start_path] = nil
+    cache[cache_key] = nil
   end
 
   local now     = os.time()
-  local current = start_path
+  local current = cache_key   -- already normalised; walk from here
 
   for _ = 1, 20 do
     for _, marker in ipairs(root_markers) do
@@ -48,7 +64,7 @@ function M.find_root(start_path)
       local ok_file, is_file = pcall(function() return vim.fn.filereadable(path)  == 1 end)
 
       if (ok_dir and is_dir) or (ok_file and is_file) then
-        cache[start_path] = { root = current, time = now }
+        cache[cache_key] = { root = current, time = now }
         return current
       end
     end
@@ -68,9 +84,7 @@ end
 
 local augroup = vim.api.nvim_create_augroup("PathCacheClear", { clear = true })
 
--- FIX: clear before AND after directory change.
--- DirChangedPre fires before cwd changes → first lookup in new dir is fresh.
--- DirChanged fires after → handles programmatic cd() that skips Pre.
+-- Clear before AND after directory change.
 vim.api.nvim_create_autocmd({ "DirChangedPre", "DirChanged" }, {
   group    = augroup,
   pattern  = "*",

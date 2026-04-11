@@ -1,15 +1,15 @@
 -- lua/core/util/runner.lua - Code execution engine
 --
 -- FIX (v2.2.3):
---   • run_selection(): visual marks '<'/'>' are stale by the time an x-mode
---     map dispatches :lua. Fixed by reading nvim_buf_get_mark BEFORE the
---     mode switch via feedkeys, or by using line/col from the command range.
---     Solution: accept optional start/end line args (passed from the keymap
---     via a command range), fall back to marks only in normal mode.
---   • kotlin runner: jar name was not shellescape'd — spaces in project name
---     produced broken shell command.
---   • run_tests() kotlin/java: find_root() result used without shellescape
---     in the cd prefix — fixed throughout.
+--   • run_selection(): visual marks stale fix; explicit line args from keymap.
+--   • kotlin runner: shellescape jar name.
+--   • run_tests() kotlin/java: shellescape root in cd prefix.
+--
+-- FIX (v2.3.2):
+--   • run_tests() javascript/typescript: hardcoded "npm test" ignored yarn,
+--     pnpm, and bun projects entirely. Now probes for lockfiles in the project
+--     root (yarn.lock → yarn, pnpm-lock.yaml → pnpm, bun.lockb → bun) and
+--     falls back to npm only when none of the others are present.
 
 local M = {}
 
@@ -119,7 +119,6 @@ local runners = {
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
     if vim.fn.executable("kotlinc") == 1 then
-      -- FIX: shellescape the jar name — spaces in project name broke the cmd
       local jar = vim.fn.shellescape(name .. ".jar")
       return "cd " .. vim.fn.shellescape(dir)
         .. " && kotlinc " .. vim.fn.shellescape(file)
@@ -229,17 +228,10 @@ function M.run_file()
   end
 end
 
--- FIX: run_selection() — visual marks '<'/'>' are stale after mode exit.
--- The keymap must pass the line range explicitly:
---   map("x", "<leader>'s", ":<C-u>lua require('core.util.runner').run_selection(vim.fn.line(\"'<\"), vim.fn.line(\"'>\"))<CR>")
--- The args are evaluated WHILE still in visual mode (via :<C-u> which exits
--- visual but keeps the range), so marks are still valid at call time.
--- Fallback (no args) reads marks and warns if they are 0.
 function M.run_selection(start_line, end_line)
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
 
-  -- Prefer explicit line args (passed from keymap before mode switch)
   if not start_line or not end_line then
     local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
     local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
@@ -315,21 +307,35 @@ function M.run_selection(start_line, end_line)
   end
 end
 
+-- ── JS/TS package manager detection ────────────────────────────────────────
+-- FIX (v2.3.2): probe lockfiles in project root to pick the right test runner.
+-- Priority: bun > pnpm > yarn > npm (most specific first).
+local function detect_js_test_cmd(root)
+  if vim.fn.filereadable(root .. "/bun.lockb") == 1 then
+    return "bun test"
+  elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
+    return "pnpm test"
+  elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then
+    return "yarn test"
+  end
+  return "npm test"
+end
+
 function M.run_tests()
   local ft = vim.bo.filetype
 
   local ok_path, path = pcall(require, "core.util.path")
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
 
-  -- FIX: shellescape(root) in all cd-prefixed commands
   local escaped_root = vim.fn.shellescape(root)
 
   local test_commands = {
     python     = "pytest",
     rust       = "cargo test",
     go         = "go test ./...",
-    javascript = "npm test",
-    typescript = "npm test",
+    -- FIX: detect yarn/pnpm/bun before falling back to npm
+    javascript = detect_js_test_cmd(root),
+    typescript = detect_js_test_cmd(root),
     ruby       = "bundle exec rspec",
     elixir     = "mix test",
     kotlin = vim.fn.filereadable(root .. "/gradlew") == 1

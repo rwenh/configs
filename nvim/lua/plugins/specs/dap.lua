@@ -3,13 +3,16 @@
 -- FIX (v2.3.1):
 --   • load_breakpoints() BufReadPost callback now wraps dap.breakpoints.set()
 --     in vim.schedule() so marks are applied AFTER the buffer's treesitter
---     parser finishes attaching. On large files or remote filesystems the
---     parser runs asynchronously after BufReadPost; setting breakpoints before
---     it completes caused line numbers to shift by the number of fold-change
---     operations treesitter applied. vim.schedule() yields to the event loop
---     once, guaranteeing the parser has run before we write marks.
---   • Same vim.schedule() fix applied to the "already loaded" bufnr path at
---     the top of load_breakpoints() — not just the autocmd path.
+--     parser finishes attaching.
+--   • Same vim.schedule() fix applied to the "already loaded" bufnr path.
+--
+-- FIX (v2.3.2):
+--   • mason-nvim-dap: handlers=nil disabled ALL automatic adapter setup,
+--     meaning ensure_installed packages were downloaded by Mason but never
+--     configured as DAP adapters. nil tells mason-nvim-dap to skip its
+--     default handler entirely. Changed to handlers={} (empty table), which
+--     preserves the default handler for every adapter that does not have an
+--     explicit override — the correct behaviour for automatic installation.
 
 return {
   {
@@ -317,12 +320,6 @@ return {
         end
       end
 
-      -- FIX: breakpoint restore wraps dap.breakpoints.set() in vim.schedule()
-      -- so marks land AFTER treesitter finishes attaching on BufReadPost.
-      -- Without the schedule(), set() fires while the parser is still running;
-      -- treesitter then adjusts extmarks during fold computation, shifting
-      -- every breakpoint line by the number of fold changes applied.
-      -- vim.schedule() costs one event-loop tick and guarantees parser is done.
       local function set_bps_scheduled(bufnr, entries)
         vim.schedule(function()
           for _, bp in ipairs(entries) do
@@ -345,8 +342,6 @@ return {
         for path, entries in pairs(bps) do
           local bufnr = vim.fn.bufnr(path)
           if bufnr ~= -1 then
-            -- FIX: schedule even for already-loaded buffers — treesitter may
-            -- still be attaching if the file was opened on the command line.
             set_bps_scheduled(bufnr, entries)
           else
             local aug = vim.api.nvim_create_augroup(
@@ -358,7 +353,6 @@ return {
               callback = function(e)
                 local evfile = vim.api.nvim_buf_get_name(e.buf)
                 if evfile ~= path then return end
-                -- FIX: schedule so treesitter parser finishes before marks land
                 set_bps_scheduled(e.buf, entries)
                 pcall(vim.api.nvim_del_augroup_by_id, aug)
               end,
@@ -384,7 +378,11 @@ return {
     opts = {
       ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      handlers = nil,
+      -- FIX: was `handlers = nil` which disabled ALL default adapter setup —
+      -- packages were installed by Mason but never configured as DAP adapters.
+      -- `handlers = {}` (empty table) preserves the default handler for every
+      -- adapter without an explicit override, which is the intended behaviour.
+      handlers = {},
     },
   },
 
