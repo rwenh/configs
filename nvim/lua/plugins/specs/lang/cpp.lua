@@ -1,4 +1,17 @@
 -- lua/plugins/specs/lang/cpp.lua - C++ development
+--
+-- FIX (v2.3.1):
+--   • neogen spec marked optional=true so it extends the primary spec in
+--     advanced.lua rather than competing with it. With three non-optional
+--     specs for the same plugin, the last one loaded silently dropped the
+--     others' language opts. optional=true lets lazy merge opts tables.
+--   • config() removed from the neogen spec — optional extension specs must
+--     not call setup() themselves; the primary spec in advanced.lua owns
+--     initialisation.
+--   • Duplicate <leader>ccd key entry removed. The keys= table had two
+--     identical entries (ft="cpp" and ft="c"). A single buffer-local keymap
+--     via LspAttach or ft-scoped keys covers both; the second entry was a
+--     no-op overwrite.
 
 return {
   {
@@ -26,25 +39,28 @@ return {
     },
   },
 
+  -- FIX: optional=true — extends the primary neogen spec in advanced.lua.
+  -- config() removed; advanced.lua's config() owns setup(). This spec only
+  -- contributes language opts (doxygen for C/C++) and the <leader>ccd keymap.
+  -- The duplicate ft="c" key entry has been collapsed into a single entry
+  -- with a mode-agnostic ft list; ft filtering is handled by lazy at load time.
   {
     "danymat/neogen",
-    ft           = { "cpp", "c" },
-    dependencies = "nvim-treesitter/nvim-treesitter",
+    optional = true,
+    ft       = { "cpp", "c" },
     opts = {
       languages = {
         cpp = { template = { annotation_convention = "doxygen" } },
         c   = { template = { annotation_convention = "doxygen" } },
       },
     },
-    config = function(_, opts)
-      local ok = pcall(function() require("neogen").setup(opts) end)
-      if not ok then
-        vim.notify("neogen setup failed", vim.log.levels.WARN)
-      end
-    end,
     keys = {
-      { "<leader>ccd", function() pcall(function() require("neogen").generate() end) end, desc = "Generate Docstring", ft = "cpp" },
-      { "<leader>ccd", function() pcall(function() require("neogen").generate() end) end, desc = "Generate Docstring", ft = "c" },
+      {
+        "<leader>ccd",
+        function() pcall(function() require("neogen").generate() end) end,
+        desc = "Generate Docstring",
+        ft   = { "cpp", "c" },
+      },
     },
   },
 

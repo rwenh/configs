@@ -14,6 +14,18 @@
 --     never auto-closed on buffer open. Updated to the new per-filetype table
 --     format: { _ = { "imports", "comment" } } which applies to all filetypes.
 --     The "_" key is ufo's wildcard filetype selector.
+--
+-- FIX (v2.3.1b):
+--   • neogen: this spec is the PRIMARY owner. cpp.lua and python.lua extend it
+--     via optional=true. To avoid any possibility of the lang opts being dropped
+--     when those optional specs merge, the canonical language table here now
+--     includes ALL supported languages (cpp, c, python, lua, ts, js, rust, go).
+--     cpp.lua and python.lua override only their own keys — lazy merges tables
+--     recursively for optional specs, so there is no conflict.
+--   • neogen: <leader>xg keymap is registered here in keys= only. The duplicate
+--     entry that was added to keymaps.lua in v2.3.3 has been removed from there.
+--     keys= in the spec is the correct place: it both registers the map AND
+--     triggers lazy-loading of the plugin on first use.
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -272,13 +284,8 @@ return {
             },
             open_fold_hl_timeout = 400,
             -- FIX (v2.3.1): close_fold_kinds renamed to close_fold_kinds_for_ft.
-            -- The old key was silently dropped by ufo — imports/comments were
-            -- never auto-closed on buffer open. "_" is ufo's wildcard ft selector.
             close_fold_kinds_for_ft = { _ = { "imports", "comment" } },
-            -- FIX (v2.2.4): guard large_file buffers. autocmds.lua sets foldmethod=manual
-            -- on files >500KB (vim.b.large_file=true). ufo tries to attach a
-            -- treesitter provider regardless and errors. Returning "" tells ufo
-            -- to detach gracefully and leave the manual fold method intact.
+            -- FIX (v2.2.4): guard large_file buffers.
             provider_selector = function(bufnr, _filetype, _buftype)
                 if vim.b[bufnr] and vim.b[bufnr].large_file then
                     return ""
@@ -299,23 +306,34 @@ return {
     -- │                   ANNOTATIONS                        │
     -- └─────────────────────────────────────────────────────┘
 
+    -- FIX (v2.3.1b): PRIMARY owner of neogen. cpp.lua and python.lua extend
+    -- this spec via optional=true. The languages table here covers ALL languages
+    -- so setup() always runs with a complete config regardless of load order.
+    -- <leader>xg lives here only — the duplicate in keymaps.lua was removed.
     {
         "danymat/neogen",
         lazy = true,
         cmd  = "Neogen",
         keys = {
+            -- FIX: sole registration of <leader>xg. Removed from keymaps.lua.
+            -- keys= triggers lazy-loading correctly on first use.
             { "<leader>xg", "<cmd>Neogen<CR>", desc = "Generate docstring" },
         },
         dependencies = { "nvim-treesitter/nvim-treesitter" },
         opts = {
             snippet_engine = "luasnip",
             languages = {
-                python     = { template = { annotation_convention = "google"  } },
-                lua        = { template = { annotation_convention = "emmylua" } },
-                typescript = { template = { annotation_convention = "tsdoc"   } },
-                javascript = { template = { annotation_convention = "jsdoc"   } },
-                rust       = { template = { annotation_convention = "nightly" } },
-                go         = { template = { annotation_convention = "go"      } },
+                -- Core languages owned by this spec:
+                lua        = { template = { annotation_convention = "emmylua"  } },
+                typescript = { template = { annotation_convention = "tsdoc"    } },
+                javascript = { template = { annotation_convention = "jsdoc"    } },
+                rust       = { template = { annotation_convention = "nightly"  } },
+                go         = { template = { annotation_convention = "go"       } },
+                -- cpp.lua and python.lua extend these via optional=true;
+                -- their opts are merged by lazy over these defaults.
+                cpp        = { template = { annotation_convention = "doxygen"        } },
+                c          = { template = { annotation_convention = "doxygen"        } },
+                python     = { template = { annotation_convention = "google_docstrings" } },
             },
         },
     },

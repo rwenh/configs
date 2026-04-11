@@ -17,6 +17,16 @@
 --     now wraps the call in a lazy-load shim via vim.cmd("IncRename ...") which
 --     triggers cmd-based loading. Added a pcall guard with a clear error message
 --     when the plugin is missing rather than a silent no-op.
+--
+-- FIX (v2.3.4):
+--   • mason-lspconfig: added handlers = { function() end } to suppress the
+--     built-in default handler. On Nvim 0.11, mason-lspconfig's default handler
+--     calls vim.lsp.enable() for every installed server, and lsp.lua's config()
+--     also calls vim.lsp.enable() for the same servers. The result is two LSP
+--     clients attached to the same buffer — doubled diagnostics, doubled hover
+--     responses, doubled rename operations. Providing an empty no-op function
+--     as the default handler disables mason-lspconfig's auto-attach while
+--     leaving lsp.lua as the sole owner of server initialisation.
 
 return {
   {
@@ -39,6 +49,12 @@ return {
         "tailwindcss",
       },
       automatic_installation = true,
+      -- FIX (v2.3.4): suppress mason-lspconfig's default handler.
+      -- Without this, on Nvim 0.11 mason-lspconfig calls vim.lsp.enable() for
+      -- every installed server AND lsp.lua's config() calls it again — two
+      -- clients attach to every buffer. The no-op function here disables the
+      -- default handler; lsp.lua's lsp_setup() is the sole owner of setup.
+      handlers = { function() end },
     },
   },
 
@@ -94,8 +110,6 @@ return {
       end
 
       -- ── Diagnostic jump helper ────────────────────────────────────────
-      -- FIX: vim.diagnostic.goto_next/goto_prev deprecated in 0.11.
-      -- Use vim.diagnostic.jump() on 0.11+; fall back to the old API on 0.10.
       local function diag_jump(count)
         if nvim_011 then
           pcall(function()
@@ -133,15 +147,10 @@ return {
           map("<leader>,a", code_action, "Code Action")
           map("<leader>,a", code_action, "Code Action", "v")
 
-          -- FIX: inc-rename.nvim is loaded on cmd "IncRename" only (no keys=
-          -- trigger in its spec). Using vim.cmd() to invoke :IncRename triggers
-          -- lazy-loading correctly. pcall catches the case where the plugin is
-          -- not installed and notifies rather than silently doing nothing.
           vim.keymap.set("n", "<leader>,r", function()
             local word = vim.fn.expand("<cword>")
             local ok_cmd = pcall(vim.cmd, "IncRename " .. word)
             if not ok_cmd then
-              -- Fallback to native rename when inc-rename is unavailable
               vim.lsp.buf.rename()
             end
           end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
@@ -166,7 +175,6 @@ return {
 
           map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
 
-          -- FIX: use jump() on 0.11+, goto_next/prev on 0.10
           map("]d", function() diag_jump(1)  end, "Next Diagnostic")
           map("[d", function() diag_jump(-1) end, "Prev Diagnostic")
 
@@ -191,7 +199,7 @@ return {
             if not ok_t then
               pcall(vim.lsp.buf.document_symbol)
             end
-          end, "Code Outline")
+          end, "Code Outline (Trouble symbols)")
         end,
       })
 

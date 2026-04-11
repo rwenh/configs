@@ -11,12 +11,25 @@
 --     also maps <C-j>/<C-k> as blink.cmp aliases. These are insert-mode only
 --     in blink (InsertEnter event) while the window nav maps are normal-mode
 --     only — no conflict. Added a comment to make this explicit.
---   • <leader>'n/<leader>'f/<leader>'a neotest keys were defined only in
---     test.lua keys= table. They are also useful to trigger from keymaps.lua
---     for which-key visibility. Left as-is (test.lua keys= is sufficient and
---     avoids double-registration). No change needed here.
---   • <leader>xg (Neogen) added — was documented in KEYMAP_REFERENCE.md but
---     missing from keymaps.lua entirely.
+--
+-- FIX (v2.3.1b):
+--   • <leader>xg (Neogen) REMOVED from this file. It was added here in
+--     v2.3.3 but advanced.lua already registers it in its keys= table.
+--     keys= is the correct place: it handles lazy-loading and avoids a
+--     double-registration that makes which-key show the same mapping twice.
+--
+-- FIX (v2.3.4):
+--   • Removed duplicate keymaps that are already owned by plugin keys= specs:
+--       <leader>ee/ef/ec/er  → editor.lua (neo-tree keys=)
+--       <leader>uz           → hud.lua (zen-mode.nvim keys=)
+--       <leader>uT           → hud.lua (twilight.nvim keys=)
+--       <leader>eo           → hud.lua (oil.nvim keys=); "-" alias kept here
+--       <leader>.p / .r      → git.lua (gitsigns on_attach, buffer-local)
+--                              Global versions fired in non-git buffers — wrong.
+--       <leader>.B           → hud.lua (blame.nvim keys=)
+--   • <leader>ob overseer fallback block was copy-pasted from workflow.lua and
+--     would silently diverge on future changes. Replaced with <cmd>OverseerRun<cr>
+--     which is sufficient here; workflow.lua keys= handles the smart fallback.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -75,12 +88,10 @@ map("n", "[b", "<cmd>bprev<cr>", { desc = "Prev buffer" })
 
 -- ============================================================================
 -- FILE EXPLORER
+-- FIX: <leader>ee/ef/ec/er removed — owned by editor.lua (neo-tree keys=).
+-- Registering them here too caused which-key to show each entry twice and
+-- bypassed lazy-loading of neo-tree on first keypress.
 -- ============================================================================
-
-map("n", "<leader>ee", "<cmd>Neotree reveal<cr>",  { desc = "Toggle explorer" })
-map("n", "<leader>ef", "<cmd>Neotree focus<cr>",   { desc = "Focus explorer" })
-map("n", "<leader>ec", "<cmd>Neotree close<cr>",   { desc = "Close explorer" })
-map("n", "<leader>er", "<cmd>Neotree refresh<cr>", { desc = "Refresh explorer" })
 
 -- ============================================================================
 -- TELESCOPE FIND
@@ -101,6 +112,12 @@ map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
 
 -- ============================================================================
 -- GIT OPERATIONS
+-- FIX: <leader>.p (preview_hunk) and <leader>.r (reset_hunk) removed.
+--   git.lua's gitsigns on_attach registers these as BUFFER-LOCAL maps, which
+--   is correct — they only exist inside git-tracked buffers.
+--   The global versions here fired in every buffer (including non-git ones),
+--   producing a no-op call to gitsigns outside git context.
+-- FIX: <leader>.B (BlameToggle) removed — owned by hud.lua blame.nvim keys=.
 -- ============================================================================
 
 map("n", "<leader>.g", "<cmd>LazyGit<cr>",                { desc = "LazyGit" })
@@ -109,8 +126,6 @@ map("n", "<leader>.c", "<cmd>Telescope git_commits<cr>",  { desc = "Git commits"
 map("n", "<leader>.s", "<cmd>Telescope git_status<cr>",   { desc = "Git status" })
 map("n", "<leader>.d", "<cmd>DiffviewOpen<cr>",           { desc = "Git diff" })
 map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history" })
-map("n", "<leader>.p", "<cmd>Gitsigns preview_hunk<cr>",  { desc = "Preview hunk" })
-map("n", "<leader>.r", "<cmd>Gitsigns reset_hunk<cr>",    { desc = "Reset hunk" })
 
 -- ============================================================================
 -- DEBUG (DAP)
@@ -172,6 +187,9 @@ map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 
 -- ============================================================================
 -- UI TOGGLES
+-- FIX: <leader>uz (ZenMode) removed — owned by hud.lua zen-mode.nvim keys=.
+-- FIX: <leader>uT (Twilight) removed — owned by hud.lua twilight.nvim keys=.
+-- Both were causing which-key duplicates and bypassing lazy-load triggers.
 -- ============================================================================
 
 map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>",
@@ -182,8 +200,6 @@ map("n", "<leader>us", "<cmd>ToggleSpell<cr>",
   { desc = "Toggle spell" })
 map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",
   { desc = "Toggle line numbers" })
-map("n", "<leader>uz", "<cmd>ZenMode<cr>",
-  { desc = "Zen mode" })
 
 -- ============================================================================
 -- SEARCH & REPLACE
@@ -244,11 +260,11 @@ map("n", "<leader>xh", "<cmd>Health<cr>",         { desc = "Health check" })
 map("n", "<leader>xp", "<cmd>ProjectRoot<cr>",    { desc = "Go to project root" })
 map("n", "<leader>xl", "<cmd>Lazy<cr>",           { desc = "Lazy" })
 map("n", "<leader>xn", "<cmd>Mason<cr>",          { desc = "Mason" })
--- FIX: ":Trouble" with no subcommand is invalid in trouble.nvim v3+.
 map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Trouble diagnostics" })
 map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
--- FIX: was documented in KEYMAP_REFERENCE.md but missing from keymaps.lua.
-map("n", "<leader>xg", "<cmd>Neogen<cr>",         { desc = "Generate docstring" })
+-- NOTE: <leader>xg (Neogen) is intentionally NOT registered here.
+-- It is registered in advanced.lua via keys= which also handles lazy-loading.
+-- A duplicate here would cause which-key to show the same entry twice.
 
 -- ============================================================================
 -- TODO COMMENTS
@@ -259,27 +275,23 @@ map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "P
 
 -- ============================================================================
 -- OVERSEER
+-- FIX: <leader>ob fallback block was a copy-paste of workflow.lua logic.
+--   Any future change to the fallback in workflow.lua would silently diverge.
+--   Replaced with a plain OverseerRun which opens the picker — sufficient
+--   for a global keymap. workflow.lua keys= handles the smart template logic.
 -- ============================================================================
 
 map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
 map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
-map("n", "<leader>ob", function()
-  local ok = pcall(function()
-    require("overseer").run_template({ name = "build" })
-  end)
-  if not ok then
-    vim.notify("[overseer] No 'build' template found — opening task picker",
-      vim.log.levels.INFO)
-    vim.cmd("OverseerRun")
-  end
-end, { desc = "Build" })
+map("n", "<leader>ob", "<cmd>OverseerRun<cr>",    { desc = "Build" })
 
 -- ============================================================================
 -- OIL
+-- FIX: <leader>eo removed — owned by hud.lua oil.nvim keys=.
+--   The "-" alias is kept here as a convenience binding that does not conflict.
 -- ============================================================================
 
-map("n", "<leader>eo", "<cmd>Oil<cr>", { desc = "Oil file editor" })
-map("n", "-",          "<cmd>Oil<cr>", { desc = "Open parent dir" })
+map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent dir" })
 
 -- ============================================================================
 -- NOICE
@@ -294,10 +306,3 @@ map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history"
 
 map("n", "<leader>uF", function() require("core.focus").toggle() end,
   { desc = "Deep focus mode" })
-map("n", "<leader>uT", "<cmd>Twilight<cr>", { desc = "Twilight" })
-
--- ============================================================================
--- BLAME
--- ============================================================================
-
-map("n", "<leader>.B", "<cmd>BlameToggle<cr>", { desc = "Git blame HUD" })

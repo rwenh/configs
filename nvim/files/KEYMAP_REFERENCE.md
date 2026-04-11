@@ -1,4 +1,4 @@
-# NEOVIM KEYMAP REFERENCE — v2.3.0
+# NEOVIM KEYMAP REFERENCE — v2.3.4
 
 ## LEADER KEY
 Space (` `)
@@ -54,7 +54,7 @@ Space (` `)
 - `<leader>fk` — Find keymaps
 - `<leader>fc` — Find commands
 - `<leader>fr` — Resume last search
-- `<leader>fo` — Recent files  ← sole owner; Fortran uses `<leader>ft*`
+- `<leader>fo` — Recent files
 - `Ctrl+s` — Live grep
 
 ---
@@ -70,7 +70,7 @@ Space (` `)
 - `<leader>,a` — Code action (normal + visual)
 - `<leader>,r` — Rename symbol
 - `<leader>,f` — Format (normal + visual)
-- `<leader>,o` — Code outline (Aerial)
+- `<leader>,o` — Code outline (Trouble symbols)
 - `<leader>,i` — Toggle inlay hints
 - `<leader>,d` — Diagnostic float
 - `<leader>,l` — Diagnostics list
@@ -96,9 +96,9 @@ Space (` `)
 - `<leader>.or` — Start PR review (Octo)
 - `<leader>.oc` — Checkout PR (Octo)
 - `]h` / `[h` — Next / prev hunk
-- `<leader>.p` — Preview hunk
-- `<leader>.r` — Reset hunk
-- `<leader>.S` — Stage hunk
+- `<leader>.p` — Preview hunk *(buffer-local, git files only)*
+- `<leader>.r` — Reset hunk *(buffer-local, git files only)*
+- `<leader>.S` — Stage hunk *(buffer-local, git files only)*
 - `<leader>gco` — Conflict: choose ours
 - `<leader>gct` — Conflict: choose theirs
 - `<leader>gcb` — Conflict: choose both
@@ -168,7 +168,7 @@ Space (` `)
 - `<leader>uz` — Zen mode
 - `<leader>uF` — Deep focus mode
 - `<leader>uT` — Twilight
-- `<leader>un` — Dismiss notifications  ← `<cmd>Noice dismiss<cr>`
+- `<leader>un` — Dismiss notifications
 - `<leader>uN` — Notification history
 
 ---
@@ -203,7 +203,7 @@ Space (` `)
 - `<leader>xx` — Trouble diagnostics
 - `<leader>xu` — Undo tree
 - `<leader>xg` — Generate docstring (Neogen)
-- `<leader>ft` — Find TODOs
+- `<leader>xT` — Find TODOs (TodoTelescope)
 
 ---
 
@@ -290,7 +290,7 @@ Space (` `)
 - `<leader>ccs` — CMake select target
 - `<leader>ccd` — Generate docstring
 
-### Fortran (`<leader>ft*`)  ← `ft*` avoids shadowing `<leader>fo` (Telescope recent files)
+### Fortran (`<leader>ft*`)
 - `<leader>ftb` — Build & run
 - `<leader>ftc` — Check syntax
 - `<leader>ftm` — Make
@@ -315,7 +315,7 @@ Space (` `)
 - `<leader>dba` — Add connection
 - `<leader>dbf` — Find buffer
 
-### REST (`<leader>re*`)  ← `re*` avoids collision with Harpoon `<leader>h*`
+### REST (`<leader>re*`)
 - `<leader>rer` — Run request
 - `<leader>rep` — Preview request
 - `<leader>rel` — Run last request
@@ -348,7 +348,8 @@ Space (` `)
 - `<leader>un` — Dismiss all notifications
 - `<leader>uN` — Notification history
 - `<leader>.B` — Git blame virtual text toggle
-- `<leader>eo` / `-` — Oil inline file editor
+- `-` — Oil inline file editor (open parent dir)
+- `<leader>eo` — Oil inline file editor
 - `<leader>uc` — Go to treesitter context start
 
 ---

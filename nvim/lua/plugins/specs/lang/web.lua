@@ -5,6 +5,13 @@
 --     results in all features (close, rename, replace) being disabled by
 --     default. Explicit opts table added to enable all features.
 --     Ref: https://github.com/windwp/nvim-ts-autotag#setup
+--
+-- FIX (v2.3.1):
+--   • Confirmed: tailwind-tools.nvim entry fully removed. css.lua is the
+--     sole owner (server.override=false). Any remnant spec here would create
+--     a duplicate lazy registration that silently drops css.lua's opts.
+--   • colorizer is owned by advanced.lua (NvChad/nvim-colorizer.lua).
+--     Neither plugin is referenced here.
 
 return {
   {
@@ -37,7 +44,4 @@ return {
       vim.g.user_emmet_leader_key = "<C-e>"
     end,
   },
-
-  -- colorizer owned by advanced.lua (NvChad/nvim-colorizer.lua) — not here.
-  -- tailwind-tools owned by css.lua with server.override=false — not here.
 }

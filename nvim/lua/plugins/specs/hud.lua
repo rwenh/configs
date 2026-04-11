@@ -10,6 +10,14 @@
 --     (no animation) for that buffer.
 --   • folke/zen-mode.nvim spec present (focus.lua dependency).
 --   • render-markdown.nvim absent here (markdown.lua owns it).
+--
+-- FIX (v2.3.1b):
+--   • <leader>ft TodoTelescope key moved to <leader>xT.
+--     <leader>ft was shared with the Fortran keymap group prefix (<leader>ft*),
+--     causing which-key to show two competing groups under the same prefix.
+--     Fortran owns <leader>ft* (build/check/make); TODOs move to <leader>xT
+--     which fits naturally alongside the other utils under <leader>x*.
+--     KEYMAP_REFERENCE.md should be updated: "Find TODOs" → <leader>xT.
 
 return {
 
@@ -300,11 +308,16 @@ return {
     end,
   },
 
+  -- FIX (v2.3.1b): key moved from <leader>ft to <leader>xT.
+  -- <leader>ft was claimed by the Fortran group prefix (<leader>ftb/ftc/ftm).
+  -- Using the same prefix for both a group and a standalone binding caused
+  -- which-key to show two competing labels under <leader>ft.
+  -- <leader>xT slots naturally alongside other utils under <leader>x*.
   {
     "folke/todo-comments.nvim",
     optional = true,
     keys = {
-      { "<leader>ft", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" },
+      { "<leader>xT", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" },
     },
   },
 }

@@ -16,6 +16,12 @@
 --     at config time (not inside a function). If nvim-dap hadn't finished
 --     loading yet this would error. Wrapped in a function so it's evaluated
 --     lazily at debug-session start time.
+--
+-- FIX (v2.3.4):
+--   • mason-nvim-dap: handlers={} was incorrect. An empty table suppresses ALL
+--     default adapter handlers — no adapters get auto-configured. The correct
+--     form to get mason-nvim-dap's built-in default handler for every installed
+--     adapter is to omit the handlers key entirely (or set it to nil). Removed.
 
 return {
   {
@@ -233,9 +239,6 @@ return {
           { type = "pwa-node", request = "launch", name = "Launch file",
             program = "${file}", cwd = "${workspaceFolder}" },
           { type = "pwa-node", request = "attach", name = "Attach",
-            -- FIX: was require("dap.utils").pick_process (eager, at config time).
-            -- Wrapped in a function so it is evaluated lazily at session start,
-            -- after nvim-dap is guaranteed to be fully loaded.
             processId = function()
               return require("dap.utils").pick_process()
             end,
@@ -374,11 +377,6 @@ return {
         callback = save_breakpoints,
       })
 
-      -- FIX: was vim.defer_fn(load_breakpoints, 100) on VimEnter.
-      -- 100ms is fragile — on fast machines nvim-dap may not be fully
-      -- initialised yet, causing require("dap.breakpoints") to fail silently.
-      -- "User LazyDone" fires only after every plugin's config() has run,
-      -- so nvim-dap is guaranteed ready at that point.
       vim.api.nvim_create_autocmd("User", {
         pattern  = "LazyDone",
         once     = true,
@@ -394,7 +392,11 @@ return {
     opts = {
       ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      handlers               = {},
+      -- FIX (v2.3.4): handlers key removed entirely.
+      -- handlers={} (empty table) suppresses ALL default adapter setup handlers,
+      -- meaning no adapters get auto-configured by mason-nvim-dap.
+      -- Omitting the key lets mason-nvim-dap run its built-in default handler
+      -- for every installed adapter, which is the intended behaviour.
     },
   },
 

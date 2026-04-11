@@ -8,13 +8,12 @@
 -- FIX (v2.3.2):
 --   • cmdline source removed from sources.default.
 --
--- FIX (v2.3.3):
---   • <C-p>/<C-n> had "fallback" as last action. With preset="default" already
---     defining these keys, the fallback leaked through to Vim's native
---     ins-completion (i-^N/^P), opening a second competing menu. Removed
---     "fallback" and replaced with "show" so the menu opens if closed.
---   • <C-j>/<C-k> added as ergonomic aliases — consistent with Telescope,
---     fzf, and every other picker in this config.
+-- FIX (v2.3.4):
+--   • <Tab>/<S-Tab> stripped of select_next/select_prev. Tab was fighting
+--     snippet jumping and menu navigation simultaneously — when inside a snippet
+--     it would jump the placeholder AND move the menu selection, producing
+--     unpredictable behaviour. Tab is now snippet-only; menu navigation is
+--     handled exclusively by <C-n>/<C-j> (down) and <C-p>/<C-k> (up).
 
 return {
   {
@@ -41,8 +40,11 @@ return {
         ["<C-Space>"] = { "show", "show_documentation", "hide_documentation" },
         ["<C-q>"]     = { "hide" },
         ["<CR>"]      = { "accept", "fallback" },
-        ["<Tab>"]     = { "snippet_forward", "select_next", "fallback" },
-        ["<S-Tab>"]   = { "snippet_backward", "select_prev", "fallback" },
+        -- Tab/S-Tab: snippet jumping only. Menu navigation is handled
+        -- exclusively by <C-n>/<C-j> and <C-p>/<C-k> below, which are
+        -- unambiguous and never conflict with snippet state.
+        ["<Tab>"]     = { "snippet_forward", "fallback" },
+        ["<S-Tab>"]   = { "snippet_backward", "fallback" },
         -- FIX: removed "fallback" — it leaked to Vim native ins-completion
         -- (i-^P/^N), opening a second competing menu when blink was active.
         -- "show" opens the menu if it is currently closed, so the key is

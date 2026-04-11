@@ -10,6 +10,16 @@
 --     registered per-buffer via a FileType autocmd on "python", and also
 --     retroactively applied to any already-open Python buffers.
 --     iron's send functions accept a bufnr argument so per-buffer binding works.
+--
+-- FIX (v2.3.1b):
+--   • neogen spec marked optional=true so it extends the primary spec in
+--     advanced.lua rather than competing with it.
+--   • config() removed from the neogen spec — the primary spec in advanced.lua
+--     owns initialisation. This spec only contributes the python language opts
+--     and the <leader>pyg keymap.
+--   • annotation_convention corrected to "google_docstrings" (the valid neogen
+--     identifier); "google" is not a recognised convention string and silently
+--     falls back to neogen's default.
 
 return {
   {
@@ -96,19 +106,27 @@ return {
     end,
   },
 
+  -- FIX: optional=true — extends the primary neogen spec in advanced.lua.
+  -- config() removed; advanced.lua's config() owns setup(). This spec only
+  -- contributes the python language opts and the <leader>pyg keymap.
+  -- annotation_convention corrected to "google_docstrings" (valid neogen id).
   {
     "danymat/neogen",
-    ft           = "python",
-    dependencies = "nvim-treesitter/nvim-treesitter",
+    optional = true,
+    ft       = "python",
     opts = {
       languages = {
+        -- FIX: "google" is not a valid neogen convention id — corrected to
+        -- "google_docstrings" which is the identifier neogen recognises.
         python = { template = { annotation_convention = "google_docstrings" } },
       },
     },
     keys = {
-      { "<leader>pyg",
+      {
+        "<leader>pyg",
         function() pcall(function() require("neogen").generate() end) end,
-        desc = "Python Generate Docstring" },
+        desc = "Python Generate Docstring",
+      },
     },
   },
 
