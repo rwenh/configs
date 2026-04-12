@@ -1,4 +1,4 @@
--- ~/.config/nvim/init.lua  — v2.3.4 entry point
+-- ~/.config/nvim/init.lua  — v2.3.6 entry point
 -- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
 
 -- 1. Bootstrap lazy.nvim + set leader (must be first)
@@ -59,6 +59,8 @@ vim.api.nvim_create_autocmd("User", {
 })
 
 -- 10. Version stamp (for :Health and debug output)
--- v2.3.4: keymaps.lua duplicate maps removed; dap.lua handlers fix;
---         lsp.lua mason double-attach fix; docs updated.
-vim.g.nvim_ide_version = "2.3.4"
+-- v2.3.6: version stamp corrected (was stale at 2.3.4 while codebase was
+--         already at 2.3.5); harpoon/todo-comments pcall guards added;
+--         blink.cmp C-p/C-n "show" fallback leak fixed; dap.lua
+--         mason-nvim-dap "python" → "debugpy" package name corrected.
+vim.g.nvim_ide_version = "2.3.6"

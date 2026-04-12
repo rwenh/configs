@@ -22,6 +22,13 @@
 --     default adapter handlers — no adapters get auto-configured. The correct
 --     form to get mason-nvim-dap's built-in default handler for every installed
 --     adapter is to omit the handlers key entirely (or set it to nil). Removed.
+--
+-- FIX (v2.3.6):
+--   • mason-nvim-dap ensure_installed listed "python" — the Mason registry
+--     package name is "debugpy". The wrong name caused mason-nvim-dap to warn
+--     on every startup that the package was not found, and the Python DAP
+--     adapter was never auto-installed. This was a known issue since v2.2.4;
+--     the fix is a single token change.
 
 return {
   {
@@ -390,11 +397,15 @@ return {
     "jay-babu/mason-nvim-dap.nvim",
     dependencies = { "mason.nvim", "nvim-dap" },
     opts = {
-      ensure_installed       = { "python", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
+      -- FIX (v2.3.6): "python" corrected to "debugpy".
+      -- "python" is not a Mason registry package name — the correct name is
+      -- "debugpy". This caused mason-nvim-dap to log a warning on every
+      -- startup and skip auto-installing the Python DAP adapter entirely.
+      -- Open since v2.2.4; single-token fix.
+      ensure_installed       = { "debugpy", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
-      -- FIX (v2.3.4): handlers key removed entirely.
-      -- handlers={} (empty table) suppresses ALL default adapter setup handlers,
-      -- meaning no adapters get auto-configured by mason-nvim-dap.
+      -- NOTE: handlers key intentionally absent.
+      -- handlers={} (empty table) suppresses ALL default adapter setup handlers.
       -- Omitting the key lets mason-nvim-dap run its built-in default handler
       -- for every installed adapter, which is the intended behaviour.
     },

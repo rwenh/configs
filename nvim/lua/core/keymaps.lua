@@ -42,6 +42,13 @@
 --     no extra plugin: tracks whether the current window is maximized via a
 --     window variable and calls wincmd = / wincmd | wincmd _ accordingly.
 --     This removes the undeclared dependency on szw/maximize.nvim or similar.
+--
+-- FIX (v2.3.6):
+--   • Harpoon keymaps wrapped in pcall. All six maps called require("harpoon")
+--     bare — if harpoon fails to load (lazy-load not yet triggered, Mason not
+--     done) pressing any <leader>h* / <M-1..4> key threw an unhandled stack
+--     trace. Consistent with the spectre/dap pcall pattern from v2.3.5.
+--   • todo-comments ]t / [t keymaps wrapped in pcall for the same reason.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -159,17 +166,6 @@ map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history
 -- plugin failed to load (missing adapter, Mason not done) these mappings used
 -- to throw unhandled errors. They now notify gracefully.
 -- ============================================================================
-
-local function dap_call(fn_str)
-  return function()
-    local ok, err = pcall(function()
-      load("return " .. fn_str)()()
-    end)
-    if not ok then
-      vim.notify("[dap] " .. tostring(err), vim.log.levels.ERROR)
-    end
-  end
-end
 
 -- Simpler inline pcall wrappers for the common calls:
 map("n", "<leader>;b", function()
@@ -341,22 +337,36 @@ end, { desc = "Replace in file" })
 
 -- ============================================================================
 -- HARPOON
+-- FIX (v2.3.6): All harpoon keymaps were calling require("harpoon") bare.
+-- harpoon is lazy-loaded (event=VeryLazy); pressing any of these keys before
+-- that event fired threw an unhandled "module not found" stack trace.
+-- Consistent with the spectre/dap pcall pattern introduced in v2.3.5.
 -- ============================================================================
 
-map("n", "<leader>ha", function() require("harpoon"):list():add() end,
-  { desc = "Harpoon add" })
-map("n", "<leader>hm", function()
-  require("harpoon").ui:toggle_quick_menu(require("harpoon"):list())
-end, { desc = "Harpoon menu" })
-map("n", "<leader>h1", function() require("harpoon"):list():select(1) end, { desc = "Harpoon 1" })
-map("n", "<leader>h2", function() require("harpoon"):list():select(2) end, { desc = "Harpoon 2" })
-map("n", "<leader>h3", function() require("harpoon"):list():select(3) end, { desc = "Harpoon 3" })
-map("n", "<leader>h4", function() require("harpoon"):list():select(4) end, { desc = "Harpoon 4" })
+local function harpoon_call(fn)
+  return function()
+    local ok, h = pcall(require, "harpoon")
+    if ok then
+      pcall(fn, h)
+    else
+      vim.notify("[harpoon] not loaded — try :Lazy load harpoon", vim.log.levels.WARN)
+    end
+  end
+end
 
-map("n", "<M-1>", function() require("harpoon"):list():select(1) end, opts)
-map("n", "<M-2>", function() require("harpoon"):list():select(2) end, opts)
-map("n", "<M-3>", function() require("harpoon"):list():select(3) end, opts)
-map("n", "<M-4>", function() require("harpoon"):list():select(4) end, opts)
+map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),
+  { desc = "Harpoon add" })
+map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end),
+  { desc = "Harpoon menu" })
+map("n", "<leader>h1", harpoon_call(function(h) h:list():select(1) end), { desc = "Harpoon 1" })
+map("n", "<leader>h2", harpoon_call(function(h) h:list():select(2) end), { desc = "Harpoon 2" })
+map("n", "<leader>h3", harpoon_call(function(h) h:list():select(3) end), { desc = "Harpoon 3" })
+map("n", "<leader>h4", harpoon_call(function(h) h:list():select(4) end), { desc = "Harpoon 4" })
+
+map("n", "<M-1>", harpoon_call(function(h) h:list():select(1) end), opts)
+map("n", "<M-2>", harpoon_call(function(h) h:list():select(2) end), opts)
+map("n", "<M-3>", harpoon_call(function(h) h:list():select(3) end), opts)
+map("n", "<M-4>", harpoon_call(function(h) h:list():select(4) end), opts)
 
 -- ============================================================================
 -- FLASH
@@ -395,10 +405,22 @@ map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
 
 -- ============================================================================
 -- TODO COMMENTS
+-- FIX (v2.3.6): require("todo-comments") was called bare. todo-comments loads
+-- on event=VeryLazy; pressing ]t / [t before that fired an unhandled stack
+-- trace. Wrapped with the same pcall pattern as spectre/dap/harpoon.
 -- ============================================================================
 
-map("n", "]t", function() require("todo-comments").jump_next() end, { desc = "Next todo" })
-map("n", "[t", function() require("todo-comments").jump_prev() end,  { desc = "Previous todo" })
+map("n", "]t", function()
+  local ok, tc = pcall(require, "todo-comments")
+  if ok then pcall(tc.jump_next)
+  else vim.notify("[todo-comments] not loaded", vim.log.levels.WARN) end
+end, { desc = "Next todo" })
+
+map("n", "[t", function()
+  local ok, tc = pcall(require, "todo-comments")
+  if ok then pcall(tc.jump_prev)
+  else vim.notify("[todo-comments] not loaded", vim.log.levels.WARN) end
+end, { desc = "Previous todo" })
 
 -- ============================================================================
 -- OVERSEER

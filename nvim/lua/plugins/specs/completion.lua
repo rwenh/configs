@@ -14,6 +14,16 @@
 --     it would jump the placeholder AND move the menu selection, producing
 --     unpredictable behaviour. Tab is now snippet-only; menu navigation is
 --     handled exclusively by <C-n>/<C-j> (down) and <C-p>/<C-k> (up).
+--
+-- FIX (v2.3.6):
+--   • <C-p>/<C-n>/<C-k>/<C-j> were mapped to { "select_prev/next", "show" }.
+--     The "show" action internally calls "fallback" when the completion menu
+--     is already visible — this reintroduced the native ins-completion popup
+--     (i-^P / i-^N) that the v2.3.4 fix intended to prevent. The comment on
+--     those lines claimed "fallback" was removed, but "show" smuggles it back.
+--     Fix: map to { "select_prev" } / { "select_next" } only. When the menu
+--     is closed these keys are no-ops inside blink — the user should press
+--     <C-Space> to open it. This is the unambiguous, conflict-free pattern.
 
 return {
   {
@@ -45,15 +55,15 @@ return {
         -- unambiguous and never conflict with snippet state.
         ["<Tab>"]     = { "snippet_forward", "fallback" },
         ["<S-Tab>"]   = { "snippet_backward", "fallback" },
-        -- FIX: removed "fallback" — it leaked to Vim native ins-completion
-        -- (i-^P/^N), opening a second competing menu when blink was active.
-        -- "show" opens the menu if it is currently closed, so the key is
-        -- always useful regardless of completion menu state.
-        ["<C-p>"]     = { "select_prev", "show" },
-        ["<C-n>"]     = { "select_next", "show" },
+        -- FIX (v2.3.6): "show" removed from nav keys. "show" calls "fallback"
+        -- internally when the menu is open, which re-invokes native i-^P/i-^N
+        -- and opens a second competing menu. Plain select_prev/next is the
+        -- correct approach — use <C-Space> to open the menu when closed.
+        ["<C-p>"]     = { "select_prev" },
+        ["<C-n>"]     = { "select_next" },
         -- Ergonomic aliases: same directional logic as Telescope / fzf.
-        ["<C-k>"]     = { "select_prev", "show" },
-        ["<C-j>"]     = { "select_next", "show" },
+        ["<C-k>"]     = { "select_prev" },
+        ["<C-j>"]     = { "select_next" },
         ["<C-b>"]     = { "scroll_documentation_up", "fallback" },
         ["<C-f>"]     = { "scroll_documentation_down", "fallback" },
       },
