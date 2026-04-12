@@ -191,13 +191,32 @@
     (insert (format "  Native comp jobs: %d\n" emacs-ide-native-comp-jobs))))
 
 (defun emacs-ide-diagnose--format-memory ()
-  "Format memory usage in human-readable format."
-  (let ((mem (memory-info)))
-    (if mem
-        (format "%.1f MB / %.1f MB"
-                (/ (float (car mem)) 1048576)
-                (/ (float (nth 1 mem)) 1048576))
-      "N/A")))
+  "Format memory usage in human-readable format.
+FIX-MEMORY-INFO: memory-info does not exist in Emacs. Use garbage-collect
+return value or process-attributes as a safe cross-platform alternative."
+  (condition-case nil
+      (let* ((mem-info (garbage-collect))
+             ;; mem-info is a list of (TYPE USED FREE) — sum the USED fields
+             ;; Each element: (TYPE SIZE-USED SIZE-FREE) where size is in bytes for
+             ;; conses/strings etc. Use memory-limit as a coarse total.
+             (limit-kb (memory-limit))
+             (used-kb  (if (fboundp 'emacs-pid)
+                           ;; Rough estimate via process memory on Linux
+                           (let ((statm (format "/proc/%d/statm" (emacs-pid))))
+                             (if (file-readable-p statm)
+                                 (with-temp-buffer
+                                   (insert-file-contents statm)
+                                   (* (string-to-number (car (split-string
+                                                               (buffer-string))))
+                                      4))   ; pages → KB (approx, 4KB pages)
+                               0))
+                           0)))
+        (if (> used-kb 0)
+            (format "~%d MB (limit %d MB)"
+                    (/ used-kb 1024)
+                    (/ limit-kb 1024))
+          (format "limit %d MB" (/ limit-kb 1024))))
+    (error "N/A")))
 
 ;; ============================================================================
 ;; CONFIGURATION VALIDATION
@@ -325,13 +344,27 @@
   (interactive)
   (let* ((core-loaded (featurep 'emacs-ide-config))
          (lsp-enabled (bound-and-true-p emacs-ide-lsp-enable))
-         (config-loaded (bound-and-true-p emacs-ide-config-loaded-p)))
-    
+         (config-loaded (bound-and-true-p emacs-ide-config-loaded-p))
+         ;; FIX-PKG-COUNT: package.el is disabled (package-enable-at-startup nil).
+         ;; package-activated-list is always empty. Use straight.el recipe cache.
+         (pkg-count (condition-case nil
+                        (cond
+                         ((and (boundp 'straight--recipe-cache)
+                               (hash-table-p straight--recipe-cache))
+                          (hash-table-count straight--recipe-cache))
+                         ((file-directory-p (expand-file-name
+                                             "straight/build" user-emacs-directory))
+                          (length (directory-files
+                                   (expand-file-name "straight/build"
+                                                     user-emacs-directory)
+                                   nil "^[^.]")))
+                         (t 0))
+                      (error 0))))
     (message "IDE Status: %s | LSP: %s | Config: %s | Packages: %d"
              (if core-loaded "✓" "✗")
              (if lsp-enabled "✓" "✗")
              (if config-loaded "✓" "✗")
-             (length package-activated-list))))
+             pkg-count)))
 
 (provide 'emacs-ide-diagnose)
 ;;; emacs-ide-diagnose.el ends here

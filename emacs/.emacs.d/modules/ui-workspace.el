@@ -159,12 +159,25 @@ FIX-SESSION-RESTORE: skips persp-switch to main when restore-session: true."
 ;; When switching Projectile projects, optionally switch to matching workspace
 ;; ============================================================================
 
-;; FIX-AUTO-SWITCH-CONFIG: read workspace.auto-switch from config.yml
-(defvar emacs-ide-workspace-auto-switch
-  (if (fboundp 'emacs-ide-config-get)
-      (emacs-ide-config-get 'workspace 'auto-switch t)
-    t)
-  "When non-nil, switching projects creates/switches a matching workspace.")
+;; FIX-AUTO-SWITCH-RELOAD: Separate defvar from config read so that:
+;; 1. defvar is never a no-op on reload (defvar is idempotent after first load).
+;; 2. The value is refreshed on every emacs-ide-config-reload via the hook.
+(defvar emacs-ide-workspace-auto-switch t
+  "When non-nil, switching projects creates/switches a matching workspace.
+Read from config.yml workspace.auto-switch; refreshed on config reload.")
+
+(defun emacs-ide-workspace--apply-auto-switch-config ()
+  "Re-read workspace.auto-switch from config.yml and update the defvar.
+FIX-AUTO-SWITCH-RELOAD: called at load time and on every config reload."
+  (setq emacs-ide-workspace-auto-switch
+        (if (fboundp 'emacs-ide-config-get)
+            (emacs-ide-config-get 'workspace 'auto-switch t)
+          t)))
+
+(with-eval-after-load 'emacs-ide-config
+  (emacs-ide-workspace--apply-auto-switch-config))
+(add-hook 'emacs-ide-config-reload-hook
+          #'emacs-ide-workspace--apply-auto-switch-config)
 
 (defun emacs-ide-workspace-on-project-switch ()
   "Auto-create or switch to a workspace named after the project."

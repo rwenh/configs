@@ -197,9 +197,9 @@ Three sections:
                  ("C-c V i" emacs-ide-rest-insert-request)
                  ;; Diagnostics — C-c D prefix
                  ("C-c D d" emacs-ide-detect-show-status)
-                 ("C-c D s" profiler-start)
-                 ("C-c D r" profiler-report)
-                 ("C-c D q" profiler-stop)
+                 ("C-c D s" emacs-ide-profile-start)
+                 ("C-c D r" emacs-ide-profile-report)
+                 ("C-c D q" emacs-ide-profile-stop)
                  ;; Config reload — C-c R
                  ("C-c R"   emacs-ide-reload-config)
                  ;; Hydra menus — C-c h prefix

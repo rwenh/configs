@@ -83,8 +83,10 @@
     ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
     ("ESC" nil :color blue))
   
-  ;; Bind to C-c h d (using the renamed hydra)
-  (global-set-key (kbd "C-c h d") #'emacs-ide-hydra-debug/body))
+  ;; NOTE: C-c h d is intentionally NOT bound here.
+  ;; tools-hydra.el defines hydra-debug and binds C-c h d to hydra-debug/body.
+  ;; tools-hydra.el loads after debug-core.el so its binding wins.
+  ;; emacs-ide-hydra-debug/body is available as a standalone command via M-x.
 
 ;; ============================================================================
 ;; BREAKPOINT MANAGEMENT

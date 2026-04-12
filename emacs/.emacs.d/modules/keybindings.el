@@ -147,6 +147,26 @@
 ;; detect-show-status at C-c D d avoids command-vs-prefix conflict.
 (global-set-key (kbd "C-c D d") #'emacs-ide-detect-show-status)
 
+;; Profiler sub-keys — referenced in cheat sheet and spot-check.
+;; FIX-PROFILER-KEYS: these were documented but never actually bound.
+;; Bind to the wrapped profiler commands from emacs-ide-profiler.el
+;; which add state tracking; fall back to raw profiler-* if not loaded.
+(global-set-key (kbd "C-c D s")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-profile-start)
+        (emacs-ide-profile-start)
+      (profiler-start 'cpu+mem))))
+(global-set-key (kbd "C-c D r")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-profile-report)
+        (emacs-ide-profile-report)
+      (profiler-report))))
+(global-set-key (kbd "C-c D q")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-profile-stop)
+        (emacs-ide-profile-stop)
+      (profiler-stop))))
+
 ;; ============================================================================
 ;; UTILITY
 ;; ============================================================================

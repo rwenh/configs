@@ -154,7 +154,8 @@
 (add-to-list 'load-path emacs-ide-core-dir)
 (add-to-list 'load-path emacs-ide-lib-dir)
 (add-to-list 'load-path emacs-ide-modules-dir)
-(add-to-list 'load-path emacs-ide-langs-dir)   ; NEW: lazy lang modules
+(add-to-list 'load-path emacs-ide-langs-dir)   ; lazy lang modules
+(add-to-list 'load-path emacs-ide-root-dir)    ; FIX-MODULE-PATH: root-level modules
 
 (emacs-ide--track-phase "directory-setup")
 
@@ -396,13 +397,25 @@ and use-package :mode/:hook triggers. Zero boot cost for lang modules.")
     "Load feature MODULE-NAME with fallback.
 Uses load-file for the same reason as emacs-ide-load-core-module —
 bypasses featurep cache, native-comp .eln cache, and stale .elc files.
-load-file always evaluates the exact .el source file."
-    (let ((file (expand-file-name (concat module-name ".el") emacs-ide-modules-dir)))
+load-file always evaluates the exact .el source file.
+FIX-MODULE-PATH: Searches modules/ first, then project root, so files
+that live at root (core-dev, apheleia-langs-patch, tools-repl, etc.)
+are found without requiring them to be copied into modules/."
+    (let* ((file-in-modules (expand-file-name (concat module-name ".el")
+                                               emacs-ide-modules-dir))
+           (file-at-root    (expand-file-name (concat module-name ".el")
+                                               emacs-ide-root-dir))
+           (file (cond ((file-exists-p file-in-modules) file-in-modules)
+                       ((file-exists-p file-at-root)    file-at-root)
+                       (t nil))))
       (condition-case err
-          (progn
-            (load-file file)
-            (message "✓ Feature: %s" module-name)
-            t)
+          (if file
+              (progn
+                (load-file file)
+                (message "✓ Feature: %s" module-name)
+                t)
+            (warn "✗ Feature module file not found: %s" module-name)
+            nil)
         (error
          (warn "✗ Failed feature module %s: %s" module-name err)
          (when (fboundp 'emacs-ide-recovery-log-error)
