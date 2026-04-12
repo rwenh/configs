@@ -11,6 +11,8 @@
 ;;;   - FIX-DAP-UI-REQUIRE: dap-ui package definition moved inside :config
 ;;;     block and made optional. If dap-ui is not available, debugging still
 ;;;     works with dap-mode core.
+;;;   - FIX-PAREN: Closed with-eval-after-load 'hydra block that was
+;;;     accidentally left open, swallowing defuns and provide into its body.
 ;;; Code:
 
 (require 'cl-lib)
@@ -82,11 +84,12 @@
     ("5" (when (fboundp 'dap-debug)                (call-interactively #'dap-debug)))
     ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
     ("ESC" nil :color blue))
-  
+
   ;; NOTE: C-c h d is intentionally NOT bound here.
   ;; tools-hydra.el defines hydra-debug and binds C-c h d to hydra-debug/body.
   ;; tools-hydra.el loads after debug-core.el so its binding wins.
   ;; emacs-ide-hydra-debug/body is available as a standalone command via M-x.
+  ) ;; end with-eval-after-load 'hydra
 
 ;; ============================================================================
 ;; BREAKPOINT MANAGEMENT
