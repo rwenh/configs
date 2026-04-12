@@ -1,30 +1,11 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (audit):
-;;;   - FIX-VERSION: Header bumped from 3.0.2 to 3.0.4.
-;;;   - FIX-UNDO-TREE-DEMAND: undo-tree changed from :defer t to :demand t
-;;;     and activated directly in :config instead of after-init-hook.
-;;;     With :defer t the package may not have loaded when after-init-hook
-;;;     fires, making (fboundp 'global-undo-tree-mode) return nil silently
-;;;     — same class of bug as the ligature fix in ui-core.el.
-;;;   - FIX-MEOW-IF: use-package meow :if condition simplified — the
-;;;     emacs-ide-meow-enabled clause is always nil at load time (defvar
-;;;     defaults to nil), so only the config-data clause ever fired. The
-;;;     redundant first clause removed; condition now only reads config.
-;;;   - FIX-HELPFUL-NOTE: Comment added documenting that helpful C-h
-;;;     bindings may be overwritten by keybindings.el (loads last).
-;;; Fixes vs 3.0.2 (retained):
-;;;   - FIX-MEOW-KEY: assoc uses symbol keys 'editing/'meow.
-;;;   - FIX-9: duplicate electric-pair-mode removed.
-;;;   - FIX-10: duplicate dumb-jump block removed.
+;;; Version: 3.0.4-patched
+;;; Startup fix: smartparens and undo-tree deferred via :hook instead of :demand.
 ;;; Code:
 
 ;; ============================================================================
-;; BASIC EDITING MODES (unchanged)
-;; FIX-9: electric-pair-mode removed here — init.el core-settings block
-;;   already enables it. Calling it twice is harmless but redundant.
+;; BASIC EDITING MODES
 ;; ============================================================================
 (delete-selection-mode 1)
 (global-auto-revert-mode 1)
@@ -38,22 +19,14 @@
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 
 ;; ============================================================================
-;; MEOW — OPTIONAL EMACS-NATIVE MODAL EDITING
-;; NOT Vim. Meow is built around Emacs idioms:
-;;   - NORMAL mode: single-char selection movements (w e b f t)
-;;   - INSERT mode: full Emacs key bindings (C-x C-s etc unchanged)
-;;   - No Evil, no Vim muscle memory required
-;;   - C-c / C-x / C-h fully preserved in all modes
-;; Enable: set editing.meow: true in config.yml
+;; MEOW — OPTIONAL MODAL EDITING
 ;; ============================================================================
 (defun emacs-ide-meow-setup ()
-  "Configure Meow with Emacs-native bindings. Called only if enabled."
+  "Configure Meow with Emacs-native bindings."
   (when (fboundp 'meow-global-mode)
     (meow-global-mode 1)
-    ;; Meow leader key — replaces the need for Vim leader
     (setq meow-use-clipboard t
           meow-expand-hint-remove-delay 1.5)
-    ;; Normal mode movement (Emacs-style, not Vim-style)
     (meow-normal-define-key
      '("0" . meow-expand-0) '("1" . meow-expand-1) '("2" . meow-expand-2)
      '("3" . meow-expand-3) '("4" . meow-expand-4) '("5" . meow-expand-5)
@@ -103,13 +76,13 @@
       (progn
         (when (fboundp 'meow-global-mode) (meow-global-mode -1))
         (setq emacs-ide-meow-enabled nil)
-        (message "Meow disabled — back to standard Emacs editing"))
+        (message "Meow disabled"))
     (if (require 'meow nil 'noerror)
         (progn
           (emacs-ide-meow-setup)
           (setq emacs-ide-meow-enabled t)
-          (message "Meow enabled — Emacs-native modal editing"))
-      (message "Meow not installed. Add it via M-x emacs-ide-install-meow"))))
+          (message "Meow enabled"))
+      (message "Meow not installed. Run M-x emacs-ide-install-meow"))))
 
 (defun emacs-ide-install-meow ()
   "Install Meow via straight.el."
@@ -118,10 +91,6 @@
     (straight-use-package 'meow)
     (message "Meow installed. Run M-x emacs-ide-toggle-meow to enable.")))
 
-;; Auto-enable Meow if config.yml has editing.meow: true
-;; FIX-MEOW-KEY: YAML parser interns keys as symbols, not strings.
-;; Changed (assoc "editing" ...) → (assoc 'editing ...) and
-;;         (assoc "meow" ...)    → (assoc 'meow ...) in both places.
 (with-eval-after-load 'emacs-ide-config
   (when (and (boundp 'emacs-ide-config-data)
              (let ((editing (cdr (assoc 'editing emacs-ide-config-data))))
@@ -132,9 +101,6 @@
                   (emacs-ide-meow-setup)
                   (setq emacs-ide-meow-enabled t))))))
 
-;; FIX-MEOW-IF: removed emacs-ide-meow-enabled clause — it is always nil
-;; at load time (defvar default), so only the config-data clause ever fired.
-;; The redundant first clause added unnecessary confusion.
 (use-package meow
   :if (and (boundp 'emacs-ide-config-data)
            (let ((e (cdr (assoc 'editing emacs-ide-config-data))))
@@ -142,9 +108,10 @@
   :defer t)
 
 ;; ============================================================================
-;; SMARTPARENS (unchanged from 2.2.3)
+;; SMARTPARENS — deferred; hook-based activation, not :demand
 ;; ============================================================================
 (use-package smartparens
+  :defer t
   :hook ((prog-mode text-mode) . smartparens-mode)
   :bind (:map smartparens-mode-map
               ("C-M-f" . sp-forward-sexp)   ("C-M-b" . sp-backward-sexp)
@@ -166,14 +133,11 @@
   (sp-local-pair 'markdown-mode "```" "```"))
 
 ;; ============================================================================
-;; UNDO-TREE
-;; FIX-UNDO-TREE-DEMAND: changed from :defer t + after-init-hook to
-;; :demand t + :config activation. With :defer t the package may not have
-;; loaded when after-init-hook fires, making (fboundp ...) return nil
-;; silently — same class of bug as the ligature fix in ui-core.el.
+;; UNDO-TREE — deferred via hook, not :demand
 ;; ============================================================================
 (use-package undo-tree
-  :demand t
+  :defer t
+  :hook ((prog-mode text-mode) . undo-tree-mode)
   :init
   (setq undo-tree-visualizer-diff       t
         undo-tree-visualizer-timestamps t
@@ -184,29 +148,33 @@
          ("C-?"   . undo-tree-redo)
          ("C-x u" . undo-tree-visualize))
   :config
+  ;; global mode only if hook-based activation is insufficient
   (when (fboundp 'global-undo-tree-mode)
     (global-undo-tree-mode 1)))
 
 ;; ============================================================================
-;; MULTIPLE CURSORS (unchanged)
+;; MULTIPLE CURSORS
 ;; ============================================================================
 (use-package multiple-cursors
+  :defer t
   :bind (("C->"   . mc/mark-next-like-this)
          ("C-<"   . mc/mark-previous-like-this)
          ("C-c m" . mc/mark-all-like-this)
          ("C-S-c C-S-c" . mc/edit-lines)))
 
 ;; ============================================================================
-;; EXPAND REGION (unchanged)
+;; EXPAND REGION
 ;; ============================================================================
 (use-package expand-region
+  :defer t
   :bind (("C-="   . er/expand-region)
          ("C--"   . er/contract-region)))
 
 ;; ============================================================================
-;; AVY — CHAR-BASED NAVIGATION (unchanged)
+;; AVY
 ;; ============================================================================
 (use-package avy
+  :defer t
   :bind (("C-:"   . avy-goto-char)
          ("C-'"   . avy-goto-char-2)
          ("M-g f" . avy-goto-line)
@@ -221,19 +189,18 @@
         avy-timeout-seconds 0.3))
 
 ;; ============================================================================
-;; MOVE-TEXT (unchanged)
+;; MOVE-TEXT
 ;; ============================================================================
 (use-package move-text
+  :defer t
   :bind (("M-<up>"   . move-text-up)
          ("M-<down>" . move-text-down)))
 
 ;; ============================================================================
 ;; HELPFUL
-;; FIX-HELPFUL-NOTE: These C-h bindings may be overwritten by keybindings.el
-;; which loads last and wins for global keys. If helpful commands are not
-;; reachable via C-h, check keybindings.el for conflicting bindings.
 ;; ============================================================================
 (use-package helpful
+  :defer t
   :bind (("C-h f" . helpful-callable)
          ("C-h v" . helpful-variable)
          ("C-h k" . helpful-key)
@@ -242,7 +209,7 @@
          ("C-h d" . helpful-at-point)))
 
 ;; ============================================================================
-;; OLIVETTI — FOCUSED WRITING MODE (new in 3.0)
+;; OLIVETTI
 ;; ============================================================================
 (use-package olivetti
   :defer t
@@ -250,24 +217,18 @@
   :commands olivetti-mode)
 
 ;; ============================================================================
-;; SURROUND (without Evil)
+;; SURROUND
 ;; ============================================================================
 (use-package surround
+  :defer t
   :bind-keymap ("M-'" . surround-keymap))
 
 ;; ============================================================================
-;; WGREP — EDITABLE GREP RESULTS (unchanged)
+;; WGREP
 ;; ============================================================================
 (use-package wgrep
+  :defer t
   :init (setq wgrep-auto-save-buffer t))
-
-;; ============================================================================
-;; DUMB-JUMP — definition jumping without LSP
-;; FIX-10: Block removed. tools-lsp.el is the canonical owner of dumb-jump
-;;   (it is an LSP fallback). Having it here AND in tools-lsp.el caused
-;;   dumb-jump-xref-activate to be added to xref-backend-functions twice,
-;;   running on every xref lookup twice. Configure dumb-jump in tools-lsp.el.
-;; ============================================================================
 
 (provide 'editing-core)
 ;;; editing-core.el ends here

@@ -1,38 +1,12 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; RECALIBRATED 3.0.1: nerd-icons demand flag added + font installation check
-;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (audit):
-;;;   - FIX-VERSION: Header bumped from 3.0.1 to 3.0.4.
-;;;   - FIX-PMODE-NAME: emacs-ide-presentation-mode variable renamed to
-;;;     emacs-ide-presentation-mode--active to eliminate the confusing
-;;;     name collision between the defvar and the defun (both were named
-;;;     emacs-ide-presentation-mode). Variable and function occupy separate
-;;;     namespaces so it did not crash, but was extremely misleading.
-;;;   - FIX-LINE-NUMBERS-CONFIG: global-display-line-numbers-mode and
-;;;     display-line-numbers-type now read features.line-numbers and
-;;;     features.relative-line-numbers from config.yml. Previously
-;;;     hardcoded regardless of user configuration.
-;;;   - FIX-FONT-CHECK-TTY: nerd-icons font availability check now guarded
-;;;     with (display-graphic-p) — font-family-list returns nil on TTY,
-;;;     causing a spurious warning on every TTY startup.
-;;;   - FIX-MODELINE-CONFIG: doom-modeline activation now checks
-;;;     features.modeline from config.yml. Previously activated
-;;;     unconditionally, ignoring the modeline: config option.
-;;;   - FIX-FEATURE-FLAGS: beacon, dimmer, pulsar, highlight-indent-guides,
-;;;     and which-key activation now read their respective config.yml
-;;;     features.* flags instead of always activating unconditionally.
-;;;   - FIX-EMOJI-FONT: set-fontset-font for Noto Color Emoji now wrapped
-;;;     in a font-family-list availability check.
-;;;   - FIX-LIGATURE-DEMAND: ligature changed from :defer t to :demand t
-;;;     so global-ligature-mode activates reliably in after-init-hook.
-;;; Fixes vs 3.0.1 (retained):
-;;;   - nerd-icons :demand t so dashboard can render icons at startup.
+;;; Version: 3.0.4-patched
+;;; Startup fix: neotree deferred; ligature :demand removed (hook-based);
+;;; beacon/dimmer/pulsar/highlight-indent-guides/which-key all deferred.
 ;;; Code:
 
 ;; ============================================================================
-;; UI CLEANUP (unchanged from 2.2.5)
+;; UI CLEANUP
 ;; ============================================================================
 (when (fboundp 'menu-bar-mode)     (menu-bar-mode   -1))
 (when (fboundp 'tool-bar-mode)     (tool-bar-mode   -1))
@@ -49,7 +23,7 @@
       inhibit-startup-echo-area-message t)
 
 ;; ============================================================================
-;; THEME — EF-THEMES (replaces modus-themes)
+;; THEME — EF-THEMES
 ;; ============================================================================
 (use-package ef-themes
   :demand t
@@ -83,39 +57,37 @@
        (load-theme 'ef-dark t)))))
 
 ;; ============================================================================
-;; ICONS — NERD-ICONS (RECALIBRATED 3.0.1)
-;; CRITICAL FIX: Changed :defer t to :demand t so nerd-icons loads BEFORE
-;; dashboard attempts to render. Dashboard startup banner needs icons available.
-;; Also removed :if (display-graphic-p) from main package (kept in extensions).
+;; ICONS — NERD-ICONS
+;; :demand t kept — dashboard needs icons at startup
 ;; ============================================================================
 (use-package nerd-icons
-  :demand t  ;; RECALIBRATED: Was :defer t, changed to :demand t
+  :demand t
   :init
   (setq nerd-icons-font-family "Symbols Nerd Font Mono")
   :config
-  ;; FIX-FONT-CHECK-TTY: guard with display-graphic-p — font-family-list
-  ;; returns nil on TTY, causing a spurious warning on every TTY startup
-  ;; even when fonts are correctly installed for GUI sessions.
   (when (display-graphic-p)
     (unless (member "Symbols Nerd Font Mono" (font-family-list))
-      (message "⚠️  nerd-icons: 'Symbols Nerd Font Mono' not found. Run: M-x nerd-icons-install-fonts"))))
+      (message "⚠️  nerd-icons: run M-x nerd-icons-install-fonts"))))
 
 (use-package nerd-icons-dired
   :if (display-graphic-p)
+  :defer t
   :hook (dired-mode . nerd-icons-dired-mode))
 
 (use-package nerd-icons-completion
   :if (display-graphic-p)
   :after (nerd-icons marginalia)
+  :defer t
   :config (nerd-icons-completion-mode 1))
 
 (use-package nerd-icons-corfu
   :if (display-graphic-p)
   :after (nerd-icons corfu)
+  :defer t
   :config (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
 
 ;; ============================================================================
-;; FONTS & LIGATURES (unchanged from 2.2.5, nerd-icons aware)
+;; FONTS & LIGATURES
 ;; ============================================================================
 (when (display-graphic-p)
   (setq frame-resize-pixelwise  t
@@ -142,9 +114,8 @@
           (set-face-attribute 'variable-pitch nil :font "Cantarell-11"))
     (error nil))
 
-  ;; FIX-LIGATURE-DEMAND: :demand t so global-ligature-mode is available
-  ;; in after-init-hook. With :defer t the package may not have loaded yet.
-  (use-package ligature :demand t)
+  ;; Ligatures — deferred to after-init; no :demand needed
+  (use-package ligature :defer t)
   (add-hook 'after-init-hook
             (lambda ()
               (when (fboundp 'ligature-set-ligatures)
@@ -156,12 +127,11 @@
                 (global-ligature-mode t))))
 
   (when (fboundp 'set-fontset-font)
-    ;; FIX-EMOJI-FONT: guard with font availability check
     (when (member "Noto Color Emoji" (font-family-list))
       (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))))
 
 ;; ============================================================================
-;; SMOOTH SCROLLING (Emacs 29+ pixel precision)
+;; SMOOTH SCROLLING
 ;; ============================================================================
 (when (fboundp 'pixel-scroll-precision-mode)
   (pixel-scroll-precision-mode 1)
@@ -171,8 +141,6 @@
 
 ;; ============================================================================
 ;; LINE NUMBERS
-;; FIX-LINE-NUMBERS-CONFIG: read features.line-numbers and
-;; features.relative-line-numbers from config.yml instead of hardcoding.
 ;; ============================================================================
 (let ((line-nums-on (if (fboundp 'emacs-ide-config-get)
                         (emacs-ide-config-get 'features 'line-numbers t)
@@ -205,14 +173,11 @@
 
 ;; ============================================================================
 ;; DOOM-MODELINE
-;; FIX-MODELINE-CONFIG: check features.modeline from config.yml before
-;; activating. Previously activated unconditionally regardless of config.
 ;; ============================================================================
 (use-package doom-modeline
+  :defer t
   :init
-  (setq doom-modeline-height                  (or (and (fboundp 'emacs-ide-config-get)
-                                                       (emacs-ide-config-get 'features 'modeline-height 30))
-                                                  30)
+  (setq doom-modeline-height                  30
         doom-modeline-bar-width               4
         doom-modeline-icon                    t
         doom-modeline-major-mode-icon         t
@@ -246,13 +211,22 @@
         " — Emacs IDE"))
 
 ;; ============================================================================
-;; VISUAL ENHANCEMENTS (unchanged from 2.2.5, deferred)
+;; VISUAL ENHANCEMENTS — all deferred
 ;; ============================================================================
-(use-package rainbow-delimiters :hook (prog-mode . rainbow-delimiters-mode))
-(use-package rainbow-mode       :hook (prog-mode . rainbow-mode))
-(use-package highlight-numbers  :hook (prog-mode . highlight-numbers-mode))
+(use-package rainbow-delimiters
+  :defer t
+  :hook (prog-mode . rainbow-delimiters-mode))
+
+(use-package rainbow-mode
+  :defer t
+  :hook (prog-mode . rainbow-mode))
+
+(use-package highlight-numbers
+  :defer t
+  :hook (prog-mode . highlight-numbers-mode))
 
 (use-package hl-todo
+  :defer t
   :hook (prog-mode . hl-todo-mode)
   :init
   (setq hl-todo-keyword-faces
@@ -262,6 +236,7 @@
           ("BUG"        . "#ff6c6b") ("OPTIMIZE"   . "#51afef")
           ("PERF"       . "#51afef") ("REVIEW"     . "#c678dd"))))
 
+;; beacon, dimmer, pulsar — deferred; activated at idle after init
 (use-package beacon
   :defer t
   :init (setq beacon-blink-when-focused t beacon-size 40))
@@ -275,9 +250,9 @@
   :init (setq pulsar-pulse t pulsar-delay 0.055 pulsar-iterations 10
               pulsar-face 'pulsar-magenta pulsar-highlight-face 'pulsar-yellow))
 
+;; Activate optional visual modes after startup to keep boot fast
 (add-hook 'after-init-hook
           (lambda ()
-            ;; FIX-FEATURE-FLAGS: read config.yml features.* flags before activating
             (let ((cfg (lambda (key) (if (fboundp 'emacs-ide-config-get)
                                         (emacs-ide-config-get 'features key t)
                                       t))))
@@ -288,8 +263,8 @@
               (when (and (funcall cfg 'pulsar) (fboundp 'pulsar-global-mode))
                 (pulsar-global-mode 1)))))
 
-;; FIX-FEATURE-FLAGS: only hook when features.highlight-indent-guides: true
 (use-package highlight-indent-guides
+  :defer t
   :if (or (not (fboundp 'emacs-ide-config-get))
           (emacs-ide-config-get 'features 'highlight-indent-guides t))
   :hook (prog-mode . highlight-indent-guides-mode)
@@ -299,7 +274,7 @@
         highlight-indent-guides-delay         0))
 
 ;; ============================================================================
-;; WHICH-KEY (unchanged from 2.2.5, deferred)
+;; WHICH-KEY — deferred
 ;; ============================================================================
 (use-package which-key
   :defer t
@@ -315,16 +290,16 @@
 
 (add-hook 'after-init-hook
           (lambda ()
-            ;; FIX-FEATURE-FLAGS: check features.which-key from config.yml
             (when (and (fboundp 'which-key-mode)
                        (or (not (fboundp 'emacs-ide-config-get))
                            (emacs-ide-config-get 'features 'which-key t)))
               (which-key-mode 1))))
 
 ;; ============================================================================
-;; WINDOW MANAGEMENT (unchanged)
+;; WINDOW MANAGEMENT
 ;; ============================================================================
 (use-package ace-window
+  :defer t
   :init
   (setq aw-keys            '(?a ?s ?d ?f ?g ?h ?j ?k ?l)
         aw-scope           'frame
@@ -334,14 +309,17 @@
 (winner-mode 1)
 
 (use-package transpose-frame
+  :defer t
   :bind (("C-c w t" . transpose-frame)
          ("C-c w f" . flip-frame)
          ("C-c w r" . rotate-frame-clockwise)))
 
 ;; ============================================================================
-;; NEOTREE
+;; NEOTREE — deferred, loads only on first toggle
 ;; ============================================================================
 (use-package neotree
+  :defer t
+  :commands (neotree-toggle neotree)
   :init
   (setq neo-smart-open            t
         neo-theme                 (if (display-graphic-p) 'nerd 'arrow)
@@ -353,13 +331,16 @@
 ;; ============================================================================
 ;; DIRED
 ;; ============================================================================
-(use-package diredfl :hook (dired-mode . diredfl-mode))
+(use-package diredfl
+  :defer t
+  :hook (dired-mode . diredfl-mode))
 
 ;; ============================================================================
 ;; ANSI COLOR IN COMPILATION
 ;; ============================================================================
 (use-package ansi-color
   :straight nil
+  :defer t
   :config
   (add-hook 'compilation-filter-hook
             (lambda ()
@@ -370,16 +351,18 @@
 ;; VISUAL FILL COLUMN
 ;; ============================================================================
 (use-package visual-fill-column
+  :defer t
   :init
   (setq visual-fill-column-width       120
         visual-fill-column-center-text nil)
   :hook ((org-mode markdown-mode) . visual-fill-column-mode))
 
 ;; ============================================================================
-;; TAB BAR (workspaces shown via ui-workspace.el)
+;; TAB BAR
 ;; ============================================================================
 (use-package tab-bar
   :straight nil
+  :defer t
   :init
   (setq tab-bar-show              1
         tab-bar-close-button-show nil
@@ -392,15 +375,12 @@
 
 ;; ============================================================================
 ;; PRESENTATION MODE
-;; FIX-PMODE-NAME: variable renamed from emacs-ide-presentation-mode to
-;; emacs-ide-presentation-mode--active to eliminate the confusing name
-;; collision with the interactive function of the same name.
 ;; ============================================================================
 (defvar emacs-ide-presentation-mode--active nil
   "Non-nil when presentation mode is active.")
 
 (defun emacs-ide-presentation-mode ()
-  "Toggle presentation mode (larger font for screen sharing)."
+  "Toggle presentation mode."
   (interactive)
   (if emacs-ide-presentation-mode--active
       (progn (set-face-attribute 'default nil :height 110)
