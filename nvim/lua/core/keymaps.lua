@@ -47,7 +47,7 @@
 --     trace. Consistent with the spectre/dap pcall pattern from v2.3.5.
 --   • todo-comments ]t / [t keymaps wrapped in pcall for the same reason.
 --
--- FIX (v2.3.7):
+-- FIX (v2.3.8):
 --   • Overseer duplicate maps removed. <leader>ot, <leader>or, and <leader>ob
 --     are all owned by workflow.lua's keys= table, which also handles lazy-
 --     loading and the smart run_template fallback for <leader>ob. Having them
@@ -421,7 +421,7 @@ end, { desc = "Previous todo" })
 
 -- ============================================================================
 -- OVERSEER
--- FIX (v2.3.7): All three overseer maps (<leader>ot, <leader>or, <leader>ob)
+-- FIX (v2.3.8): All three overseer maps (<leader>ot, <leader>or, <leader>ob)
 -- removed from this file. They are owned by workflow.lua's keys= table, which
 -- also handles lazy-loading and the smart run_template fallback for <leader>ob.
 -- Having them here too caused:

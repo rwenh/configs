@@ -1,4 +1,4 @@
--- ~/.config/nvim/init.lua  — v2.3.6 entry point
+-- ~/.config/nvim/init.lua  — v2.3.8 entry point
 -- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
 
 -- 1. Bootstrap lazy.nvim + set leader (must be first)
@@ -59,8 +59,8 @@ vim.api.nvim_create_autocmd("User", {
 })
 
 -- 10. Version stamp (for :Health and debug output)
--- v2.3.6: version stamp corrected (was stale at 2.3.4 while codebase was
---         already at 2.3.5); harpoon/todo-comments pcall guards added;
---         blink.cmp C-p/C-n "show" fallback leak fixed; dap.lua
---         mason-nvim-dap "python" → "debugpy" package name corrected.
-vim.g.nvim_ide_version = "2.3.6"
+-- v2.3.8: neotest-vitest raw module bug fixed (same class as neotest-go/elixir);
+--         runner.lua run_tests() now cd's to project root for python/rust/go/zig;
+--         keymaps.lua/treesitter.lua FIX comment versions recalibrated;
+--         KEYMAP_REFERENCE.md header bumped; <leader>sm description corrected.
+vim.g.nvim_ide_version = "2.3.8"

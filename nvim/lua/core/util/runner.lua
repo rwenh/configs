@@ -22,6 +22,12 @@
 --     "cd <root> && " prefix, consistent with kotlin/java entries.
 --   • detect_js_test_cmd: also check for bun.lock (text lockfile added in
 --     Bun v1.1) alongside bun.lockb (binary lockfile).
+--
+-- FIX (v2.3.8):
+--   • run_tests() python/rust/go/zig: these commands also need to run from
+--     the project root. pytest needs pyproject.toml/setup.cfg; cargo test
+--     needs Cargo.toml; go test needs go.mod; zig build test needs build.zig.
+--     Added "cd <root> && " prefix consistent with ruby/elixir/kotlin/java.
 
 local M = {}
 
@@ -365,9 +371,12 @@ function M.run_tests()
   local escaped_root = vim.fn.shellescape(root)
 
   local test_commands = {
-    python     = "pytest",
-    rust       = "cargo test",
-    go         = "go test ./...",
+    -- FIX (v2.3.8): cd prefix added for python/rust/go/zig so they pick up
+    -- their project config files (pyproject.toml, Cargo.toml, go.mod,
+    -- build.zig) regardless of the shell's working directory at invocation.
+    python     = "cd " .. escaped_root .. " && pytest",
+    rust       = "cd " .. escaped_root .. " && cargo test",
+    go         = "cd " .. escaped_root .. " && go test ./...",
     javascript = detect_js_test_cmd(root),
     typescript = detect_js_test_cmd(root),
     -- FIX: add cd prefix so rspec/mix pick up their config from project root.
@@ -379,7 +388,7 @@ function M.run_tests()
     java = vim.fn.filereadable(root .. "/gradlew") == 1
       and "cd " .. escaped_root .. " && ./gradlew test"
       or  "cd " .. escaped_root .. " && mvn test",
-    zig = "zig build test",
+    zig = "cd " .. escaped_root .. " && zig build test",
   }
 
   local cmd = test_commands[ft]

@@ -1,4 +1,4 @@
-# NEOVIM KEYMAP REFERENCE — v2.3.4
+# NEOVIM KEYMAP REFERENCE — v2.3.8
 
 ## LEADER KEY
 Space (` `)
@@ -22,7 +22,7 @@ Space (` `)
 - `<leader>sh` — Horizontal split
 - `<leader>se` — Equal splits
 - `<leader>sx` — Close split
-- `<leader>sm` — Maximize split
+- `<leader>sm` — Maximize/restore split *(native Lua toggle, no plugin)*
 - `Ctrl+h/j/k/l` — Navigate splits
 - `Ctrl+arrows` — Resize splits
 

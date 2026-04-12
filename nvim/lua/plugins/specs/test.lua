@@ -21,6 +21,13 @@
 --     neotest-elixir v0.2+ exports a callable constructor. Changed to
 --     require("neotest-elixir")({}) to match the documented API and the
 --     pattern used by every other adapter in this file.
+--
+-- FIX (v2.3.8):
+--   • neotest-vitest was returned as a raw module (same class of bug as
+--     neotest-go/elixir). neotest-vitest exports a callable; not invoking it
+--     silently gave neotest an invalid adapter object and Vitest tests never
+--     ran. Fixed: require("neotest-vitest")({}) consistent with all other
+--     adapters in this file.
 
 return {
   {
@@ -125,7 +132,11 @@ return {
         },
         {
           "neotest-vitest",
-          function() return require("neotest-vitest") end,
+          -- FIX (v2.3.8): neotest-vitest exports a constructor, not a plain
+          -- table. Returning the raw module silently gave neotest an invalid
+          -- adapter; Vitest tests never ran. Same fix as neotest-go (v2.3.2)
+          -- and neotest-elixir (v2.3.5).
+          function() return require("neotest-vitest")({}) end,
         },
         {
           "neotest-jest",
