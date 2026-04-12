@@ -27,9 +27,6 @@
 --       <leader>.p / .r      → git.lua (gitsigns on_attach, buffer-local)
 --                              Global versions fired in non-git buffers — wrong.
 --       <leader>.B           → hud.lua (blame.nvim keys=)
---   • <leader>ob overseer fallback block was copy-pasted from workflow.lua and
---     would silently diverge on future changes. Replaced with <cmd>OverseerRun<cr>
---     which is sufficient here; workflow.lua keys= handles the smart fallback.
 --
 -- FIX (v2.3.5):
 --   • Spectre keymaps now wrapped in pcall — require("spectre") was called bare.
@@ -49,6 +46,14 @@
 --     done) pressing any <leader>h* / <M-1..4> key threw an unhandled stack
 --     trace. Consistent with the spectre/dap pcall pattern from v2.3.5.
 --   • todo-comments ]t / [t keymaps wrapped in pcall for the same reason.
+--
+-- FIX (v2.3.7):
+--   • Overseer duplicate maps removed. <leader>ot, <leader>or, and <leader>ob
+--     are all owned by workflow.lua's keys= table, which also handles lazy-
+--     loading and the smart run_template fallback for <leader>ob. Having them
+--     here too caused which-key to list each entry twice and silently overwrote
+--     workflow.lua's smart <leader>ob with a plain OverseerRun call depending
+--     on registration order. All three removed; workflow.lua is sole owner.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -167,7 +172,14 @@ map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history
 -- to throw unhandled errors. They now notify gracefully.
 -- ============================================================================
 
--- Simpler inline pcall wrappers for the common calls:
+local function dap_fn(method)
+  return function()
+    local ok, dap = pcall(require, "dap")
+    if ok then pcall(dap[method])
+    else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+  end
+end
+
 map("n", "<leader>;b", function()
   local ok, dap = pcall(require, "dap")
   if ok then pcall(dap.toggle_breakpoint)
@@ -246,15 +258,6 @@ map("n", "<leader>;p", function()
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Debug preview" })
 
--- F-key aliases (same pcall pattern)
-local function dap_fn(method)
-  return function()
-    local ok, dap = pcall(require, "dap")
-    if ok then pcall(dap[method])
-    else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-  end
-end
-
 map("n", "<F5>",  dap_fn("continue"),        { desc = "Continue" })
 map("n", "<F6>",  dap_fn("toggle_breakpoint"),{ desc = "Toggle breakpoint" })
 map("n", "<F7>",  dap_fn("step_into"),        { desc = "Step into" })
@@ -272,7 +275,6 @@ map("n", "<leader>'r", function()
 end, { desc = "Run file" })
 
 map("x", "<leader>'s", function()
-  -- Evaluate visual marks while still in (or just exited) visual mode.
   local s = vim.fn.line("'<")
   local e = vim.fn.line("'>")
   pcall(function() require("core.util.runner").run_selection(s, e) end)
@@ -337,10 +339,7 @@ end, { desc = "Replace in file" })
 
 -- ============================================================================
 -- HARPOON
--- FIX (v2.3.6): All harpoon keymaps were calling require("harpoon") bare.
--- harpoon is lazy-loaded (event=VeryLazy); pressing any of these keys before
--- that event fired threw an unhandled "module not found" stack trace.
--- Consistent with the spectre/dap pcall pattern introduced in v2.3.5.
+-- FIX (v2.3.6): All harpoon keymaps wrapped in pcall.
 -- ============================================================================
 
 local function harpoon_call(fn)
@@ -405,9 +404,7 @@ map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
 
 -- ============================================================================
 -- TODO COMMENTS
--- FIX (v2.3.6): require("todo-comments") was called bare. todo-comments loads
--- on event=VeryLazy; pressing ]t / [t before that fired an unhandled stack
--- trace. Wrapped with the same pcall pattern as spectre/dap/harpoon.
+-- FIX (v2.3.6): require("todo-comments") was called bare. Wrapped in pcall.
 -- ============================================================================
 
 map("n", "]t", function()
@@ -424,15 +421,15 @@ end, { desc = "Previous todo" })
 
 -- ============================================================================
 -- OVERSEER
--- FIX: <leader>ob fallback block was a copy-paste of workflow.lua logic.
---   Any future change to the fallback in workflow.lua would silently diverge.
---   Replaced with a plain OverseerRun which opens the picker — sufficient
---   for a global keymap. workflow.lua keys= handles the smart template logic.
+-- FIX (v2.3.7): All three overseer maps (<leader>ot, <leader>or, <leader>ob)
+-- removed from this file. They are owned by workflow.lua's keys= table, which
+-- also handles lazy-loading and the smart run_template fallback for <leader>ob.
+-- Having them here too caused:
+--   1. which-key to list each entry twice under <leader>o.
+--   2. <leader>ob silently overwriting workflow.lua's smart build logic with a
+--      plain OverseerRun call depending on which registration ran last.
+-- workflow.lua keys= is now the sole owner of all <leader>o* overseer maps.
 -- ============================================================================
-
-map("n", "<leader>ot", "<cmd>OverseerToggle<cr>", { desc = "Task list" })
-map("n", "<leader>or", "<cmd>OverseerRun<cr>",    { desc = "Run task" })
-map("n", "<leader>ob", "<cmd>OverseerRun<cr>",    { desc = "Build" })
 
 -- ============================================================================
 -- OIL

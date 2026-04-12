@@ -18,6 +18,15 @@
 --     Fortran owns <leader>ft* (build/check/make); TODOs move to <leader>xT
 --     which fits naturally alongside the other utils under <leader>x*.
 --     KEYMAP_REFERENCE.md should be updated: "Find TODOs" → <leader>xT.
+--
+-- FIX (v2.3.7):
+--   • mini.animate: require("mini.animate") was called inside opts=function(),
+--     which lazy evaluates at spec-parse time — before mini.animate is installed
+--     or loaded. On a fresh install this caused a startup error. Fixed by moving
+--     the animate.gen_timing / gen_subscroll calls into a config() function that
+--     runs only after the plugin is confirmed loaded. The mouse_scrolled closure
+--     is also created there so it stays co-located with the subscroll predicate
+--     that references it.
 
 return {
 
@@ -273,10 +282,22 @@ return {
     },
   },
 
+  -- FIX (v2.3.7): mini.animate moved from opts=function() to config().
+  -- opts=function() is evaluated at spec-parse time (lazy startup), before
+  -- mini.animate is installed. require("mini.animate") inside opts therefore
+  -- fails on first install with "module not found". The mouse_scrolled closure
+  -- and all animate.gen_* calls are now inside config() which only runs after
+  -- the plugin is confirmed present and loaded.
   {
     "echasnovski/mini.animate",
     event = "VeryLazy",
-    opts  = function()
+    config = function()
+      local ok, animate = pcall(require, "mini.animate")
+      if not ok then
+        vim.notify("mini.animate failed to load", vim.log.levels.WARN)
+        return
+      end
+
       local mouse_scrolled = false
       for _, scroll in ipairs({ "Up", "Down" }) do
         local key = "<ScrollWheel" .. scroll .. ">"
@@ -285,8 +306,8 @@ return {
           return key
         end, { expr = true })
       end
-      local animate = require("mini.animate")
-      return {
+
+      animate.setup({
         resize = { timing = animate.gen_timing.linear({ duration = 50, unit = "total" }) },
         open   = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
         close  = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
@@ -304,7 +325,7 @@ return {
             end,
           }),
         },
-      }
+      })
     end,
   },
 

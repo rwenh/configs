@@ -11,6 +11,13 @@
 --     configs.setup() table. The dead key was removed; fold setup moved to
 --     options.lua (foldmethod="expr", foldexpr via autocmd on BufReadPost).
 --   • vim parser still explicitly ignored (broken query on 0.11.x).
+--
+-- FIX (v2.3.7):
+--   • "comment" removed from ignore_install. The comment treesitter parser is
+--     used by todo-comments.nvim for multiline TODO detection (editor.lua sets
+--     multiline=true) and by noice.nvim's long_message_to_split preset. Ignoring
+--     it silently disabled multiline todo highlighting with no error or warning.
+--     Only "vim" remains in ignore_install (broken highlight query on 0.11.x).
 
 return {
   {
@@ -55,11 +62,16 @@ return {
         "kotlin", "vhdl", "java", "scala",
         "swift", "r", "perl", "php",
         "dart", "vue", "svelte",
+        -- comment parser: needed by todo-comments.nvim (multiline) and noice
+        "comment",
       },
 
       auto_install   = true,
       sync_install   = false,
-      ignore_install = { "comment", "vim" },
+      -- FIX (v2.3.7): "comment" removed — it is required by todo-comments.nvim
+      -- and noice.nvim. Only "vim" remains: its highlights query references a
+      -- non-existent node type on Neovim 0.11.x and must be suppressed.
+      ignore_install = { "vim" },
 
       highlight = {
         enable  = true,

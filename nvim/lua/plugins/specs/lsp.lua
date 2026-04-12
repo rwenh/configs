@@ -34,6 +34,13 @@
 --     `lsp_format = "fallback"`. The `format_on_save` closure was already
 --     updated in v2.3.4 but the inline fmt() and visual format calls were
 --     missed. Both are now updated to `lsp_format = "fallback"` for consistency.
+--
+-- FIX (v2.3.7):
+--   • elixir-ls added to mason-lspconfig ensure_installed. elixir.lua disables
+--     elixirls inside elixir-tools with the comment "lsp.lua owns elixirls",
+--     but elixir-ls was never in ensure_installed — Elixir had no LSP unless
+--     the user ran :MasonInstall manually. Added "elixir-ls" to ensure_installed
+--     and added an elixirls entry in the servers table so lsp_setup() wires it.
 
 return {
   {
@@ -54,6 +61,10 @@ return {
         "kotlin_language_server",
         "zls",
         "tailwindcss",
+        -- FIX (v2.3.7): elixir-ls added. elixir.lua sets elixirls.enable=false
+        -- inside elixir-tools so that lsp.lua is the sole owner of the server.
+        -- Without this entry the server was never auto-installed.
+        "elixir-ls",
       },
       automatic_installation = true,
       -- FIX (v2.3.4): suppress mason-lspconfig's default handler.
@@ -240,6 +251,19 @@ return {
         },
         solargraph = {
           settings = { solargraph = { diagnostics = true, completion = true } },
+        },
+        -- FIX (v2.3.7): elixir-ls wired here. elixir.lua sets
+        -- elixirls.enable=false inside elixir-tools so this is the sole owner.
+        elixirls = {
+          cmd = { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" },
+          settings = {
+            elixirLS = {
+              dialyzerEnabled    = true,
+              fetchDeps          = false,
+              enableTestLenses   = true,
+              suggestSpecs       = true,
+            },
+          },
         },
         tailwindcss            = {},
         html                   = {},
