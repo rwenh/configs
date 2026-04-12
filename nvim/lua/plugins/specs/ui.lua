@@ -795,11 +795,14 @@ return {
         "╚══════════════════════════════════════════════════════════════╝",
       }
       local LOGO_ROWS   = #LOGO_LINES
-      local LOGO_WIDTH  = #LOGO_LINES[1]   -- byte width (ASCII box chars = 3 bytes each in UTF-8!)
-      -- Since box-drawing chars are multi-byte, we track decoded progress in
-      -- terms of *display columns* (i.e., character count per line).
-      -- For simplicity we use a single "reveal cursor" that advances left→right,
-      -- top→bottom across the character grid.
+      -- FIX (v2.3.5): LOGO_WIDTH removed — it used Lua's # operator which
+      -- returns byte length, not display columns. Box-drawing chars are 3 bytes
+      -- each in UTF-8, so #LOGO_LINES[1] ≈ 130-160, not 64. The variable was
+      -- never read (all decode logic uses LOGO_COLS_DISPLAY below), so it was
+      -- dead misleading code. Removed entirely.
+      --
+      -- We track decoded progress in terms of *display columns* (character
+      -- count per line). A single reveal cursor advances left→right, top→bottom.
 
       -- Total "cells" = LOGO_ROWS * max_char_count_per_line
       -- We approximate each line as 64 display cells (the logo is 64 wide).
@@ -998,7 +1001,8 @@ return {
           paint_rain(sl, cm, R_ROWS, R_COLS, nil)
           paint_refl(R_ROWS, R_COLS)
 
-          -- Fade the window via winblend (0=opaque .. 100=transparent)
+          -- Fade out: blend 0→100 as alpha 1→0 (chars go from fully visible to gone).
+          -- winblend=0 was set in trigger_drain() so the first frame has no flash.
           local blend = math.floor((1.0 - alpha) * 100)
           if _rwin and vim.api.nvim_win_is_valid(_rwin) then
             pcall(function()
@@ -1068,6 +1072,21 @@ return {
         if _phase ~= "rain" and _phase ~= "decode" then return end
         _phase = "drain"
         _drain_start = vim.uv.hrtime() / 1e6
+
+        -- FIX (v2.3.5): reset winblend to 0 at drain start.
+        -- During rain the main float is created with winblend=100 (transparent
+        -- background, fg characters visible). The drain frame() loop ramps
+        -- blend from 0→100 (chars fade from fully visible to invisible).
+        -- Without this reset, the first drain frame snaps winblend from 100→0
+        -- causing a one-frame dark-green background flash before the fade
+        -- actually begins. Resetting to 0 here makes the transition seamless.
+        if _rwin and vim.api.nvim_win_is_valid(_rwin) then
+          pcall(function() vim.wo[_rwin].winblend = 0 end)
+        end
+        if _xwin and vim.api.nvim_win_is_valid(_xwin) then
+          pcall(function() vim.wo[_xwin].winblend = 0 end)
+        end
+
         -- Switch to fast drain timer
         if _timer then
           pcall(function() _timer:stop(); _timer:close() end)
@@ -1185,7 +1204,7 @@ return {
       -- Plain static string — no function, avoids the dashboard.lua:382 crash.
       -- The rain float (zindex 190-200) overlays this from above with the
       -- animated decode + logo hl. After drain the snacks buffer is visible.
-      local ver = tostring(vim.g.nvim_ide_version or "2.3.0")
+      local ver = tostring(vim.g.nvim_ide_version or "2.3.5")
       local LOGO_HEADER = table.concat({
         "╔══════════════════════════════════════════════════════════════╗",
         "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",

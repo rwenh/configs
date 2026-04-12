@@ -7,6 +7,12 @@
 --       "vhdl-ls" → "rust_hdl" (correct Mason package name for the vhdl_ls server)
 --       "kotlin-debug-adapter" → removed (not in Mason registry; Kotlin DAP uses
 --         java-debug-adapter via jdtls, which is already in the list)
+--
+-- FIX (v2.3.5):
+--   • :Format command used `lsp_fallback = true` — conform v6 renamed this option
+--     to `lsp_format = "fallback"`. The old key was silently ignored, meaning LSP
+--     fallback formatting never fired for filetypes not in formatters_by_ft.
+--     Updated both the ranged and whole-buffer call sites.
 
 local cmd = vim.api.nvim_create_user_command
 
@@ -40,6 +46,7 @@ end, { desc = "Show health status" })
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- FORMAT
+-- FIX (v2.3.5): lsp_fallback = true → lsp_format = "fallback" (conform v6 API).
 -- ═══════════════════════════════════════════════════════════════════════════
 
 cmd("Format", function(opts)
@@ -54,7 +61,7 @@ cmd("Format", function(opts)
     local end_col  = #vim.fn.getline(end_line)
     pcall(function()
       conform.format({
-        lsp_fallback = true,
+        lsp_format = "fallback",
         range = {
           start   = { opts.line1, 0 },
           ["end"] = { end_line, end_col },
@@ -62,7 +69,7 @@ cmd("Format", function(opts)
       })
     end)
   else
-    pcall(function() conform.format({ lsp_fallback = true }) end)
+    pcall(function() conform.format({ lsp_format = "fallback" }) end)
   end
 end, { range = true, desc = "Format file or range" })
 

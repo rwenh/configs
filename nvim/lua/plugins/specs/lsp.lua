@@ -27,6 +27,13 @@
 --     responses, doubled rename operations. Providing an empty no-op function
 --     as the default handler disables mason-lspconfig's auto-attach while
 --     leaving lsp.lua as the sole owner of server initialisation.
+--
+-- FIX (v2.3.5):
+--   • conform.format() calls inside fmt() and the LspAttach format handler used
+--     the old conform v5 key `lsp_fallback = true`. conform v6 renamed this to
+--     `lsp_format = "fallback"`. The `format_on_save` closure was already
+--     updated in v2.3.4 but the inline fmt() and visual format calls were
+--     missed. Both are now updated to `lsp_format = "fallback"` for consistency.
 
 return {
   {
@@ -155,9 +162,12 @@ return {
             end
           end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
 
+          -- FIX (v2.3.5): lsp_fallback → lsp_format. conform v6 renamed the
+          -- option; using the old key silently disables LSP fallback formatting
+          -- for filetypes not listed in formatters_by_ft.
           local function fmt()
             pcall(function()
-              require("conform").format({ bufnr = e.buf, lsp_fallback = true })
+              require("conform").format({ bufnr = e.buf, lsp_format = "fallback" })
             end)
           end
           map("<leader>,f", fmt, "Format")
@@ -308,6 +318,7 @@ return {
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
           return nil
         end
+        -- lsp_format (conform v6 API) replaces the old lsp_fallback boolean
         return { timeout_ms = 500, lsp_format = "fallback" }
       end,
     },

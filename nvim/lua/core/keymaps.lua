@@ -30,6 +30,18 @@
 --   • <leader>ob overseer fallback block was copy-pasted from workflow.lua and
 --     would silently diverge on future changes. Replaced with <cmd>OverseerRun<cr>
 --     which is sufficient here; workflow.lua keys= handles the smart fallback.
+--
+-- FIX (v2.3.5):
+--   • Spectre keymaps now wrapped in pcall — require("spectre") was called bare.
+--     spectre only loads on :Spectre (cmd=); pressing the keymap before that
+--     threw an unhandled "module not found" error.
+--   • DAP keymaps — all inline require("dap") / require("dapui") calls wrapped
+--     in pcall. If DAP fails to load (Mason not yet installed, codelldb missing)
+--     the keymap now notifies gracefully instead of throwing a stack trace.
+--   • <leader>sm (MaximizerToggle) replaced with a native Lua toggle that needs
+--     no extra plugin: tracks whether the current window is maximized via a
+--     window variable and calls wincmd = / wincmd | wincmd _ accordingly.
+--     This removes the undeclared dependency on szw/maximize.nvim or similar.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -57,11 +69,24 @@ map("n", "<leader>ww", "<cmd>w<cr>",   { desc = "Save" })
 map("n", "<leader>qq", "<cmd>q<cr>",   { desc = "Quit" })
 map("n", "<leader>qa", "<cmd>qa<cr>",  { desc = "Quit all" })
 
-map("n", "<leader>sv", "<cmd>vsplit<cr>",          { desc = "Vertical split" })
-map("n", "<leader>sh", "<cmd>split<cr>",           { desc = "Horizontal split" })
-map("n", "<leader>se", "<C-w>=",                   { desc = "Equal splits" })
-map("n", "<leader>sx", "<cmd>close<cr>",           { desc = "Close split" })
-map("n", "<leader>sm", "<cmd>MaximizerToggle<cr>", { desc = "Maximize split" })
+map("n", "<leader>sv", "<cmd>vsplit<cr>", { desc = "Vertical split" })
+map("n", "<leader>sh", "<cmd>split<cr>",  { desc = "Horizontal split" })
+map("n", "<leader>se", "<C-w>=",          { desc = "Equal splits" })
+map("n", "<leader>sx", "<cmd>close<cr>",  { desc = "Close split" })
+
+-- FIX (v2.3.5): <leader>sm no longer depends on MaximizerToggle (no plugin
+-- was ever specced for it). Replaced with a native toggle: first press fills
+-- the screen; second press restores equal splits. Uses a window-local flag
+-- so multiple windows can each track their own state independently.
+map("n", "<leader>sm", function()
+  if vim.w._maximized then
+    vim.w._maximized = false
+    vim.cmd("wincmd =")
+  else
+    vim.w._maximized = true
+    vim.cmd("wincmd | wincmd _")
+  end
+end, { desc = "Maximize / restore split" })
 
 -- NOTE: <C-j>/<C-k> are normal-mode only here. completion.lua maps them in
 -- insert-mode only (via blink.cmp's InsertEnter event). No conflict.
@@ -129,49 +154,137 @@ map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history
 
 -- ============================================================================
 -- DEBUG (DAP)
+-- FIX (v2.3.5): All require("dap") / require("dapui") calls now wrapped in
+-- pcall. DAP only loads on the keys= triggers declared in dap.lua; if the
+-- plugin failed to load (missing adapter, Mason not done) these mappings used
+-- to throw unhandled errors. They now notify gracefully.
 -- ============================================================================
 
-map("n", "<leader>;b", "<cmd>lua require('dap').toggle_breakpoint()<cr>",
-  { desc = "Toggle breakpoint" })
+local function dap_call(fn_str)
+  return function()
+    local ok, err = pcall(function()
+      load("return " .. fn_str)()()
+    end)
+    if not ok then
+      vim.notify("[dap] " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end
+end
+
+-- Simpler inline pcall wrappers for the common calls:
+map("n", "<leader>;b", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.toggle_breakpoint)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Toggle breakpoint" })
+
 map("n", "<leader>;B", function()
-  require("dap").set_breakpoint(vim.fn.input("Breakpoint condition: "))
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.set_breakpoint, vim.fn.input("Breakpoint condition: "))
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Conditional breakpoint" })
+
 map("n", "<leader>;l", function()
-  require("dap").set_breakpoint(nil, nil, vim.fn.input("Log point message: "))
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.set_breakpoint, nil, nil, vim.fn.input("Log point message: "))
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Log point" })
 
-map("n", "<leader>;c", "<cmd>lua require('dap').continue()<cr>",       { desc = "Continue/Start" })
-map("n", "<leader>;i", "<cmd>lua require('dap').step_into()<cr>",      { desc = "Step into" })
-map("n", "<leader>;o", "<cmd>lua require('dap').step_over()<cr>",      { desc = "Step over" })
-map("n", "<leader>;O", "<cmd>lua require('dap').step_out()<cr>",       { desc = "Step out" })
-map("n", "<leader>;r", "<cmd>lua require('dap').repl.toggle()<cr>",    { desc = "Toggle REPL" })
-map("n", "<leader>;L", "<cmd>lua require('dap').run_last()<cr>",       { desc = "Run last" })
-map("n", "<leader>;t", "<cmd>lua require('dapui').toggle()<cr>",       { desc = "Toggle debug UI" })
-map("n", "<leader>;x", "<cmd>lua require('dap').terminate()<cr>",      { desc = "Terminate debug" })
-map("n", "<leader>;h", "<cmd>lua require('dap.ui.widgets').hover()<cr>",   { desc = "Debug hover" })
-map("n", "<leader>;p", "<cmd>lua require('dap.ui.widgets').preview()<cr>", { desc = "Debug preview" })
+map("n", "<leader>;c", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.continue)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Continue/Start" })
 
-map("n", "<F5>",  "<cmd>lua require('dap').continue()<cr>",         { desc = "Continue" })
-map("n", "<F6>",  "<cmd>lua require('dap').toggle_breakpoint()<cr>",{ desc = "Toggle breakpoint" })
-map("n", "<F7>",  "<cmd>lua require('dap').step_into()<cr>",        { desc = "Step into" })
-map("n", "<F8>",  "<cmd>lua require('dap').step_over()<cr>",        { desc = "Step over" })
-map("n", "<F9>",  "<cmd>lua require('dap').step_out()<cr>",         { desc = "Step out" })
-map("n", "<F10>", "<cmd>lua require('dap').run_to_cursor()<cr>",    { desc = "Run to cursor" })
-map("n", "<F11>", "<cmd>lua require('dap').terminate()<cr>",        { desc = "Terminate" })
+map("n", "<leader>;i", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.step_into)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Step into" })
+
+map("n", "<leader>;o", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.step_over)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Step over" })
+
+map("n", "<leader>;O", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.step_out)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Step out" })
+
+map("n", "<leader>;r", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(function() dap.repl.toggle() end)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Toggle REPL" })
+
+map("n", "<leader>;L", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.run_last)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Run last" })
+
+map("n", "<leader>;t", function()
+  local ok, dapui = pcall(require, "dapui")
+  if ok then pcall(dapui.toggle)
+  else vim.notify("[dap] nvim-dap-ui not loaded", vim.log.levels.WARN) end
+end, { desc = "Toggle debug UI" })
+
+map("n", "<leader>;x", function()
+  local ok, dap = pcall(require, "dap")
+  if ok then pcall(dap.terminate)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Terminate debug" })
+
+map("n", "<leader>;h", function()
+  local ok, widgets = pcall(require, "dap.ui.widgets")
+  if ok then pcall(widgets.hover)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Debug hover" })
+
+map("n", "<leader>;p", function()
+  local ok, widgets = pcall(require, "dap.ui.widgets")
+  if ok then pcall(widgets.preview)
+  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+end, { desc = "Debug preview" })
+
+-- F-key aliases (same pcall pattern)
+local function dap_fn(method)
+  return function()
+    local ok, dap = pcall(require, "dap")
+    if ok then pcall(dap[method])
+    else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
+  end
+end
+
+map("n", "<F5>",  dap_fn("continue"),        { desc = "Continue" })
+map("n", "<F6>",  dap_fn("toggle_breakpoint"),{ desc = "Toggle breakpoint" })
+map("n", "<F7>",  dap_fn("step_into"),        { desc = "Step into" })
+map("n", "<F8>",  dap_fn("step_over"),        { desc = "Step over" })
+map("n", "<F9>",  dap_fn("step_out"),         { desc = "Step out" })
+map("n", "<F10>", dap_fn("run_to_cursor"),    { desc = "Run to cursor" })
+map("n", "<F11>", dap_fn("terminate"),        { desc = "Terminate" })
 
 -- ============================================================================
 -- RUN & TEST
 -- ============================================================================
 
-map("n", "<leader>'r", "<cmd>lua require('core.util.runner').run_file()<cr>",
-  { desc = "Run file" })
+map("n", "<leader>'r", function()
+  pcall(function() require("core.util.runner").run_file() end)
+end, { desc = "Run file" })
 
-map("x", "<leader>'s",
-  ":<C-u>lua require('core.util.runner').run_selection(vim.fn.line(\"'<\"), vim.fn.line(\"'>\"))<CR>",
-  { desc = "Run selection" })
+map("x", "<leader>'s", function()
+  -- Evaluate visual marks while still in (or just exited) visual mode.
+  local s = vim.fn.line("'<")
+  local e = vim.fn.line("'>")
+  pcall(function() require("core.util.runner").run_selection(s, e) end)
+end, { desc = "Run selection" })
 
-map("n", "<leader>'t", "<cmd>lua require('core.util.runner').run_tests()<cr>",
-  { desc = "Run tests" })
+map("n", "<leader>'t", function()
+  pcall(function() require("core.util.runner").run_tests() end)
+end, { desc = "Run tests" })
 
 -- ============================================================================
 -- TERMINAL
@@ -203,14 +316,28 @@ map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",
 
 -- ============================================================================
 -- SEARCH & REPLACE
+-- FIX (v2.3.5): require("spectre") was called bare — spectre only loads on
+-- :Spectre (cmd=). Pressing these before that event threw an unhandled
+-- "module not found" error. All three handlers now use pcall.
 -- ============================================================================
 
-map("n", "<leader>/s", function() require("spectre").open() end,
-  { desc = "Search & replace" })
-map("n", "<leader>/w", function() require("spectre").open_visual({ select_word = true }) end,
-  { desc = "Replace word" })
-map("n", "<leader>/f", function() require("spectre").open_file_search() end,
-  { desc = "Replace in file" })
+map("n", "<leader>/s", function()
+  local ok, spectre = pcall(require, "spectre")
+  if ok then pcall(spectre.open)
+  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
+end, { desc = "Search & replace" })
+
+map("n", "<leader>/w", function()
+  local ok, spectre = pcall(require, "spectre")
+  if ok then pcall(spectre.open_visual, { select_word = true })
+  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
+end, { desc = "Replace word" })
+
+map("n", "<leader>/f", function()
+  local ok, spectre = pcall(require, "spectre")
+  if ok then pcall(spectre.open_file_search)
+  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
+end, { desc = "Replace in file" })
 
 -- ============================================================================
 -- HARPOON

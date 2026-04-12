@@ -13,6 +13,14 @@
 --     the module itself rather than the adapter object, so Go tests silently
 --     never run through neotest. Fixed: require("neotest-go")({}) to invoke
 --     the constructor with an empty opts table (all defaults).
+--
+-- FIX (v2.3.5):
+--   • neotest-elixir was returned as a raw module table (same class of bug as
+--     neotest-go in v2.3.2). The comment claimed it "exports a plain table
+--     adapter (no constructor)" — this was true of older versions but
+--     neotest-elixir v0.2+ exports a callable constructor. Changed to
+--     require("neotest-elixir")({}) to match the documented API and the
+--     pattern used by every other adapter in this file.
 
 return {
   {
@@ -95,8 +103,7 @@ return {
         -- neotest-rust is intentionally absent here — registered in config() above
         {
           "neotest-go",
-          -- FIX: was `return require("neotest-go")` (returned the module table).
-          -- neotest-go exports a constructor; it must be called to produce the
+          -- neotest-go exports a constructor; must be called to produce the
           -- adapter object. Passing {} uses all defaults.
           function() return require("neotest-go")({}) end,
         },
@@ -110,9 +117,11 @@ return {
         },
         {
           "neotest-elixir",
-          -- neotest-elixir also exports a plain table adapter (no constructor),
-          -- so returning the module directly is correct here.
-          function() return require("neotest-elixir") end,
+          -- FIX (v2.3.5): neotest-elixir v0.2+ exports a constructor, not a
+          -- plain table. Calling it with {} produces the proper adapter object.
+          -- Returning the raw module silently gave neotest an invalid adapter
+          -- and Elixir tests never ran through neotest.
+          function() return require("neotest-elixir")({}) end,
         },
         {
           "neotest-vitest",
