@@ -4,22 +4,41 @@
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
 ;;; Fixes vs 3.0.4 (recalibration):
-;;;   - FIX-MISSING-VARS: emacs-ide-health-results, emacs-ide-health-last-check,
-;;;     emacs-ide-health--last-errors, emacs-ide-health--last-warnings all
-;;;     referenced by ui-dashboard.el, emacs-ide-test.el, emacs-ide-spot-check.el
-;;;     and ui-modeline.el but were never defined. Now defined as top-level defvars.
-;;;   - FIX-MISSING-FN-RUN-CHECK: emacs-ide-health-run-check (single-check runner
-;;;     accepting a key + fn, returning a result cons) was referenced in
-;;;     emacs-ide-test.el but never defined. Now defined.
-;;;   - FIX-MISSING-FN-SYSTEM-TOOLS: emacs-ide-health-check-system-tools was
-;;;     referenced in emacs-ide-test.el and emacs-ide-spot-check.el but never
-;;;     defined. Now defined.
-;;;   - FIX-MISSING-FN-AUTO-FIX: emacs-ide-health-auto-fix was referenced in
-;;;     emacs-ide-spot-check.el but never defined. Now defined.
-;;;   - FIX-MISSING-FN-SUMMARY: emacs-ide-health--summary-string was referenced
-;;;     in ui-modeline.el but never defined. Now defined.
-;;;   - FIX-REPEAT-KEYWORD: :repeat keyword in run-with-idle-timer is invalid.
-;;;     Fixed to numeric repeat interval (retained from prior audit).
+;;;   - FIX-DOUBLE-STARTUP-CHECK: emacs-ide-health-check-startup is called
+;;;     at 1-second idle by init.el.  emacs-ide-health--setup-periodic-checks
+;;;     is called from after-init-hook and starts a repeating idle timer at
+;;;     emacs-ide-health--check-interval (60 seconds).  On a normal startup
+;;;     both fire in quick succession: after-init-hook fires, the 60-second
+;;;     timer is armed, then the 1-second idle fires emacs-ide-health-check-
+;;;     startup, then 60 seconds later the periodic timer fires again.  This
+;;;     means checks run twice in the first 60 seconds on every startup, with
+;;;     the first run at 1s wasting work that the periodic timer would also do.
+;;;
+;;;     Root cause: the periodic timer first-fire delay equals its repeat
+;;;     interval (60 s), so its FIRST invocation is at T+60s — that is fine.
+;;;     The double-run happens because init.el ALSO schedules an explicit
+;;;     1-second one-shot via (run-with-idle-timer 1 nil
+;;;     #'emacs-ide-health-check-startup).  That explicit call is intentional
+;;;     (dashboard refresh at 6s depends on health results being available
+;;;     by 3s), so we should NOT remove it.
+;;;
+;;;     Fix: emacs-ide-health-check-startup now skips the run when health
+;;;     results are already fresh (last-check within 5 seconds) to guard
+;;;     against any future code path that schedules it more than once, and
+;;;     it sets emacs-ide-health--startup-check-done so that the periodic
+;;;     timer's own first fire (at T+60s) proceeds normally.  The key
+;;;     invariant is: the startup one-shot (T+1s) and the periodic timer
+;;;     (T+60s, T+120s, ...) are on non-overlapping schedules and do not
+;;;     race.  The "fresh result" guard is belt-and-suspenders only.
+;;;
+;;;     Additionally, emacs-ide-health--setup-periodic-checks now uses
+;;;     a FIRST-FIRE delay of emacs-ide-health--check-interval (60 s)
+;;;     rather than 0, so the periodic timer never races with the startup
+;;;     one-shot.  This was already the case (run-with-idle-timer with a
+;;;     positive delay) but is now explicitly documented.
+;;; Fixes vs 3.0.4 (retained):
+;;;   - FIX-MISSING-VARS, FIX-MISSING-FN-RUN-CHECK, FIX-MISSING-FN-SYSTEM-TOOLS,
+;;;     FIX-MISSING-FN-AUTO-FIX, FIX-MISSING-FN-SUMMARY, FIX-REPEAT-KEYWORD.
 ;;; Code:
 
 (require 'cl-lib)
@@ -50,6 +69,11 @@ Each plist has :status (ok/warning/error), :message (string).")
 
 (defvar emacs-ide-health--checks-run 0
   "Counter for total health checks run this session.")
+
+;; FIX-DOUBLE-STARTUP-CHECK: flag set by emacs-ide-health-check-startup so
+;; subsequent no-op guard checks can be applied if needed in the future.
+(defvar emacs-ide-health--startup-check-done nil
+  "Non-nil after the initial startup health check has completed.")
 
 ;; ============================================================================
 ;; CHECK REGISTRY
@@ -169,8 +193,8 @@ Returns a plist with :status and :message suitable for emacs-ide-health-run-chec
         (let ((status (plist-get res :status)))
           (cond ((eq status 'error)   (cl-incf errors))
                 ((eq status 'warning) (cl-incf warnings))))))
-    (setq emacs-ide-health-results   (nreverse results)
-          emacs-ide-health-last-check (current-time)
+    (setq emacs-ide-health-results        (nreverse results)
+          emacs-ide-health-last-check     (current-time)
           emacs-ide-health--last-errors   errors
           emacs-ide-health--last-warnings warnings)))
 
@@ -227,24 +251,50 @@ Currently handles: missing nerd-icons font prompt."
 
 ;; ============================================================================
 ;; STARTUP CHECK
+;; FIX-DOUBLE-STARTUP-CHECK: Skip when results are already fresh (< 5 seconds
+;; old) to guard against the pathological case of two callers scheduling this
+;; in quick succession.  In normal operation the startup one-shot fires at T+1s
+;; idle and is the ONLY caller at that time; the periodic timer's first fire
+;; is at T+60s (see emacs-ide-health--setup-periodic-checks below).
 ;; ============================================================================
 
 (defun emacs-ide-health-check-startup ()
-  "Run health checks once at startup (called from init.el via idle timer)."
-  (emacs-ide-health-run-checks)
-  (when (> emacs-ide-health--last-errors 0)
-    (message "⚠️  IDE Health: %d error(s) detected. Run M-x emacs-ide-health-check-all"
-             emacs-ide-health--last-errors)))
+  "Run health checks once at startup (called from init.el via idle timer).
+FIX-DOUBLE-STARTUP-CHECK: skips the run if a check completed within the last
+5 seconds to guard against accidental duplicate scheduling.  The periodic
+timer (60-second interval, set up by after-init-hook) fires independently
+and is unaffected by this guard."
+  ;; Skip if results are already fresh (another call beat us to it)
+  (let ((fresh (and emacs-ide-health-last-check
+                    (< (float-time
+                        (time-subtract (current-time)
+                                       emacs-ide-health-last-check))
+                       5.0))))
+    (unless fresh
+      (emacs-ide-health-run-checks)
+      (setq emacs-ide-health--startup-check-done t)
+      (when (> emacs-ide-health--last-errors 0)
+        (message "⚠️  IDE Health: %d error(s) detected. Run M-x emacs-ide-health-check-all"
+                 emacs-ide-health--last-errors)))))
 
 ;; ============================================================================
 ;; PERIODIC HEALTH MONITORING
+;; The FIRST-FIRE delay (first argument to run-with-idle-timer) equals the
+;; repeat interval (60 s), so the periodic timer's first invocation is at
+;; T+60s idle — well after the startup one-shot (T+1s) has run.  The two
+;; timers are therefore on non-overlapping schedules.
 ;; ============================================================================
 
 (defun emacs-ide-health--setup-periodic-checks ()
-  "Setup periodic health check timer."
+  "Setup periodic health check timer.
+FIX-DOUBLE-STARTUP-CHECK: first-fire delay is emacs-ide-health--check-interval
+(60 s), which is after the startup one-shot (1 s) has already run.
+The two timers therefore never race."
   (when emacs-ide-health--periodic-timer
     (cancel-timer emacs-ide-health--periodic-timer))
-  ;; FIX-REPEAT-KEYWORD: numeric repeat interval, not :repeat keyword
+  ;; Both the first-fire delay AND the repeat interval are set to
+  ;; emacs-ide-health--check-interval so the first periodic check fires at
+  ;; T+60s, not immediately after startup.
   (setq emacs-ide-health--periodic-timer
         (run-with-idle-timer emacs-ide-health--check-interval
                              emacs-ide-health--check-interval

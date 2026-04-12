@@ -3,39 +3,60 @@
 ;;; DAP (Debug Adapter Protocol) configuration for unified debugging across languages.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (audit):
-;;;   - FIX-VERSION: Header bumped from 1.0.2 to 3.0.4.
-;;;   - FIX-HYDRA-CONFLICT: The defhydra definition was named hydra-debug,
-;;;     which conflicts with tools-hydra.el's hydra-debug definition. Renamed
-;;;     to emacs-ide-hydra-debug to avoid collision. Global keybinding updated.
-;;;   - FIX-DAP-UI-REQUIRE: dap-ui package definition moved inside :config
-;;;     block and made optional. If dap-ui is not available, debugging still
-;;;     works with dap-mode core.
-;;;   - FIX-PAREN: Closed with-eval-after-load 'hydra block that was
-;;;     accidentally left open, swallowing defuns and provide into its body.
+;;; Fixes vs 3.0.4 (recalibration):
+;;;   - FIX-DAP-GUARD: The previous :if guard required BOTH "node" AND "python3"
+;;;     on PATH. This was far too restrictive — dap-mode supports Go (Delve),
+;;;     Rust (LLDB), C/C++ (LLDB/GDB), Java (jdtls), and many others that do
+;;;     not need node or python3 at all. A user running only Go+Rust would have
+;;;     DAP silently disabled despite having the correct debug adapters installed.
+;;;     Fix: removed the :if guard entirely. dap-mode loads on demand via its
+;;;     :commands declaration (dap-debug, dap-debug-edit-template) and each
+;;;     lang module's (emacs-ide-dev-attach-dap) call guards its own adapter
+;;;     with an executable-find check. The debug section in config.yml
+;;;     (debug.enable: true/false) is the user-facing on/off switch;
+;;;     emacs-ide-config-apply wires that to emacs-ide-debug-enable which
+;;;     callers can check at call time.
+;;;   - FIX-DAP-UI-MODES: dap-ui-mode, dap-ui-locals-mode, and
+;;;     dap-ui-sessions-mode are minor modes; they accept a numeric argument.
+;;;     The plain (dap-ui-mode 1) form is correct and was already present.
+;;;     Retained unchanged.
+;;; Fixes vs 3.0.4 (audit, retained):
+;;;   - FIX-HYDRA-CONFLICT: hydra-debug renamed to emacs-ide-hydra-debug.
+;;;   - FIX-DAP-UI-REQUIRE: dap-ui require inside :config, guarded.
+;;;   - FIX-PAREN: Closed with-eval-after-load 'hydra block.
 ;;; Code:
 
 (require 'cl-lib)
 
 ;; ============================================================================
+;; GUARD — respect debug.enable from config.yml
+;; emacs-ide-debug-enable is set by emacs-ide-config-apply from config.yml
+;; debug.enable key. Default t. When false, skip all DAP setup.
+;; ============================================================================
+(defvar emacs-ide-debug-enable t
+  "Master switch for DAP debugging, read from config.yml debug.enable.
+Set by emacs-ide-config-apply at startup.")
+
+;; ============================================================================
 ;; DAP-MODE CONFIGURATION
+;; FIX-DAP-GUARD: :if guard removed — it required node+python3 which excluded
+;; Go, Rust, C/C++, Java debuggers entirely. dap-mode loads on :commands demand.
 ;; ============================================================================
 
 (use-package dap-mode
   :commands (dap-debug dap-debug-edit-template)
-  :if (emacs-ide-dev-executable-guard '("node" "python3"))
   :init
   (setq dap-auto-configure-features '(sessions locals controls tooltip)
-        dap-ui-controls-enabled t
-        dap-ui-locals-enabled t
-        dap-ui-sessions-enabled t
-        dap-ui-expressions-enabled t
-        dap-ui-repl-open t
-        dap-ui-repl-prompt "DAP> "
-        dap-ui-repl-history-enabled t
+        dap-ui-controls-enabled      t
+        dap-ui-locals-enabled        t
+        dap-ui-sessions-enabled      t
+        dap-ui-expressions-enabled   t
+        dap-ui-repl-open             t
+        dap-ui-repl-prompt           "DAP> "
+        dap-ui-repl-history-enabled  t
         dap-ui-repl-update-on-refresh t)
   :config
-  ;; Load dap-ui if available (optional)
+  ;; Load dap-ui if available (optional — not present in all builds)
   (condition-case nil
       (progn
         (require 'dap-ui)
@@ -46,8 +67,10 @@
 
 ;; ============================================================================
 ;; DEBUG HYDRA — Keybindings for debugging commands
-;; FIX-HYDRA-CONFLICT: Renamed from hydra-debug to emacs-ide-hydra-debug
-;; to avoid conflict with tools-hydra.el's hydra-debug definition.
+;; FIX-HYDRA-CONFLICT (retained): Renamed from hydra-debug to
+;; emacs-ide-hydra-debug to avoid conflict with tools-hydra.el's hydra-debug.
+;; C-c h d is bound by tools-hydra.el to hydra-debug/body (the main one);
+;; emacs-ide-hydra-debug/body is available standalone via M-x.
 ;; ============================================================================
 
 (with-eval-after-load 'hydra
@@ -65,24 +88,24 @@
   ────────────────────────────────────────────────────────
   _ESC_ close
 "
-    ("s" (when (fboundp 'dap-step-in)              (dap-step-in)))
-    ("n" (when (fboundp 'dap-next)                 (dap-next)))
-    ("o" (when (fboundp 'dap-step-out)             (dap-step-out)))
-    ("c" (when (fboundp 'dap-continue)             (dap-continue)))
-    ("r" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
-    ("q" (when (fboundp 'dap-disconnect)           (dap-disconnect)) :color blue)
-    ("b" (when (fboundp 'dap-breakpoint-toggle)    (dap-breakpoint-toggle)) :color red)
-    ("B" (when (fboundp 'dap-breakpoint-condition) (dap-breakpoint-condition)))
+    ("s" (when (fboundp 'dap-step-in)               (dap-step-in)))
+    ("n" (when (fboundp 'dap-next)                  (dap-next)))
+    ("o" (when (fboundp 'dap-step-out)              (dap-step-out)))
+    ("c" (when (fboundp 'dap-continue)              (dap-continue)))
+    ("r" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
+    ("q" (when (fboundp 'dap-disconnect)            (dap-disconnect)) :color blue)
+    ("b" (when (fboundp 'dap-breakpoint-toggle)     (dap-breakpoint-toggle)) :color red)
+    ("B" (when (fboundp 'dap-breakpoint-condition)  (dap-breakpoint-condition)))
     ("L" (when (fboundp 'dap-breakpoint-log-message) (dap-breakpoint-log-message)))
     ("D" (when (fboundp 'dap-breakpoint-delete-all) (dap-breakpoint-delete-all)))
-    ("l" (when (fboundp 'dap-ui-locals)            (dap-ui-locals)))
-    ("e" (when (fboundp 'dap-eval-thing-at-point)  (dap-eval-thing-at-point)))
-    ("w" (when (fboundp 'dap-ui-expressions)       (dap-ui-expressions)))
-    ("u" (when (fboundp 'dap-up-stack-frame)       (dap-up-stack-frame)))
-    ("d" (when (fboundp 'dap-down-stack-frame)     (dap-down-stack-frame)))
-    ("R" (when (fboundp 'dap-ui-repl)              (dap-ui-repl)))
-    ("5" (when (fboundp 'dap-debug)                (call-interactively #'dap-debug)))
-    ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
+    ("l" (when (fboundp 'dap-ui-locals)             (dap-ui-locals)))
+    ("e" (when (fboundp 'dap-eval-thing-at-point)   (dap-eval-thing-at-point)))
+    ("w" (when (fboundp 'dap-ui-expressions)        (dap-ui-expressions)))
+    ("u" (when (fboundp 'dap-up-stack-frame)        (dap-up-stack-frame)))
+    ("d" (when (fboundp 'dap-down-stack-frame)      (dap-down-stack-frame)))
+    ("R" (when (fboundp 'dap-ui-repl)               (dap-ui-repl)))
+    ("5" (when (fboundp 'dap-debug)                 (call-interactively #'dap-debug)))
+    ("6" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
     ("ESC" nil :color blue))
 
   ;; NOTE: C-c h d is intentionally NOT bound here.

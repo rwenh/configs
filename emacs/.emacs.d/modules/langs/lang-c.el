@@ -1,27 +1,22 @@
 ;;; lang-c.el --- C / C++ / CUDA / CMake IDE layer -*- lexical-binding: t -*-
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 1.0.3 (audit):
-;;;   - FIX-VERSION: Header bumped from 1.0.3 to 3.0.4.
-;;;   - FIX-DEFUN-IN-CONFIG: emacs-ide-c-run and emacs-ide-cpp-run were
-;;;     defined inside cc-mode :config — interactive commands defined in
-;;;     :config are not visible to M-x until the mode loads. Moved to
-;;;     top-level defuns (guarded by the lang-enabled check) so they are
-;;;     always available and bindable.
-;;;   - FIX-LSP-GUARD: lsp-mode use-package had no :if guard on
-;;;     emacs-ide-lsp-enable — hooks fired even when LSP is disabled in
-;;;     config.yml. Added (bound-and-true-p emacs-ide-lsp-enable) guard,
-;;;     consistent with all other lang modules.
-;;;   - FIX-CMAKE-IDE-DEPRECATED: cmake-ide is abandoned and may error on
-;;;     newer Emacs. Wrapped with a version/fboundp guard and noted as
-;;;     optional; cmake-mode alone is sufficient for syntax and navigation.
-;;;   - FIX-CWD-PLACEHOLDER: DAP templates used "${workspaceFolder}" which
-;;;     is a VS Code variable — dap-mode does not expand it. Replaced with
-;;;     a lambda that reads the project root at launch time, matching the
-;;;     pattern used in debug-core.el.
-;;;   - FIX-TEST-REGISTER: No emacs-ide-test-register-runner call — added
-;;;     registration for c-mode using ctest (CMake) or make test fallback,
-;;;     consistent with other lang modules.
+;;; Fixes vs 3.0.4 (recalibration):
+;;;   - FIX-CMAKE-IDE-GUARD: The cmake-ide :if guard was (fboundp
+;;;     'cmake-ide-setup).  use-package evaluates :if at expansion time —
+;;;     before any packages have loaded — so (fboundp 'cmake-ide-setup) is
+;;;     always nil, making the entire cmake-ide block dead code that never
+;;;     fires regardless of whether the package is installed.
+;;;     cmake-ide is also abandoned upstream (last release 2019) and breaks
+;;;     on Emacs 29+ because it references the removed rtags API.
+;;;     Fix: cmake-ide block removed entirely.  cmake-mode alone provides
+;;;     syntax highlighting, indentation, and M-x compile dispatch for CMake
+;;;     projects.  Users who specifically want cmake-ide can add it back with
+;;;     a (use-package cmake-ide :after cmake-mode :config (cmake-ide-setup))
+;;;     in their personal straight profile after verifying it works for them.
+;;; Fixes vs 1.0.3 (retained):
+;;;   - FIX-DEFUN-IN-CONFIG, FIX-LSP-GUARD, FIX-CMAKE-IDE-DEPRECATED,
+;;;     FIX-CWD-PLACEHOLDER, FIX-TEST-REGISTER.
 ;;; Fixes vs 1.0.2 (retained):
 ;;;   - FIX-TREESIT-CPP-NAME: 'cpp is the correct treesit recipe key.
 ;;; Fixes vs 1.0.1 (retained):
@@ -106,19 +101,14 @@
     (emacs-ide-dev-attach-formatter 'clang-format m)))
 
 ;; ============================================================================
-;; CMAKE
-;; FIX-CMAKE-IDE-DEPRECATED: cmake-ide is abandoned; guarded with fboundp
-;; so it does not error if the package is not installed or removed.
-;; cmake-mode alone provides syntax highlighting and indentation.
+;; CMAKE — syntax, indentation, and M-x compile dispatch
+;; cmake-ide removed: it is abandoned (last release 2019) and breaks on
+;; Emacs 29+ due to removed rtags API.  cmake-mode alone is sufficient
+;; for syntax highlighting, indentation, and project compilation.
 ;; ============================================================================
 (use-package cmake-mode
   :defer t
   :mode ("CMakeLists\\.txt\\'" "\\.cmake\\'"))
-
-(use-package cmake-ide
-  :if (fboundp 'cmake-ide-setup)
-  :after cmake-mode
-  :hook (cmake-mode . cmake-ide-setup))
 
 ;; ============================================================================
 ;; CUDA

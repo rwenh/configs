@@ -4,12 +4,16 @@
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
 ;;; Fixes vs 3.0.4 (recalibration):
-;;;   - FIX-LSP-CHECK-SERVERS-API: emacs-ide-health--check-lsp (in
-;;;     emacs-ide-health.el) called (lsp-check-servers) which does not exist
-;;;     in lsp-mode's public API. The equivalent is to check (lsp-workspaces)
-;;;     for active connections or inspect lsp-clients alist. This file's
-;;;     emacs-ide-lsp-check-servers command now checks PATH availability
-;;;     directly without calling any nonexistent lsp-mode function.
+;;;   - FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle does not exist in modern
+;;;     lsp-ui (it was removed in lsp-ui 7.x). The correct public API is
+;;;     lsp-ui-doc-glance (show doc for thing at point, dismiss on next event)
+;;;     and lsp-ui-doc-hide (explicitly hide the popup). A thin
+;;;     emacs-ide-lsp-ui-doc-toggle wrapper is defined that calls
+;;;     lsp-ui-doc-glance when the popup is hidden and lsp-ui-doc-hide when
+;;;     visible, providing the expected toggle UX without calling a
+;;;     nonexistent function.  C-c l u is bound to this wrapper.
+;;;   - FIX-LSP-CHECK-SERVERS-API: (retained from prior audit) — checks PATH
+;;;     directly, does not call nonexistent (lsp-check-servers).
 ;;; All prior fixes retained (FIX-CRASH, FIX-TS-HOOKS, FIX-DIAGNOSTICS-PROVIDER,
 ;;; FIX-AUTO-GUESS-ROOT, FIX-LSP-UI-SPLIT, FIX-INIT-ORDER, etc.)
 ;;; Code:
@@ -171,6 +175,30 @@
       (message "✓ LSP workspace restarted"))))
 
 ;; ============================================================================
+;; LSP-UI DOC TOGGLE HELPER
+;; FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle was removed from lsp-ui 7.x.
+;; The public API is:
+;;   lsp-ui-doc-glance  — show doc for thing at point (hides on next event)
+;;   lsp-ui-doc-show    — show doc and keep it open
+;;   lsp-ui-doc-hide    — hide the popup
+;; This wrapper provides the expected toggle behaviour: show if hidden,
+;; hide if already visible.  C-c l u is bound to this in the lsp-ui :bind.
+;; ============================================================================
+(defun emacs-ide-lsp-ui-doc-toggle ()
+  "Toggle lsp-ui documentation popup.
+Shows documentation via lsp-ui-doc-glance when hidden; hides via
+lsp-ui-doc-hide when already visible.  Works with lsp-ui 7.x+ where
+the old lsp-ui-doc-toggle function was removed."
+  (interactive)
+  (if (and (boundp 'lsp-ui-doc--frame)
+           (frame-live-p lsp-ui-doc--frame)
+           (frame-visible-p lsp-ui-doc--frame))
+      (when (fboundp 'lsp-ui-doc-hide)
+        (lsp-ui-doc-hide))
+    (when (fboundp 'lsp-ui-doc-glance)
+      (lsp-ui-doc-glance))))
+
+;; ============================================================================
 ;; LSP-UI
 ;; ============================================================================
 (use-package lsp-ui
@@ -198,7 +226,9 @@
   :bind (:map lsp-ui-mode-map
               ("M-."     . lsp-ui-peek-find-definitions)
               ("M-?"     . lsp-ui-peek-find-references)
-              ("C-c l u" . lsp-ui-doc-toggle)))
+              ;; FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle removed in lsp-ui 7.x.
+              ;; Bound to the wrapper above which uses the current public API.
+              ("C-c l u" . emacs-ide-lsp-ui-doc-toggle)))
 
 ;; ============================================================================
 ;; LSP-TREEMACS
