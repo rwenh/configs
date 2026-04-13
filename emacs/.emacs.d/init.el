@@ -2,7 +2,13 @@
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
 ;;; Version: 3.0.4
-;;; Fixes vs 3.0.4 (audit):
+;;; Fixes vs 3.0.4 (post-audit calibration):
+;;;   - FIX-DIAGNOSE-LOAD: emacs-ide-diagnose.el added to emacs-ide-core-modules
+;;;     so M-x emacs-ide-diagnose runs the full module (comprehensive per-module
+;;;     checks, LSP diagnostics, language support, config validation) rather than
+;;;     the stripped inline stub that was previously defined here.  The inline
+;;;     defun is replaced with a (unless (fboundp ...)) safety-net stub.
+;;; Fixes vs 3.0.4 (audit, retained):
 ;;;   - FIX-VERSION-CONST: emacs-ide-version constant updated from "3.0.0"
 ;;;     to "3.0.4". Previously all user-visible commands (emacs-ide-show-version,
 ;;;     emacs-ide-startup-report, emacs-ide-diagnose) displayed "v3.0.0".
@@ -230,6 +236,7 @@
   ;; ============================================================================
   (defvar emacs-ide-core-modules
     '("emacs-ide-health"     ; Health check system
+      "emacs-ide-diagnose"   ; Diagnostics (M-x emacs-ide-diagnose / emacs-ide-diagnose-lsp / -languages / -quick)
       "emacs-ide-package"    ; Package management utilities
       "emacs-ide-profiler"   ; Performance profiling
       "emacs-ide-security"   ; Security hardening
@@ -644,126 +651,16 @@ Check: M-x emacs-ide-recovery-view-log"
              (error-message-string err))))))
 
 ;; ============================================================================
-;; MODULE DIAGNOSTIC — checks every module is alive after load
+;; MODULE DIAGNOSTIC — provided by core/emacs-ide-diagnose.el loaded above.
+;; The stub below fires only if that file failed to load, so M-x
+;; emacs-ide-diagnose is never void.
 ;; ============================================================================
-(defun emacs-ide-diagnose ()
-  "Check every module loaded by init.el and report what's working.
-Shows: loaded? · feature provided? · key commands defined?
-Run this when M-x commands seem missing."
-  (interactive)
-  (with-output-to-temp-buffer "*Emacs IDE Diagnostics*"
-    (princ (format "=== EMACS IDE v%s DIAGNOSTICS ===\n" emacs-ide-version))
-    (princ (format "Emacs %s | %s\n\n" emacs-version
-                   (format-time-string "%Y-%m-%d %H:%M")))
-
-    ;; ── Core modules ──────────────────────────────────────────────────────
-    (princ "CORE MODULES:\n")
-    (dolist (entry
-             '((emacs-ide-config   . emacs-ide-config-load)
-               (emacs-ide-health   . emacs-ide-health-check-all)
-               (emacs-ide-recovery . emacs-ide-recovery-log)
-               (emacs-ide-package  . emacs-ide-package-report)
-               (emacs-ide-profiler . emacs-ide-profile-start)
-               (emacs-ide-security . emacs-ide-security-check)
-               (emacs-ide-telemetry . emacs-ide-telemetry-report)
-               ;; FIX-DIAGNOSE: emacs-ide-test and emacs-ide-spot-check are
-               ;; loaded outside the core-modules loop — include them here so
-               ;; M-x emacs-ide-diagnose shows their status.
-               (emacs-ide-test       . emacs-ide-run-tests)
-               (emacs-ide-spot-check . emacs-ide-spot-check)))
-      (let* ((feat (car entry))
-             (cmd  (cdr entry))
-             (provided (featurep feat))
-             (fn-ok    (fboundp cmd)))
-        (princ (format "  %s %-30s  feature:%-5s  %s\n"
-                       (if (and provided fn-ok) "✓" "✗")
-                       feat
-                       (if provided "yes" "NO")
-                       (if fn-ok
-                           (format "cmd %s: ok" cmd)
-                         (format "cmd %s: MISSING" cmd))))))
-
-    ;; ── Feature modules ───────────────────────────────────────────────────
-    (princ "\nFEATURE MODULES:\n")
-    (dolist (entry
-             ;; FIX-DIAG-ORDER: Table order now mirrors emacs-ide-feature-modules
-             ;; load order exactly. Previously tools-project-detect appeared after
-             ;; tools-project (before tools-git), but it actually loads after
-             ;; debug-core. Mismatched order confused readers comparing the two.
-             '(("ui-core"                    ui-core          emacs-ide-presentation-mode)
-               ("ui-theme"                   ui-theme         emacs-ide-toggle-theme)
-               ("ui-modeline"                ui-modeline      nil)
-               ("ui-dashboard"               ui-dashboard     nil)
-               ("ui-workspace"               ui-workspace     emacs-ide-workspace-status)
-               ("completion-core"            completion-core  nil)
-               ("completion-snippets"        completion-snippets nil)
-               ("editing-core"               editing-core     nil)
-               ("core-dev"                   core-dev         emacs-ide-dev-lang-enabled-p)
-               ("tools-lsp"                  tools-lsp        emacs-ide-lsp-status)
-               ("tools-project"              tools-project    nil)
-               ("tools-git"                  tools-git        nil)
-               ("tools-terminal"             tools-terminal   nil)
-               ("tools-format"               tools-format     nil)
-               ("apheleia-langs-patch"        apheleia-langs-patch nil)
-               ("tools-org"                  tools-org        nil)
-               ("tools-spelling"             tools-spelling   nil)
-               ("tools-notes"                tools-notes      nil)
-               ("tools-rest"                 tools-rest       nil)
-               ("tools-test-runner-registry"  tools-test-runner-registry emacs-ide-test-runner-status)
-               ("tools-test"                 tools-test       emacs-ide-test-run)
-               ("debug-core"                 debug-core       nil)
-               ("tools-repl"                 tools-repl       emacs-ide-repl-status)
-               ("tools-project-detect"       tools-project-detect emacs-ide-detect-show-status)
-               ("tools-hydra"                tools-hydra      nil)
-               ("keybindings"                keybindings      emacs-ide-show-keybindings-help)))
-      (let* ((name     (nth 0 entry))
-             (feat     (nth 1 entry))
-             (cmd      (nth 2 entry))
-             (file     (expand-file-name (concat name ".el") emacs-ide-modules-dir))
-             (exists   (file-exists-p file))
-             (provided (featurep feat))
-             (fn-ok    (or (null cmd) (fboundp cmd))))
-        (princ (format "  %s %-38s  file:%-5s  feature:%-5s  %s\n"
-                       (if (and exists provided fn-ok) "✓"
-                         (if (not exists) "?" "✗"))
-                       name
-                       (if exists "yes" "NO")
-                       (if provided "yes" "NO")
-                       (cond
-                        ((not exists) "FILE MISSING")
-                        ((not provided) "NOT PROVIDED — load failed?")
-                        ((not fn-ok) (format "cmd %s MISSING" cmd))
-                        (t "ok"))))))
-
-    ;; ── Key functions spot-check ───────────────────────────────────────────
-    (princ "\nKEY FUNCTION SPOT-CHECK:\n")
-    (dolist (fn '(emacs-ide-health-check-all
-                  emacs-ide-run-tests
-                  emacs-ide-toggle-theme
-                  emacs-ide-detect-show-status
-                  emacs-ide-repl-status
-                  emacs-ide-test-runner-status
-                  emacs-ide-workspace-status
-                  emacs-ide-lsp-status
-                  emacs-ide-startup-report
-                  emacs-ide-show-version))
-      (princ (format "  %s %s\n"
-                     (if (fboundp fn) "✓" "✗")
-                     fn)))
-
-    ;; ── Modes spot-check ──────────────────────────────────────────────────
-    (princ "\nMODE STATUS:\n")
-    (dolist (mode '(electric-pair-mode
-                    show-paren-mode
-                    delete-selection-mode
-                    display-line-numbers-mode
-                    winner-mode))
-      (princ (format "  %s %s\n"
-                     (if (and (boundp mode) (symbol-value mode)) "✓" "✗")
-                     mode)))
-
-    (princ "\nRun M-x emacs-ide-run-tests for the full ERT suite.\n")
-    (princ "Any ✗ line above shows exactly what failed to load.\n")))
+(unless (fboundp 'emacs-ide-diagnose)
+  (defun emacs-ide-diagnose ()
+    "Fallback stub — core/emacs-ide-diagnose.el did not load.
+Check *Messages* or M-x emacs-ide-recovery-view-log for load errors."
+    (interactive)
+    (message "emacs-ide-diagnose.el failed to load — see *Messages* for errors.")))
 
 (defun emacs-ide-show-version ()
   "Display version and system info."

@@ -3,7 +3,14 @@
 ;;; VTerm, Eshell, and terminal utilities.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 2.2.4 (audit):
+;;; Fixes vs 2.2.4 (post-audit calibration):
+;;;   - FIX-COLORIZE-COMMENT: Removed false claim that
+;;;     emacs-ide-colorize-compilation-buffer is defined in ui-core.el.
+;;;     That function does not exist anywhere. ui-core.el wires ANSI color via
+;;;     an anonymous lambda directly on compilation-filter-hook using
+;;;     ansi-color-apply-on-region. The comment previously discouraged defining
+;;;     the function here but named something that was never defined anywhere,
+;;;     causing confusion. Compilation color is fully handled by ui-core.el.
 ;;;   - FIX-VERSION: Header bumped from 2.2.4 to 3.0.4.
 ;;;   - FIX-VTERM-CONFIG-READ: vterm-max-scrollback, vterm-kill-buffer-on-exit,
 ;;;     and vterm-timer-delay were hardcoded. Now read from config.yml
@@ -226,8 +233,10 @@ FIX-RUN-FILE-QUOTE: file path now quoted with shell-quote-argument."
 
 ;; ============================================================================
 ;; COMPILATION BUFFER
-;; NOTE: emacs-ide-colorize-compilation-buffer is defined in ui-core.el only.
-;;       Do NOT redefine it here.
+;; ANSI color in compilation output is handled by ui-core.el via an anonymous
+;; lambda on compilation-filter-hook (ansi-color-apply-on-region).
+;; No colorize function is defined here or in ui-core.el — the hook closure
+;; in ui-core.el IS the implementation.
 ;; ============================================================================
 (use-package compile
   :straight nil

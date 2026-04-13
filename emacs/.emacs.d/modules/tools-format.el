@@ -3,19 +3,42 @@
 ;;; Unified code formatting using apheleia, supporting 40+ languages.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (recalibration):
-;;;   - FIX-ALIST-MISUSE: Previous version used apheleia-formatters for
-;;;     mode→formatter mapping. apheleia-formatters maps formatter-name→command;
-;;;     apheleia-mode-alist maps major-mode→formatter-name. Both alists were
-;;;     confused throughout the :config block. All mode mappings now correctly
-;;;     use apheleia-mode-alist.
-;;;   - FIX-TAPLO: Correct: taplo entry added to apheleia-formatters (command)
-;;;     AND toml-mode entry added to apheleia-mode-alist (mapping).
-;;;   - FIX-FORMATTERS-GUARD: All formatters guarded with (assq) to avoid
-;;;     re-adding known entries that apheleia already ships with.
+;;; Fixes vs 3.0.4 (post-audit calibration):
+;;;   - FIX-FORMAT-HOOK-TIMING: format-on-save prog-mode-hook and text-mode-hook
+;;;     lambdas were inside (use-package apheleia ... :config ...).  Since
+;;;     apheleia is :defer t, its :config only runs when apheleia first loads —
+;;;     triggered by the first formatter call, which happens inside a buffer that
+;;;     has already activated its major-mode.  That first buffer therefore misses
+;;;     the hook entirely.  Hooks are now registered at tools-format.el load time
+;;;     (unconditionally), guarding (apheleia-mode 1) with fboundp so they are
+;;;     safe to call whether apheleia has loaded yet or not.
+;;; Fixes vs 3.0.4 (recalibration, retained):
+;;;   - FIX-ALIST-MISUSE, FIX-TAPLO, FIX-FORMATTERS-GUARD.
 ;;; Code:
 
 (require 'cl-lib)
+
+;; ============================================================================
+;; FORMAT-ON-SAVE HOOKS
+;; FIX-FORMAT-HOOK-TIMING: Registered here at module load time so every
+;; prog-mode and text-mode buffer gets the hook, including the very first one
+;; that triggers apheleia's deferred load.  The (fboundp 'apheleia-mode) guard
+;; makes this safe to evaluate before apheleia loads.
+;; ============================================================================
+(add-hook 'prog-mode-hook
+          (lambda ()
+            (when (and (fboundp 'emacs-ide-config-get)
+                       (emacs-ide-config-get 'formatting 'on-save t)
+                       (fboundp 'apheleia-mode))
+              (apheleia-mode 1))))
+
+(add-hook 'text-mode-hook
+          (lambda ()
+            (when (and (fboundp 'emacs-ide-config-get)
+                       (emacs-ide-config-get 'formatting 'on-save t)
+                       (fboundp 'apheleia-mode)
+                       (not (derived-mode-p 'org-mode)))
+              (apheleia-mode 1))))
 
 ;; ============================================================================
 ;; APHELEIA — unified code formatting
@@ -47,22 +70,6 @@
     (when (executable-find "rustfmt")
       (setf (alist-get 'rust-mode    apheleia-mode-alist) 'rustfmt)
       (setf (alist-get 'rust-ts-mode apheleia-mode-alist) 'rustfmt)))
-
-  ;; ── Format on save ────────────────────────────────────────────────────────
-  (add-hook 'prog-mode-hook
-            (lambda ()
-              (when (and (fboundp 'emacs-ide-config-get)
-                         (emacs-ide-config-get 'formatting 'on-save t)
-                         (fboundp 'apheleia-mode))
-                (apheleia-mode 1))))
-
-  (add-hook 'text-mode-hook
-            (lambda ()
-              (when (and (fboundp 'emacs-ide-config-get)
-                         (emacs-ide-config-get 'formatting 'on-save t)
-                         (fboundp 'apheleia-mode)
-                         (not (derived-mode-p 'org-mode)))
-                (apheleia-mode 1))))
 
   ;; ── Formatter check ───────────────────────────────────────────────────────
   (defun emacs-ide-check-formatters ()

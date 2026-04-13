@@ -2,8 +2,15 @@
 ;;; Commentary:
 ;;; DAP fully deferred — loads only when dap-debug or dap-debug-edit-template
 ;;; is called. No adapters are required at startup.
-;;; Version: 3.0.4-patched
-;;; Startup fix: removed all eager (require 'dap-*) calls; dap-ui deferred.
+;;; Version: 3.0.4
+;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (post-audit calibration):
+;;;   - FIX-HYDRA-ORPHAN: Removed emacs-ide-hydra-debug. tools-hydra.el defines
+;;;     hydra-debug (bound to C-c h d) as the canonical debug hydra. The renamed
+;;;     version here was never bound to any key and was unreachable. Having two
+;;;     parallel debug hydra definitions is confusing and wastes eval time.
+;;; Fixes vs 3.0.4-patched (retained):
+;;;   - Startup fix: removed all eager (require 'dap-*) calls; dap-ui deferred.
 ;;; Code:
 
 (require 'cl-lib)
@@ -39,41 +46,10 @@
 
 ;; ============================================================================
 ;; DEBUG HYDRA
+;; The debug hydra is defined in tools-hydra.el as hydra-debug, bound to
+;; C-c h d. It is NOT duplicated here — tools-hydra.el is the canonical owner.
+;; Use M-x hydra-debug/body or C-c h d to open the debug hydra.
 ;; ============================================================================
-(with-eval-after-load 'hydra
-  (defhydra emacs-ide-hydra-debug (:hint nil :color pink)
-    "
-  debug
-  ────────────────────────────────────────────────────────
-  control  _s_ step in    _n_ next       _o_ step out
-           _c_ continue   _r_ restart    _q_ quit session
-  break    _b_ toggle     _B_ condition  _L_ log msg
-           _D_ del all
-  inspect  _l_ locals     _e_ eval expr  _w_ watch
-           _u_ up frame   _d_ down frame _R_ repl
-  launch   _5_ debug      _6_ restart
-  ────────────────────────────────────────────────────────
-  _ESC_ close
-"
-    ("s" (when (fboundp 'dap-step-in)               (dap-step-in)))
-    ("n" (when (fboundp 'dap-next)                  (dap-next)))
-    ("o" (when (fboundp 'dap-step-out)              (dap-step-out)))
-    ("c" (when (fboundp 'dap-continue)              (dap-continue)))
-    ("r" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
-    ("q" (when (fboundp 'dap-disconnect)            (dap-disconnect)) :color blue)
-    ("b" (when (fboundp 'dap-breakpoint-toggle)     (dap-breakpoint-toggle)) :color red)
-    ("B" (when (fboundp 'dap-breakpoint-condition)  (dap-breakpoint-condition)))
-    ("L" (when (fboundp 'dap-breakpoint-log-message) (dap-breakpoint-log-message)))
-    ("D" (when (fboundp 'dap-breakpoint-delete-all) (dap-breakpoint-delete-all)))
-    ("l" (when (fboundp 'dap-ui-locals)             (dap-ui-locals)))
-    ("e" (when (fboundp 'dap-eval-thing-at-point)   (dap-eval-thing-at-point)))
-    ("w" (when (fboundp 'dap-ui-expressions)        (dap-ui-expressions)))
-    ("u" (when (fboundp 'dap-up-stack-frame)        (dap-up-stack-frame)))
-    ("d" (when (fboundp 'dap-down-stack-frame)      (dap-down-stack-frame)))
-    ("R" (when (fboundp 'dap-ui-repl)               (dap-ui-repl)))
-    ("5" (when (fboundp 'dap-debug)                 (call-interactively #'dap-debug)))
-    ("6" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
-    ("ESC" nil :color blue)))
 
 ;; ============================================================================
 ;; BREAKPOINT COMMANDS

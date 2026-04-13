@@ -3,7 +3,14 @@
 ;;; YAML and Elisp configuration management with proper nested parsing.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (audit):
+;;; Fixes vs 3.0.4 (post-audit calibration):
+;;;   - FIX-EDITING-APPLY: emacs-ide-config-apply now handles the editing:
+;;;     section from config.yml.  editing.meow is wired to emacs-ide-toggle-meow
+;;;     so that M-x emacs-ide-config-reload can activate or deactivate Meow modal
+;;;     editing at runtime without a restart.  Previously the editing: section was
+;;;     parsed by the YAML parser but nothing in emacs-ide-config-apply read it,
+;;;     making editing.meow: true in config.yml a no-op after reload.
+;;; Fixes vs 3.0.4 (audit, retained):
 ;;;   - FIX-VERSION: Header bumped from 2.2.9 to 3.0.4.
 ;;;   - FIX-DEFAULT-THEME: emacs-ide-theme defvar and emacs-ide-config-defaults
 ;;;     updated from modus-vivendi to ef-dark (ef-themes replaced modus-themes
@@ -607,6 +614,22 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
             (when (memq method '(native hybrid alien))
               (with-eval-after-load 'projectile
                 (setq projectile-indexing-method method)))))))
+
+    ;; ── Editing ─────────────────────────────────────────────────────────────
+    ;; FIX-EDITING-APPLY: Wire editing.meow so M-x emacs-ide-config-reload
+    ;; can toggle Meow at runtime.  editing-core.el reads emacs-ide-config-data
+    ;; directly at load time for the initial activation; this block handles the
+    ;; reload path where emacs-ide-meow-enabled already reflects current state.
+    (let ((editing (section 'editing)))
+      (when (and editing (assoc 'meow editing))
+        (let ((want-meow (val 'meow editing)))
+          (when (and (boundp 'emacs-ide-meow-enabled)
+                     (fboundp 'emacs-ide-toggle-meow))
+            (cond
+             ((and want-meow (not emacs-ide-meow-enabled))
+              (emacs-ide-toggle-meow))
+             ((and (not want-meow) emacs-ide-meow-enabled)
+              (emacs-ide-toggle-meow)))))))
 
     ;; ── Security ────────────────────────────────────────────────────────────
     (let ((security (section 'security)))

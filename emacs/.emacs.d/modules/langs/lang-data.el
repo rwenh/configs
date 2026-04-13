@@ -1,7 +1,12 @@
 ;;; lang-data.el --- Data Science IDE layer (R / Julia / Notebooks) -*- lexical-binding: t -*-
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 1.0.1 (audit):
+;;; Fixes vs 1.0.1 (post-audit calibration):
+;;;   - FIX-R-FILE-FN: emacs-ide-r-run was registered as :file-fn for the R test
+;;;     runner. emacs-ide-r-run is a run-the-script command (Rscript file.R), not
+;;;     a test command. Added emacs-ide-r-test-file which calls
+;;;     testthat::test_file() on the current buffer. Registered as :file-fn.
+;;; Fixes vs 1.0.1 (audit, retained):
 ;;;   - FIX-VERSION: Header bumped from 1.0.1 to 3.0.4.
 ;;;   - FIX-DEFUN-IN-CONFIG-R: emacs-ide-r-run was defined inside ess :config
 ;;;     — not visible to M-x until ESS loads. Moved to top-level defun.
@@ -48,6 +53,16 @@
       (compile (format "Rscript %s" (shell-quote-argument (buffer-file-name))))
     (message "lang-data: Rscript not found")))
 
+(defun emacs-ide-r-test-file ()
+  "Run testthat tests for the current R file via Rscript.
+FIX-R-FILE-FN: uses testthat::test_file() so this is actually a test
+command rather than a plain run command."
+  (interactive)
+  (if (and (executable-find "Rscript") (buffer-file-name))
+      (compile (format "Rscript -e 'testthat::test_file(\"%s\")'"
+                       (buffer-file-name)))
+    (message "lang-data: Rscript not found or no file")))
+
 (defun emacs-ide-r-test-project ()
   "Run R project tests via devtools::test() or Rscript."
   (interactive)
@@ -81,10 +96,12 @@
                         (when (fboundp 'ess-eval-region)
                           (ess-eval-region beg end nil)))))
   ;; FIX-TEST-REGISTER-R: register with test runner registry
+  ;; FIX-R-FILE-FN: :file-fn now uses emacs-ide-r-test-file (testthat::test_file)
+  ;; instead of emacs-ide-r-run (plain Rscript execution).
   (when (fboundp 'emacs-ide-test-register-runner)
     (emacs-ide-test-register-runner 'ess-r-mode
       :project-fn #'emacs-ide-r-test-project
-      :file-fn    #'emacs-ide-r-run)))
+      :file-fn    #'emacs-ide-r-test-file)))
 
 (use-package lsp-mode
   :if (and (bound-and-true-p emacs-ide-lsp-enable)

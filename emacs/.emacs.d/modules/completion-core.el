@@ -7,7 +7,16 @@
 ;;; All existing fixes from 2.2.4 retained.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (audit):
+;;; Fixes vs 3.0.4 (post-audit calibration):
+;;;   - FIX-TAB-SHADOW: Removed local-set-key TAB → emacs-ide-complete-or-indent
+;;;     from prog-mode-hook and text-mode-hook.  That buffer-local binding
+;;;     shadowed corfu's transient popup keymap bindings for TAB (next item) and
+;;;     S-TAB (previous item), breaking popup navigation in every code buffer.
+;;;     The same indent-or-complete behaviour is already provided natively by
+;;;     (setq tab-always-indent 'complete) set earlier in this file: TAB indents
+;;;     first, then completes on a subsequent press when already indented.
+;;;     emacs-ide-complete-or-indent and the two add-hook calls are removed.
+;;; Fixes vs 3.0.4 (audit, retained):
 ;;;   - FIX-VERSION: Header bumped from 3.0.1 to 3.0.4.
 ;;;   - FIX-CONSULT-PROJECTILE-KEYS: consult-projectile bindings moved to
 ;;;     non-colliding keys (C-c p B, C-c p F, C-c p P) so they are not
@@ -310,16 +319,10 @@
 (minibuffer-depth-indicate-mode 1)
 (minibuffer-electric-default-mode 1)
 
-(defun emacs-ide-complete-or-indent ()
-  (interactive)
-  (if (minibufferp)
-      (when (fboundp 'minibuffer-complete) (minibuffer-complete))
-    (if (looking-at "\\>")
-        (when (fboundp 'completion-at-point) (completion-at-point))
-      (indent-for-tab-command))))
-
-(dolist (hook '(prog-mode-hook text-mode-hook))
-  (add-hook hook (lambda () (local-set-key (kbd "TAB") 'emacs-ide-complete-or-indent))))
+;; tab-always-indent 'complete (set above) provides indent-or-complete natively:
+;; TAB indents when there is indentation to fix, then completes on a second
+;; press.  A separate buffer-local TAB binding is not needed and would shadow
+;; corfu's popup navigation keys (TAB = next, S-TAB = previous).
 
 (provide 'completion-core)
 ;;; completion-core.el ends here
