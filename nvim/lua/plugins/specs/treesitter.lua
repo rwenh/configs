@@ -9,8 +9,13 @@
 --   • fold = {enable=true} inside nvim-treesitter opts has NO effect. Treesitter
 --     folding is enabled via vim.opt (foldmethod/foldexpr), not through the
 --     configs.setup() table. The dead key was removed; fold setup moved to
---     options.lua (foldmethod="expr", foldexpr via autocmd on BufReadPost).
+--     options.lua (foldmethod="expr", foldexpr set there).
 --   • vim parser still explicitly ignored (broken query on 0.11.x).
+--
+-- FIX (v2.3.1):
+--   • foldexpr updated to "v:lua.vim.treesitter.foldexpr()" in options.lua;
+--     the dead `fold` key already removed in v2.2.4 — no treesitter.lua change
+--     needed, but documented here for traceability.
 --
 -- FIX (v2.3.8):
 --   • "comment" removed from ignore_install. The comment treesitter parser is

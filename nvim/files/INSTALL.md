@@ -1,4 +1,4 @@
-# INSTALLATION INSTRUCTIONS — v2.3.5
+# INSTALLATION INSTRUCTIONS — v2.3.8
 
 ## What Was Changed (v2.0 → v2.1)
 
@@ -111,7 +111,7 @@
 
 ---
 
-## What Was Changed (v2.3.4 → v2.3.5) — Current
+## What Was Changed (v2.3.4 → v2.3.5)
 
 69. **keymaps.lua — Spectre pcall guards** — `require("spectre")` was called bare in the `<leader>/s`, `<leader>/w`, and `<leader>/f` handlers. `nvim-spectre` only loads on `:Spectre` (cmd=); pressing these keys before that fired an unhandled `module not found` error. All three handlers now use `pcall` with a clear warning message.
 
@@ -131,7 +131,39 @@
 
 ---
 
-## Known Issues (v2.3.5)
+## What Was Changed (v2.3.5 → v2.3.6)
+
+77. **keymaps.lua — Harpoon pcall guards** — All six `require("harpoon")` calls in `<leader>ha/hm/h1–h4` and `<M-1–4>` were bare. If harpoon fails to load (lazy-load not yet triggered) pressing any of these threw an unhandled stack trace. All wrapped in pcall, consistent with the spectre/dap pattern from v2.3.5.
+
+78. **keymaps.lua — todo-comments pcall guards** — `]t` / `[t` called `require("todo-comments")` bare. Same fix applied.
+
+79. **completion.lua — blink.cmp nav keys "show" removed** — `<C-p>/<C-n>/<C-k>/<C-j>` were mapped to `{ "select_prev/next", "show" }`. The `"show"` action calls `"fallback"` internally when the menu is open, re-invoking native `i-^P/i-^N` and opening a competing popup. Mapped to `{ "select_prev" }` / `{ "select_next" }` only.
+
+80. **dap.lua — `"python"` → `"debugpy"` in ensure_installed** — `mason-nvim-dap ensure_installed` listed `"python"` which is not a Mason registry package name. The correct name is `"debugpy"`. Caused a startup warning on every launch and the Python DAP adapter was never auto-installed. Known since v2.2.4; single-token fix.
+
+---
+
+## What Was Changed (v2.3.6 → v2.3.7)
+
+81. **lsp.lua — elixir-ls wired** — `elixir.lua` disables `elixirls` inside `elixir-tools` with the comment "lsp.lua owns elixirls", but `elixir-ls` was never in `mason-lspconfig ensure_installed` and never had a `servers` table entry. Elixir had no LSP unless the user ran `:MasonInstall` manually. Added `"elixir-ls"` to `ensure_installed` and an `elixirls` entry in the `servers` table.
+
+82. **hud.lua (plugins/specs) — mini.animate opts→config migration** — `require("mini.animate")` was called inside `opts=function()`, which lazy evaluates at spec-parse time before mini.animate is installed. On a fresh install this caused a startup error. All `animate.gen_timing` / `gen_subscroll` calls and the `mouse_scrolled` closure moved into `config()` which only runs after the plugin is confirmed loaded.
+
+---
+
+## What Was Changed (v2.3.7 → v2.3.8) — Current
+
+83. **test.lua — neotest-vitest constructor** — `neotest-vitest` was returned as a raw module table. neotest-vitest exports a callable constructor; not invoking it silently gave neotest an invalid adapter object and Vitest tests never ran. Fixed: `require("neotest-vitest")({})` — identical fix to neotest-go (v2.3.2) and neotest-elixir (v2.3.5).
+
+84. **runner.lua — `run_tests()` cd prefix for python/rust/go/zig** — These four commands lacked the `cd <root> &&` prefix that ruby/elixir/kotlin/java already had. `pytest` needs `pyproject.toml`/`setup.cfg`; `cargo test` needs `Cargo.toml`; `go test` needs `go.mod`; `zig build test` needs `build.zig`. All four now cd to project root before running.
+
+85. **keymaps.lua — Overseer duplicate maps removed** — `<leader>ot`, `<leader>or`, and `<leader>ob` were registered both here and in `workflow.lua`'s `keys=` table. `workflow.lua` is the sole owner (handles lazy-loading and the smart `run_template` fallback for `<leader>ob`). The duplicates here caused which-key to list each entry twice and silently overwrote `workflow.lua`'s smart build logic.
+
+86. **treesitter.lua — `"comment"` removed from `ignore_install`** — The comment treesitter parser is required by `todo-comments.nvim` (multiline TODO detection) and `noice.nvim` (`long_message_to_split` preset). Ignoring it silently disabled multiline todo highlighting. Only `"vim"` remains in `ignore_install`.
+
+---
+
+## Known Issues (v2.3.8)
 
 | Module | Issue | Since |
 |--------|-------|-------|
@@ -139,25 +171,33 @@
 | `test.lua` | neotest-rust race condition if rustaceanvim not yet fully attached on first Rust file open | v2.3.1 |
 | `runner.lua` | `run_tests()` has no entry for `c`, `cpp`, `fortran`, `vhdl`, `cobol` — `<leader>'t` in those filetypes notifies "No test runner" | v2.0 |
 | `options.lua` | `matchparen` disabled with no replacement — cursor-position bracket matching is fully off | v2.0 |
-| `dap.lua` | `mason-nvim-dap ensure_installed` lists `"python"` — the Mason registry name is `"debugpy"` | v2.2.4 |
 
-### Issues resolved this release (v2.3.5)
+### Issues resolved this release (v2.3.8)
 
 | Issue | Fix |
 |-------|-----|
-| Spectre keymaps crash without pcall | #69 |
-| DAP keymaps crash without pcall | #70 |
-| `<leader>sm` maps to missing MaximizerToggle plugin | #71 |
-| `lsp_fallback` silently ignored by conform v6 (lsp.lua) | #72 |
-| `lsp_fallback` silently ignored by conform v6 (commands.lua) | #73 |
-| neotest-elixir returned as raw module, not adapter | #74 |
-| `LOGO_WIDTH` dead misleading variable | #75 |
-| Drain phase dark-green flash on keypress | #76 |
+| neotest-vitest returned as raw module, not adapter | #83 |
+| `run_tests()` missing cd prefix for python/rust/go/zig | #84 |
+| Overseer keymaps duplicated in keymaps.lua and workflow.lua | #85 |
+| `"comment"` parser in `ignore_install` broke multiline TODOs | #86 |
 
 ### Issues resolved in earlier releases
 
 | Issue | Resolved |
 |-------|----------|
+| Spectre keymaps crash without pcall | v2.3.5 |
+| DAP keymaps crash without pcall | v2.3.5 |
+| `<leader>sm` maps to missing MaximizerToggle plugin | v2.3.5 |
+| `lsp_fallback` silently ignored by conform v6 (lsp.lua) | v2.3.5 |
+| `lsp_fallback` silently ignored by conform v6 (commands.lua) | v2.3.5 |
+| neotest-elixir returned as raw module, not adapter | v2.3.5 |
+| `LOGO_WIDTH` dead misleading variable | v2.3.5 |
+| Drain phase dark-green flash on keypress | v2.3.5 |
+| Harpoon / todo-comments keymaps crash without pcall | v2.3.6 |
+| blink.cmp `"show"` on nav keys re-invoked native completion popup | v2.3.6 |
+| `mason-nvim-dap ensure_installed` listed `"python"` not `"debugpy"` | v2.3.6 |
+| elixir-ls never auto-installed or wired in lsp.lua | v2.3.7 |
+| mini.animate `require()` in `opts=function()` failed on fresh install | v2.3.7 |
 | nvim-0.11 double-attach via mason-lspconfig default handler | v2.3.4 |
 | `vim.diagnostic.goto_next/prev` deprecated on Nvim 0.11 | v2.3.3 |
 | iron.nvim REPL keymaps leaked globally to all buffers | v2.3.1 |
@@ -174,11 +214,11 @@
 
 ---
 
-## File Structure (v2.3.5)
+## File Structure (v2.3.8)
 
 ```
 ~/.config/nvim/
-├── init.lua                          ← v2.3.5
+├── init.lua                          ← v2.3.8
 └── lua/
     ├── core/
     │   ├── autocmds.lua              ← v2.3.3
@@ -186,25 +226,25 @@
     │   ├── commands.lua              ← v2.3.5  ✦ lsp_format fix
     │   ├── focus.lua                 ← v2.2.2
     │   ├── hud.lua                   ← v2.2.4
-    │   ├── keymaps.lua               ← v2.3.5  ✦ spectre/dap pcall; sm native
+    │   ├── keymaps.lua               ← v2.3.8  ✦ overseer duplicates removed
     │   ├── options.lua               ← v2.3.3
     │   ├── theme.lua                 ← v2.2.2
     │   └── util/
     │       ├── path.lua              ← v2.3.2
-    │       └── runner.lua            ← v2.3.3
+    │       └── runner.lua            ← v2.3.8  ✦ cd prefix python/rust/go/zig
     └── plugins/
         ├── init.lua                  ← v2.1.1
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
             ├── advanced.lua          ← v2.3.1b
-            ├── completion.lua        ← v2.3.4
-            ├── dap.lua               ← v2.3.4
+            ├── completion.lua        ← v2.3.6  ✦ blink nav keys "show" removed
+            ├── dap.lua               ← v2.3.6  ✦ "python" → "debugpy"
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
-            ├── hud.lua               ← v2.3.1b
-            ├── lsp.lua               ← v2.3.5  ✦ lsp_format fix
-            ├── test.lua              ← v2.3.5  ✦ neotest-elixir constructor
-            ├── treesitter.lua        ← v2.3.1
+            ├── hud.lua               ← v2.3.7  ✦ mini.animate opts→config
+            ├── lsp.lua               ← v2.3.7  ✦ elixir-ls wired
+            ├── test.lua              ← v2.3.8  ✦ neotest-vitest constructor
+            ├── treesitter.lua        ← v2.3.8  ✦ "comment" removed from ignore_install
             ├── ui.lua                ← v2.3.5  ✦ LOGO_WIDTH removed; drain flash
             ├── workflow.lua          ← v2.3.1
             └── lang/

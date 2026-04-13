@@ -3,6 +3,11 @@
 -- FIX (v2.2.4):
 --   • flash.nvim specced in editor.lua; `s` map has clear fallback notify.
 --
+-- FIX (v2.3.1b):
+--   • <leader>xg (Neogen) REMOVED from this file. advanced.lua already
+--     registers it in its keys= table which handles lazy-loading and avoids
+--     a double-registration that makes which-key show the same mapping twice.
+--
 -- FIX (v2.3.3):
 --   • <leader>xx was "<cmd>Trouble<cr>" — ":Trouble" with no subcommand is
 --     not valid in trouble.nvim v3+; it requires a mode argument. Changed to
@@ -11,12 +16,6 @@
 --     also maps <C-j>/<C-k> as blink.cmp aliases. These are insert-mode only
 --     in blink (InsertEnter event) while the window nav maps are normal-mode
 --     only — no conflict. Added a comment to make this explicit.
---
--- FIX (v2.3.1b):
---   • <leader>xg (Neogen) REMOVED from this file. It was added here in
---     v2.3.3 but advanced.lua already registers it in its keys= table.
---     keys= is the correct place: it handles lazy-loading and avoids a
---     double-registration that makes which-key show the same mapping twice.
 --
 -- FIX (v2.3.4):
 --   • Removed duplicate keymaps that are already owned by plugin keys= specs:
