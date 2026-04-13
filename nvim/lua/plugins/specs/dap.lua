@@ -29,6 +29,18 @@
 --     on every startup that the package was not found, and the Python DAP
 --     adapter was never auto-installed. This was a known issue since v2.2.4;
 --     the fix is a single token change.
+--
+-- FIX (v2.3.9):
+--   • Elixir DAP debugger path resolver: the previous resolver checked
+--     mason_pkg("elixir-ls/debugger.sh") first, then fell through to
+--     exepath("elixir-ls") — the LSP binary — as a last resort. The LSP
+--     binary is NOT the DAP debugger; using it causes elixir DAP sessions
+--     to fail immediately. The fallback chain now only returns an executable
+--     that is actually a DAP-capable binary (debugger.sh or elixir-ls-debugger).
+--     If none is found the adapter is set to nil and a deferred warning is
+--     shown rather than silently wiring the wrong binary. The mix_task adapter
+--     registration is now guarded so it only fires when a valid debugger is
+--     found.
 
 return {
   {
@@ -286,28 +298,49 @@ return {
       }
 
       -- ── Elixir (ElixirLS debugger) ────────────────────────────────
+      -- FIX (v2.3.9): The old resolver fell through to exepath("elixir-ls")
+      -- as a last resort. That path resolves to the LSP binary, not the DAP
+      -- debugger — wiring the LSP binary as a DAP adapter silently fails every
+      -- debug session. The resolver now only returns a path that is known to be
+      -- a DAP-capable binary. If no valid debugger is found, the adapter is not
+      -- registered and a warning is shown. Known good paths in order of priority:
+      --   1. Mason package debugger.sh  (elixir-ls bundle, most reliable)
+      --   2. elixir-ls-debugger         (standalone binary, some distros)
+      --   3. nil                        (warn and skip — do NOT use elixir-ls)
       local elixir_dbg = (function()
-        local pkg_bin = mason_pkg("elixir-ls/debugger.sh")
-        if vim.fn.filereadable(pkg_bin) == 1 then return pkg_bin end
-        local a = vim.fn.exepath("elixir-ls-debugger")
-        if a ~= "" then return a end
-        local b = vim.fn.exepath("elixir-ls")
-        if b ~= "" then return b end
-        return mason_bin("elixir-ls")
+        -- Mason installs elixir-ls as a bundle; debugger.sh is the DAP entry point.
+        local pkg_dbg = mason_pkg("elixir-ls/debugger.sh")
+        if vim.fn.filereadable(pkg_dbg) == 1 then return pkg_dbg end
+        -- Some systems ship a standalone elixir-ls-debugger binary.
+        local standalone = vim.fn.exepath("elixir-ls-debugger")
+        if standalone ~= "" then return standalone end
+        -- Do NOT fall back to "elixir-ls" — that is the LSP server, not the debugger.
+        return nil
       end)()
-      dap.adapters.mix_task = {
-        type    = "executable",
-        command = elixir_dbg,
-        args    = {},
-      }
-      dap.configurations.elixir = {
-        { type = "mix_task", name = "mix test", task = "test",
-          taskArgs = { "--trace" }, request = "launch", startApps = true,
-          projectDir = "${workspaceFolder}",
-          requireFiles = { "test/**/test_helper.exs", "test/**/*_test.exs" } },
-        { type = "mix_task", name = "mix phx.server", task = "phx.server",
-          request = "launch", projectDir = "${workspaceFolder}" },
-      }
+
+      if elixir_dbg then
+        dap.adapters.mix_task = {
+          type    = "executable",
+          command = elixir_dbg,
+          args    = {},
+        }
+        dap.configurations.elixir = {
+          { type = "mix_task", name = "mix test", task = "test",
+            taskArgs = { "--trace" }, request = "launch", startApps = true,
+            projectDir = "${workspaceFolder}",
+            requireFiles = { "test/**/test_helper.exs", "test/**/*_test.exs" } },
+          { type = "mix_task", name = "mix phx.server", task = "phx.server",
+            request = "launch", projectDir = "${workspaceFolder}" },
+        }
+      else
+        vim.schedule(function()
+          vim.notify(
+            "[dap] Elixir DAP debugger not found.\n"
+            .. "Run :MasonInstall elixir-ls to install it.",
+            vim.log.levels.WARN
+          )
+        end)
+      end
 
       -- ── Persistent breakpoints ────────────────────────────────────
       local bp_file = vim.fn.stdpath("data") .. "/dap-breakpoints.json"
@@ -397,11 +430,6 @@ return {
     "jay-babu/mason-nvim-dap.nvim",
     dependencies = { "mason.nvim", "nvim-dap" },
     opts = {
-      -- FIX (v2.3.6): "python" corrected to "debugpy".
-      -- "python" is not a Mason registry package name — the correct name is
-      -- "debugpy". This caused mason-nvim-dap to log a warning on every
-      -- startup and skip auto-installing the Python DAP adapter entirely.
-      -- Open since v2.2.4; single-token fix.
       ensure_installed       = { "debugpy", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
       -- NOTE: handlers key intentionally absent.

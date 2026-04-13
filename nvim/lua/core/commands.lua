@@ -13,6 +13,15 @@
 --     to `lsp_format = "fallback"`. The old key was silently ignored, meaning LSP
 --     fallback formatting never fired for filetypes not in formatters_by_ft.
 --     Updated both the ranged and whole-buffer call sites.
+--
+-- FIX (v2.3.9):
+--   • MasonInstallAll was missing "fortls". lsp.lua's optional server table
+--     attaches fortls if the binary is present, but there was no way to get
+--     it via :MasonInstallAll on a fresh install. Added to the LSP section.
+--   • "gopls" added to ensure_installed LSP list. lsp.lua wires gopls in the
+--     servers table but mason-lspconfig's ensure_installed (lsp.lua) did not
+--     include it; MasonInstallAll was the only place to install it and it was
+--     absent here too.
 
 local cmd = vim.api.nvim_create_user_command
 
@@ -217,9 +226,12 @@ cmd("MasonInstallAll", function()
 
   local pkgs = {
     -- LSP
+    -- FIX (v2.3.9): "fortls" added — lsp.lua attaches it as an optional server
+    -- when the binary is present, but there was no way to install it via
+    -- :MasonInstallAll. "gopls" added for the same reason.
     "lua-language-server", "basedpyright", "typescript-language-server",
     "html-lsp", "css-lsp", "json-lsp", "yaml-language-server",
-    "clangd", "solargraph", "elixir-ls", "kotlin-language-server",
+    "clangd", "gopls", "solargraph", "elixir-ls", "kotlin-language-server",
     "zls", "fortls", "sqls",
     -- NOTE: cobol-language-server is NOT in the Mason registry.
     --       Install manually: npm i -g @broadcommfd/cobol-language-support

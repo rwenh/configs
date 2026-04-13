@@ -28,6 +28,13 @@
 --     the project root. pytest needs pyproject.toml/setup.cfg; cargo test
 --     needs Cargo.toml; go test needs go.mod; zig build test needs build.zig.
 --     Added "cd <root> && " prefix consistent with ruby/elixir/kotlin/java.
+--
+-- FIX (v2.3.9):
+--   • run_tests() JS/TS: detect_js_test_cmd() returned bare commands ("npm
+--     test", "yarn test", etc.) with no "cd <root> && " prefix. If the shell's
+--     cwd differed from the project root, the package manager couldn't locate
+--     package.json and failed silently. All JS/TS test commands now prefixed
+--     with "cd <root> && " consistent with every other language in the table.
 
 local M = {}
 
@@ -350,6 +357,7 @@ end
 -- ── JS/TS package manager detection ──────────────────────────────────────────
 -- FIX (v2.3.2): probe lockfiles in project root.
 -- FIX (v2.3.3): also check bun.lock (text lockfile, Bun v1.1+).
+-- FIX (v2.3.9): returns bare command only; caller prepends "cd <root> && ".
 local function detect_js_test_cmd(root)
   if vim.fn.filereadable(root .. "/bun.lockb") == 1
   or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
@@ -370,16 +378,16 @@ function M.run_tests()
 
   local escaped_root = vim.fn.shellescape(root)
 
+  -- FIX (v2.3.9): JS/TS entries now include "cd <root> && " prefix.
+  -- detect_js_test_cmd() returns the bare package-manager command; without
+  -- cding first the package manager fails to find package.json when the
+  -- shell's cwd differs from the project root (e.g. when opened from ~).
   local test_commands = {
-    -- FIX (v2.3.8): cd prefix added for python/rust/go/zig so they pick up
-    -- their project config files (pyproject.toml, Cargo.toml, go.mod,
-    -- build.zig) regardless of the shell's working directory at invocation.
     python     = "cd " .. escaped_root .. " && pytest",
     rust       = "cd " .. escaped_root .. " && cargo test",
     go         = "cd " .. escaped_root .. " && go test ./...",
-    javascript = detect_js_test_cmd(root),
-    typescript = detect_js_test_cmd(root),
-    -- FIX: add cd prefix so rspec/mix pick up their config from project root.
+    javascript = "cd " .. escaped_root .. " && " .. detect_js_test_cmd(root),
+    typescript = "cd " .. escaped_root .. " && " .. detect_js_test_cmd(root),
     ruby       = "cd " .. escaped_root .. " && bundle exec rspec",
     elixir     = "cd " .. escaped_root .. " && mix test",
     kotlin = vim.fn.filereadable(root .. "/gradlew") == 1
