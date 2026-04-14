@@ -300,13 +300,14 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.4)
+## Known Issues / Pending Fixes (v2.3.9)
 
 | Module | Issue |
 |--------|-------|
 | `dap.lua` | Breakpoint restore on large files lands on wrong lines (treesitter not yet parsed at restore time) |
 | `test.lua` | neotest-rust race condition if rustaceanvim not yet attached on first Rust file open |
 | `runner.lua` | `run_tests()` has no entry for c, cpp, fortran, vhdl, cobol — calling `<leader>'t` in those filetypes notifies "No test runner" |
+| `options.lua` | `matchparen` disabled with no replacement — cursor-position bracket matching is fully off |
 
 ---
 

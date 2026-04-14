@@ -345,8 +345,6 @@ Space (` `)
 ## HUD / FOCUS
 - `<leader>uF` — Deep focus mode (strips all chrome + Twilight + Zen)
 - `<leader>uT` — Twilight (dim non-active block)
-- `<leader>un` — Dismiss all notifications
-- `<leader>uN` — Notification history
 - `<leader>.B` — Git blame virtual text toggle
 - `-` — Oil inline file editor (open parent dir)
 - `<leader>eo` — Oil inline file editor

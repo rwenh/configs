@@ -41,6 +41,12 @@
 --     but elixir-ls was never in ensure_installed — Elixir had no LSP unless
 --     the user ran :MasonInstall manually. Added "elixir-ls" to ensure_installed
 --     and added an elixirls entry in the servers table so lsp_setup() wires it.
+--
+-- FIX (v2.3.9):
+--   • fortls added to mason-lspconfig ensure_installed. It lives in the optional
+--     servers table (binary-checked at runtime) but was never in ensure_installed,
+--     so a fresh install had no way to auto-install it. Consistent with the
+--     elixir-ls fix in v2.3.7 and the commands.lua MasonInstallAll fix.
 
 return {
   {
@@ -65,6 +71,10 @@ return {
         -- inside elixir-tools so that lsp.lua is the sole owner of the server.
         -- Without this entry the server was never auto-installed.
         "elixir-ls",
+        -- FIX (v2.3.9): fortls added. It is wired in the optional servers table
+        -- below but was absent from ensure_installed — never auto-installed on
+        -- fresh setups. Binary-presence check at runtime still guards attachment.
+        "fortls",
       },
       automatic_installation = true,
       -- FIX (v2.3.4): suppress mason-lspconfig's default handler.

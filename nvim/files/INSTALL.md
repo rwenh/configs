@@ -151,7 +151,19 @@
 
 ---
 
-## What Was Changed (v2.3.7 → v2.3.8) — Current
+## What Was Changed (v2.3.8 → v2.3.9) — Current
+
+87. **runner.lua — `run_tests()` JS/TS cd prefix** — `detect_js_test_cmd()` returned a bare package-manager command with no `cd <root> &&` prefix. When the shell's cwd differed from the project root, the package manager couldn't locate `package.json` and failed silently. All JS/TS test commands now prefixed with `cd <root> &&`, consistent with every other language.
+
+88. **commands.lua — MasonInstallAll missing `fortls` and `gopls`** — `lsp.lua` wires both as servers but neither was in `MasonInstallAll`. A fresh install had no way to auto-install them via `:MasonInstallAll`. Both added to the LSP section.
+
+89. **dap.lua — Elixir DAP debugger path resolver** — The fallback chain ended with `exepath("elixir-ls")` which resolves to the LSP binary, not the DAP debugger. Using the LSP binary as a DAP adapter silently failed every Elixir debug session. Resolver now only returns a known DAP-capable path (`debugger.sh` or `elixir-ls-debugger`); falls back to nil with a warning rather than wiring the wrong binary.
+
+90. **lsp.lua — `fortls` added to `mason-lspconfig ensure_installed`** — `fortls` was in the optional servers table (binary-checked at runtime) but absent from `ensure_installed`. A fresh install had no way to auto-install it. Consistent with the elixir-ls fix in v2.3.7.
+
+---
+
+## What Was Changed (v2.3.7 → v2.3.8)
 
 83. **test.lua — neotest-vitest constructor** — `neotest-vitest` was returned as a raw module table. neotest-vitest exports a callable constructor; not invoking it silently gave neotest an invalid adapter object and Vitest tests never ran. Fixed: `require("neotest-vitest")({})` — identical fix to neotest-go (v2.3.2) and neotest-elixir (v2.3.5).
 
@@ -163,7 +175,7 @@
 
 ---
 
-## Known Issues (v2.3.8)
+## Known Issues (v2.3.9)
 
 | Module | Issue | Since |
 |--------|-------|-------|
@@ -172,7 +184,16 @@
 | `runner.lua` | `run_tests()` has no entry for `c`, `cpp`, `fortran`, `vhdl`, `cobol` — `<leader>'t` in those filetypes notifies "No test runner" | v2.0 |
 | `options.lua` | `matchparen` disabled with no replacement — cursor-position bracket matching is fully off | v2.0 |
 
-### Issues resolved this release (v2.3.8)
+### Issues resolved this release (v2.3.9)
+
+| Issue | Fix |
+|-------|-----|
+| JS/TS `run_tests()` missing `cd <root> &&` prefix | #87 |
+| MasonInstallAll missing `fortls` and `gopls` | #88 |
+| Elixir DAP resolver fell back to LSP binary as DAP adapter | #89 |
+| `fortls` absent from `mason-lspconfig ensure_installed` | #90 |
+
+### Issues resolved in v2.3.8
 
 | Issue | Fix |
 |-------|-----|
@@ -223,7 +244,7 @@
     ├── core/
     │   ├── autocmds.lua              ← v2.3.3
     │   ├── bootstrap.lua             ← v2.1.1
-    │   ├── commands.lua              ← v2.3.5  ✦ lsp_format fix
+    │   ├── commands.lua              ← v2.3.9  ✦ fortls + gopls in MasonInstallAll
     │   ├── focus.lua                 ← v2.2.2
     │   ├── hud.lua                   ← v2.2.4
     │   ├── keymaps.lua               ← v2.3.8  ✦ overseer duplicates removed
@@ -231,18 +252,18 @@
     │   ├── theme.lua                 ← v2.2.2
     │   └── util/
     │       ├── path.lua              ← v2.3.2
-    │       └── runner.lua            ← v2.3.8  ✦ cd prefix python/rust/go/zig
+    │       └── runner.lua            ← v2.3.9  ✦ JS/TS run_tests() cd prefix
     └── plugins/
         ├── init.lua                  ← v2.1.1
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
             ├── advanced.lua          ← v2.3.1b
             ├── completion.lua        ← v2.3.6  ✦ blink nav keys "show" removed
-            ├── dap.lua               ← v2.3.6  ✦ "python" → "debugpy"
+            ├── dap.lua               ← v2.3.9  ✦ elixir DAP resolver fixed
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
             ├── hud.lua               ← v2.3.7  ✦ mini.animate opts→config
-            ├── lsp.lua               ← v2.3.7  ✦ elixir-ls wired
+            ├── lsp.lua               ← v2.3.9  ✦ fortls in ensure_installed
             ├── test.lua              ← v2.3.8  ✦ neotest-vitest constructor
             ├── treesitter.lua        ← v2.3.8  ✦ "comment" removed from ignore_install
             ├── ui.lua                ← v2.3.5  ✦ LOGO_WIDTH removed; drain flash
