@@ -2,6 +2,18 @@
 ;;; Commentary:
 ;;; Production-grade initialization with health checks and recovery.
 ;;; Version: 3.0.4
+;;; Fixes vs 3.0.4 (recalibration-3):
+;;;   - FIX-LOADPATH-ROOT: Removed (add-to-list 'load-path emacs-ide-root-dir).
+;;;     Adding user-emacs-directory to load-path triggers Emacs's built-in
+;;;     "load-path contains user-emacs-directory" warning and is a known
+;;;     anti-pattern — it causes every .el file in ~/.emacs.d/ to be
+;;;     auto-discoverable via require, which can shadow built-in packages or
+;;;     cause accidental loads. The line was a workaround for feature modules
+;;;     (core-dev, apheleia-langs-patch, tools-repl, etc.) that were at root
+;;;     rather than under modules/. emacs-ide-load-feature-module already
+;;;     searches modules/ first then root via file-at-root — no load-path
+///     entry is needed. The loader also now explicitly searches core/ and
+;;;     lib/ as additional fallbacks before giving up.
 ;;; Fixes vs 3.0.4 (post-audit calibration):
 ;;;   - FIX-DIAGNOSE-LOAD: emacs-ide-diagnose.el added to emacs-ide-core-modules
 ;;;     so M-x emacs-ide-diagnose runs the full module (comprehensive per-module
@@ -161,7 +173,11 @@
 (add-to-list 'load-path emacs-ide-lib-dir)
 (add-to-list 'load-path emacs-ide-modules-dir)
 (add-to-list 'load-path emacs-ide-langs-dir)   ; lazy lang modules
-(add-to-list 'load-path emacs-ide-root-dir)    ; FIX-MODULE-PATH: root-level modules
+;; FIX-LOADPATH-ROOT: emacs-ide-root-dir intentionally NOT added to load-path.
+;; Adding user-emacs-directory to load-path triggers Emacs's built-in warning
+;; ("load-path contains user-emacs-directory") and is a known anti-pattern.
+;; emacs-ide-load-feature-module searches modules/ then root explicitly via
+;; file-at-root — no load-path entry for root is required.
 
 (emacs-ide--track-phase "directory-setup")
 
@@ -405,15 +421,23 @@ and use-package :mode/:hook triggers. Zero boot cost for lang modules.")
 Uses load-file for the same reason as emacs-ide-load-core-module —
 bypasses featurep cache, native-comp .eln cache, and stale .elc files.
 load-file always evaluates the exact .el source file.
-FIX-MODULE-PATH: Searches modules/ first, then project root, so files
-that live at root (core-dev, apheleia-langs-patch, tools-repl, etc.)
-are found without requiring them to be copied into modules/."
+FIX-LOADPATH-ROOT: Search order is modules/ → root → core/ → lib/.
+root/ is searched explicitly here so that files living at the project
+root (core-dev, apheleia-langs-patch, tools-repl, etc.) are found
+without adding user-emacs-directory to load-path, which triggers
+Emacs's built-in anti-pattern warning."
     (let* ((file-in-modules (expand-file-name (concat module-name ".el")
                                                emacs-ide-modules-dir))
            (file-at-root    (expand-file-name (concat module-name ".el")
                                                emacs-ide-root-dir))
+           (file-in-core    (expand-file-name (concat module-name ".el")
+                                               emacs-ide-core-dir))
+           (file-in-lib     (expand-file-name (concat module-name ".el")
+                                               emacs-ide-lib-dir))
            (file (cond ((file-exists-p file-in-modules) file-in-modules)
                        ((file-exists-p file-at-root)    file-at-root)
+                       ((file-exists-p file-in-core)    file-in-core)
+                       ((file-exists-p file-in-lib)     file-in-lib)
                        (t nil))))
       (condition-case err
           (if file
