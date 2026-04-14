@@ -3,7 +3,16 @@
 ;;; YAML and Elisp configuration management with proper nested parsing.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (post-audit calibration):
+;;; Fixes vs 3.0.4 (cross-check):
+;;;   - FIX-WORKSPACE-APPLY: emacs-ide-config-apply now wires the workspace:
+;;;     section from config.yml.  workspace.auto-switch is propagated to
+;;;     emacs-ide-workspace-auto-switch when the variable is bound, so that
+;;;     M-x emacs-ide-config-reload reflects changes to that key at runtime.
+;;;     workspace.save-on-exit is read live by the kill-emacs-hook in
+;;;     ui-workspace.el, so no additional wiring is needed for that key.
+;;;     workspace.state-file and workspace.defaults cannot be hot-reloaded
+;;;     without restarting perspective.el, so they are intentionally omitted.
+;;; Fixes vs 3.0.4 (post-audit calibration, retained):
 ;;;   - FIX-EDITING-APPLY: emacs-ide-config-apply now handles the editing:
 ;;;     section from config.yml.  editing.meow is wired to emacs-ide-toggle-meow
 ;;;     so that M-x emacs-ide-config-reload can activate or deactivate Meow modal
@@ -493,11 +502,14 @@ Returns association list of configuration."
   "Apply CONFIG settings to Emacs.
 DOC-APPLY: This function only wires settings that must be set BEFORE feature
 modules load (theme var, GC threshold, LSP enable flag, projectile method,
-etc.). All other config.yml keys (lsp.idle-delay, features.beacon,
-git.fill-column, workspace.*, editing.*, repl.*, languages.*, lang-settings.*)
+etc.), plus a small set of runtime-reloadable keys (editing.meow,
+workspace.auto-switch) where a live variable must be updated on reload.
+All other config.yml keys (lsp.idle-delay, features.beacon, git.fill-column,
+workspace.state-file, workspace.defaults, repl.*, languages.*, lang-settings.*)
 are intentionally NOT applied here — they are read lazily at module-load time
-via emacs-ide-config-get / emacs-ide-config-get-nested. Do not add wiring here
-for keys that are better read by their owning module on demand.
+via emacs-ide-config-get / emacs-ide-config-get-nested, or are not
+hot-reloadable without a module restart. Do not add wiring here for keys that
+are better read by their owning module on demand.
 C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
   after-init-time is set) or when the YAML value is larger than the
   current threshold. Applying a smaller GC threshold mid-session on
@@ -630,6 +642,24 @@ C-14 FIX: gc-cons-threshold is only applied during bootstrap (before
               (emacs-ide-toggle-meow))
              ((and (not want-meow) emacs-ide-meow-enabled)
               (emacs-ide-toggle-meow)))))))
+
+    ;; ── Workspace ───────────────────────────────────────────────────────────
+    ;; FIX-WORKSPACE-APPLY: Wire workspace.auto-switch and workspace.save-on-exit
+    ;; so M-x emacs-ide-config-reload propagates changes to ui-workspace.el.
+    ;; workspace.state-file and workspace.defaults are read directly by
+    ;; ui-workspace.el at load time; they cannot be hot-reloaded without a
+    ;; perspective.el restart, so they are intentionally not wired here.
+    (let ((workspace (section 'workspace)))
+      (when workspace
+        (when (assoc 'auto-switch workspace)
+          (when (boundp 'emacs-ide-workspace-auto-switch)
+            (setq emacs-ide-workspace-auto-switch
+                  (val 'auto-switch workspace))))
+        (when (assoc 'save-on-exit workspace)
+          ;; persp-state-save on exit is driven by the kill-emacs-hook in
+          ;; ui-workspace.el which calls emacs-ide-config-get at exit time;
+          ;; no live variable to update here — the hook re-reads config live.
+          nil)))
 
     ;; ── Security ────────────────────────────────────────────────────────────
     (let ((security (section 'security)))

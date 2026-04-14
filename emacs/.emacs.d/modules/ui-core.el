@@ -337,15 +337,11 @@
 
 ;; ============================================================================
 ;; ANSI COLOR IN COMPILATION
+;; Owned by tools-terminal.el — registered there at module load time so the
+;; hook is active for every compilation buffer including the first one.
+;; tools-terminal.el defines emacs-ide-terminal--ansi-compile and adds it to
+;; compilation-filter-hook with an idempotent memq guard.
 ;; ============================================================================
-(use-package ansi-color
-  :straight nil
-  :defer t
-  :config
-  (add-hook 'compilation-filter-hook
-            (lambda ()
-              (let ((inhibit-read-only t))
-                (ansi-color-apply-on-region compilation-filter-start (point))))))
 
 ;; ============================================================================
 ;; VISUAL FILL COLUMN

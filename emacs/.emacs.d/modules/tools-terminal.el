@@ -3,14 +3,17 @@
 ;;; VTerm, Eshell, and terminal utilities.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 2.2.4 (post-audit calibration):
-;;;   - FIX-COLORIZE-COMMENT: Removed false claim that
-;;;     emacs-ide-colorize-compilation-buffer is defined in ui-core.el.
-;;;     That function does not exist anywhere. ui-core.el wires ANSI color via
-;;;     an anonymous lambda directly on compilation-filter-hook using
-;;;     ansi-color-apply-on-region. The comment previously discouraged defining
-;;;     the function here but named something that was never defined anywhere,
-;;;     causing confusion. Compilation color is fully handled by ui-core.el.
+;;; Fixes vs 3.0.4 (cross-check):
+;;;   - FIX-COMPILE-ANSI-GUARD: ansi-color compilation hook now registered
+;;;     directly in tools-terminal.el (previously in ui-core.el :config of
+;;;     ansi-color use-package which is :defer t — the hook was never installed
+;;;     until ansi-color first loaded, missing the first compilation buffer).
+;;;     The hook is idempotent (guarded by unless/memq) and registered at
+;;;     tools-terminal.el load time so every compilation buffer gets colour.
+;;; Fixes vs 2.2.4 (post-audit calibration, retained):
+;;;   - FIX-COLORIZE-COMMENT: emacs-ide-colorize-compilation-buffer does not
+;;;     exist anywhere. ANSI color is wired via an anonymous lambda directly on
+;;;     compilation-filter-hook. No named function exists or is needed.
 ;;;   - FIX-VERSION: Header bumped from 2.2.4 to 3.0.4.
 ;;;   - FIX-VTERM-CONFIG-READ: vterm-max-scrollback, vterm-kill-buffer-on-exit,
 ;;;     and vterm-timer-delay were hardcoded. Now read from config.yml
@@ -232,12 +235,23 @@ FIX-RUN-FILE-QUOTE: file path now quoted with shell-quote-argument."
   (let ((inhibit-read-only t)) (erase-buffer)))
 
 ;; ============================================================================
-;; COMPILATION BUFFER
-;; ANSI color in compilation output is handled by ui-core.el via an anonymous
-;; lambda on compilation-filter-hook (ansi-color-apply-on-region).
-;; No colorize function is defined here or in ui-core.el — the hook closure
-;; in ui-core.el IS the implementation.
+;; COMPILATION BUFFER — ANSI COLOR
+;; Registered here at tools-terminal.el load time so the hook is active for
+;; every compilation buffer, including the very first one opened.
+;; FIX-COMPILE-ANSI-GUARD: Previously this was inside (use-package ansi-color
+;; :defer t :config ...) in ui-core.el. Since ansi-color is :defer t its
+;; :config only runs on first load — but compilation-filter-hook fires
+;; immediately on the first compile, before ansi-color has loaded, so the
+;; first buffer never received color. Hook is idempotent (memq guard prevents
+;; duplicate registration on M-x emacs-ide-config-reload).
 ;; ============================================================================
+(unless (memq 'emacs-ide-terminal--ansi-compile compilation-filter-hook)
+  (defun emacs-ide-terminal--ansi-compile ()
+    "Apply ANSI color escape sequences in the compilation buffer."
+    (require 'ansi-color)
+    (let ((inhibit-read-only t))
+      (ansi-color-apply-on-region compilation-filter-start (point))))
+  (add-hook 'compilation-filter-hook #'emacs-ide-terminal--ansi-compile))
 (use-package compile
   :straight nil
   :init

@@ -3,20 +3,64 @@
 ;;; Unified code formatting using apheleia, supporting 40+ languages.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (post-audit calibration):
-;;;   - FIX-FORMAT-HOOK-TIMING: format-on-save prog-mode-hook and text-mode-hook
-;;;     lambdas were inside (use-package apheleia ... :config ...).  Since
-;;;     apheleia is :defer t, its :config only runs when apheleia first loads —
-;;;     triggered by the first formatter call, which happens inside a buffer that
-;;;     has already activated its major-mode.  That first buffer therefore misses
-;;;     the hook entirely.  Hooks are now registered at tools-format.el load time
-;;;     (unconditionally), guarding (apheleia-mode 1) with fboundp so they are
-;;;     safe to call whether apheleia has loaded yet or not.
+;;; Fixes vs 3.0.4 (cross-check):
+;;;   - FIX-DEFUN-IN-CONFIG: emacs-ide-check-formatters was defined inside
+;;;     (use-package apheleia :defer t :config ...).  Since apheleia is :defer t
+;;;     its :config only runs when apheleia first loads — meaning M-x
+;;;     emacs-ide-check-formatters was void until a formatter triggered apheleia.
+;;;     emacs-ide-spot-check.el lists it as a required command; the spot-check
+;;;     would always report it missing on a fresh startup.  Moved to top-level
+;;;     defun so the command is always available regardless of apheleia load state.
+;;; Fixes vs 3.0.4 (post-audit calibration, retained):
+;;;   - FIX-FORMAT-HOOK-TIMING: format-on-save hooks registered at module load
+;;;     time rather than inside apheleia :config.
 ;;; Fixes vs 3.0.4 (recalibration, retained):
 ;;;   - FIX-ALIST-MISUSE, FIX-TAPLO, FIX-FORMATTERS-GUARD.
 ;;; Code:
 
 (require 'cl-lib)
+
+;; ============================================================================
+;; FORMATTER STATUS COMMAND
+;; FIX-DEFUN-IN-CONFIG: Defined at top level so M-x emacs-ide-check-formatters
+;; is always available. Previously inside (use-package apheleia :defer t :config)
+;; which meant the command was void until apheleia first loaded — causing a false
+;; MISSING result in emacs-ide-spot-check on every fresh startup.
+;; ============================================================================
+(defun emacs-ide-check-formatters ()
+  "Report which formatters are installed and which are missing."
+  (interactive)
+  (let ((formatters '(("black"              . "Python")
+                      ("prettier"           . "JS/TS/HTML/CSS/JSON/YAML/MD")
+                      ("rustfmt"            . "Rust")
+                      ("gofmt"              . "Go")
+                      ("clang-format"       . "C/C++")
+                      ("google-java-format" . "Java")
+                      ("ktlint"             . "Kotlin")
+                      ("scalafmt"           . "Scala")
+                      ("stylua"             . "Lua")
+                      ("shfmt"              . "Shell")
+                      ("pg_format"          . "SQL")
+                      ("taplo"              . "TOML")
+                      ("nixpkgs-fmt"        . "Nix")
+                      ("ormolu"             . "Haskell")
+                      ("cljfmt"             . "Clojure")
+                      ("terraform"          . "Terraform")))
+        (found '())
+        (missing '()))
+    (dolist (f formatters)
+      (if (executable-find (car f))
+          (push f found)
+        (push f missing)))
+    (with-output-to-temp-buffer "*Formatter Status*"
+      (princ "=== FORMATTER STATUS ===\n\n")
+      (princ (format "Installed: %d\n" (length found)))
+      (dolist (f (nreverse found))
+        (princ (format "  ✓ %-25s (%s)\n" (car f) (cdr f))))
+      (when missing
+        (princ (format "\nMissing: %d\n" (length missing)))
+        (dolist (f (nreverse missing))
+          (princ (format "  ✗ %-25s (%s)\n" (car f) (cdr f))))))))
 
 ;; ============================================================================
 ;; FORMAT-ON-SAVE HOOKS
@@ -69,43 +113,7 @@
       (setf (alist-get 'python-ts-mode apheleia-mode-alist) 'black))
     (when (executable-find "rustfmt")
       (setf (alist-get 'rust-mode    apheleia-mode-alist) 'rustfmt)
-      (setf (alist-get 'rust-ts-mode apheleia-mode-alist) 'rustfmt)))
-
-  ;; ── Formatter check ───────────────────────────────────────────────────────
-  (defun emacs-ide-check-formatters ()
-    "Report which formatters are installed and which are missing."
-    (interactive)
-    (let ((formatters '(("black"              . "Python")
-                        ("prettier"           . "JS/TS/HTML/CSS/JSON/YAML/MD")
-                        ("rustfmt"            . "Rust")
-                        ("gofmt"              . "Go")
-                        ("clang-format"       . "C/C++")
-                        ("google-java-format" . "Java")
-                        ("ktlint"             . "Kotlin")
-                        ("scalafmt"           . "Scala")
-                        ("stylua"             . "Lua")
-                        ("shfmt"              . "Shell")
-                        ("pg_format"          . "SQL")
-                        ("taplo"              . "TOML")
-                        ("nixpkgs-fmt"        . "Nix")
-                        ("ormolu"             . "Haskell")
-                        ("cljfmt"             . "Clojure")
-                        ("terraform"          . "Terraform")))
-          (found '())
-          (missing '()))
-      (dolist (f formatters)
-        (if (executable-find (car f))
-            (push f found)
-          (push f missing)))
-      (with-output-to-temp-buffer "*Formatter Status*"
-        (princ "=== FORMATTER STATUS ===\n\n")
-        (princ (format "Installed: %d\n" (length found)))
-        (dolist (f (nreverse found))
-          (princ (format "  ✓ %-25s (%s)\n" (car f) (cdr f))))
-        (when missing
-          (princ (format "\nMissing: %d\n" (length missing)))
-          (dolist (f (nreverse missing))
-            (princ (format "  ✗ %-25s (%s)\n" (car f) (cdr f)))))))))
+      (setf (alist-get 'rust-ts-mode apheleia-mode-alist) 'rustfmt))))
 
 (provide 'tools-format)
 ;;; tools-format.el ends here
