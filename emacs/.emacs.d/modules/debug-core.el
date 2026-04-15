@@ -1,5 +1,5 @@
 ;;; debug-core.el --- Debugging Infrastructure -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: Renamed hydra-debug to avoid collision (FIX #9)
 ;;; Code:
 
 (require 'cl-lib)

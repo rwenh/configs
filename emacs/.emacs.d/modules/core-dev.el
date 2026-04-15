@@ -1,5 +1,5 @@
 ;;; core-dev.el --- Development Core Infrastructure -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: Cache now clears on config reload (FIX #14)
 ;;; Code:
 
 (require 'cl-lib)
@@ -10,10 +10,14 @@
 (defvar emacs-ide-dev--config-languages nil
   "Cached languages section from config.yml. Cleared on config reload.")
 
+;; FIX #14: Cache now properly invalidated
 (defun emacs-ide-dev--setup-config-reload-hook ()
   (when (boundp 'emacs-ide-config-reload-hook)
     (add-hook 'emacs-ide-config-reload-hook
-              (lambda () (setq emacs-ide-dev--config-languages nil)))))
+              (lambda ()
+                ;; Clear language cache on config reload
+                (setq emacs-ide-dev--config-languages nil)
+                (message "core-dev: cache cleared on config reload")))))
 
 (add-hook 'after-init-hook #'emacs-ide-dev--setup-config-reload-hook)
 

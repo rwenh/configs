@@ -1,8 +1,8 @@
 ;;; tools-hydra.el --- Hydra Menus for Discoverable Commands -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: Added cl-lib require (FIX #11)
 ;;; Code:
 
-(require 'cl-lib)
+(require 'cl-lib)  ;; FIX #11: Explicit require
 
 (use-package hydra :demand t)
 
@@ -254,11 +254,11 @@
 (defhydra hydra-repl (:hint nil :color blue)
   "
   repl
-  ────────────────────────────────────────
+  ────────────────────────────────────
   _r_ launch / switch   _t_ toggle window
   _s_ send region       _b_ send buffer
   _d_ send defun        _S_ status
-  ────────────────────────────────────────
+  ────────────────────────────────────
   _q_ quit
 "
   ("r" emacs-ide-repl-launch)

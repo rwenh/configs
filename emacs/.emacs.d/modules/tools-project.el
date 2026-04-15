@@ -1,5 +1,5 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: Fixed projectile cache consistency (FIX #14-alt)
 ;;; Code:
 
 (when (bound-and-true-p emacs-ide-project-enable)
@@ -20,7 +20,13 @@
                 ("~/work"     . 2)
                 ("~/code"     . 2))))))
 
-(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-project--apply-search-paths)
+;; FIX #14-alt: Cache consistency on config reload
+(when (boundp 'emacs-ide-config-reload-hook)
+  (add-hook 'emacs-ide-config-reload-hook
+            (lambda ()
+              (emacs-ide-project--apply-search-paths)
+              (when (fboundp 'projectile-invalidate-cache)
+                (projectile-invalidate-cache nil)))))
 
 (defconst emacs-ide-project--default-ignored-dirs
   '(".git" ".svn" ".hg" "node_modules" "__pycache__"

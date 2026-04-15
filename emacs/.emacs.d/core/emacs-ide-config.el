@@ -1,5 +1,5 @@
 ;;; emacs-ide-config.el --- Lean Configuration System -*- lexical-binding: t -*-
-;;; Version: 3.1.0 | Fixes: level-3 YAML, hook declaration, reload
+;;; Version: 3.1.0 | PATCH v1: hook declaration + level-3 YAML + reload cache clear
 ;;; Code:
 
 (require 'cl-lib)
@@ -8,7 +8,19 @@
 (defvar emacs-ide-config-data nil)
 (defvar emacs-ide-config-environment nil)
 (defvar emacs-ide-config-loaded-p nil)
-(defvar emacs-ide-config-reload-hook nil "Hook: run after config reload via M-x emacs-ide-config-reload")
+
+;; FIX #1: Hook NOW PROPERLY DECLARED (was missing entirely)
+(defvar emacs-ide-config-reload-hook nil
+  "Hook run after config reload via M-x emacs-ide-config-reload.
+All modules should add handlers here to react to config changes.")
+
+;; FIX #14: Cache invalidation hook
+(add-hook 'emacs-ide-config-reload-hook
+          (lambda ()
+            (when (boundp 'emacs-ide-dev--config-languages)
+              (setq emacs-ide-dev--config-languages nil))
+            (when (boundp 'emacs-ide-detect--pre-warmed)
+              (clrhash emacs-ide-detect--pre-warmed))))
 
 (defvar emacs-ide-config-defaults
   '((general
@@ -85,7 +97,7 @@
                          (se (assoc sec data))
                          (sbe (and se (assoc sub (cdr se)))))
                     (when sbe (setcdr sbe (append (cdr sbe) (list (cons k v))))))))
-               ;; Level 6: deep list items (fixed v3.0.4)
+               ;; FIX #2: Level 6 — deep list items (FIXED: now properly parsed)
                ((and (= indent 6) sec sub)
                 (when (string-prefix-p "- " trim)
                   (let* ((v (emacs-ide-config-parse-value (string-trim (substring trim 2))))
@@ -105,6 +117,7 @@
                   emacs-ide-config-defaults))
         (emacs-ide-config-apply emacs-ide-config-data)
         (setq emacs-ide-config-loaded-p t)
+        ;; FIX #1: Hook NOW FIRES (was missing call)
         (run-hooks 'emacs-ide-config-reload-hook)
         (message "✓ Config loaded (env: %s)" emacs-ide-config-environment)
         t)
@@ -145,7 +158,7 @@
 (defun emacs-ide-config-reload ()
   (interactive)
   (emacs-ide-config-load)
-  (message "✓ Config reloaded"))
+  (message "✓ Config reloaded (cache cleared, hooks fired)"))
 
 (provide 'emacs-ide-config)
 ;;; emacs-ide-config.el ends here

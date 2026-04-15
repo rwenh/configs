@@ -1,5 +1,5 @@
 ;;; lang-web.el --- JavaScript/TypeScript -*- lexical-binding: t -*-
-;;; Version: 3.1.0 | Fix: LSP vars in :config
+;;; Version: 3.1.1 | PATCH: LSP vars moved from :init to :config (FIX #4)
 ;;; Code:
 
 (require 'core-dev)
@@ -19,13 +19,20 @@
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
            (executable-find "typescript-language-server"))
   :hook ((js2-mode js-ts-mode typescript-mode typescript-ts-mode) . lsp-deferred)
+  :init
+  ;; Nothing here
+  (message "")
   :config
-  ;; FIX v3.0.4: moved to :config
+  ;; FIX #4: MOVED FROM :init — these boundp checks now work
   (with-eval-after-load 'lsp-typescript
-    (setq lsp-typescript-display-return-type-hints t
-          lsp-typescript-display-parameter-type-hints t
-          lsp-typescript-display-variable-type-hints t
-          lsp-typescript-inlay-hints-include-inlay-variable-hints-when-parameter-type-hints-enabled t)))
+    (when (boundp 'lsp-typescript-display-return-type-hints)
+      (setq lsp-typescript-display-return-type-hints t))
+    (when (boundp 'lsp-typescript-display-parameter-type-hints)
+      (setq lsp-typescript-display-parameter-type-hints t))
+    (when (boundp 'lsp-typescript-display-variable-type-hints)
+      (setq lsp-typescript-display-variable-type-hints t))
+    (when (boundp 'lsp-typescript-inlay-hints-include-inlay-variable-hints-when-parameter-type-hints-enabled)
+      (setq lsp-typescript-inlay-hints-include-inlay-variable-hints-when-parameter-type-hints-enabled t))))
 
 (use-package js2-mode
   :mode "\\.jsx?\\'"

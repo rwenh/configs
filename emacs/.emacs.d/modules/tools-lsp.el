@@ -1,5 +1,5 @@
 ;;; tools-lsp.el --- LSP Configuration -*- lexical-binding: t -*-
-;;; Version: 3.1.0 | Fix: LSP vars moved to :config
+;;; Version: 3.1.1 | PATCH: Fixed LSP setq crash + added all bounds checks (FIX #13)
 ;;; Code:
 
 (when (bound-and-true-p emacs-ide-lsp-enable)
@@ -15,18 +15,26 @@
         lsp-enable-snippet t
         lsp-semantic-tokens-enable t
         lsp-lens-enable t
-        lsp-headerline-breadcrumb-enable t)
+        lsp-headerline-breadcrumb-enable t
+        ;; FIX #13: was missing — now properly set
+        lsp-inlay-hints-enable t)
   :config
-  ;; FIX v3.0.4: LSP-specific vars now in :config where lsp-rust/lsp-lua are loaded
+  ;; FIX #13: LSP-specific vars moved to :config where packages are guaranteed loaded
   (with-eval-after-load 'lsp-rust
-    (setq lsp-rust-analyzer-inlay-hints-mode t
-          lsp-rust-analyzer-cargo-watch-command "clippy"))
+    (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
+      (setq lsp-rust-analyzer-inlay-hints-mode t))
+    (when (boundp 'lsp-rust-analyzer-cargo-watch-command)
+      (setq lsp-rust-analyzer-cargo-watch-command "clippy")))
   (with-eval-after-load 'lsp-lua
-    (setq lsp-lua-hint-enable t
-          lsp-lua-diagnostics-globals '()))
+    (when (boundp 'lsp-lua-hint-enable)
+      (setq lsp-lua-hint-enable t))
+    (when (boundp 'lsp-lua-diagnostics-globals)
+      (setq lsp-lua-diagnostics-globals '())))
   (with-eval-after-load 'lsp-typescript
-    (setq lsp-typescript-display-return-type-hints t
-          lsp-typescript-display-parameter-type-hints t))
+    (when (boundp 'lsp-typescript-display-return-type-hints)
+      (setq lsp-typescript-display-return-type-hints t))
+    (when (boundp 'lsp-typescript-display-parameter-type-hints)
+      (setq lsp-typescript-display-parameter-type-hints t)))
   :bind (:map lsp-mode-map
               ("C-c l r" . lsp-rename)
               ("C-c l f" . lsp-format-buffer)

@@ -1,5 +1,5 @@
 ;;; tools-repl.el --- Unified REPL Hub -*- lexical-binding: t -*-
-;;; Version: 3.1.0
+;;; Version: 3.1.1 | PATCH: Display rules now persistent across config reload (FIX #13-alt)
 ;;; Code:
 
 (require 'cl-lib)
@@ -185,25 +185,36 @@
 
 ;;; ─── Display rules ───────────────────────────────────────────────────────────
 
+(defvar emacs-ide-repl--display-buffer-setup-done nil
+  "Track if display rules have been configured.")
+
 (defun emacs-ide-repl--setup-display-rules ()
+  "Setup display rules — FIX #13: now persistent via config-reload-hook"
   (let ((height (emacs-ide-repl--window-height))
         (side   (emacs-ide-repl--side)))
     (dolist (pattern '("\\*Python\\*" "\\*node-repl\\*" "\\*rust-repl\\*"
                        "\\*go-repl\\*" "\\*lua-repl\\*" "\\*julia\\*"
                        "\\*R\\*" "\\*haskell\\*" "\\*cider-repl.*\\*"
                        "\\*nix-repl\\*" "\\*nrepl.*\\*" "\\*bash-repl\\*"))
+      ;; Remove old rule if it exists
       (setq display-buffer-alist
             (cl-remove pattern display-buffer-alist :key #'car :test #'equal))
+      ;; Add new rule
       (push `(,pattern
               (display-buffer-in-side-window)
               (side . ,side)
               (slot . 1)
               (window-height . ,height)
               (reusable-frames . visible))
-            display-buffer-alist))))
+            display-buffer-alist)))
+  (setq emacs-ide-repl--display-buffer-setup-done t))
 
+;; Initial setup
 (emacs-ide-repl--setup-display-rules)
-(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-repl--setup-display-rules)
+
+;; Re-setup on config reload
+(when (boundp 'emacs-ide-config-reload-hook)
+  (add-hook 'emacs-ide-config-reload-hook #'emacs-ide-repl--setup-display-rules))
 
 ;;; ─── Global keys ─────────────────────────────────────────────────────────────
 

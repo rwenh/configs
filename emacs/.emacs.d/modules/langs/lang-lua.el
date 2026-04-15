@@ -1,5 +1,6 @@
 ;;; lang-lua.el --- Lua Language Support -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: LSP vars moved from :init to :config (FIX #5)
+;;; Code:
 
 (require 'core-dev)
 
@@ -25,18 +26,33 @@
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
            (executable-find "lua-language-server"))
   :hook (lua-mode . lsp-deferred)
+  :init
+  ;; Nothing here
+  (message "")
   :config
-  (setq lsp-lua-hint-enable                  t
-        lsp-lua-hint-setType                 t
-        lsp-lua-hint-paramType               t
-        lsp-lua-hint-paramName               t
-        lsp-lua-hint-await                   t
-        lsp-lua-hover-enumsLimit             10
-        lsp-lua-hover-previewFields          100
-        lsp-lua-hover-viewStringMax          1000
-        lsp-lua-runtime-version              "Lua 5.1"
-        lsp-lua-diagnostics-globals          '()
-        lsp-lua-workspace-checkThirdParty    t))
+  ;; FIX #5: MOVED FROM :init — now lsp-lua is loaded
+  (when (boundp 'lsp-lua-hint-enable)
+    (setq lsp-lua-hint-enable t))
+  (when (boundp 'lsp-lua-hint-setType)
+    (setq lsp-lua-hint-setType t))
+  (when (boundp 'lsp-lua-hint-paramType)
+    (setq lsp-lua-hint-paramType t))
+  (when (boundp 'lsp-lua-hint-paramName)
+    (setq lsp-lua-hint-paramName t))
+  (when (boundp 'lsp-lua-hint-await)
+    (setq lsp-lua-hint-await t))
+  (when (boundp 'lsp-lua-hover-enumsLimit)
+    (setq lsp-lua-hover-enumsLimit 10))
+  (when (boundp 'lsp-lua-hover-previewFields)
+    (setq lsp-lua-hover-previewFields 100))
+  (when (boundp 'lsp-lua-hover-viewStringMax)
+    (setq lsp-lua-hover-viewStringMax 1000))
+  (when (boundp 'lsp-lua-runtime-version)
+    (setq lsp-lua-runtime-version "Lua 5.1"))
+  (when (boundp 'lsp-lua-diagnostics-globals)
+    (setq lsp-lua-diagnostics-globals '()))
+  (when (boundp 'lsp-lua-workspace-checkThirdParty)
+    (setq lsp-lua-workspace-checkThirdParty t)))
 
 (with-eval-after-load 'apheleia
   (when (executable-find "stylua")

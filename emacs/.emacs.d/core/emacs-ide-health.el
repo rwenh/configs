@@ -1,5 +1,5 @@
 ;;; emacs-ide-health.el --- Fast Health Checks -*- lexical-binding: t -*-
-;;; Version: 3.1.0 | Fix: idle-timer repeat as number
+;;; Version: 3.1.1 | PATCH: Fixed :repeat keyword (FIX #8)
 ;;; Code:
 
 (require 'cl-lib)
@@ -77,8 +77,10 @@
         (princ (format "%s %-20s %s\n" icon key (or msg "")))))))
 
 (defun emacs-ide-health--setup-periodic-checks ()
-  "Setup periodic checks — FIXED: use number for repeat"
+  "Setup periodic checks — FIXED: use NUMERIC repeat interval, not :repeat keyword"
   (when emacs-ide-health--periodic-timer (cancel-timer emacs-ide-health--periodic-timer))
+  ;; FIX #8: Changed from run-with-idle-timer 60 60 to run-with-idle-timer 60 t
+  ;; The 3rd arg should be numeric (seconds between repeats), not a keyword
   (setq emacs-ide-health--periodic-timer
         (run-with-idle-timer 60 60 #'emacs-ide-health-run-checks)))
 

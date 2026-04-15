@@ -1,7 +1,5 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Vertico + Consult + Corfu + Embark.  Tuned for speed and delight.
-;;; Version: 3.1.0
+;;; Version: 3.1.1 | PATCH: Fixed corfu auto-delay variable binding (FIX #10-alt)
 ;;; Code:
 
 ;;; ─── Vertico ─────────────────────────────────────────────────────────────────
@@ -159,8 +157,10 @@
 (use-package corfu
   :init
   (setq corfu-auto              t
-        corfu-auto-delay        (if (boundp 'emacs-ide-completion-delay)
-                                    emacs-ide-completion-delay
+        ;; FIX #10: Corfu auto-delay now properly reads from config
+        corfu-auto-delay        (if (and (fboundp 'emacs-ide-config-get)
+                                         (boundp 'emacs-ide-config-data))
+                                    (or (emacs-ide-config-get 'completion 'delay nil) 0.15)
                                   0.15)
         corfu-auto-prefix       1
         corfu-cycle             t
@@ -243,7 +243,7 @@
   :init (setq save-place-file (expand-file-name "var/places" user-emacs-directory))
   :config (save-place-mode 1))
 
-;;; ─── Abbreviations ───────────────────────────────────────────────────────────
+;;; ─── Abbreviations ───────────────────────��───────────────────────────────────
 
 (setq-default abbrev-mode t)
 (setq save-abbrevs    'silently

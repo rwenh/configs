@@ -1,12 +1,14 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.1.1 | PATCH: Fixed void timer references (FIX #12)
 ;;; Code:
 
 (defun emacs-ide-dashboard--health-section (list-size)
   (let* ((results  (and (boundp 'emacs-ide-health-results) emacs-ide-health-results))
          (checked  (and (boundp 'emacs-ide-health-last-check) emacs-ide-health-last-check))
-         (errors   (if (boundp 'emacs-ide-health--last-errors)   emacs-ide-health--last-errors   0))
-         (warnings (if (boundp 'emacs-ide-health--last-warnings) emacs-ide-health--last-warnings 0)))
+         (errors   (if (and (boundp 'emacs-ide-health--errors) (number-p emacs-ide-health--errors))
+                       emacs-ide-health--errors 0))
+         (warnings (if (and (boundp 'emacs-ide-health--warnings) (number-p emacs-ide-health--warnings))
+                       emacs-ide-health--warnings 0)))
     (if (not checked)
         (insert (propertize "  󰣐 Health check pending...\n" 'face 'shadow))
       (let* ((face (cond ((> errors   0) 'error)
@@ -130,14 +132,13 @@
                  '(ide-actions   . emacs-ide-dashboard--actions-section))
     (add-to-list 'dashboard-item-shortcuts '(ide-health    . "h"))
     (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
+    ;; FIX #12: Skip problematic timer resize hook
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore))
-    (when (fboundp 'emacs-ide--find-and-cancel-void-timers)
-      (emacs-ide--find-and-cancel-void-timers))
+    ;; Setup startup hook
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
-    (when (fboundp 'emacs-ide--find-and-cancel-void-timers)
-      (emacs-ide--find-and-cancel-void-timers))
+    ;; Schedule refresh after idle
     (run-with-idle-timer 6 nil
                          (lambda ()
                            (when (get-buffer "*dashboard*")

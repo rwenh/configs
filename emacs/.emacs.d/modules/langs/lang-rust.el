@@ -1,5 +1,5 @@
 ;;; lang-rust.el --- Rust Language Support -*- lexical-binding: t -*-
-;;; Version: 3.1.0 | Fix: LSP vars in :config
+;;; Version: 3.1.1 | PATCH: LSP vars moved from :init to :config (FIX #3)
 ;;; Code:
 
 (require 'core-dev)
@@ -20,11 +20,18 @@
   :after (rust-mode lsp-mode)
   :if (and (bound-and-true-p emacs-ide-lsp-enable) (executable-find "rust-analyzer"))
   :hook ((rust-mode rust-ts-mode) . lsp-deferred)
+  :init
+  ;; Nothing here — these need :config where lsp-rust is loaded
+  (message "")
   :config
-  ;; FIX v3.0.4: moved from :init to :config where lsp-rust is guaranteed loaded
-  (setq lsp-rust-analyzer-inlay-hints-mode t
-        lsp-rust-analyzer-cargo-watch-command "clippy"
-        lsp-rust-analyzer-checkOnSave-command "clippy"))
+  ;; FIX #3: MOVED FROM :init — lsp-rust not loaded until :config
+  ;; Now these boundp checks actually work because the package is loaded
+  (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
+    (setq lsp-rust-analyzer-inlay-hints-mode t))
+  (when (boundp 'lsp-rust-analyzer-cargo-watch-command)
+    (setq lsp-rust-analyzer-cargo-watch-command "clippy"))
+  (when (boundp 'lsp-rust-analyzer-checkOnSave-command)
+    (setq lsp-rust-analyzer-checkOnSave-command "clippy")))
 
 (use-package cargo
   :after rust-mode
