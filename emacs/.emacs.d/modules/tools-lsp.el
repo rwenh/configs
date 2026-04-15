@@ -1,35 +1,12 @@
 ;;; tools-lsp.el --- LSP Mode Configuration -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Language Server Protocol configuration with performance optimizations.
 ;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (recalibration):
-;;;   - FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle does not exist in modern
-;;;     lsp-ui (it was removed in lsp-ui 7.x). The correct public API is
-;;;     lsp-ui-doc-glance (show doc for thing at point, dismiss on next event)
-;;;     and lsp-ui-doc-hide (explicitly hide the popup). A thin
-;;;     emacs-ide-lsp-ui-doc-toggle wrapper is defined that calls
-;;;     lsp-ui-doc-glance when the popup is hidden and lsp-ui-doc-hide when
-;;;     visible, providing the expected toggle UX without calling a
-;;;     nonexistent function.  C-c l u is bound to this wrapper.
-;;;   - FIX-LSP-CHECK-SERVERS-API: (retained from prior audit) — checks PATH
-;;;     directly, does not call nonexistent (lsp-check-servers).
-;;; All prior fixes retained (FIX-CRASH, FIX-TS-HOOKS, FIX-DIAGNOSTICS-PROVIDER,
-;;; FIX-AUTO-GUESS-ROOT, FIX-LSP-UI-SPLIT, FIX-INIT-ORDER, etc.)
 ;;; Code:
 
 (require 'cl-lib)
 
-;; ============================================================================
-;; GUARD: LSP DISABLED IN CONFIG
-;; ============================================================================
 (when (bound-and-true-p emacs-ide-lsp-enable)
 
-;; ============================================================================
-;; LSP OPTIMIZATION FOR LARGE FILES
-;; ============================================================================
 (defun emacs-ide-lsp-optimize-large-files ()
-  "Disable expensive LSP features for large files before activation."
   (let ((threshold (or (bound-and-true-p emacs-ide-lsp-large-file-threshold)
                        100000)))
     (when (> (buffer-size) threshold)
@@ -42,14 +19,10 @@
       (message "LSP large-file optimizations applied"))))
 
 (defun emacs-ide-lsp-deferred-optimized ()
-  "Apply large-file optimizations then defer LSP startup."
   (emacs-ide-lsp-optimize-large-files)
   (when (fboundp 'lsp-deferred)
     (lsp-deferred)))
 
-;; ============================================================================
-;; FLYCHECK
-;; ============================================================================
 (use-package flycheck
   :hook (prog-mode . flycheck-mode)
   :init
@@ -76,9 +49,6 @@
   (when (fboundp 'flycheck-pos-tip-mode)
     (flycheck-pos-tip-mode 1)))
 
-;; ============================================================================
-;; LSP-MODE CORE
-;; ============================================================================
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
   :hook ((c-mode              . emacs-ide-lsp-deferred-optimized)
@@ -159,7 +129,6 @@
               ("C-c l W" . lsp-workspace-shutdown))
   :config
   (defun emacs-ide-lsp-setup-completion ()
-    "Prepend lsp-completion-at-point to capf list for corfu."
     (when (fboundp 'lsp-completion-at-point)
       (setq-local completion-at-point-functions
                   (cons #'lsp-completion-at-point
@@ -168,27 +137,12 @@
   (add-hook 'lsp-completion-mode-hook #'emacs-ide-lsp-setup-completion)
 
   (defun emacs-ide-lsp-restart-all ()
-    "Restart all LSP workspaces."
     (interactive)
     (when (bound-and-true-p lsp-mode)
       (lsp-restart-workspace)
       (message "✓ LSP workspace restarted"))))
 
-;; ============================================================================
-;; LSP-UI DOC TOGGLE HELPER
-;; FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle was removed from lsp-ui 7.x.
-;; The public API is:
-;;   lsp-ui-doc-glance  — show doc for thing at point (hides on next event)
-;;   lsp-ui-doc-show    — show doc and keep it open
-;;   lsp-ui-doc-hide    — hide the popup
-;; This wrapper provides the expected toggle behaviour: show if hidden,
-;; hide if already visible.  C-c l u is bound to this in the lsp-ui :bind.
-;; ============================================================================
 (defun emacs-ide-lsp-ui-doc-toggle ()
-  "Toggle lsp-ui documentation popup.
-Shows documentation via lsp-ui-doc-glance when hidden; hides via
-lsp-ui-doc-hide when already visible.  Works with lsp-ui 7.x+ where
-the old lsp-ui-doc-toggle function was removed."
   (interactive)
   (if (and (boundp 'lsp-ui-doc--frame)
            (frame-live-p lsp-ui-doc--frame)
@@ -198,9 +152,6 @@ the old lsp-ui-doc-toggle function was removed."
     (when (fboundp 'lsp-ui-doc-glance)
       (lsp-ui-doc-glance))))
 
-;; ============================================================================
-;; LSP-UI
-;; ============================================================================
 (use-package lsp-ui
   :after lsp-mode
   :init
@@ -226,22 +177,14 @@ the old lsp-ui-doc-toggle function was removed."
   :bind (:map lsp-ui-mode-map
               ("M-."     . lsp-ui-peek-find-definitions)
               ("M-?"     . lsp-ui-peek-find-references)
-              ;; FIX-LSP-UI-DOC-TOGGLE: lsp-ui-doc-toggle removed in lsp-ui 7.x.
-              ;; Bound to the wrapper above which uses the current public API.
               ("C-c l u" . emacs-ide-lsp-ui-doc-toggle)))
 
-;; ============================================================================
-;; LSP-TREEMACS
-;; ============================================================================
 (use-package lsp-treemacs
   :after (lsp-mode treemacs)
   :config
   (when (fboundp 'lsp-treemacs-sync-mode)
     (lsp-treemacs-sync-mode 1)))
 
-;; ============================================================================
-;; LANGUAGE-SPECIFIC LSP SERVERS
-;; ============================================================================
 (use-package lsp-pyright
   :after lsp-mode
   :if (or (executable-find "pyright") (executable-find "pyright-langserver"))
@@ -263,9 +206,6 @@ the old lsp-ui-doc-toggle function was removed."
   (when (executable-find "gopls")
     (require 'lsp-go nil t)))
 
-;; ============================================================================
-;; DUMB-JUMP
-;; ============================================================================
 (use-package dumb-jump
   :bind (("M-g j" . dumb-jump-go)
          ("M-g b" . dumb-jump-back)
@@ -278,9 +218,6 @@ the old lsp-ui-doc-toggle function was removed."
   (when (fboundp 'dumb-jump-xref-activate)
     (add-hook 'xref-backend-functions #'dumb-jump-xref-activate)))
 
-;; ============================================================================
-;; ELDOC
-;; ============================================================================
 (use-package eldoc
   :straight nil
   :init
@@ -292,12 +229,7 @@ the old lsp-ui-doc-toggle function was removed."
 
 ) ;; end (when emacs-ide-lsp-enable ...)
 
-;; ============================================================================
-;; ALWAYS-AVAILABLE COMMANDS
-;; ============================================================================
 (defun emacs-ide-lsp-status ()
-  "Display LSP connection status for the current buffer.
-Safe to call even when LSP is disabled."
   (interactive)
   (if (not (bound-and-true-p emacs-ide-lsp-enable))
       (message "LSP: Disabled in config (emacs-ide-lsp-enable is nil)")
@@ -310,10 +242,6 @@ Safe to call even when LSP is disabled."
       (message "LSP: Not active in this buffer"))))
 
 (defun emacs-ide-lsp-check-servers ()
-  "Check and display LSP server availability.
-FIX-LSP-CHECK-SERVERS-API: Checks PATH directly — does NOT call
-(lsp-check-servers) which does not exist in lsp-mode's public API.
-Live workspace status uses (lsp-workspaces) which is a real lsp-mode function."
   (interactive)
   (let ((servers '(("pyright"                    . "Python")
                    ("rust-analyzer"              . "Rust")
@@ -335,7 +263,6 @@ Live workspace status uses (lsp-workspaces) which is a real lsp-mode function."
       (princ "=== LSP SERVERS STATUS ===\n\n")
       (princ (format "LSP enabled in config: %s\n"
                      (if (bound-and-true-p emacs-ide-lsp-enable) "YES" "NO")))
-      ;; FIX-LSP-CHECK-SERVERS-API: use (lsp-workspaces) — a real lsp-mode fn
       (when (and (bound-and-true-p emacs-ide-lsp-enable)
                  (fboundp 'lsp-workspaces))
         (let ((ws (ignore-errors (lsp-workspaces))))

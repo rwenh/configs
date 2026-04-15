@@ -1,12 +1,7 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Version: 3.0.4-patched
-;;; Startup fix: smartparens and undo-tree deferred via :hook instead of :demand.
+;;; Version: 3.0.4
 ;;; Code:
 
-;; ============================================================================
-;; BASIC EDITING MODES
-;; ============================================================================
 (delete-selection-mode 1)
 (global-auto-revert-mode 1)
 
@@ -18,11 +13,7 @@
 
 (add-hook 'before-save-hook 'delete-trailing-whitespace)
 
-;; ============================================================================
-;; MEOW — OPTIONAL MODAL EDITING
-;; ============================================================================
 (defun emacs-ide-meow-setup ()
-  "Configure Meow with Emacs-native bindings."
   (when (fboundp 'meow-global-mode)
     (meow-global-mode 1)
     (setq meow-use-clipboard t
@@ -66,11 +57,9 @@
      '("'" . repeat)
      '("<escape>" . ignore))))
 
-(defvar emacs-ide-meow-enabled nil
-  "Whether Meow modal editing is active.")
+(defvar emacs-ide-meow-enabled nil)
 
 (defun emacs-ide-toggle-meow ()
-  "Toggle Meow modal editing on/off."
   (interactive)
   (if emacs-ide-meow-enabled
       (progn
@@ -85,7 +74,6 @@
       (message "Meow not installed. Run M-x emacs-ide-install-meow"))))
 
 (defun emacs-ide-install-meow ()
-  "Install Meow via straight.el."
   (interactive)
   (when (fboundp 'straight-use-package)
     (straight-use-package 'meow)
@@ -107,9 +95,6 @@
              (and e (cdr (assoc 'meow e)))))
   :defer t)
 
-;; ============================================================================
-;; SMARTPARENS — deferred; hook-based activation, not :demand
-;; ============================================================================
 (use-package smartparens
   :defer t
   :hook ((prog-mode text-mode) . smartparens-mode)
@@ -132,9 +117,6 @@
   (sp-local-pair 'emacs-lisp-mode "`" nil :when '(sp-in-string-p))
   (sp-local-pair 'markdown-mode "```" "```"))
 
-;; ============================================================================
-;; UNDO-TREE — deferred via hook, not :demand
-;; ============================================================================
 (use-package undo-tree
   :defer t
   :hook ((prog-mode text-mode) . undo-tree-mode)
@@ -148,13 +130,9 @@
          ("C-?"   . undo-tree-redo)
          ("C-x u" . undo-tree-visualize))
   :config
-  ;; global mode only if hook-based activation is insufficient
   (when (fboundp 'global-undo-tree-mode)
     (global-undo-tree-mode 1)))
 
-;; ============================================================================
-;; MULTIPLE CURSORS
-;; ============================================================================
 (use-package multiple-cursors
   :defer t
   :bind (("C->"   . mc/mark-next-like-this)
@@ -162,17 +140,11 @@
          ("C-c m" . mc/mark-all-like-this)
          ("C-S-c C-S-c" . mc/edit-lines)))
 
-;; ============================================================================
-;; EXPAND REGION
-;; ============================================================================
 (use-package expand-region
   :defer t
   :bind (("C-="   . er/expand-region)
          ("C--"   . er/contract-region)))
 
-;; ============================================================================
-;; AVY
-;; ============================================================================
 (use-package avy
   :defer t
   :bind (("C-:"   . avy-goto-char)
@@ -188,17 +160,11 @@
         avy-style      'at-full
         avy-timeout-seconds 0.3))
 
-;; ============================================================================
-;; MOVE-TEXT
-;; ============================================================================
 (use-package move-text
   :defer t
   :bind (("M-<up>"   . move-text-up)
          ("M-<down>" . move-text-down)))
 
-;; ============================================================================
-;; HELPFUL
-;; ============================================================================
 (use-package helpful
   :defer t
   :bind (("C-h f" . helpful-callable)
@@ -208,24 +174,15 @@
          ("C-h C" . helpful-command)
          ("C-h d" . helpful-at-point)))
 
-;; ============================================================================
-;; OLIVETTI
-;; ============================================================================
 (use-package olivetti
   :defer t
   :init (setq olivetti-body-width 100)
   :commands olivetti-mode)
 
-;; ============================================================================
-;; SURROUND
-;; ============================================================================
 (use-package surround
   :defer t
   :bind-keymap ("M-'" . surround-keymap))
 
-;; ============================================================================
-;; WGREP
-;; ============================================================================
 (use-package wgrep
   :defer t
   :init (setq wgrep-auto-save-buffer t))

@@ -1,32 +1,13 @@
 ;;; tools-hydra.el --- Hydra Menus for Discoverable Commands -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Chord-free, discoverable Hydra menus covering every major IDE workflow.
 ;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (recalibration):
-;;;   - FIX-CONSULT-PROJECT-BUFFER: (consult-project-buffer) does not exist in
-;;;     consult. The correct function is (consult-projectile) from
-;;;     consult-projectile, or (projectile-switch-to-buffer) as a safe fallback.
-;;;     Changed to use consult-projectile when available, falling back to
-;;;     projectile-switch-to-buffer.
-;;;   - FIX-ACE-MAXIMIZE-WINDOW: (ace-maximize-window) is not a real ace-window
-;;;     function. The correct function is (ace-delete-other-windows) which
-;;;     maximizes the selected window by deleting all others.
-;;; All other fixes retained from prior audit (FIX-CL-LIB, FIX-WINDOW-DUP,
-;;; FIX-BUFFER-SCRATCH, FIX-LSP-LENS, FIX-FLYCHECK-TOGGLE, FIX-FLYSPELL-TOGGLE,
-;;; FIX-WORD-WRAP, FIX-GLOBAL-KEYS-RACE).
 ;;; Code:
 
-;; FIX-CL-LIB: Require cl-lib since hydra-buffer uses cl-remove-if
 (require 'cl-lib)
 
 (use-package hydra :demand t)
 
 (with-eval-after-load 'hydra
 
-;; ============================================================================
-;; WINDOW HYDRA — C-c h w
-;; ============================================================================
 (defhydra hydra-window (:hint nil :color pink)
   "
   window
@@ -56,17 +37,12 @@
   ("l" windmove-right)
   ("o" ace-window)
   ("x" ace-swap-window)
-  ;; FIX-ACE-MAXIMIZE-WINDOW: ace-maximize-window does not exist.
-  ;; ace-delete-other-windows prompts to select a window and deletes all others.
   ("m" (when (fboundp 'ace-delete-other-windows) (ace-delete-other-windows)))
   ("n" tab-bar-new-tab)
   ("N" tab-bar-switch-to-next-tab)
   ("P" tab-bar-switch-to-prev-tab)
   ("q" nil :color blue))
 
-;; ============================================================================
-;; BUFFER HYDRA — C-c h b
-;; ============================================================================
 (defhydra hydra-buffer (:hint nil :color blue)
   "
   buffer
@@ -86,7 +62,6 @@
              (cl-remove-if (lambda (b) (eq b (current-buffer)))
                            (buffer-list))))
   ("R" revert-buffer)
-  ;; FIX-BUFFER-SCRATCH: scratch-buffer is Emacs 28+ only; guard with fboundp
   ("s" (if (fboundp 'scratch-buffer)
            (scratch-buffer)
          (switch-to-buffer "*scratch*")))
@@ -97,9 +72,6 @@
   ("i" consult-imenu)
   ("q" nil))
 
-;; ============================================================================
-;; GIT HYDRA — C-c h g
-;; ============================================================================
 (defhydra hydra-git (:hint nil :color blue)
   "
   git
@@ -128,9 +100,6 @@
   ("F" magit-pull-from-upstream)
   ("q" nil))
 
-;; ============================================================================
-;; LSP HYDRA — C-c h l
-;; ============================================================================
 (defhydra hydra-lsp (:hint nil :color blue)
   "
   lsp
@@ -156,16 +125,11 @@
   ("u" (when (fboundp 'lsp-ui-doc-toggle)        (lsp-ui-doc-toggle)))
   ("k" (when (fboundp 'lsp-signature-activate)   (lsp-signature-activate)))
   ("e" (when (fboundp 'flycheck-list-errors)     (flycheck-list-errors)))
-  ;; FIX-LSP-LENS: (lsp-lens-mode 'toggle) is invalid — minor modes take
-  ;; numeric args. Toggle via current state.
   ("l" (when (fboundp 'lsp-lens-mode)
          (if (bound-and-true-p lsp-lens-mode) (lsp-lens-mode -1) (lsp-lens-mode 1))))
   ("w" (when (fboundp 'lsp-describe-session)     (lsp-describe-session)))
   ("q" nil))
 
-;; ============================================================================
-;; PROJECT HYDRA — C-c h p
-;; ============================================================================
 (defhydra hydra-project (:hint nil :color blue)
   "
   project
@@ -185,8 +149,6 @@
   ("g" consult-grep)
   ("o" consult-line)
   ("p" projectile-switch-project)
-  ;; FIX-CONSULT-PROJECT-BUFFER: consult-project-buffer does not exist.
-  ;; Use consult-projectile when available, fall back to projectile-switch-to-buffer.
   ("b" (cond
         ((fboundp 'consult-projectile)        (consult-projectile))
         ((fboundp 'projectile-switch-to-buffer) (projectile-switch-to-buffer))
@@ -200,9 +162,6 @@
   ("i" ibuffer)
   ("q" nil))
 
-;; ============================================================================
-;; TEST HYDRA — C-c h t
-;; ============================================================================
 (defhydra hydra-test (:hint nil :color blue)
   "
   test
@@ -223,9 +182,6 @@
   ("s" emacs-ide-test-runner-status)
   ("q" nil))
 
-;; ============================================================================
-;; DEBUG HYDRA — C-c h d
-;; ============================================================================
 (defhydra hydra-debug (:hint nil :color pink)
   "
   debug
@@ -260,9 +216,6 @@
   ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
   ("ESC" nil :color blue))
 
-;; ============================================================================
-;; TOGGLE HYDRA — C-c h u
-;; ============================================================================
 (defhydra hydra-toggle (:hint nil :color blue)
   "
   toggles
@@ -282,14 +235,10 @@
              (if (eq display-line-numbers-type 'relative) t 'relative)))
   ("i" highlight-indent-guides-mode)
   ("w" whitespace-mode)
-  ;; FIX-WORD-WRAP: word-wrap-whitespace-mode does not exist; visual-line-mode
-  ;; is the correct built-in for soft word-wrap.
   ("W" visual-line-mode)
   ("c" display-fill-column-indicator-mode)
-  ;; FIX-FLYCHECK-TOGGLE: minor modes take numeric args
   ("f" (when (fboundp 'flycheck-mode)
          (if (bound-and-true-p flycheck-mode) (flycheck-mode -1) (flycheck-mode 1))))
-  ;; FIX-FLYSPELL-TOGGLE: minor modes take numeric args
   ("s" (when (fboundp 'flyspell-mode)
          (if (bound-and-true-p flyspell-mode) (flyspell-mode -1) (flyspell-mode 1))))
   ("d" (when (fboundp 'dimmer-mode)        (call-interactively #'dimmer-mode)))
@@ -302,9 +251,6 @@
   ("v" visual-fill-column-mode)
   ("q" nil))
 
-;; ============================================================================
-;; REPL HYDRA — C-c h r
-;; ============================================================================
 (defhydra hydra-repl (:hint nil :color blue)
   "
   repl
@@ -323,9 +269,6 @@
   ("S" emacs-ide-repl-status)
   ("q" nil))
 
-;; ============================================================================
-;; SEARCH HYDRA — C-c h s
-;; ============================================================================
 (defhydra hydra-search (:hint nil :color blue)
   "
   search
@@ -354,11 +297,6 @@
   ("u" consult-focus-lines)
   ("q" nil))
 
-;; ============================================================================
-;; GLOBAL HYDRA ENTRY KEYS (C-c h prefix)
-;; FIX-GLOBAL-KEYS-RACE: inside with-eval-after-load 'hydra so body functions
-;; exist before bindings are set.
-;; ============================================================================
 (global-set-key (kbd "C-c h w") #'hydra-window/body)
 (global-set-key (kbd "C-c h b") #'hydra-buffer/body)
 (global-set-key (kbd "C-c h g") #'hydra-git/body)

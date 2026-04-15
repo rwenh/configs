@@ -1,17 +1,10 @@
 ;;; tools-org.el --- Org-Mode Configuration -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Proper org-mode setup wired to config.yml environment settings.
-;;; Version: 3.0.4-patched
-;;; Startup fix: babel languages deferred to idle timer (was synchronous).
+;;; Version: 3.0.4
 ;;; Code:
 
 (require 'cl-lib)
 
-;; ============================================================================
-;; DERIVE ORG PATHS FROM CONFIG
-;; ============================================================================
 (defun emacs-ide-org--config-get (key)
-  "Get KEY from current environment section of emacs-ide-config-data."
   (when (boundp 'emacs-ide-config-data)
     (let* ((env     (or (bound-and-true-p emacs-ide-config-environment) "default"))
            (env-sym (intern env))
@@ -26,7 +19,6 @@
   "Org agenda files derived from config.yml environment settings.")
 
 (defun emacs-ide-org--update-paths ()
-  "Re-read org paths from config and sync live org variables."
   (setq emacs-ide-org-directory
         (expand-file-name
          (or (emacs-ide-org--config-get 'org-directory) "~/org")))
@@ -47,9 +39,6 @@
 
 (add-hook 'emacs-ide-config-reload-hook #'emacs-ide-org--update-paths)
 
-;; ============================================================================
-;; ORG-MODE CORE — deferred, loads only when an .org file is opened
-;; ============================================================================
 (use-package org
   :straight nil
   :defer t
@@ -96,9 +85,8 @@
         org-export-headline-levels  4
         org-confirm-babel-evaluate  nil)
   :config
-  ;; Babel language loading deferred to idle — was synchronous, adding ~1.7s
   (run-with-idle-timer
-   5 nil                                  ; raised from 3s to 5s to reduce contention
+   5 nil
    (lambda ()
      (when (featurep 'org)
        (org-babel-do-load-languages
@@ -127,9 +115,6 @@
            "* TODO [#A] Bug: %?\n  DEADLINE: %T\n  %i\n  %a\n"
            :empty-lines 1))))
 
-;; ============================================================================
-;; ORG-BULLETS — deferred until org is loaded
-;; ============================================================================
 (use-package org-bullets
   :after org
   :defer t
@@ -137,9 +122,6 @@
   :init
   (setq org-bullets-bullet-list '("◉" "○" "✸" "✿")))
 
-;; ============================================================================
-;; ORG AGENDA CUSTOM VIEWS — only when org-agenda loads
-;; ============================================================================
 (with-eval-after-load 'org-agenda
   (setq org-agenda-custom-commands
         '(("d" "Today's agenda"
@@ -161,28 +143,19 @@
                     '(org-agenda-skip-entry-if 'scheduled 'deadline))
                    (org-agenda-overriding-header "Unscheduled:"))))))))
 
-;; ============================================================================
-;; ORG EXPORT BACKENDS — deferred
-;; ============================================================================
 (with-eval-after-load 'ox
   (require 'ox-md   nil t)
   (require 'ox-html nil t))
 
-;; ============================================================================
-;; UTILITY COMMANDS
-;; ============================================================================
 (defun emacs-ide-org-open-inbox ()
-  "Open the org inbox file."
   (interactive)
   (find-file (expand-file-name "inbox.org" emacs-ide-org-directory)))
 
 (defun emacs-ide-org-open-directory ()
-  "Open the org directory in dired."
   (interactive)
   (dired emacs-ide-org-directory))
 
 (defun emacs-ide-org-agenda-today ()
-  "Show today's agenda."
   (interactive)
   (org-agenda nil "d"))
 

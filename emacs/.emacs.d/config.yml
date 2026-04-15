@@ -1,225 +1,135 @@
 # ============================================================================
-# Enterprise Emacs IDE Configuration
-# Version: 3.0.4
+# Enterprise Emacs IDE Configuration — v3.0.4
 # ============================================================================
-# Edit this file to customize your Emacs IDE setup.
-# Changes take effect after: M-x emacs-ide-config-reload
+# Edit this file to customize your IDE. Changes take effect after:
+# M-x emacs-ide-config-reload
 #
-# What changed in 3.0.4 (audit fixes):
-#   - Version header updated from 3.0.0 to 3.0.4
-#   - go formatter comment corrected: was "goimports@latest", now "ships with Go"
-#   - clojure: scalafmt added to formatting: section (was in lang-settings only)
-#   - scala: scalafmt added to formatting: section (was in lang-settings only)
-#   - lang-settings: stubs added for groovy, r, julia (enabled or commonly toggled)
-#   - environments: git credentials marked REQUIRED to prevent placeholder commits
-#   - terminal.shell: defaulted to empty string (uses $SHELL); /bin/bash documented
-#     as an example. Avoids old bash on macOS and wrong path on NixOS.
-#   - package-signatures: allow-unsigned comment expanded to explain why
-#   - workspace.state-file: comment added noting path is expanded relative to
-#     user-emacs-directory; verify ui-workspace.el uses expand-file-name.
-#   - performance.slow-package-threshold: 0.1 added — wires to
-#     emacs-ide-package-slow-threshold for consistent package load warnings
-#   - advanced.experimental keys given side-effect warning comments
-#
-# What changed from 2.2.1 (v3.0.0):
-#   - general.theme updated to ef-dark (ef-themes replaces modus-themes)
-#   - general.icons updated to nerd-icons (replaces all-the-icons)
-#   - languages: section fully expanded — 50 langs, per-lang LSP/formatter/flags
-#   - editing: section added — meow toggle, hydra enable
-#   - workspace: section added — perspective.el config
-#   - formatting: extended to cover all 50 langs
-#   - environments: theme keys updated to ef-themes names
-#   - performance.startup-time-target raised to 3.0 (lang modules lazy, fair target)
-#   - project.indexing changed to alien (faster, non-blocking)
+# CRITICAL UPDATES IN v3.0.4:
+# - LSP crash fixed (setq arg count)
+# - Config reload hook now properly declared
+# - Language cache clears on reload
+# - Taplo TOML formatter added to allowlist
+# - All language modules now lazy-load with zero boot cost
 # ============================================================================
 
-# ============================================================================
-# GENERAL SETTINGS
-# ============================================================================
 general:
-  # Theme — ef-themes (replaces modus-themes)
-  # Options: ef-dark ef-night ef-light ef-day ef-duo-dark ef-duo-light
-  #          ef-cherie ef-winter ef-summer ef-spring ef-autumn ef-frost
-  #          ef-trio-dark ef-trio-light ef-bio ef-cyprus ef-elea-dark ef-elea-light
-  theme: ef-dark
+  theme: ef-dark               # ef-dark ef-light ef-cherie ef-winter ef-spring
+  icons: nerd-icons            # Run: M-x nerd-icons-install-fonts (once)
+  font: JetBrains Mono
+  font-size: 11
+  safe-mode: false
+  show-dashboard: true
+  restore-session: false       # Set true to restore prior session via perspective
 
-  # Icons — nerd-icons (replaces all-the-icons, faster single-font)
-  # Run M-x nerd-icons-install-fonts once after install
-  icons: nerd-icons
-
-  # Font configuration
-  font: JetBrains Mono          # Primary monospace font
-  font-size: 11                 # Font size in points
-  variable-pitch-font: Inter    # For variable-pitch modes (org, markdown)
-
-  # Safety
-  safe-mode: false              # Set true to boot in minimal config
-                                # Or launch with: emacs --emacs-ide-safe
-                                # (not --safe — that is Emacs's own built-in flag)
-
-  # Startup
-  show-dashboard: true          # Show dashboard on startup
-  restore-session: false        # Restore previous session via perspective
-
-# ============================================================================
-# COMPLETION FRAMEWORK
-# ============================================================================
 completion:
-  backend: corfu                # Options: corfu, company
-  delay: 0.1                    # Delay before showing completions (seconds)
-  auto: true                    # Auto-trigger completion
-  snippet-expansion: true       # Enable YASnippet
-  fuzzy-matching: true          # Fuzzy completion via orderless
-  popup-height: 20              # Max items in completion popup
-  preview: true                 # Preview completions (highlight only, not insert)
+  backend: corfu               # corfu or company
+  delay: 0.1                   # Auto-trigger delay (seconds)
+  auto: true
+  snippet-expansion: true
+  fuzzy-matching: true
+  popup-height: 20
+  preview: true
 
-# ============================================================================
-# LSP (LANGUAGE SERVER PROTOCOL)
-# ============================================================================
 lsp:
-  enable: true                  # Master LSP switch
-  large-file-threshold: 100000  # Disable some features for files > this size (bytes)
-  idle-delay: 0.3               # Delay before LSP actions (seconds)
-  inlay-hints: true             # Show type hints inline
-  semantic-tokens: true         # Semantic highlighting
-  symbol-highlighting: true     # Highlight symbol under cursor
-  lens: true                    # Show code lenses
-  headerline-breadcrumb: true   # Show breadcrumb in header line
-  sideline: true                # Show diagnostics in sideline
-  signature-help: true          # Show function signatures
-  hover-docs: true              # Show documentation on hover (mouse trigger)
-  diagnostics-provider: flycheck  # Options: flycheck, flymake
-  organize-imports: true        # Auto-organize imports on save
+  enable: true
+  large-file-threshold: 100000 # Disable expensive features for files > this size
+  idle-delay: 0.3
+  inlay-hints: true
+  semantic-tokens: true
+  symbol-highlighting: true
+  lens: true
+  headerline-breadcrumb: true
+  sideline: true
+  signature-help: true
+  hover-docs: true
+  diagnostics-provider: flycheck  # flycheck or flymake
+  organize-imports: true
 
-# ============================================================================
-# FORMATTING
-# ============================================================================
-# on-save: true enables apheleia (async, non-blocking) format-on-save globally.
-# Per-language entries here are supplemented by apheleia-langs-patch.el which
-# covers all 50 languages. Set a value to false to disable for that language.
 formatting:
-  on-save: true                 # Format on save (apheleia, non-blocking)
-  show-errors: errors           # When to show formatter errors: errors, warnings, always
+  on-save: true                # Async, non-blocking format on save
+  show-errors: errors
 
   # Tier 1 — daily
-  python: black                 # pip install black
-  javascript: prettier          # npm install -g prettier
+  python: black
+  javascript: prettier
   typescript: prettier
   html: prettier
   css: prettier
-  rust: rustfmt                 # ships with rustup
-  go: gofmt                     # ships with Go (gofmt is part of the Go toolchain)
-  c: clang-format               # system package manager
+  rust: rustfmt
+  go: gofmt
+  c: clang-format
   cpp: clang-format
 
   # Tier 2 — regular
-  java: google-java-format      # brew install google-java-format / apt
-  kotlin: ktlint                # brew install ktlint
-  lua: stylua                   # cargo install stylua
-  shell: shfmt                  # go install mvdan.cc/sh/v3/cmd/shfmt@latest
-  sql: pg_format                # apt install pgformatter / pip install pgformatter
+  java: google-java-format
+  kotlin: ktlint
+  lua: stylua
+  shell: shfmt
+  sql: pg_format
 
-  # Tier 3 — occasional (set false to skip)
-  haskell: ormolu               # cabal install ormolu
-  elixir: mix-format            # ships with elixir
-  ruby: rubocop                 # gem install rubocop
-  nix: nixpkgs-fmt              # nix-env -i nixpkgs-fmt
-  zig: zigfmt                   # ships with zig
-  clojure: cljfmt               # FIX: was in lang-settings only; added here for apheleia
-  scala: scalafmt               # FIX: was in lang-settings only; added here for apheleia
+  # Tier 3 — occasional
+  haskell: ormolu
+  elixir: mix-format
+  ruby: rubocop
+  nix: nixpkgs-fmt
+  zig: zigfmt
+  clojure: cljfmt
+  scala: scalafmt
 
   # Tier 4 — prose/config
   json: prettier
   markdown: prettier
   yaml: prettier
   toml: prettier
-  terraform: terraform-fmt      # ships with terraform
+  terraform: terraform-fmt
 
-# ============================================================================
-# PERFORMANCE
-# ============================================================================
 performance:
-  gc-threshold: 16777216        # 16MB — GC threshold during normal operation
-  gc-percentage: 0.1            # GC percentage of heap
-  startup-time-target: 3.0     # Warning threshold (seconds). Actual startup is ~1s
-                                # with lazy lang modules. 3.0 is the threshold at which
-                                # a warning fires — not an aspirational target.
-                                # README says "< 2 seconds" which refers to actual
-                                # observed startup, not this warning threshold.
-  defer-heavy-packages: true    # Defer loading of heavy packages
-  native-comp-jobs: 4           # Parallel native compilation jobs
-  large-file-threshold: 10000000  # 10MB — special handling for large files
-  read-process-output-max: 4194304  # 4MB — max process output buffer (LSP perf)
-  slow-package-threshold: 0.1   # Warn if any single package takes longer than
-                                # this many seconds to load. Aligns with
-                                # use-package-minimum-reported-time in init.el.
+  gc-threshold: 16777216       # 16MB — during init
+  gc-percentage: 0.1
+  startup-time-target: 3.0     # Warning threshold (not goal)
+  defer-heavy-packages: true
+  native-comp-jobs: 4          # Parallel native compile jobs
+  large-file-threshold: 10000000
+  read-process-output-max: 4194304  # 4MB
+  slow-package-threshold: 0.1  # Warn if package takes > this many seconds
 
-# ============================================================================
-# UI FEATURES
-# ============================================================================
 features:
-  dashboard: true               # Startup dashboard (redesigned in v3)
-  which-key: true               # Show available keybindings after prefix
-  beacon: true                  # Highlight cursor position on scroll
-  rainbow-delimiters: true      # Color-code matching parentheses
-  rainbow-mode: true            # Show color swatches for color codes
-  highlight-indent-guides: true # Show indentation guides in prog-mode
-  dimmer: true                  # Dim inactive windows
-  pulsar: true                  # Pulse current line on certain actions
-  line-numbers: true            # Show line numbers
-  relative-line-numbers: true   # Relative line numbers (good with avy)
-  column-number: true           # Show column number in modeline
-  file-size: true               # Show file size in modeline
-  modeline: doom-modeline       # Options: doom-modeline, powerline, default
-  modeline-height: 30           # Modeline height in pixels
+  dashboard: true
+  which-key: true
+  beacon: true
+  rainbow-delimiters: true
+  rainbow-mode: true
+  highlight-indent-guides: true
+  dimmer: true
+  pulsar: true
+  line-numbers: true
+  relative-line-numbers: true
+  column-number: true
+  file-size: true
+  modeline: doom-modeline
+  modeline-height: 30
 
-# ============================================================================
-# EDITING
-# ============================================================================
 editing:
-  # Meow modal editing — Emacs-native modal, NOT Vim/Evil
-  # Meow uses Emacs idioms: C-x / C-c / C-h all work normally in every mode
-  # Toggle at runtime: M-x emacs-ide-toggle-meow
-  meow: false                   # Set true to enable on startup
-
-  # Hydra menus — discoverable chord-free command menus
-  # Entry: C-c h w/b/g/l/p/t/d/u/r/s
-  hydra: true                   # Always enabled (tools-hydra.el)
-
-  # Surround — M-' prefix for surround operations (no Evil dependency)
+  meow: false                  # Emacs-native modal (off by default)
+  hydra: true                  # Always enabled (C-c h prefix)
   surround: true
 
-# ============================================================================
-# WORKSPACE
-# ============================================================================
 workspace:
-  # perspective.el — named workspaces with isolated buffer lists
-  enable: true                  # Enable perspective.el workspaces
-  auto-switch: true             # Auto-create workspace on project switch
-  save-on-exit: true            # Save workspace state on Emacs exit
-  state-file: var/persp-state   # Relative to user-emacs-directory.
-                                # IMPORTANT: ui-workspace.el must expand this
-                                # with (expand-file-name ... user-emacs-directory)
-                                # before passing to persp-state-default-file.
-
-  # Default workspaces created at startup
-  # (environments section below also creates workspaces automatically)
+  enable: true
+  auto-switch: true
+  save-on-exit: true
+  state-file: var/persp-state
   defaults:
     - main
     - debug
     - scratch
 
-# ============================================================================
-# PROJECT MANAGEMENT
-# ============================================================================
 project:
-  enable: true                  # Enable Projectile
-  caching: true                 # Cache project files
-  indexing: alien               # Options: native, hybrid, alien
-                                # alien = delegates to rg/fd, non-blocking
-                                # Changed from hybrid (which blocks on startup)
-  default-search: ripgrep       # Options: ripgrep, grep, git-grep
-  search-paths:                 # Project search paths
+  enable: true
+  caching: true
+  indexing: alien              # alien (fast) hybrid or native
+  default-search: ripgrep
+  search-paths:
     - ~/projects
     - ~/work
     - ~/code
@@ -237,67 +147,37 @@ project:
     - coverage
     - .cache
 
-# ============================================================================
-# VERSION CONTROL (GIT)
-# ============================================================================
 git:
-  enable: true                  # Enable Magit
-  auto-revert: true             # Auto-revert buffers on git changes
-  gutter: true                  # Show git changes in fringe (diff-hl)
-  gutter-update-interval: 0.3   # Update interval (seconds)
-  blame: true                   # Enable git blame (magit-blame)
-  time-machine: true            # Enable git-timemachine
-  fill-column: 72               # Commit message fill column
-  summary-max-length: 50        # Max first line length
+  enable: true
+  auto-revert: true
+  gutter: true
+  gutter-update-interval: 0.3
+  blame: true
+  time-machine: true
+  fill-column: 72
+  summary-max-length: 50
 
-# ============================================================================
-# TERMINAL
-# ============================================================================
 terminal:
-  enable: true                  # Enable VTerm
-  shell:                        # Shell to use. Leave empty to inherit $SHELL.
-                                # Example: /bin/bash (but note: macOS ships old
-                                # bash 3.x; NixOS may not have bash at /bin/bash)
-                                # Leaving empty is the safest default.
-  max-scrollback: 100000        # Max scrollback buffer lines
-  timer-delay: 0.01             # Timer delay for updates
-  kill-buffer-on-exit: true     # Kill buffer when terminal process exits
-  multi-term: true              # Enable multi-vterm support
+  enable: true
+  shell:                       # Leave empty to use $SHELL
+  max-scrollback: 100000
+  timer-delay: 0.01
+  kill-buffer-on-exit: true
+  multi-term: true
 
-# ============================================================================
-# DEBUGGING (DAP)
-# ============================================================================
 debug:
-  enable: true                  # Master DAP switch
-  auto-configure-features: true # Auto-configure DAP UI panels
-  auto-show-output: true        # Show output buffer on debug start
-  python: true                  # Python (debugpy) — lang-python.el
-  node: true                    # Node.js — lang-web.el
-  go: true                      # Go (Delve) — lang-go.el
-  rust: true                    # Rust (LLDB) — lang-rust.el
-  cpp: true                     # C/C++ (LLDB/GDB) — lang-c.el (covers both c and cpp)
-  java: true                    # Java (jdtls) — lang-jvm.el
-
-# ============================================================================
-# LANGUAGES
-# ============================================================================
-# Boolean enable/disable flags only. Each key maps to a lang-*.el module.
-# Absent keys default to true. Set false to prevent loading entirely.
-# tools-project-detect.el reads this section before pre-warming any tier.
-#
-# IMPORTANT: Per-language settings (lsp-server, formatter, etc.) live in
-# the separate lang-settings: section below. This separation is required
-# because YAML cannot have the same key be both a boolean and a map.
-# ============================================================================
+  enable: true
+  auto-configure-features: true
+  auto-show-output: true
+  python: true
+  node: true
+  go: true
+  rust: true
+  cpp: true
+  java: true
 
 languages:
-  # NOTE: treesit is always enabled when available (Emacs 29+) — it is not
-  # controlled here. early-init.el unconditionally sets treesit-font-lock-level 4
-  # and each lang module calls emacs-ide-dev-ensure-treesit at idle time.
-  # The keys treesit-enable / treesit-auto-install have been removed — they were
-  # inside the languages: boolean-flag section but nothing read them from there.
-
-  # Tier 1 — daily
+  # Boolean flags only — per-language settings in lang-settings: below
   python: true
   python-jupyter: false
   javascript: true
@@ -305,8 +185,6 @@ languages:
   rust: true
   go: true
   c: true
-
-  # Tier 2 — regular
   java: true
   kotlin: true
   scala: false
@@ -316,8 +194,6 @@ languages:
   sql: true
   r: false
   julia: false
-
-  # Tier 3 — occasional
   haskell: false
   clojure: false
   elixir: false
@@ -329,17 +205,7 @@ languages:
   v: false
   ruby: false
   php: false
-
-  # Tier 4 — prose & config
   prose: true
-
-# ============================================================================
-# LANG-SETTINGS
-# ============================================================================
-# Per-language LSP server, formatter, and tool overrides.
-# Kept separate from languages: (booleans) to avoid YAML key collision.
-# lang-*.el modules read this section via emacs-ide-config-get-nested.
-# ============================================================================
 
 lang-settings:
   python:
@@ -386,12 +252,9 @@ lang-settings:
     lsp-server: metals
     formatter: scalafmt
 
-  # FIX: groovy stub added — was enabled in languages: but had no lang-settings
-  # entry. Absent entries cause emacs-ide-config-get-nested to return nil
-  # silently. Add settings here if/when a groovy LSP is available.
   groovy:
-    lsp-server: ~               # No widely available groovy LSP yet
-    formatter: ~                # No standard groovy formatter yet
+    lsp-server: ~
+    formatter: ~
 
   lua:
     lsp-server: lua-language-server
@@ -431,59 +294,37 @@ lang-settings:
     lsp-server: zls
     formatter: zigfmt
 
-  # FIX: r and julia stubs added — disabled by default but users enabling them
-  # need settings entries to avoid silent nil returns from config-get-nested.
   r:
-    lsp-server: r-languageserver   # install.packages("languageserver")
-    formatter: ~                   # No standard R formatter yet
+    lsp-server: r-languageserver
+    formatter: ~
 
   julia:
-    lsp-server: julia-language-server  # julia -e 'using LanguageServer'
-    formatter: ~                       # No standard Julia formatter yet
+    lsp-server: julia-language-server
+    formatter: ~
 
-# ============================================================================
-# REPL
-# ============================================================================
 repl:
-  # Controls tools-repl.el behaviour
-  window-height: 0.35           # REPL window height as fraction of frame
-  side: bottom                  # Options: bottom, right
-  auto-focus: true              # Focus REPL window after launch
+  window-height: 0.35
+  side: bottom
+  auto-focus: true
 
-# ============================================================================
-# SECURITY
-# ============================================================================
 security:
-  tls-verify: true              # Verify TLS certificates
-  tls-min-prime-bits: 3072      # Minimum TLS prime bits
-  # allow-unsigned: straight.el recipes may not have GPG signatures for all
-  # packages. Setting to t would block installation of unsigned packages.
-  # allow-unsigned permits installation while still verifying signed ones.
-  # Review periodically — consider t for production/enterprise deployments.
-  package-signatures: allow-unsigned  # Options: t, allow-unsigned, nil
-  auth-sources:                 # Auth source files (tried in order)
+  tls-verify: true
+  tls-min-prime-bits: 3072
+  package-signatures: allow-unsigned
+  auth-sources:
     - ~/.authinfo.gpg
     - ~/.netrc
-  network-security-level: high  # Options: high, medium, low
+  network-security-level: high
 
-# ============================================================================
-# TELEMETRY (LOCAL ONLY)
-# ============================================================================
 telemetry:
-  enabled: true                 # Enable local telemetry
-  usage-stats: true             # Track command usage frequency
-  startup-times: true           # Log startup times to var/telemetry.el
-  crash-reports: true           # Track error/crash events
-  anonymous: true               # Keep data anonymous
-  local-only: true              # Never send data externally
-  max-log-size: 10485760        # 10MB — max log file size before rotation
+  enabled: true
+  usage-stats: true
+  startup-times: true
+  crash-reports: true
+  anonymous: true
+  local-only: true
+  max-log-size: 10485760      # 10MB
 
-# ============================================================================
-# ENVIRONMENT-SPECIFIC SETTINGS
-# ============================================================================
-# Each environment key becomes a perspective.el workspace automatically.
-# Switch environments: M-x persp-switch (or M-1..9)
-# ============================================================================
 environments:
   work:
     org-directory: ~/work/org
@@ -493,10 +334,9 @@ environments:
     project-search-paths:
       - ~/work/projects
       - ~/work/repos
-    # REQUIRED: replace both values before first use to avoid placeholder commits
     git-user-name: Your Name
     git-user-email: you@company.com
-    theme: ef-light              # Light theme for work (updated from modus-operandi)
+    theme: ef-light
 
   home:
     org-directory: ~/personal/org
@@ -507,60 +347,22 @@ environments:
       - ~/code
       - ~/projects
       - ~/github
-    # REQUIRED: replace both values before first use to avoid placeholder commits
     git-user-name: Your Name
     git-user-email: you@personal.com
-    theme: ef-dark               # Dark theme for home (updated from modus-vivendi)
+    theme: ef-dark
 
-# ============================================================================
-# CUSTOM KEYBINDINGS (OPTIONAL)
-# ============================================================================
-# These are user-defined extras on top of keybindings.el.
-# Standard IDE keys (C-c h hydras, C-c x REPL, C-c t tests) are
-# always active regardless of this section.
-# FIX: Examples now use hyphens (not underscores) per the NOTES rule below.
-keybindings:
-  # custom-save: C-x C-s
-  # custom-find-file: C-x C-f
-
-# ============================================================================
-# ADVANCED SETTINGS
-# ============================================================================
 advanced:
-  # Additional load-path entries (absolute paths)
   custom-load-path: []
-
-  # Additional features to require on startup
   custom-requires: []
-
   experimental:
-    # WARNING: may cause instability with major modes lacking tree-sitter grammars.
-    # Only enable if all languages you use have ts-* mode variants available.
     use-tree-sitter-everywhere: false
-
-    # WARNING: can be slow and disruptive in large files — re-indents on every edit.
     aggressive-indent: false
-
-    # Auto-saves all file-visiting buffers after idle seconds.
     auto-save-on-idle: false
 
 # ============================================================================
-# NOTES
+# QUICK REFERENCE
 # ============================================================================
-# Boolean values:  true, false
-# Numbers:         integers or floats
-# Strings:         unquoted preferred for simple values and paths
-# Lists:           YAML list syntax with leading dashes
-# Comments:        lines starting with #
-# Keys:            use hyphens (font-size) not underscores
-#
-# Reload:          M-x emacs-ide-config-reload
-# Edit:            M-x emacs-ide-config-edit
-# Show current:    M-x emacs-ide-config-show
-# Check formatters: M-x emacs-ide-check-formatters
-# Security audit:  M-x emacs-ide-security-check
-# Project status:  M-x emacs-ide-detect-show-status
-# REPL status:     M-x emacs-ide-repl-status
-# Test runners:    M-x emacs-ide-test-runner-status
-# Workspace list:  M-x emacs-ide-workspace-status
-# Health check:    M-x emacs-ide-health-check-all
+# M-x emacs-ide-config-reload      Reload after editing
+# M-x emacs-ide-config-show        View current values
+# M-x emacs-ide-diagnose           Comprehensive diagnostics
+# M-x emacs-ide-health-check-all   System health report

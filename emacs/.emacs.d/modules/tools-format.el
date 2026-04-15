@@ -1,32 +1,9 @@
 ;;; tools-format.el --- Code Formatting with Apheleia -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Unified code formatting using apheleia, supporting 40+ languages.
 ;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 3.0.4 (cross-check):
-;;;   - FIX-DEFUN-IN-CONFIG: emacs-ide-check-formatters was defined inside
-;;;     (use-package apheleia :defer t :config ...).  Since apheleia is :defer t
-;;;     its :config only runs when apheleia first loads — meaning M-x
-;;;     emacs-ide-check-formatters was void until a formatter triggered apheleia.
-;;;     emacs-ide-spot-check.el lists it as a required command; the spot-check
-;;;     would always report it missing on a fresh startup.  Moved to top-level
-;;;     defun so the command is always available regardless of apheleia load state.
-;;; Fixes vs 3.0.4 (post-audit calibration, retained):
-;;;   - FIX-FORMAT-HOOK-TIMING: format-on-save hooks registered at module load
-;;;     time rather than inside apheleia :config.
-;;; Fixes vs 3.0.4 (recalibration, retained):
-;;;   - FIX-ALIST-MISUSE, FIX-TAPLO, FIX-FORMATTERS-GUARD.
 ;;; Code:
 
 (require 'cl-lib)
 
-;; ============================================================================
-;; FORMATTER STATUS COMMAND
-;; FIX-DEFUN-IN-CONFIG: Defined at top level so M-x emacs-ide-check-formatters
-;; is always available. Previously inside (use-package apheleia :defer t :config)
-;; which meant the command was void until apheleia first loaded — causing a false
-;; MISSING result in emacs-ide-spot-check on every fresh startup.
-;; ============================================================================
 (defun emacs-ide-check-formatters ()
   "Report which formatters are installed and which are missing."
   (interactive)
@@ -62,13 +39,6 @@
         (dolist (f (nreverse missing))
           (princ (format "  ✗ %-25s (%s)\n" (car f) (cdr f))))))))
 
-;; ============================================================================
-;; FORMAT-ON-SAVE HOOKS
-;; FIX-FORMAT-HOOK-TIMING: Registered here at module load time so every
-;; prog-mode and text-mode buffer gets the hook, including the very first one
-;; that triggers apheleia's deferred load.  The (fboundp 'apheleia-mode) guard
-;; makes this safe to evaluate before apheleia loads.
-;; ============================================================================
 (add-hook 'prog-mode-hook
           (lambda ()
             (when (and (fboundp 'emacs-ide-config-get)
@@ -84,17 +54,10 @@
                        (not (derived-mode-p 'org-mode)))
               (apheleia-mode 1))))
 
-;; ============================================================================
-;; APHELEIA — unified code formatting
-;; ============================================================================
 (use-package apheleia
   :defer t
   :config
 
-  ;; ── Taplo (TOML formatter) ────────────────────────────────────────────────
-  ;; FIX-ALIST-MISUSE: apheleia-formatters = name→command (the executable spec)
-  ;;                   apheleia-mode-alist  = mode→formatter-name (the dispatch)
-  ;; Both must be set; setting only one silently does nothing.
   (when (and (boundp 'apheleia-formatters)
              (executable-find "taplo"))
     (unless (assq 'taplo apheleia-formatters)
@@ -103,7 +66,6 @@
       (setf (alist-get 'toml-mode    apheleia-mode-alist) 'taplo)
       (setf (alist-get 'toml-ts-mode apheleia-mode-alist) 'taplo)))
 
-  ;; ── Additional mode mappings (apheleia already defines the commands) ──────
   (when (boundp 'apheleia-mode-alist)
     (when (executable-find "prettier")
       (setf (alist-get 'json-mode   apheleia-mode-alist) 'prettier)

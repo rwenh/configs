@@ -1,13 +1,7 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Version: 3.0.4-patched
-;;; Startup fix: neotree deferred; ligature :demand removed (hook-based);
-;;; beacon/dimmer/pulsar/highlight-indent-guides/which-key all deferred.
+;;; Version: 3.0.4
 ;;; Code:
 
-;; ============================================================================
-;; UI CLEANUP
-;; ============================================================================
 (when (fboundp 'menu-bar-mode)     (menu-bar-mode   -1))
 (when (fboundp 'tool-bar-mode)     (tool-bar-mode   -1))
 (when (fboundp 'scroll-bar-mode)   (scroll-bar-mode -1))
@@ -22,9 +16,6 @@
       inhibit-splash-screen           t
       inhibit-startup-echo-area-message t)
 
-;; ============================================================================
-;; THEME — EF-THEMES
-;; ============================================================================
 (use-package ef-themes
   :demand t
   :init
@@ -56,10 +47,6 @@
                 theme err)
        (load-theme 'ef-dark t)))))
 
-;; ============================================================================
-;; ICONS — NERD-ICONS
-;; :demand t kept — dashboard needs icons at startup
-;; ============================================================================
 (use-package nerd-icons
   :demand t
   :init
@@ -86,9 +73,6 @@
   :defer t
   :config (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
 
-;; ============================================================================
-;; FONTS & LIGATURES
-;; ============================================================================
 (when (display-graphic-p)
   (setq frame-resize-pixelwise  t
         window-resize-pixelwise t)
@@ -114,7 +98,6 @@
           (set-face-attribute 'variable-pitch nil :font "Cantarell-11"))
     (error nil))
 
-  ;; Ligatures — deferred to after-init; no :demand needed
   (use-package ligature :defer t)
   (add-hook 'after-init-hook
             (lambda ()
@@ -130,18 +113,12 @@
     (when (member "Noto Color Emoji" (font-family-list))
       (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))))
 
-;; ============================================================================
-;; SMOOTH SCROLLING
-;; ============================================================================
 (when (fboundp 'pixel-scroll-precision-mode)
   (pixel-scroll-precision-mode 1)
   (setq pixel-scroll-precision-use-momentum         t
         pixel-scroll-precision-large-scroll-height  40.0
         pixel-scroll-precision-interpolation-factor 1.0))
 
-;; ============================================================================
-;; LINE NUMBERS
-;; ============================================================================
 (let ((line-nums-on (if (fboundp 'emacs-ide-config-get)
                         (emacs-ide-config-get 'features 'line-numbers t)
                       t))
@@ -171,9 +148,6 @@
       show-paren-when-point-inside-paren t
       show-paren-when-point-in-periphery t)
 
-;; ============================================================================
-;; DOOM-MODELINE
-;; ============================================================================
 (use-package doom-modeline
   :defer t
   :init
@@ -210,9 +184,6 @@
                  "%b"))
         " — Emacs IDE"))
 
-;; ============================================================================
-;; VISUAL ENHANCEMENTS — all deferred
-;; ============================================================================
 (use-package rainbow-delimiters
   :defer t
   :hook (prog-mode . rainbow-delimiters-mode))
@@ -236,7 +207,6 @@
           ("BUG"        . "#ff6c6b") ("OPTIMIZE"   . "#51afef")
           ("PERF"       . "#51afef") ("REVIEW"     . "#c678dd"))))
 
-;; beacon, dimmer, pulsar — deferred; activated at idle after init
 (use-package beacon
   :defer t
   :init (setq beacon-blink-when-focused t beacon-size 40))
@@ -250,7 +220,6 @@
   :init (setq pulsar-pulse t pulsar-delay 0.055 pulsar-iterations 10
               pulsar-face 'pulsar-magenta pulsar-highlight-face 'pulsar-yellow))
 
-;; Activate optional visual modes after startup to keep boot fast
 (add-hook 'after-init-hook
           (lambda ()
             (let ((cfg (lambda (key) (if (fboundp 'emacs-ide-config-get)
@@ -273,9 +242,6 @@
         highlight-indent-guides-responsive    'top
         highlight-indent-guides-delay         0))
 
-;; ============================================================================
-;; WHICH-KEY — deferred
-;; ============================================================================
 (use-package which-key
   :defer t
   :init
@@ -295,9 +261,6 @@
                            (emacs-ide-config-get 'features 'which-key t)))
               (which-key-mode 1))))
 
-;; ============================================================================
-;; WINDOW MANAGEMENT
-;; ============================================================================
 (use-package ace-window
   :defer t
   :init
@@ -314,9 +277,6 @@
          ("C-c w f" . flip-frame)
          ("C-c w r" . rotate-frame-clockwise)))
 
-;; ============================================================================
-;; NEOTREE — deferred, loads only on first toggle
-;; ============================================================================
 (use-package neotree
   :defer t
   :commands (neotree-toggle neotree)
@@ -328,24 +288,10 @@
         neo-show-updir-line       nil
         neo-vc-integration        '(face)))
 
-;; ============================================================================
-;; DIRED
-;; ============================================================================
 (use-package diredfl
   :defer t
   :hook (dired-mode . diredfl-mode))
 
-;; ============================================================================
-;; ANSI COLOR IN COMPILATION
-;; Owned by tools-terminal.el — registered there at module load time so the
-;; hook is active for every compilation buffer including the first one.
-;; tools-terminal.el defines emacs-ide-terminal--ansi-compile and adds it to
-;; compilation-filter-hook with an idempotent memq guard.
-;; ============================================================================
-
-;; ============================================================================
-;; VISUAL FILL COLUMN
-;; ============================================================================
 (use-package visual-fill-column
   :defer t
   :init
@@ -353,9 +299,6 @@
         visual-fill-column-center-text nil)
   :hook ((org-mode markdown-mode) . visual-fill-column-mode))
 
-;; ============================================================================
-;; TAB BAR
-;; ============================================================================
 (use-package tab-bar
   :straight nil
   :defer t
@@ -369,14 +312,10 @@
   :config
   (tab-bar-mode 1))
 
-;; ============================================================================
-;; PRESENTATION MODE
-;; ============================================================================
 (defvar emacs-ide-presentation-mode--active nil
   "Non-nil when presentation mode is active.")
 
 (defun emacs-ide-presentation-mode ()
-  "Toggle presentation mode."
   (interactive)
   (if emacs-ide-presentation-mode--active
       (progn (set-face-attribute 'default nil :height 110)
@@ -386,9 +325,6 @@
     (setq emacs-ide-presentation-mode--active t)
     (message "Presentation mode ON")))
 
-;; ============================================================================
-;; TRANSPARENCY
-;; ============================================================================
 (defun emacs-ide-set-transparency (alpha-bg alpha-fg)
   (interactive "nBackground (0-100): \nnForeground (0-100): ")
   (set-frame-parameter nil 'alpha-background alpha-bg)

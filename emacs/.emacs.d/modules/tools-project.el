@@ -1,47 +1,10 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Professional project management and navigation with config integration.
 ;;; Version: 3.0.4
-;;; Part of Enterprise Emacs IDE v3.0.4
-;;; Fixes vs 2.2.5 (audit):
-;;;   - FIX-VERSION: Header bumped from 2.2.5 to 3.0.4.
-;;;   - FIX-TREEMACS-MODES: treemacs-follow-mode, treemacs-filewatch-mode, and
-;;;     treemacs-git-mode are minor mode functions, not variables. setq in :init
-;;;     was silently a no-op for all three. Moved to (mode 1) calls in :config.
-;;;   - FIX-SEARCH-PATH-RELOAD: projectile-project-search-path was set once in
-;;;     :config and never updated on emacs-ide-config-reload. Extracted into
-;;;     emacs-ide-project--apply-search-paths helper called both in :config and
-;;;     via emacs-ide-config-reload-hook.
-;;;   - FIX-CONSULT-COLLISION: consult-projectile :bind block duplicated
-;;;     C-c p B/F/P bindings already owned by completion-core.el. Removed the
-;;;     duplicate :bind block here — completion-core.el is the canonical owner.
-;;;   - FIX-CARGO-NEW-QUOTE: (shell-command (format "cargo new %s" name)) did
-;;;     not quote name — a project name with spaces would break the shell
-;;;     command. Wrapped with shell-quote-argument.
-;;;   - FIX-PROJECT-ROOT-FALLBACK: emacs-ide-project-root called
-;;;     projectile-project-root without ignore-errors. projectile-project-root
-;;;     signals a user-error when not in a project, crashing any caller that
-;;;     uses this as a safe fallback. Wrapped with ignore-errors.
-;;;   - FIX-IGNORED-DIRS-CONFIG: projectile-globally-ignored-directories was
-;;;     hardcoded. Now merges the hardcoded defaults with any additional entries
-;;;     from config.yml project.globally-ignored-directories.
-;;; Fixes vs 2.2.4 (retained):
-;;;   - projectile-indexing-method 'alien (non-blocking, delegates to rg/fd).
-;;;   - FIX-CONFIG: projectile-use-git-grep and projectile-generic-command
-;;;     respect emacs-ide-project-search from config.yml.
-;;;   - search path set once in :config (now via helper for reload support).
 ;;; Code:
 
-;; ============================================================================
-;; PROJECTILE - PROJECT MANAGEMENT
-;; ============================================================================
 (when (bound-and-true-p emacs-ide-project-enable)
 
-;; ── Search path helper ──────────────────────────────────────────────────────
-;; FIX-SEARCH-PATH-RELOAD: extracted so it can be called on config reload.
 (defun emacs-ide-project--apply-search-paths ()
-  "Set projectile-project-search-path from config.yml project.search-paths.
-Falls back to ~/projects, ~/work, ~/code if not configured."
   (when (fboundp 'projectile-mode)
     (setq projectile-project-search-path
           (or (and (boundp 'emacs-ide-config-data)
@@ -59,9 +22,6 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
 
 (add-hook 'emacs-ide-config-reload-hook #'emacs-ide-project--apply-search-paths)
 
-;; ── Ignored directories: merge hardcoded defaults with config additions ──────
-;; FIX-IGNORED-DIRS-CONFIG: config.yml project.globally-ignored-directories
-;; values are now merged with the hardcoded baseline list.
 (defconst emacs-ide-project--default-ignored-dirs
   '(".git" ".svn" ".hg" "node_modules" "__pycache__"
     ".pytest_cache" ".mypy_cache" "target" "build" "dist"
@@ -71,7 +31,6 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
   "Baseline ignored directories always excluded from projectile.")
 
 (defun emacs-ide-project--ignored-dirs ()
-  "Return merged ignored dirs: baseline + config.yml additions."
   (let ((cfg-dirs (and (boundp 'emacs-ide-config-data)
                        (when-let ((pc (cdr (assoc 'project emacs-ide-config-data))))
                          (cdr (assoc 'globally-ignored-directories pc))))))
@@ -86,22 +45,16 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
         projectile-enable-caching     t
         projectile-indexing-method    'alien
         projectile-sort-order         'recentf
-
-        ;; FIX-IGNORED-DIRS-CONFIG: computed at init time; reload hook handles updates
         projectile-globally-ignored-directories
         (emacs-ide-project--ignored-dirs)
-
         projectile-globally-ignored-files
         '("*.pyc" "*.o" "*.so" "*.dll" "*.exe" "*.class"
           "*.elc" "*.log" ".DS_Store" "Thumbs.db" "*.jar"
           "*.war" "*.beam" "TAGS")
-
         projectile-auto-discover                   t
         projectile-switch-project-action           #'projectile-dired
         projectile-require-project-root            nil
         projectile-track-known-projects-automatically t
-
-        ;; FIX-CONFIG (retained): respect emacs-ide-project-search from config.yml
         projectile-use-git-grep
         (eq (bound-and-true-p emacs-ide-project-search) 'git-grep)
         projectile-generic-command
@@ -114,7 +67,6 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
 
   :config
   (projectile-mode +1)
-  ;; FIX-SEARCH-PATH-RELOAD: use helper so reload hook can re-call it
   (emacs-ide-project--apply-search-paths)
 
   :bind-keymap
@@ -138,22 +90,10 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
               ("C-c p !"   . projectile-run-shell-command-in-root)
               ("C-c p &"   . projectile-run-async-shell-command-in-root)))
 
-;; ============================================================================
-;; CONSULT-PROJECTILE INTEGRATION
-;; FIX-CONSULT-COLLISION: C-c p B/F/P bindings removed — completion-core.el
-;; is the canonical owner of those keys. Only C-c p h (consult-projectile
-;; unified search) is added here as it has no collision.
-;; ============================================================================
 (use-package consult-projectile
   :after (projectile consult)
   :bind (("C-c p h" . consult-projectile)))
 
-;; ============================================================================
-;; TREEMACS - ADVANCED FILE TREE
-;; FIX-TREEMACS-MODES: treemacs-follow-mode, treemacs-filewatch-mode, and
-;; treemacs-git-mode are minor mode functions, not variables. setq in :init
-;; was silently a no-op. Moved to explicit activation calls in :config.
-;; ============================================================================
 (use-package treemacs
   :defer t
   :init
@@ -164,7 +104,6 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
         treemacs-sorting                  'alphabetic-case-insensitive-asc
         treemacs-fringe-indicator-mode    'always)
   :config
-  ;; FIX-TREEMACS-MODES: activate modes in :config where the functions exist
   (when (fboundp 'treemacs-follow-mode)     (treemacs-follow-mode 1))
   (when (fboundp 'treemacs-filewatch-mode)  (treemacs-filewatch-mode 1))
   (when (fboundp 'treemacs-git-mode)        (treemacs-git-mode 'deferred))
@@ -176,19 +115,12 @@ Falls back to ~/projects, ~/work, ~/code if not configured."
 (use-package treemacs-magit
   :after (treemacs magit))
 
-;; ============================================================================
-;; PROJECT UTILITY FUNCTIONS
-;; ============================================================================
 (defun emacs-ide-project-root ()
-  "Get current project root safely.
-FIX-PROJECT-ROOT-FALLBACK: projectile-project-root signals user-error when
-not in a project — wrapped with ignore-errors to make this a safe fallback."
   (or (and (fboundp 'projectile-project-root)
            (ignore-errors (projectile-project-root)))
       default-directory))
 
 (defun emacs-ide-project-find-file-at-point ()
-  "Find file at point in project."
   (interactive)
   (let ((file (thing-at-point 'filename)))
     (when file
@@ -197,7 +129,6 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
         (message "⚠️  Projectile not available")))))
 
 (defun emacs-ide-project-info ()
-  "Display project information."
   (interactive)
   (if-let ((project-root (emacs-ide-project-root)))
       (if (fboundp 'projectile-project-name)
@@ -210,7 +141,6 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
     (message "Not in a project")))
 
 (defun emacs-ide-project-compile ()
-  "Compile project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
@@ -226,7 +156,6 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
      (t (call-interactively 'compile)))))
 
 (defun emacs-ide-project-run ()
-  "Run project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
@@ -241,7 +170,6 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
      (t (message "⚠️  No run command detected for this project")))))
 
 (defun emacs-ide-project-test ()
-  "Test project intelligently."
   (interactive)
   (let ((default-directory (emacs-ide-project-root)))
     (cond
@@ -255,11 +183,7 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
      ((fboundp 'projectile-test-project) (projectile-test-project))
      (t (message "⚠️  No test command detected for this project")))))
 
-;; ============================================================================
-;; PROJECT TEMPLATES
-;; ============================================================================
 (defun emacs-ide-project-create-python ()
-  "Create new Python project structure."
   (interactive)
   (let ((name (read-string "Project name: ")))
     (unless (string-empty-p name)
@@ -273,8 +197,6 @@ not in a project — wrapped with ignore-errors to make this a safe fallback."
       (message "✓ Created Python project: %s" name))))
 
 (defun emacs-ide-project-create-rust ()
-  "Create new Rust project (requires cargo).
-FIX-CARGO-NEW-QUOTE: project name now quoted with shell-quote-argument."
   (interactive)
   (if (executable-find "cargo")
       (let ((name (read-string "Project name: ")))
@@ -284,7 +206,6 @@ FIX-CARGO-NEW-QUOTE: project name now quoted with shell-quote-argument."
     (message "⚠️  Cargo not found.")))
 
 (defun emacs-ide-project-create-go ()
-  "Create new Go project structure."
   (interactive)
   (let ((name (read-string "Project name: ")))
     (unless (string-empty-p name)
@@ -295,9 +216,6 @@ FIX-CARGO-NEW-QUOTE: project name now quoted with shell-quote-argument."
         (insert (format "module %s\n\ngo 1.21\n" name)))
       (message "✓ Created Go project: %s" name))))
 
-;; ============================================================================
-;; KEYBINDINGS FOR PROJECT INFO AND TREEMACS
-;; ============================================================================
 (with-eval-after-load 'projectile
   (define-key projectile-mode-map    (kbd "C-c p I") #'emacs-ide-project-info)
   (define-key projectile-command-map (kbd "F")       #'treemacs-find-file)
