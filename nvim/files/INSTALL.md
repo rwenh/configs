@@ -1,4 +1,4 @@
-# INSTALLATION INSTRUCTIONS — v2.3.8
+# INSTALLATION INSTRUCTIONS — v2.3.10
 
 ## What Was Changed (v2.0 → v2.1)
 
@@ -175,16 +175,32 @@
 
 ---
 
-## Known Issues (v2.3.9)
+## What Was Changed (v2.3.9 → v2.3.10)
 
-| Module | Issue | Since |
-|--------|-------|-------|
-| `dap.lua` | Breakpoint restore on large files lands on wrong lines — treesitter not yet parsed at restore time | v2.2.4 |
-| `test.lua` | neotest-rust race condition if rustaceanvim not yet fully attached on first Rust file open | v2.3.1 |
-| `runner.lua` | `run_tests()` has no entry for `c`, `cpp`, `fortran`, `vhdl`, `cobol` — `<leader>'t` in those filetypes notifies "No test runner" | v2.0 |
-| `options.lua` | `matchparen` disabled with no replacement — cursor-position bracket matching is fully off | v2.0 |
+91. **test.lua — `once=true` removed from neotest-rust LspAttach** — `once=true` caused the LspAttach autocmd to be permanently consumed by the first LSP that attached, regardless of client name. Any non-rust server (lua_ls, basedpyright, clangd) attaching before rust_analyzer silently discarded the autocmd and neotest-rust was never registered for the session. The `_rust_registered` boolean flag already provides the idempotency guarantee that `once=true` was intended to give. Removed `once=true`; the flag alone is sufficient and correct.
 
-### Issues resolved this release (v2.3.9)
+92. **advanced.lua — vim-matchup `config()` standalone `ts.setup()` removed** — `config()` called `nvim-treesitter.configs.setup({ matchup = { enable = true } })` independently. nvim-treesitter treats each `setup()` call as a full reconfiguration; this second call from vim-matchup's `config()` silently overwrote treesitter.lua's complete opts (highlight, indent, textobjects, incremental_selection, etc.) with a near-empty table depending on lazy load order. Fixed: `config()` removed from the vim-matchup spec entirely. A companion `optional=true` nvim-treesitter spec now contributes only the `matchup` key via `opts=function()`, which lazy.nvim merges recursively into the primary treesitter.lua opts — the same pattern used by all lang/* specs.
+
+93. **dap.lua — `"elixir-ls"` added to `mason-nvim-dap ensure_installed`** — The Elixir DAP adapter resolver looks for `mason/packages/elixir-ls/debugger.sh`, but `mason-nvim-dap`'s `ensure_installed` list never included `"elixir-ls"`. `automatic_installation` therefore never pulled the package. Users silently had no working Elixir DAP adapter unless `mason-lspconfig` had already installed it as a side effect. DAP installation must not depend on lspconfig side effects; `"elixir-ls"` is now listed in both.
+
+94. **runner.lua — fortran/vhdl/cobol informational messages** — `run_tests()` emitted the opaque `"No test runner for: <ft>"` WARN message for these three languages with no explanation. These languages have no standard unit-test framework that can be invoked generically. Replaced with `INFO`-level messages that explain why no runner exists and point the user to the language-specific build/run keymaps already defined in each lang spec: `<leader>ftb` (Fortran), `<leader>vhr` (VHDL), `<leader>cob` (COBOL).
+
+---
+
+## Known Issues (v2.3.10)
+
+No open known issues. All previously tracked issues have been resolved.
+
+### Issues resolved this release (v2.3.10)
+
+| Issue | Fix |
+|-------|-----|
+| neotest-rust never registered when a non-rust LSP attached first | #91 |
+| vim-matchup standalone `ts.setup()` overwrote treesitter.lua config | #92 |
+| `elixir-ls` absent from `mason-nvim-dap ensure_installed` | #93 |
+| fortran/vhdl/cobol gave opaque "No test runner" with no guidance | #94 |
+
+### Issues resolved in v2.3.9
 
 | Issue | Fix |
 |-------|-----|
@@ -235,7 +251,7 @@
 
 ---
 
-## File Structure (v2.3.8)
+## File Structure (v2.3.10)
 
 ```
 ~/.config/nvim/
@@ -248,23 +264,23 @@
     │   ├── focus.lua                 ← v2.2.2
     │   ├── hud.lua                   ← v2.2.4
     │   ├── keymaps.lua               ← v2.3.8  ✦ overseer duplicates removed
-    │   ├── options.lua               ← v2.3.3
+    │   ├── options.lua               ← v2.3.9b  ✦ matchparen restored (vim-matchup owns it)
     │   ├── theme.lua                 ← v2.2.2
     │   └── util/
     │       ├── path.lua              ← v2.3.2
-    │       └── runner.lua            ← v2.3.9  ✦ JS/TS run_tests() cd prefix
+    │       └── runner.lua            ← v2.3.10  ✦ fortran/vhdl/cobol informational messages
     └── plugins/
         ├── init.lua                  ← v2.1.1
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
-            ├── advanced.lua          ← v2.3.1b
+            ├── advanced.lua          ← v2.3.10  ✦ vim-matchup treesitter ext; no standalone setup()
             ├── completion.lua        ← v2.3.6  ✦ blink nav keys "show" removed
-            ├── dap.lua               ← v2.3.9  ✦ elixir DAP resolver fixed
+            ├── dap.lua               ← v2.3.10  ✦ elixir-ls in mason-nvim-dap ensure_installed
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
             ├── hud.lua               ← v2.3.7  ✦ mini.animate opts→config
             ├── lsp.lua               ← v2.3.9  ✦ fortls in ensure_installed
-            ├── test.lua              ← v2.3.8  ✦ neotest-vitest constructor
+            ├── test.lua              ← v2.3.10  ✦ once=true removed from LspAttach neotest-rust
             ├── treesitter.lua        ← v2.3.8  ✦ "comment" removed from ignore_install
             ├── ui.lua                ← v2.3.5  ✦ LOGO_WIDTH removed; drain flash
             ├── workflow.lua          ← v2.3.1

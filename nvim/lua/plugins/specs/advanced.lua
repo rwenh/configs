@@ -32,6 +32,18 @@
 --     no replacement. vim-matchup supersedes matchparen, adds treesitter-aware
 --     multi-line matching, and improves the % motion. It sets g:loaded_matchparen
 --     itself so options.lua no longer needs to suppress the builtin.
+--
+-- FIX (v2.3.10):
+--   • vim-matchup config() was calling nvim-treesitter.configs.setup() directly
+--     with a minimal { matchup = { enable = true } } table. nvim-treesitter
+--     treats each setup() call as a full reconfiguration — the second call from
+--     vim-matchup's config() silently overwrote treesitter.lua's complete opts
+--     (highlight, indent, textobjects, incremental_selection, etc.) with a
+--     near-empty table depending on lazy load order. Fixed: config() removed
+--     from the vim-matchup spec entirely. Instead a companion optional=true
+--     nvim-treesitter spec is added that contributes only the matchup key via
+--     opts=function(), which lazy.nvim merges recursively into treesitter.lua's
+--     primary opts table — the correct pattern used by every other lang spec.
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -58,24 +70,39 @@ return {
     -- replacement. vim-matchup supersedes it: treesitter-aware multi-line match
     -- highlighting, improved % motion, and it sets g:loaded_matchparen itself to
     -- prevent the builtin from loading. options.lua no longer suppresses matchparen.
+    --
+    -- FIX (v2.3.10): config() removed. The previous config() called
+    -- nvim-treesitter.configs.setup({ matchup = { enable = true } }), which is a
+    -- full reconfiguration that overwrites treesitter.lua's opts. The companion
+    -- optional=true nvim-treesitter spec below correctly merges only the matchup
+    -- key via opts=function() — the same pattern used by all lang/* specs.
     {
         "andymass/vim-matchup",
         event = { "BufReadPost", "BufNewFile" },
         init = function()
             -- Disable the status-line component (too noisy alongside lualine)
             vim.g.matchup_matchparen_offscreen = { method = "popup" }
-            -- Defer deferred_highlight to avoid lag on large files
+            -- Defer highlight to avoid lag on large files
             vim.g.matchup_matchparen_deferred   = 1
             vim.g.matchup_matchparen_hi_surround_always = 0
             -- Let treesitter handle where possible
             vim.g.matchup_matchpref = { html = { tagnameonly = 1 } }
         end,
-        config = function()
-            -- Integrate with nvim-treesitter if available
-            local ok, ts = pcall(require, "nvim-treesitter.configs")
-            if ok then
-                ts.setup({ matchup = { enable = true } })
-            end
+        -- No config() here: treesitter integration is wired through the
+        -- optional nvim-treesitter spec below, which lazy merges into the
+        -- primary treesitter.lua opts table without clobbering it.
+    },
+
+    -- FIX (v2.3.10): companion optional spec — contributes only the matchup
+    -- enable key to the treesitter opts table via lazy's recursive merge.
+    -- This is the correct way to enable a treesitter module from an external
+    -- plugin spec without calling setup() a second time.
+    {
+        "nvim-treesitter/nvim-treesitter",
+        optional = true,
+        opts = function(_, opts)
+            opts.matchup = opts.matchup or {}
+            opts.matchup.enable = true
         end,
     },
 

@@ -22,6 +22,17 @@
 --     silently returns an invalid object and Rust tests never run through
 --     neotest. Switching to LspAttach filtered by client name guarantees the
 --     client is attached and ready before the constructor runs.
+--
+-- FIX (v2.3.10):
+--   • once=true removed from the LspAttach autocmd that defers neotest-rust.
+--     once=true fires and permanently removes the autocmd on the FIRST
+--     LspAttach event regardless of client name. If any non-rust LSP (e.g.
+--     lua_ls, basedpyright) attaches before rust_analyzer, the autocmd
+--     fires, the `client.name ~= "rust_analyzer"` guard returns early, the
+--     autocmd is gone, and neotest-rust is never registered for the rest of
+--     the session. The _rust_registered boolean flag already provides the
+--     idempotency guarantee that once=true was intended to give, so once=true
+--     is redundant and harmful. Removed; the flag alone is sufficient.
 
 return {
   {
@@ -63,14 +74,19 @@ return {
       local neotest = require("neotest")
       neotest.setup(opts)
 
-      -- FIX (v2.3.9b): neotest-rust deferred on LspAttach filtered to
-      -- rust_analyzer, not FileType. FileType fires before rustaceanvim's
-      -- LspAttach; vim.schedule() after FileType only yields one tick — not
-      -- enough for the client to be ready. LspAttach guarantees the client
-      -- exists. The once=true + _rust_registered guard prevent double-setup.
+      -- Defer neotest-rust registration until rust_analyzer is confirmed
+      -- attached and ready. LspAttach guarantees the client exists; the
+      -- _rust_registered flag prevents double-setup on subsequent attaches.
+      --
+      -- FIX (v2.3.10): once=true removed. With once=true the autocmd is
+      -- consumed by the first LspAttach event regardless of which client
+      -- fires it. Any non-rust LSP (lua_ls, basedpyright, clangd, …) that
+      -- attaches before rust_analyzer silently discards the autocmd and
+      -- neotest-rust is never registered for the session. The
+      -- _rust_registered boolean already ensures the setup body runs only
+      -- once, making once=true both redundant and harmful.
       local _rust_registered = false
       vim.api.nvim_create_autocmd("LspAttach", {
-        once  = true,
         group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
         callback = function(e)
           if _rust_registered then return end

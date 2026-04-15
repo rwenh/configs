@@ -31,6 +31,20 @@
 --     build` from the project root, consistent with the CMake build workflow
 --     already present in cpp.lua. If build/ does not exist, ctest exits with a
 --     clear error rather than silently doing nothing.
+--
+-- FIX (v2.3.10):
+--   • run_tests() fortran/vhdl/cobol: these three languages have no standard
+--     unit-test framework or runner binary that can be invoked generically from
+--     a project root. Previously <leader>'t silently notified "No test runner"
+--     with no explanation. Replaced with explicit informational entries that
+--     notify the user WHY there is no automated runner and point to the
+--     language-specific build keymaps that exist in each lang spec:
+--       fortran → <leader>ftb (gfortran build+run via fortran.lua)
+--       vhdl    → <leader>vhr (GHDL run+view via vhdl.lua)
+--       cobol   → <leader>cob (cobc compile+run via cobol.lua)
+--     This removes the last "No test runner" entries from the known-issues
+--     table. The notification uses INFO level (not WARN) since the absence of
+--     a test runner is a language characteristic, not a config error.
 
 local M = {}
 
@@ -370,10 +384,6 @@ function M.run_tests()
 
   local escaped_root = vim.fn.shellescape(root)
 
-  -- FIX (v2.3.9b): c/cpp entries added. cmake-tools.nvim provides CMake
-  -- build/run/test keymaps (<leader>cct) but <leader>'t was a no-op for these
-  -- filetypes since v2.0. These entries delegate to ctest, consistent with the
-  -- CMake workflow. If build/ doesn't exist ctest exits with a clear error.
   local test_commands = {
     python     = "cd " .. escaped_root .. " && pytest",
     rust       = "cd " .. escaped_root .. " && cargo test",
@@ -389,12 +399,28 @@ function M.run_tests()
       and "cd " .. escaped_root .. " && ./gradlew test"
       or  "cd " .. escaped_root .. " && mvn test",
     zig        = "cd " .. escaped_root .. " && zig build test",
-    -- FIX (v2.3.9b): c and cpp delegate to ctest. Requires cmake-tools.nvim
-    -- to have generated the build directory first (<leader>ccg, <leader>ccb).
-    -- `--test-dir build` mirrors cmake-tools.nvim's cmake_build_directory = "build".
+    -- FIX (v2.3.9b): c and cpp delegate to ctest.
     c   = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
     cpp = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
   }
+
+  -- FIX (v2.3.10): fortran, vhdl, cobol have no generic unit-test runner.
+  -- Instead of the opaque "No test runner for: <ft>" message, notify the
+  -- user of the language-specific build/run keymaps from the lang specs.
+  local no_test_runner_info = {
+    fortran = "Fortran has no standard unit-test runner.\n"
+      .. "Use <leader>ftb to build & run, or <leader>ftm for make.",
+    vhdl    = "VHDL has no standard unit-test runner.\n"
+      .. "Use <leader>vhr (GHDL Run & View) or <leader>vha/<vhe> to simulate.",
+    cobol   = "COBOL has no standard unit-test runner.\n"
+      .. "Use <leader>cob to compile & run the current file.",
+  }
+
+  local info_msg = no_test_runner_info[ft]
+  if info_msg then
+    vim.notify(info_msg, vim.log.levels.INFO)
+    return
+  end
 
   local cmd = test_commands[ft]
   if not cmd then

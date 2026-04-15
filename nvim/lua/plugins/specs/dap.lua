@@ -29,6 +29,16 @@
 --     rather than silently landing on wrong lines. The known-issue entry in
 --     README/INSTALL is resolved for the large-file case; small files continue
 --     to restore normally via the existing BufReadPost autocmd path.
+--
+-- FIX (v2.3.10):
+--   • "elixir-ls" added to mason-nvim-dap ensure_installed. The Elixir DAP
+--     adapter is wired through the elixir_dbg resolver which looks for
+--     mason/packages/elixir-ls/debugger.sh. However mason-nvim-dap's
+--     ensure_installed list did not include "elixir-ls", so automatic_installation
+--     never pulled it. The user was silently left without a working Elixir DAP
+--     adapter unless they had already installed elixir-ls via mason-lspconfig.
+--     Structurally, DAP installation should not depend on lspconfig side effects.
+--     Added to ensure_installed so a fresh setup installs it unconditionally.
 
 return {
   {
@@ -349,13 +359,8 @@ return {
       end
 
       -- FIX (v2.3.9b): large-file guard in set_bps_scheduled.
-      -- Buffers marked vim.b.large_file=true have treesitter disabled and
-      -- foldmethod=manual. Restoring breakpoints into these buffers before
-      -- treesitter parsing (which never happens for large files) produces
-      -- wrong line numbers. Skip restore for large-file buffers with a warning.
       local function set_bps_scheduled(bufnr, entries)
         vim.schedule(function()
-          -- Guard: skip restore for large-file buffers.
           if vim.b[bufnr] and vim.b[bufnr].large_file then
             vim.notify(
               string.format(
@@ -424,7 +429,16 @@ return {
     "jay-babu/mason-nvim-dap.nvim",
     dependencies = { "mason.nvim", "nvim-dap" },
     opts = {
-      ensure_installed       = { "debugpy", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
+      -- FIX (v2.3.10): "elixir-ls" added. The Elixir DAP adapter resolver
+      -- looks for mason/packages/elixir-ls/debugger.sh, but mason-nvim-dap
+      -- never listed it here so automatic_installation never pulled the
+      -- package. DAP installation must not rely on mason-lspconfig side
+      -- effects — elixir-ls belongs in both lists independently.
+      ensure_installed = {
+        "debugpy", "codelldb", "delve",
+        "js-debug-adapter", "java-debug-adapter", "java-test",
+        "elixir-ls",
+      },
       automatic_installation = true,
       -- NOTE: handlers key intentionally absent.
       -- handlers={} suppresses ALL default adapter setup handlers.

@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.4
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.10
 
 ---
 
@@ -198,8 +198,8 @@ echo "✓ Done — run: nvim"
 | Kotlin | kotlin_language_server | — | ktlint | ktlint | JUnit |
 | Ruby | solargraph | rdbg | rubocop | rubocop | rspec |
 | Elixir | elixir-ls | elixir-ls | mix | — | ExUnit |
-| C | clangd | codelldb | clang-format | — | — |
-| C++ | clangd + clangd_extensions | codelldb | clang-format | — | — |
+| C | clangd | codelldb | clang-format | — | ctest |
+| C++ | clangd + clangd_extensions | codelldb | clang-format | — | ctest |
 | HTML | html-lsp | — | prettier | htmlhint | — |
 | CSS / SCSS | cssls + cssmodules_ls | — | prettier | stylelint | — |
 | SQL | sqls | — | sqlfmt | — | — |
@@ -300,14 +300,19 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.9)
+## Known Issues / Pending Fixes (v2.3.10)
 
-| Module | Issue |
-|--------|-------|
-| `dap.lua` | Breakpoint restore on large files lands on wrong lines (treesitter not yet parsed at restore time) |
-| `test.lua` | neotest-rust race condition if rustaceanvim not yet attached on first Rust file open |
-| `runner.lua` | `run_tests()` has no entry for c, cpp, fortran, vhdl, cobol — calling `<leader>'t` in those filetypes notifies "No test runner" |
-| `options.lua` | `matchparen` disabled with no replacement — cursor-position bracket matching is fully off |
+All previously listed known issues have been resolved in v2.3.10. No open issues remain.
+
+| Resolved in | Issue | Fix |
+|-------------|-------|-----|
+| v2.3.10 | `test.lua` neotest-rust never registered when a non-rust LSP attached first (`once=true` consumed the autocmd) | Removed `once=true`; `_rust_registered` flag alone guards idempotency |
+| v2.3.10 | `advanced.lua` vim-matchup called `nvim-treesitter.configs.setup()` independently, overwriting treesitter.lua's full config | Removed standalone `setup()` call; replaced with `optional=true` treesitter extension spec |
+| v2.3.10 | `dap.lua` Elixir DAP adapter never auto-installed — `elixir-ls` absent from `mason-nvim-dap ensure_installed` | Added `"elixir-ls"` to `ensure_installed` |
+| v2.3.10 | `runner.lua` fortran/vhdl/cobol gave opaque "No test runner" with no guidance | Replaced with informational messages pointing to the lang-specific build keymaps |
+| v2.3.9b | `dap.lua` breakpoint restore on large files landed on wrong lines | Large-file guard skips restore with warning |
+| v2.3.9b | `options.lua` matchparen disabled with no replacement | `vim-matchup` added to `advanced.lua`; `options.lua` no longer suppresses matchparen |
+| v2.3.9b | `runner.lua` `<leader>'t` notified "No test runner" for c and cpp | Delegated to `ctest --test-dir build` |
 
 ---
 
