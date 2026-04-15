@@ -3,6 +3,15 @@
 ;;; Production-grade early initialization with performance monitoring.
 ;;; Version: 3.0.4
 ;;; Part of Enterprise Emacs IDE v3.0.4
+;;; Fixes vs 3.0.4 (recalibration):
+;;;   - FIX-NATIVE-COMP-SILENT: native-comp-async-report-warnings-errors changed
+;;;     from nil to 'silent. nil means "don't error but still show warnings in
+;;;     *Warnings*" — which is why native-compiler warnings for beacon, neotree,
+;;;     smartparens, etc. appear in the warnings buffer. 'silent suppresses both
+;;;     the error and the warning display. This variable is NOT saved/restored on
+;;;     startup because async native compilation continues long after init
+;;;     completes — packages compile in background idle time and their warnings
+;;;     must stay suppressed for the entire session.
 ;;; Fixes vs 3.0.4 (audit):
 ;;;   - FIX-ORPHAN-COMMENT: Removed stale "REDUCE STARTUP NOISE" section header
 ;;;     that had no corresponding benchmark phase beneath it (the actual
@@ -51,8 +60,12 @@
 ;;;     fragile — require needs handlers to locate .elc files.
 ;;;   - FIX-ORDER2: warning-suppression moved to FIRST benchmark phase (before
 ;;;     initial-theme, site-lisp-disable, and all others that may trigger warnings).
-;;;   - FIX-DEDUP: native-comp-async-report-warnings-errors removed from
-;;;     warning-suppression phase — already set in native-comp-setup (line 143).
+;;;   - FIX-DEDUP: native-comp-async-report-warnings-errors moved FROM
+;;;     warning-suppression phase to native-comp-setup in prior audit to
+;;;     avoid duplication. In this recalibration it is set in BOTH phases:
+;;;     once early in warning-suppression (to silence JIT comp during package
+;;;     loading) and again in native-comp-setup. Setting it twice is safe and
+;;;     idempotent — the value is 'silent in both cases.
 ;;;   - FIX-DEFVAR: emacs-ide--saved-byte-compile-warnings and
 ;;;     emacs-ide--saved-warning-suppress-log-types moved to top-level defvars
 ;;;     so the byte-compiler sees them as known globals.
@@ -248,8 +261,11 @@ Using the built-in avoids spawning a shell subprocess during early-init."
           (if (boundp 'byte-compile-warnings) byte-compile-warnings t))
     (setq warning-minimum-level :emergency
           byte-compile-warnings nil)
-    ;; FIX-DEDUP: native-comp-async-report-warnings-errors not set here —
-    ;; already set to nil in native-comp-setup.
+    ;; FIX-NATIVE-COMP-SILENT: Set here as well as native-comp-setup so that
+    ;; JIT compilation triggered during package loading (before native-comp-setup
+    ;; benchmark phase runs) is also silenced.
+    (when (boundp 'native-comp-async-report-warnings-errors)
+      (setq native-comp-async-report-warnings-errors 'silent))
     ;; FIX-WARN2: warning-suppress-log-types suppresses both popup AND log.
     (setq emacs-ide--saved-warning-suppress-log-types
           (if (boundp 'warning-suppress-log-types) warning-suppress-log-types nil))
@@ -265,7 +281,14 @@ Using the built-in avoids spawning a shell subprocess during early-init."
   (lambda ()
     (when (and (fboundp 'native-comp-available-p)
                (native-comp-available-p))
-      (setq native-comp-async-report-warnings-errors nil
+      ;; FIX-NATIVE-COMP-SILENT: 'silent suppresses both errors AND warnings
+      ;; from async native-comp jobs. nil (the old value) only suppresses
+      ;; errors — warnings from third-party packages (beacon, neotree,
+      ;; smartparens, etc.) still appear in *Warnings* with nil.
+      ;; This variable intentionally stays 'silent for the entire session
+      ;; because async compilation runs in background idle time long after
+      ;; startup — there is no correct point to "restore" it to a noisier value.
+      (setq native-comp-async-report-warnings-errors 'silent
             native-comp-speed 2
             ;; FIX-4: use cached emacs-ide-processor-count (not calling fn again)
             native-comp-async-jobs-number (max 1 (/ (or emacs-ide-processor-count 4) 2)))
