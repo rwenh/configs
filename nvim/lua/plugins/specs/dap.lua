@@ -7,40 +7,28 @@
 --   • mason-nvim-dap handlers={} restores default adapter setup.
 --
 -- FIX (v2.3.3):
---   • load_breakpoints() was called via vim.defer_fn(fn, 100) on VimEnter.
---     100ms is fragile — on fast machines it fires before lazy.nvim finishes
---     loading nvim-dap, so require("dap.breakpoints") fails silently. Fixed:
---     hook into the "User LazyDone" event instead, which fires only after ALL
---     plugins are fully initialised. No arbitrary timer needed.
---   • JS/TS dap config: require("dap.utils").pick_process was called eagerly
---     at config time (not inside a function). If nvim-dap hadn't finished
---     loading yet this would error. Wrapped in a function so it's evaluated
---     lazily at debug-session start time.
+--   • load_breakpoints() hooked to "User LazyDone" instead of fragile
+--     vim.defer_fn(100ms).
+--   • JS/TS dap config: pick_process wrapped in a function (lazy eval).
 --
 -- FIX (v2.3.4):
---   • mason-nvim-dap: handlers={} was incorrect. An empty table suppresses ALL
---     default adapter handlers — no adapters get auto-configured. The correct
---     form to get mason-nvim-dap's built-in default handler for every installed
---     adapter is to omit the handlers key entirely (or set it to nil). Removed.
+--   • mason-nvim-dap handlers key removed entirely to restore default setup.
 --
 -- FIX (v2.3.6):
---   • mason-nvim-dap ensure_installed listed "python" — the Mason registry
---     package name is "debugpy". The wrong name caused mason-nvim-dap to warn
---     on every startup that the package was not found, and the Python DAP
---     adapter was never auto-installed. This was a known issue since v2.2.4;
---     the fix is a single token change.
+--   • mason-nvim-dap ensure_installed "python" → "debugpy".
 --
 -- FIX (v2.3.9):
---   • Elixir DAP debugger path resolver: the previous resolver checked
---     mason_pkg("elixir-ls/debugger.sh") first, then fell through to
---     exepath("elixir-ls") — the LSP binary — as a last resort. The LSP
---     binary is NOT the DAP debugger; using it causes elixir DAP sessions
---     to fail immediately. The fallback chain now only returns an executable
---     that is actually a DAP-capable binary (debugger.sh or elixir-ls-debugger).
---     If none is found the adapter is set to nil and a deferred warning is
---     shown rather than silently wiring the wrong binary. The mix_task adapter
---     registration is now guarded so it only fires when a valid debugger is
---     found.
+--   • Elixir DAP resolver no longer falls back to the LSP binary.
+--
+-- FIX (v2.3.9b):
+--   • load_breakpoints() large-file guard: buffers marked vim.b.large_file=true
+--     by autocmds.lua have treesitter disabled and foldmethod=manual. Restoring
+--     breakpoints into these buffers before treesitter parses (which never
+--     happens for large files) means the line-number mapping is unreliable.
+--     For large-file buffers the restore is now skipped with an explicit warning
+--     rather than silently landing on wrong lines. The known-issue entry in
+--     README/INSTALL is resolved for the large-file case; small files continue
+--     to restore normally via the existing BufReadPost autocmd path.
 
 return {
   {
@@ -298,23 +286,12 @@ return {
       }
 
       -- ── Elixir (ElixirLS debugger) ────────────────────────────────
-      -- FIX (v2.3.9): The old resolver fell through to exepath("elixir-ls")
-      -- as a last resort. That path resolves to the LSP binary, not the DAP
-      -- debugger — wiring the LSP binary as a DAP adapter silently fails every
-      -- debug session. The resolver now only returns a path that is known to be
-      -- a DAP-capable binary. If no valid debugger is found, the adapter is not
-      -- registered and a warning is shown. Known good paths in order of priority:
-      --   1. Mason package debugger.sh  (elixir-ls bundle, most reliable)
-      --   2. elixir-ls-debugger         (standalone binary, some distros)
-      --   3. nil                        (warn and skip — do NOT use elixir-ls)
+      -- FIX (v2.3.9): resolver no longer falls back to the LSP binary.
       local elixir_dbg = (function()
-        -- Mason installs elixir-ls as a bundle; debugger.sh is the DAP entry point.
         local pkg_dbg = mason_pkg("elixir-ls/debugger.sh")
         if vim.fn.filereadable(pkg_dbg) == 1 then return pkg_dbg end
-        -- Some systems ship a standalone elixir-ls-debugger binary.
         local standalone = vim.fn.exepath("elixir-ls-debugger")
         if standalone ~= "" then return standalone end
-        -- Do NOT fall back to "elixir-ls" — that is the LSP server, not the debugger.
         return nil
       end)()
 
@@ -371,8 +348,25 @@ return {
         end
       end
 
+      -- FIX (v2.3.9b): large-file guard in set_bps_scheduled.
+      -- Buffers marked vim.b.large_file=true have treesitter disabled and
+      -- foldmethod=manual. Restoring breakpoints into these buffers before
+      -- treesitter parsing (which never happens for large files) produces
+      -- wrong line numbers. Skip restore for large-file buffers with a warning.
       local function set_bps_scheduled(bufnr, entries)
         vim.schedule(function()
+          -- Guard: skip restore for large-file buffers.
+          if vim.b[bufnr] and vim.b[bufnr].large_file then
+            vim.notify(
+              string.format(
+                "[dap] Skipping breakpoint restore for large file buffer %d — "
+                .. "line mapping unreliable without treesitter.",
+                bufnr
+              ),
+              vim.log.levels.WARN
+            )
+            return
+          end
           for _, bp in ipairs(entries) do
             pcall(function()
               require("dap.breakpoints").set(
@@ -433,7 +427,7 @@ return {
       ensure_installed       = { "debugpy", "codelldb", "delve", "js-debug-adapter", "java-debug-adapter", "java-test" },
       automatic_installation = true,
       -- NOTE: handlers key intentionally absent.
-      -- handlers={} (empty table) suppresses ALL default adapter setup handlers.
+      -- handlers={} suppresses ALL default adapter setup handlers.
       -- Omitting the key lets mason-nvim-dap run its built-in default handler
       -- for every installed adapter, which is the intended behaviour.
     },

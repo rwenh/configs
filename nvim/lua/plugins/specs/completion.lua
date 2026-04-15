@@ -9,21 +9,24 @@
 --   • cmdline source removed from sources.default.
 --
 -- FIX (v2.3.4):
---   • <Tab>/<S-Tab> stripped of select_next/select_prev. Tab was fighting
---     snippet jumping and menu navigation simultaneously — when inside a snippet
---     it would jump the placeholder AND move the menu selection, producing
---     unpredictable behaviour. Tab is now snippet-only; menu navigation is
---     handled exclusively by <C-n>/<C-j> (down) and <C-p>/<C-k> (up).
+--   • <Tab>/<S-Tab> stripped to snippet-only; menu navigation is exclusively
+--     <C-n>/<C-j> (down) and <C-p>/<C-k> (up).
 --
 -- FIX (v2.3.6):
---   • <C-p>/<C-n>/<C-k>/<C-j> were mapped to { "select_prev/next", "show" }.
---     The "show" action internally calls "fallback" when the completion menu
---     is already visible — this reintroduced the native ins-completion popup
---     (i-^P / i-^N) that the v2.3.4 fix intended to prevent. The comment on
---     those lines claimed "fallback" was removed, but "show" smuggles it back.
---     Fix: map to { "select_prev" } / { "select_next" } only. When the menu
---     is closed these keys are no-ops inside blink — the user should press
---     <C-Space> to open it. This is the unambiguous, conflict-free pattern.
+--   • <C-p>/<C-n>/<C-k>/<C-j> mapped to plain select_prev/select_next only.
+--     "show" was removed from these maps — it internally calls "fallback" when
+--     the menu is open, re-invoking native i-^P/i-^N and opening a second
+--     competing popup.
+--
+-- FIX (v2.3.9b):
+--   • Clarifying comment added explaining why "cmdline" lives in providers{}
+--     but not in sources.default. The two tables serve different scopes:
+--     sources.default is the list used for INSERT-mode completion; the cmdline
+--     top-level block has its own sources list and pulls from providers by name.
+--     Declaring cmdline in providers makes it available to the cmdline block
+--     without polluting insert-mode completions. This is intentional and
+--     correct; the comment removes the ambiguity that made it look like an
+--     omission.
 
 return {
   {
@@ -55,13 +58,12 @@ return {
         -- unambiguous and never conflict with snippet state.
         ["<Tab>"]     = { "snippet_forward", "fallback" },
         ["<S-Tab>"]   = { "snippet_backward", "fallback" },
-        -- FIX (v2.3.6): "show" removed from nav keys. "show" calls "fallback"
-        -- internally when the menu is open, which re-invokes native i-^P/i-^N
-        -- and opens a second competing menu. Plain select_prev/next is the
-        -- correct approach — use <C-Space> to open the menu when closed.
+        -- FIX (v2.3.6): plain select_prev/next only — no "show".
+        -- "show" calls "fallback" internally when the menu is open, which
+        -- re-invokes native i-^P/i-^N and opens a second competing menu.
+        -- Use <C-Space> to open the menu when it is closed.
         ["<C-p>"]     = { "select_prev" },
         ["<C-n>"]     = { "select_next" },
-        -- Ergonomic aliases: same directional logic as Telescope / fzf.
         ["<C-k>"]     = { "select_prev" },
         ["<C-j>"]     = { "select_next" },
         ["<C-b>"]     = { "scroll_documentation_up", "fallback" },
@@ -74,7 +76,12 @@ return {
       },
 
       sources = {
-        -- "cmdline" intentionally absent — belongs only in cmdline{} block.
+        -- "cmdline" is intentionally absent from sources.default.
+        -- sources.default controls INSERT-mode completion only.
+        -- The cmdline{} block below has its own sources list and pulls
+        -- "cmdline" from the providers table by name. Keeping them separate
+        -- prevents the cmdline source from appearing in insert-mode menus
+        -- (which would pollute results with ex-command completions mid-code).
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
           lsp = {
@@ -97,6 +104,9 @@ return {
             min_keyword_length = 2,
             score_offset       = -3,
           },
+          -- cmdline declared here so the cmdline{} block can reference it by
+          -- name. NOT included in sources.default — insert-mode only uses the
+          -- four sources above.
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",

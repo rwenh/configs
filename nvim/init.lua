@@ -1,4 +1,4 @@
--- ~/.config/nvim/init.lua  — v2.3.8 entry point
+-- ~/.config/nvim/init.lua  — v2.3.9 entry point
 -- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
 
 -- 1. Bootstrap lazy.nvim + set leader (must be first)
@@ -42,7 +42,6 @@ pcall(function() require("core.hud").apply() end)
 
 -- 9. Startup stats — hooked to LazyDone event so it fires after all plugins
 --    are fully initialised, not after a hardcoded timer.
---    FIX: was vim.defer_fn(150ms) which was fragile on slow machines.
 vim.api.nvim_create_autocmd("User", {
   pattern  = "LazyDone",
   once     = true,
@@ -59,8 +58,13 @@ vim.api.nvim_create_autocmd("User", {
 })
 
 -- 10. Version stamp (for :Health and debug output)
--- v2.3.8: neotest-vitest raw module bug fixed (same class as neotest-go/elixir);
---         runner.lua run_tests() now cd's to project root for python/rust/go/zig;
---         keymaps.lua/treesitter.lua FIX comment versions recalibrated;
---         KEYMAP_REFERENCE.md header bumped; <leader>sm description corrected.
-vim.g.nvim_ide_version = "2.3.8"
+-- v2.3.9:  runner.lua JS/TS run_tests() cd prefix; MasonInstallAll fortls+gopls;
+--          elixir DAP resolver fixed; fortls in mason-lspconfig ensure_installed.
+-- v2.3.9b: version stamp corrected 2.3.8→2.3.9; options.lua matchparen restored
+--          (vim-matchup owns it); advanced.lua vim-matchup spec added; dap.lua
+--          large-file bp-restore guard; test.lua neotest-rust deferred on
+--          LspAttach instead of FileType; completion.lua cmdline comment;
+--          treesitter.lua latex parser removed; KEYMAP_REFERENCE.md xX/xL/xQ
+--          documented; runner.lua c/cpp CTest entries; hud specs <leader>,r
+--          global duplicate removed.
+vim.g.nvim_ide_version = "2.3.9"

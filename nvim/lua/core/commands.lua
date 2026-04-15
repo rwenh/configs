@@ -22,6 +22,12 @@
 --     servers table but mason-lspconfig's ensure_installed (lsp.lua) did not
 --     include it; MasonInstallAll was the only place to install it and it was
 --     absent here too.
+--
+-- FIX (v2.3.9b):
+--   • "tailwindcss-language-server" added to MasonInstallAll LSP section.
+--     lsp.lua wires tailwindcss in the servers table and mason-lspconfig
+--     ensure_installed, but :MasonInstallAll never listed it — a fresh setup
+--     where mason-lspconfig had not yet auto-run would have no Tailwind LSP.
 
 local cmd = vim.api.nvim_create_user_command
 
@@ -229,9 +235,14 @@ cmd("MasonInstallAll", function()
     -- FIX (v2.3.9): "fortls" added — lsp.lua attaches it as an optional server
     -- when the binary is present, but there was no way to install it via
     -- :MasonInstallAll. "gopls" added for the same reason.
+    -- FIX (v2.3.9b): "tailwindcss-language-server" added. lsp.lua wires
+    -- tailwindcss in the servers table and mason-lspconfig ensure_installed,
+    -- but MasonInstallAll never installed it. A fresh install with no prior
+    -- mason-lspconfig run would have no tailwind LSP.
     "lua-language-server", "basedpyright", "typescript-language-server",
     "html-lsp", "css-lsp", "json-lsp", "yaml-language-server",
     "clangd", "gopls", "solargraph", "elixir-ls", "kotlin-language-server",
+    "tailwindcss-language-server",
     "zls", "fortls", "sqls",
     -- NOTE: cobol-language-server is NOT in the Mason registry.
     --       Install manually: npm i -g @broadcommfd/cobol-language-support

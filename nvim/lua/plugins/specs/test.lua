@@ -2,32 +2,26 @@
 --
 -- FIX (v2.3.1):
 --   • neotest-rust race condition: deferred via one-shot FileType autocmd.
---     All other adapters loaded eagerly.
 --
 -- FIX (v2.3.2):
---   • neotest-go loader was `function() return require("neotest-go") end` —
---     this returns the raw module table, not an instantiated adapter. Every
---     other adapter in the list is called as a function (e.g.
---     require("neotest-python")({...})). neotest-go exports a callable that
---     accepts an optional opts table; not calling it means neotest receives
---     the module itself rather than the adapter object, so Go tests silently
---     never run through neotest. Fixed: require("neotest-go")({}) to invoke
---     the constructor with an empty opts table (all defaults).
+--   • neotest-go: require("neotest-go")({}) constructor call.
 --
 -- FIX (v2.3.5):
---   • neotest-elixir was returned as a raw module table (same class of bug as
---     neotest-go in v2.3.2). The comment claimed it "exports a plain table
---     adapter (no constructor)" — this was true of older versions but
---     neotest-elixir v0.2+ exports a callable constructor. Changed to
---     require("neotest-elixir")({}) to match the documented API and the
---     pattern used by every other adapter in this file.
+--   • neotest-elixir: require("neotest-elixir")({}) constructor call.
 --
 -- FIX (v2.3.8):
---   • neotest-vitest was returned as a raw module (same class of bug as
---     neotest-go/elixir). neotest-vitest exports a callable; not invoking it
---     silently gave neotest an invalid adapter object and Vitest tests never
---     ran. Fixed: require("neotest-vitest")({}) consistent with all other
---     adapters in this file.
+--   • neotest-vitest: require("neotest-vitest")({}) constructor call.
+--
+-- FIX (v2.3.9b):
+--   • neotest-rust deferred on LspAttach (client.name == "rust_analyzer")
+--     instead of FileType. The FileType event fires when Neovim sets the
+--     filetype — before rustaceanvim's LspAttach. vim.schedule() after
+--     FileType only yields one tick, which is not enough time for rustaceanvim
+--     to fully attach its client. neotest-rust probes for the rust-analyzer
+--     client during its constructor; if the client isn't there yet the adapter
+--     silently returns an invalid object and Rust tests never run through
+--     neotest. Switching to LspAttach filtered by client name guarantees the
+--     client is attached and ready before the constructor runs.
 
 return {
   {
@@ -69,17 +63,20 @@ return {
       local neotest = require("neotest")
       neotest.setup(opts)
 
-      -- FIX: neotest-rust deferred registration.
-      -- One-shot FileType autocmd fires after rustaceanvim's LspAttach.
-      -- vim.schedule() yields one tick so the LSP client is fully attached
-      -- before neotest-rust's constructor probes for it.
+      -- FIX (v2.3.9b): neotest-rust deferred on LspAttach filtered to
+      -- rust_analyzer, not FileType. FileType fires before rustaceanvim's
+      -- LspAttach; vim.schedule() after FileType only yields one tick — not
+      -- enough for the client to be ready. LspAttach guarantees the client
+      -- exists. The once=true + _rust_registered guard prevent double-setup.
       local _rust_registered = false
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = "rust",
-        once     = true,
-        group    = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
-        callback = function()
+      vim.api.nvim_create_autocmd("LspAttach", {
+        once  = true,
+        group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
+        callback = function(e)
           if _rust_registered then return end
+          local client = vim.lsp.get_client_by_id(e.data.client_id)
+          if not client or client.name ~= "rust_analyzer" then return end
+
           vim.schedule(function()
             local ok, rust_adapter = pcall(function()
               return require("neotest-rust")({ dap_adapter = "codelldb" })
@@ -92,7 +89,7 @@ return {
                 neotest.setup(vim.tbl_extend("force", opts, { adapters = current_adapters }))
               end)
             else
-              vim.notify("neotest-rust: adapter failed to load after rustaceanvim attach",
+              vim.notify("neotest-rust: adapter failed to load after rust_analyzer attach",
                 vim.log.levels.WARN)
             end
           end)
@@ -107,11 +104,10 @@ return {
           "neotest-python",
           function() return require("neotest-python")({ runner = "pytest" }) end,
         },
-        -- neotest-rust is intentionally absent here — registered in config() above
+        -- neotest-rust intentionally absent here — registered in config() above
+        -- via LspAttach to guarantee rust_analyzer is ready.
         {
           "neotest-go",
-          -- neotest-go exports a constructor; must be called to produce the
-          -- adapter object. Passing {} uses all defaults.
           function() return require("neotest-go")({}) end,
         },
         {
@@ -124,18 +120,10 @@ return {
         },
         {
           "neotest-elixir",
-          -- FIX (v2.3.5): neotest-elixir v0.2+ exports a constructor, not a
-          -- plain table. Calling it with {} produces the proper adapter object.
-          -- Returning the raw module silently gave neotest an invalid adapter
-          -- and Elixir tests never ran through neotest.
           function() return require("neotest-elixir")({}) end,
         },
         {
           "neotest-vitest",
-          -- FIX (v2.3.8): neotest-vitest exports a constructor, not a plain
-          -- table. Returning the raw module silently gave neotest an invalid
-          -- adapter; Vitest tests never ran. Same fix as neotest-go (v2.3.2)
-          -- and neotest-elixir (v2.3.5).
           function() return require("neotest-vitest")({}) end,
         },
         {

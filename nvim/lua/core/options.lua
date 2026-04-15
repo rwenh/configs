@@ -11,6 +11,14 @@
 --     always fails and leaves dead "[Process exited]" windows in every session.
 --     "help" also removed — help buffers are ephemeral and should not be
 --     persisted across sessions.
+--
+-- FIX (v2.3.9b):
+--   • matchparen removed from the disabled builtin_plugins list. It was
+--     suppressed since v2.0 with no replacement, leaving bracket-under-cursor
+--     highlighting completely off. vim-matchup (added to advanced.lua) supersedes
+--     matchparen: it handles multi-line matches, adds treesitter-aware % motions,
+--     and sets g:loaded_matchparen itself on init so the builtin never
+--     double-loads. Removing our override here lets vim-matchup's hand-off work.
 
 local opt = vim.opt
 local g   = vim.g
@@ -142,7 +150,11 @@ local builtin_plugins = {
   "vimball", "vimballPlugin",
   "2html_plugin",
   "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
-  "matchit", "matchparen",
+  -- FIX (v2.3.9b): matchparen intentionally NOT in this list.
+  -- vim-matchup (advanced.lua) supersedes the builtin and sets
+  -- g:loaded_matchparen itself, preventing double-loading. Disabling it here
+  -- blocked that hand-off and left bracket highlighting off since v2.0.
+  "matchit",
 }
 
 for _, plugin in ipairs(builtin_plugins) do

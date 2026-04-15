@@ -26,6 +26,12 @@
 --     entry that was added to keymaps.lua in v2.3.3 has been removed from there.
 --     keys= in the spec is the correct place: it both registers the map AND
 --     triggers lazy-loading of the plugin on first use.
+--
+-- FIX (v2.3.9b):
+--   • vim-matchup added. matchparen was disabled in options.lua since v2.0 with
+--     no replacement. vim-matchup supersedes matchparen, adds treesitter-aware
+--     multi-line matching, and improves the % motion. It sets g:loaded_matchparen
+--     itself so options.lua no longer needs to suppress the builtin.
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -42,6 +48,35 @@ return {
                 i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
             },
         },
+    },
+
+    -- ┌─────────────────────────────────────────────────────┐
+    -- │        BRACKET MATCHING (replaces matchparen)        │
+    -- └─────────────────────────────────────────────────────┘
+
+    -- FIX (v2.3.9b): matchparen was disabled in options.lua since v2.0 with no
+    -- replacement. vim-matchup supersedes it: treesitter-aware multi-line match
+    -- highlighting, improved % motion, and it sets g:loaded_matchparen itself to
+    -- prevent the builtin from loading. options.lua no longer suppresses matchparen.
+    {
+        "andymass/vim-matchup",
+        event = { "BufReadPost", "BufNewFile" },
+        init = function()
+            -- Disable the status-line component (too noisy alongside lualine)
+            vim.g.matchup_matchparen_offscreen = { method = "popup" }
+            -- Defer deferred_highlight to avoid lag on large files
+            vim.g.matchup_matchparen_deferred   = 1
+            vim.g.matchup_matchparen_hi_surround_always = 0
+            -- Let treesitter handle where possible
+            vim.g.matchup_matchpref = { html = { tagnameonly = 1 } }
+        end,
+        config = function()
+            -- Integrate with nvim-treesitter if available
+            local ok, ts = pcall(require, "nvim-treesitter.configs")
+            if ok then
+                ts.setup({ matchup = { enable = true } })
+            end
+        end,
     },
 
     -- ┌─────────────────────────────────────────────────────┐
@@ -315,22 +350,17 @@ return {
         lazy = true,
         cmd  = "Neogen",
         keys = {
-            -- FIX: sole registration of <leader>xg. Removed from keymaps.lua.
-            -- keys= triggers lazy-loading correctly on first use.
             { "<leader>xg", "<cmd>Neogen<CR>", desc = "Generate docstring" },
         },
         dependencies = { "nvim-treesitter/nvim-treesitter" },
         opts = {
             snippet_engine = "luasnip",
             languages = {
-                -- Core languages owned by this spec:
                 lua        = { template = { annotation_convention = "emmylua"  } },
                 typescript = { template = { annotation_convention = "tsdoc"    } },
                 javascript = { template = { annotation_convention = "jsdoc"    } },
                 rust       = { template = { annotation_convention = "nightly"  } },
                 go         = { template = { annotation_convention = "go"       } },
-                -- cpp.lua and python.lua extend these via optional=true;
-                -- their opts are merged by lazy over these defaults.
                 cpp        = { template = { annotation_convention = "doxygen"        } },
                 c          = { template = { annotation_convention = "doxygen"        } },
                 python     = { template = { annotation_convention = "google_docstrings" } },

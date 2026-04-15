@@ -2,31 +2,26 @@
 --
 -- FIX (v2.2.4):
 --   • mini.animate scroll subscroll predicate now checks vim.b.large_file.
---     Previously the ScrollWheel intercept + animation ran on every buffer
---     including large files where autocmds.lua had disabled syntax/treesitter.
---     Animation on a large file still called vim.treesitter internally via
---     the cursor scroll path, partially re-enabling what autocmds.lua disabled.
---     Guard: if vim.b[0].large_file is truthy, predicate returns false
---     (no animation) for that buffer.
 --   • folke/zen-mode.nvim spec present (focus.lua dependency).
 --   • render-markdown.nvim absent here (markdown.lua owns it).
 --
 -- FIX (v2.3.1b):
 --   • <leader>ft TodoTelescope key moved to <leader>xT.
---     <leader>ft was shared with the Fortran keymap group prefix (<leader>ft*),
---     causing which-key to show two competing groups under the same prefix.
---     Fortran owns <leader>ft* (build/check/make); TODOs move to <leader>xT
---     which fits naturally alongside the other utils under <leader>x*.
---     KEYMAP_REFERENCE.md should be updated: "Find TODOs" → <leader>xT.
 --
 -- FIX (v2.3.7):
---   • mini.animate: require("mini.animate") was called inside opts=function(),
---     which lazy evaluates at spec-parse time — before mini.animate is installed
---     or loaded. On a fresh install this caused a startup error. Fixed by moving
---     the animate.gen_timing / gen_subscroll calls into a config() function that
---     runs only after the plugin is confirmed loaded. The mouse_scrolled closure
---     is also created there so it stays co-located with the subscroll predicate
---     that references it.
+--   • mini.animate: require("mini.animate") moved from opts=function() into
+--     config() so it runs only after the plugin is confirmed loaded.
+--
+-- FIX (v2.3.9b):
+--   • inc-rename.nvim keys= entry removed. The spec previously registered
+--     <leader>,r as a GLOBAL normal-mode map (expr=true) pointing to IncRename.
+--     lsp.lua's LspAttach callback already registers <leader>,r as a
+--     BUFFER-LOCAL map with a pcall/fallback pattern. The global version here
+--     leaked into every non-LSP buffer, was architecturally wrong (LSP tooling
+--     living in the HUD spec), and caused which-key to show the entry twice.
+--     lsp.lua is the sole owner of <leader>,r. inc-rename is kept here with
+--     cmd="IncRename" only — lsp.lua triggers cmd-based lazy-loading via
+--     pcall(vim.cmd, "IncRename " .. word) in its LspAttach handler.
 
 return {
 
@@ -206,17 +201,16 @@ return {
     },
   },
 
+  -- FIX (v2.3.9b): keys= removed entirely.
+  -- The previous spec registered <leader>,r globally as an expr map for
+  -- IncRename. lsp.lua's LspAttach handler already owns <leader>,r as a
+  -- buffer-local map with cmd-based lazy-load + pcall fallback. The global
+  -- map here was architecturally wrong, leaked into non-LSP buffers, and
+  -- duplicated the which-key entry. cmd="IncRename" is kept so lsp.lua's
+  -- pcall(vim.cmd, "IncRename ...") can trigger lazy-loading correctly.
   {
     "smjonas/inc-rename.nvim",
     cmd  = "IncRename",
-    keys = {
-      {
-        "<leader>,r",
-        function() return ":IncRename " .. vim.fn.expand("<cword>") end,
-        expr = true,
-        desc = "LSP: Live Rename",
-      },
-    },
     opts = {},
   },
 
@@ -282,12 +276,7 @@ return {
     },
   },
 
-  -- FIX (v2.3.7): mini.animate moved from opts=function() to config().
-  -- opts=function() is evaluated at spec-parse time (lazy startup), before
-  -- mini.animate is installed. require("mini.animate") inside opts therefore
-  -- fails on first install with "module not found". The mouse_scrolled closure
-  -- and all animate.gen_* calls are now inside config() which only runs after
-  -- the plugin is confirmed present and loaded.
+  -- FIX (v2.3.7): mini.animate moved to config() from opts=function().
   {
     "echasnovski/mini.animate",
     event = "VeryLazy",
@@ -314,10 +303,6 @@ return {
         scroll = {
           timing    = animate.gen_timing.linear({ duration = 80, unit = "total" }),
           subscroll = animate.gen_subscroll.equal({
-            -- FIX: skip animation on large_file buffers. autocmds.lua sets
-            -- vim.b.large_file=true and disables syntax/treesitter for files
-            -- >500KB. mini.animate's scroll path can re-trigger treesitter
-            -- cursor queries on those buffers. Guard prevents this.
             predicate = function(total_scroll)
               if vim.b[0] and vim.b[0].large_file then return false end
               if mouse_scrolled then mouse_scrolled = false; return false end
@@ -330,10 +315,6 @@ return {
   },
 
   -- FIX (v2.3.1b): key moved from <leader>ft to <leader>xT.
-  -- <leader>ft was claimed by the Fortran group prefix (<leader>ftb/ftc/ftm).
-  -- Using the same prefix for both a group and a standalone binding caused
-  -- which-key to show two competing labels under <leader>ft.
-  -- <leader>xT slots naturally alongside other utils under <leader>x*.
   {
     "folke/todo-comments.nvim",
     optional = true,

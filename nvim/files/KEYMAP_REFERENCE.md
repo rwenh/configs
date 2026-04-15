@@ -1,4 +1,4 @@
-# NEOVIM KEYMAP REFERENCE — v2.3.8
+# NEOVIM KEYMAP REFERENCE — v2.3.9
 
 ## LEADER KEY
 Space (` `)
@@ -200,7 +200,10 @@ Space (` `)
 - `<leader>xp` — Go to project root
 - `<leader>xl` — Lazy
 - `<leader>xn` — Mason
-- `<leader>xx` — Trouble diagnostics
+- `<leader>xx` — Trouble diagnostics (all workspaces)
+- `<leader>xX` — Trouble buffer diagnostics
+- `<leader>xL` — Trouble location list
+- `<leader>xQ` — Trouble quickfix list
 - `<leader>xu` — Undo tree
 - `<leader>xg` — Generate docstring (Neogen)
 - `<leader>xT` — Find TODOs (TodoTelescope)

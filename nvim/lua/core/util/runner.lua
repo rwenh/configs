@@ -9,32 +9,28 @@
 --   • run_tests() JS/TS: detect yarn/pnpm/bun lockfiles.
 --
 -- FIX (v2.3.3):
---   • java runner: `java ClassName` used the raw unescaped name directly in a
---     shell string. Class names can't have spaces but the concatenation was
---     inconsistent with the rest of the codebase. Kept unescaped (correct for
---     Java class names) but added a comment explaining why.
+--   • java runner: `java ClassName` kept unescaped (correct for Java class
+--     names) but added a comment explaining why.
 --   • rust runner: only checked for Cargo.toml in the file's immediate parent
 --     directory. A file in src/bin/foo.rs would not find the project root
 --     Cargo.toml. Now walks up to 5 levels to find the nearest Cargo.toml,
 --     matching how rustaceanvim and cargo itself locate the manifest.
---   • elixir/ruby run_tests(): these commands need to run from the project
---     root to pick up their config files (mix.exs, .rspec). Added
---     "cd <root> && " prefix, consistent with kotlin/java entries.
---   • detect_js_test_cmd: also check for bun.lock (text lockfile added in
---     Bun v1.1) alongside bun.lockb (binary lockfile).
+--   • elixir/ruby run_tests(): added "cd <root> && " prefix.
+--   • detect_js_test_cmd: also check for bun.lock (text lockfile, Bun v1.1+).
 --
 -- FIX (v2.3.8):
---   • run_tests() python/rust/go/zig: these commands also need to run from
---     the project root. pytest needs pyproject.toml/setup.cfg; cargo test
---     needs Cargo.toml; go test needs go.mod; zig build test needs build.zig.
---     Added "cd <root> && " prefix consistent with ruby/elixir/kotlin/java.
+--   • run_tests() python/rust/go/zig: added "cd <root> && " prefix.
 --
 -- FIX (v2.3.9):
---   • run_tests() JS/TS: detect_js_test_cmd() returned bare commands ("npm
---     test", "yarn test", etc.) with no "cd <root> && " prefix. If the shell's
---     cwd differed from the project root, the package manager couldn't locate
---     package.json and failed silently. All JS/TS test commands now prefixed
---     with "cd <root> && " consistent with every other language in the table.
+--   • run_tests() JS/TS: detect_js_test_cmd() now prepended with cd prefix.
+--
+-- FIX (v2.3.9b):
+--   • run_tests() c/cpp: added CTest entries. These filetypes have full CMake
+--     integration via cmake-tools.nvim but <leader>'t silently notified
+--     "No test runner" since v2.0. c/cpp now delegate to `ctest --test-dir
+--     build` from the project root, consistent with the CMake build workflow
+--     already present in cpp.lua. If build/ does not exist, ctest exits with a
+--     clear error rather than silently doing nothing.
 
 local M = {}
 
@@ -66,13 +62,10 @@ local runners = {
 
   rust = function(file)
     local dir = vim.fn.fnamemodify(file, ":h")
-    -- FIX: walk up to find the Cargo.toml, not just the immediate parent.
-    -- Files in src/bin/ or deeper would miss the project root Cargo.toml.
     local cargo_root = find_ancestor_with(dir, "Cargo.toml", 5)
     if cargo_root then
       return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
     end
-    -- No Cargo.toml found — compile single file directly
     local exe = vim.fn.fnamemodify(file, ":r")
     return "rustc " .. vim.fn.shellescape(file) .. " -o " .. vim.fn.shellescape(exe)
       .. " && " .. vim.fn.shellescape(exe)
@@ -118,7 +111,6 @@ local runners = {
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
     -- Java class names cannot contain spaces, so no shellescape needed for `name`.
-    -- The dir and file paths are properly escaped.
     return "cd " .. vim.fn.shellescape(dir)
       .. " && javac " .. vim.fn.shellescape(file)
       .. " && java " .. name
@@ -378,10 +370,10 @@ function M.run_tests()
 
   local escaped_root = vim.fn.shellescape(root)
 
-  -- FIX (v2.3.9): JS/TS entries now include "cd <root> && " prefix.
-  -- detect_js_test_cmd() returns the bare package-manager command; without
-  -- cding first the package manager fails to find package.json when the
-  -- shell's cwd differs from the project root (e.g. when opened from ~).
+  -- FIX (v2.3.9b): c/cpp entries added. cmake-tools.nvim provides CMake
+  -- build/run/test keymaps (<leader>cct) but <leader>'t was a no-op for these
+  -- filetypes since v2.0. These entries delegate to ctest, consistent with the
+  -- CMake workflow. If build/ doesn't exist ctest exits with a clear error.
   local test_commands = {
     python     = "cd " .. escaped_root .. " && pytest",
     rust       = "cd " .. escaped_root .. " && cargo test",
@@ -396,7 +388,12 @@ function M.run_tests()
     java = vim.fn.filereadable(root .. "/gradlew") == 1
       and "cd " .. escaped_root .. " && ./gradlew test"
       or  "cd " .. escaped_root .. " && mvn test",
-    zig = "cd " .. escaped_root .. " && zig build test",
+    zig        = "cd " .. escaped_root .. " && zig build test",
+    -- FIX (v2.3.9b): c and cpp delegate to ctest. Requires cmake-tools.nvim
+    -- to have generated the build directory first (<leader>ccg, <leader>ccb).
+    -- `--test-dir build` mirrors cmake-tools.nvim's cmake_build_directory = "build".
+    c   = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
+    cpp = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
   }
 
   local cmd = test_commands[ft]
