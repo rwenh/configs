@@ -1,8 +1,10 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Vertico + Consult + Corfu + Embark as action hub.
-;;; Version: 3.0.4
+;;; Vertico + Consult + Corfu + Embark.  Tuned for speed and delight.
+;;; Version: 3.1.0
 ;;; Code:
+
+;;; ─── Vertico ─────────────────────────────────────────────────────────────────
 
 (use-package vertico
   :init
@@ -19,7 +21,8 @@
             (consult-grep buffer)
             (imenu      buffer)
             (buffer     flat)
-            (symbol     (vertico-sort-function . vertico-sort-alpha))))))
+            (symbol     (vertico-sort-function . vertico-sort-alpha))
+            (command    (vertico-sort-function . vertico-sort-history-length-alpha))))))
 
 (use-package vertico-directory
   :after vertico :straight nil
@@ -29,20 +32,29 @@
               ("M-DEL" . vertico-directory-delete-word))
   :hook (rfn-eshadow-update-overlay . vertico-directory-tidy))
 
+;;; ─── Orderless ───────────────────────────────────────────────────────────────
+
 (use-package orderless
   :init
-  (setq completion-styles                   '(orderless basic)
-        completion-category-defaults        nil
-        completion-category-overrides       '((file (styles basic partial-completion)))
-        orderless-component-separator       #'orderless-escapable-split-on-space
-        orderless-matching-styles           '(orderless-literal orderless-regexp orderless-flex)))
+  (setq completion-styles                 '(orderless basic)
+        completion-category-defaults      nil
+        completion-category-overrides     '((file (styles basic partial-completion)))
+        orderless-component-separator     #'orderless-escapable-split-on-space
+        orderless-matching-styles         '(orderless-literal
+                                            orderless-regexp
+                                            orderless-flex)))
+
+;;; ─── Marginalia ──────────────────────────────────────────────────────────────
 
 (use-package marginalia
   :bind (:map minibuffer-local-map ("M-A" . marginalia-cycle))
   :init
   (setq marginalia-align        'right
-        marginalia-align-offset 0)
+        marginalia-align-offset 0
+        marginalia-truncate-width 120)
   :config (marginalia-mode 1))
+
+;;; ─── Consult ─────────────────────────────────────────────────────────────────
 
 (use-package consult
   :bind (("C-x b"   . consult-buffer)
@@ -70,15 +82,25 @@
   (setq consult-narrow-key             "<"
         consult-preview-key            '(:debounce 0.2 any)
         consult-ripgrep-args
-        "rg --null --line-buffered --color=never --max-columns=1000 --path-separator / --smart-case --no-heading --with-filename --line-number --search-zip"
+        "rg --null --line-buffered --color=never --max-columns=1000 \
+--path-separator / --smart-case --no-heading --with-filename \
+--line-number --search-zip --hidden --glob '!.git'"
         register-preview-delay         0.3
-        register-preview-function      #'consult-register-format)
+        register-preview-function      #'consult-register-format
+        ;; Better async split
+        consult-async-min-input        2
+        consult-async-refresh-delay    0.15
+        consult-async-input-debounce   0.1
+        consult-async-input-throttle   0.2)
   :config
   (consult-customize
    consult-ripgrep consult-git-grep consult-grep
    :preview-key '(:debounce 0.4 any))
   (setq xref-show-xrefs-function       #'consult-xref
-        xref-show-definitions-function #'consult-xref))
+        xref-show-definitions-function #'consult-xref)
+  ;; Show hidden files in find (but skip .git)
+  (setq consult-find-args
+        "find . -not ( -wholename */.git* -prune )"))
 
 (use-package consult-lsp
   :after (consult lsp-mode)
@@ -91,12 +113,14 @@
          ("C-c p F" . consult-projectile-find-file)
          ("C-c p P" . consult-projectile-switch-project)))
 
+;;; ─── Embark ──────────────────────────────────────────────────────────────────
+
 (use-package embark
   :bind (("C-."   . embark-act)
          ("C-;"   . embark-dwim)
          ("C-h B" . embark-bindings))
   :init
-  (setq prefix-help-command #'embark-prefix-help-command
+  (setq prefix-help-command    #'embark-prefix-help-command
         embark-quit-after-action
         '((kill-buffer . nil) (t . t)))
   :config
@@ -119,7 +143,6 @@
         (list #'embark-which-key-indicator
               #'embark-highlight-indicator
               #'embark-isearch-highlight-indicator))
-
   (with-eval-after-load 'magit
     (define-key embark-file-map   (kbd "g") #'magit-status)
     (define-key embark-buffer-map (kbd "g") #'magit-status))
@@ -131,42 +154,61 @@
   :after (embark consult)
   :hook (embark-collect-mode . consult-preview-at-point-mode))
 
+;;; ─── Corfu (in-buffer completion) ───────────────────────────────────────────
+
 (use-package corfu
   :init
   (setq corfu-auto              t
         corfu-auto-delay        (if (boundp 'emacs-ide-completion-delay)
                                     emacs-ide-completion-delay
-                                  0.1)
-        corfu-auto-prefix       2
+                                  0.15)
+        corfu-auto-prefix       1
         corfu-cycle             t
         corfu-quit-at-boundary  'separator
         corfu-quit-no-match     'separator
         corfu-preview-current   t
         corfu-preselect         'prompt
         corfu-on-exact-match    nil
-        corfu-scroll-margin     5
-        corfu-count             20
-        corfu-max-width         100
-        corfu-min-width         20)
+        corfu-scroll-margin     4
+        corfu-count             16
+        corfu-max-width         90
+        corfu-min-width         20
+        corfu-bar-width         0.5
+        corfu-left-margin-width 0.5)
   :bind (:map corfu-map
               ("TAB"     . corfu-next)
               ([tab]     . corfu-next)
               ("S-TAB"   . corfu-previous)
               ([backtab] . corfu-previous)
               ("RET"     . corfu-insert)
-              ([return]  . corfu-insert))
+              ([return]  . corfu-insert)
+              ("M-SPC"   . corfu-insert-separator)
+              ("M-d"     . corfu-popupinfo-toggle))
   :config
   (global-corfu-mode 1)
-  (when (fboundp 'corfu-popupinfo-mode)  (corfu-popupinfo-mode 1))
-  (when (fboundp 'corfu-history-mode)    (corfu-history-mode 1)))
+  (when (fboundp 'corfu-popupinfo-mode)
+    (corfu-popupinfo-mode 1)
+    (setq corfu-popupinfo-delay  '(0.5 . 0.2)
+          corfu-popupinfo-max-height 20
+          corfu-popupinfo-max-width  80))
+  (when (fboundp 'corfu-history-mode)  (corfu-history-mode 1)))
+
+;;; ─── Cape (completion extensions) ───────────────────────────────────────────
 
 (use-package cape
   :config
   (defun emacs-ide-cape-setup ()
-    (dolist (fn (list #'cape-keyword #'cape-elisp-block #'cape-file #'cape-dabbrev))
+    (dolist (fn (list #'cape-keyword
+                      #'cape-elisp-block
+                      #'cape-file
+                      #'cape-dabbrev))
       (cl-pushnew fn completion-at-point-functions)))
   (dolist (hook '(prog-mode-hook text-mode-hook))
-    (add-hook hook #'emacs-ide-cape-setup)))
+    (add-hook hook #'emacs-ide-cape-setup))
+  ;; File completion in all modes
+  (add-to-list 'completion-at-point-functions #'cape-file))
+
+;;; ─── Hippie expand ───────────────────────────────────────────────────────────
 
 (setq hippie-expand-try-functions-list
       '(try-expand-dabbrev
@@ -183,42 +225,60 @@
   (add-to-list 'hippie-expand-try-functions-list 'yas-hippie-try-expand))
 (global-set-key (kbd "M-/") 'hippie-expand)
 
-(use-package savehist :straight nil
+;;; ─── History persistence ─────────────────────────────────────────────────────
+
+(use-package savehist
+  :straight nil
   :init
   (setq savehist-additional-variables '(search-ring regexp-search-ring
-                                        kill-ring compile-history command-history)
-        history-length               10000
-        history-delete-duplicates   t
-        savehist-autosave-interval  60)
+                                        kill-ring compile-history
+                                        command-history extended-command-history)
+        history-length               25000
+        history-delete-duplicates    t
+        savehist-autosave-interval   60)
   :config (savehist-mode 1))
 
-(use-package saveplace :straight nil
+(use-package saveplace
+  :straight nil
   :init (setq save-place-file (expand-file-name "var/places" user-emacs-directory))
   :config (save-place-mode 1))
 
+;;; ─── Abbreviations ───────────────────────────────────────────────────────────
+
 (setq-default abbrev-mode t)
-(setq save-abbrevs 'silently
+(setq save-abbrevs    'silently
       abbrev-file-name (expand-file-name "var/abbrev_defs" user-emacs-directory))
 (when (file-exists-p abbrev-file-name)
   (read-abbrev-file abbrev-file-name t))
 
-(setq electric-pair-pairs '((?\" . ?\") (?{ . ?}) (?\[ . ?\]) (?\( . ?\)) (?` . ?`)))
+;;; ─── Minibuffer polish ───────────────────────────────────────────────────────
 
-(setq completion-cycle-threshold       3
-      completion-auto-help            'always
-      completion-auto-select          'second-tab
-      completions-detailed             t
-      completions-format              'one-column
-      completion-ignore-case           t
+(setq completion-cycle-threshold           3
+      completion-auto-help                'always
+      completion-auto-select              'second-tab
+      completions-detailed                 t
+      completions-format                  'one-column
+      completion-ignore-case               t
       read-file-name-completion-ignore-case t
       read-buffer-completion-ignore-case    t
-      tab-always-indent               'complete
-      enable-recursive-minibuffers     t
-      resize-mini-windows              t
-      max-mini-window-height           0.33)
+      tab-always-indent                   'complete
+      enable-recursive-minibuffers         t
+      resize-mini-windows                  t
+      max-mini-window-height               0.4)
 
-(minibuffer-depth-indicate-mode 1)
+(minibuffer-depth-indicate-mode  1)
 (minibuffer-electric-default-mode 1)
+
+;;; ─── Helpful (better help) ───────────────────────────────────────────────────
+
+(use-package helpful
+  :defer t
+  :bind (("C-h f" . helpful-callable)
+         ("C-h v" . helpful-variable)
+         ("C-h k" . helpful-key)
+         ("C-h F" . helpful-function)
+         ("C-h C" . helpful-command)
+         ("C-h d" . helpful-at-point)))
 
 (provide 'completion-core)
 ;;; completion-core.el ends here
