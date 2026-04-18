@@ -45,6 +45,10 @@
 --     This removes the last "No test runner" entries from the known-issues
 --     table. The notification uses INFO level (not WARN) since the absence of
 --     a test runner is a language characteristic, not a config error.
+--   • run_tests() c/cpp: ctest entries are now nil when `ctest` is not on
+--     PATH, so a clear INFO message is shown (pointing to <leader>ccb to
+--     build first) rather than a confusing shell error. Consistent with the
+--     fortran/vhdl/cobol treatment added above.
 
 local M = {}
 
@@ -400,8 +404,16 @@ function M.run_tests()
       or  "cd " .. escaped_root .. " && mvn test",
     zig        = "cd " .. escaped_root .. " && zig build test",
     -- FIX (v2.3.9b): c and cpp delegate to ctest.
-    c   = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
-    cpp = "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure",
+    -- FIX (v2.3.10): ctest entries are now conditionally nil when ctest is not
+    -- installed. Previously a missing ctest binary produced a confusing shell
+    -- error message instead of a clear Neovim notification, which was
+    -- inconsistent with the explicit INFO messages added for fortran/vhdl/cobol.
+    c   = vim.fn.executable("ctest") == 1
+      and "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure"
+      or  nil,
+    cpp = vim.fn.executable("ctest") == 1
+      and "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure"
+      or  nil,
   }
 
   -- FIX (v2.3.10): fortran, vhdl, cobol have no generic unit-test runner.
@@ -414,6 +426,17 @@ function M.run_tests()
       .. "Use <leader>vhr (GHDL Run & View) or <leader>vha/<vhe> to simulate.",
     cobol   = "COBOL has no standard unit-test runner.\n"
       .. "Use <leader>cob to compile & run the current file.",
+    -- FIX (v2.3.10): when ctest is not installed the test_commands entries
+    -- for c/cpp are nil. Fall through to a clear INFO message rather than
+    -- the generic "No test runner for: c" WARN.
+    c   = vim.fn.executable("ctest") == 0
+      and "C/C++ tests use CTest but `ctest` was not found.\n"
+        .. "Install CMake (which ships ctest) and build the project first: <leader>ccb."
+      or  nil,
+    cpp = vim.fn.executable("ctest") == 0
+      and "C/C++ tests use CTest but `ctest` was not found.\n"
+        .. "Install CMake (which ships ctest) and build the project first: <leader>ccb."
+      or  nil,
   }
 
   local info_msg = no_test_runner_info[ft]

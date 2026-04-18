@@ -19,7 +19,8 @@
 --   • neogen: this spec is the PRIMARY owner. cpp.lua and python.lua extend it
 --     via optional=true. To avoid any possibility of the lang opts being dropped
 --     when those optional specs merge, the canonical language table here now
---     includes ALL supported languages (cpp, c, python, lua, ts, js, rust, go).
+--     includes ALL supported languages (cpp, c, python, lua, ts, js, rust, go,
+--     java).
 --     cpp.lua and python.lua override only their own keys — lazy merges tables
 --     recursively for optional specs, so there is no conflict.
 --   • neogen: <leader>xg keymap is registered here in keys= only. The duplicate
@@ -32,6 +33,12 @@
 --     no replacement. vim-matchup supersedes matchparen, adds treesitter-aware
 --     multi-line matching, and improves the % motion. It sets g:loaded_matchparen
 --     itself so options.lua no longer needs to suppress the builtin.
+--
+-- FIX (v2.3.10a):
+--   • neogen languages table: java added. java.lua is a full lang spec and
+--     neotest-java is registered in test.lua, but java was missing from the
+--     canonical languages table despite the header claiming "ALL supported
+--     languages". Added with annotation_convention = "javadoc".
 --
 -- FIX (v2.3.10):
 --   • vim-matchup config() was calling nvim-treesitter.configs.setup() directly
@@ -383,14 +390,18 @@ return {
         opts = {
             snippet_engine = "luasnip",
             languages = {
-                lua        = { template = { annotation_convention = "emmylua"  } },
-                typescript = { template = { annotation_convention = "tsdoc"    } },
-                javascript = { template = { annotation_convention = "jsdoc"    } },
-                rust       = { template = { annotation_convention = "nightly"  } },
-                go         = { template = { annotation_convention = "go"       } },
-                cpp        = { template = { annotation_convention = "doxygen"        } },
-                c          = { template = { annotation_convention = "doxygen"        } },
+                lua        = { template = { annotation_convention = "emmylua"           } },
+                typescript = { template = { annotation_convention = "tsdoc"             } },
+                javascript = { template = { annotation_convention = "jsdoc"             } },
+                rust       = { template = { annotation_convention = "nightly"           } },
+                go         = { template = { annotation_convention = "go"                } },
+                cpp        = { template = { annotation_convention = "doxygen"           } },
+                c          = { template = { annotation_convention = "doxygen"           } },
                 python     = { template = { annotation_convention = "google_docstrings" } },
+                -- FIX (v2.3.10): java added. java.lua is a full lang spec with
+                -- neotest-java registered in test.lua, yet java was absent from
+                -- the "ALL supported languages" table claimed by the header comment.
+                java       = { template = { annotation_convention = "javadoc"           } },
             },
         },
     },

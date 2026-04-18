@@ -47,6 +47,12 @@
 --     servers table (binary-checked at runtime) but was never in ensure_installed,
 --     so a fresh install had no way to auto-install it. Consistent with the
 --     elixir-ls fix in v2.3.7 and the commands.lua MasonInstallAll fix.
+--
+-- FIX (v2.3.10):
+--   • sqls added to mason-lspconfig ensure_installed. Same gap as fortls —
+--     wired in the optional servers table but absent from ensure_installed.
+--   • vhdl_ls binary comment clarified: Mason package is "rust_hdl" but its
+--     bin symlink is "vhdl_ls"; the executable check was already correct.
 
 return {
   {
@@ -75,6 +81,10 @@ return {
         -- below but was absent from ensure_installed — never auto-installed on
         -- fresh setups. Binary-presence check at runtime still guards attachment.
         "fortls",
+        -- FIX (v2.3.10): sqls added. It is wired in the optional servers table
+        -- (binary-checked at runtime) but was absent from ensure_installed —
+        -- the same gap that affected elixir-ls (v2.3.7) and fortls (v2.3.9).
+        "sqls",
       },
       automatic_installation = true,
       -- FIX (v2.3.4): suppress mason-lspconfig's default handler.
@@ -290,6 +300,9 @@ return {
       end
 
       local optional = {
+        -- NOTE: Mason package name is "rust_hdl" but its bin symlink is
+        -- named "vhdl_ls" — so vim.fn.executable("vhdl_ls") is correct
+        -- for both the Mason-installed and cargo-installed variants.
         { name = "vhdl_ls",  binary = "vhdl_ls",
           config = { filetypes = { "vhdl", "vhd" } } },
         { name = "fortls",   binary = "fortls",   config = {} },

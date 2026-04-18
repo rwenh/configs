@@ -1,4 +1,4 @@
--- ~/.config/nvim/init.lua  — v2.3.9 entry point
+-- ~/.config/nvim/init.lua  — v2.3.10 entry point
 -- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
 
 -- 1. Bootstrap lazy.nvim + set leader (must be first)
@@ -58,13 +58,16 @@ vim.api.nvim_create_autocmd("User", {
 })
 
 -- 10. Version stamp (for :Health and debug output)
--- v2.3.9:  runner.lua JS/TS run_tests() cd prefix; MasonInstallAll fortls+gopls;
---          elixir DAP resolver fixed; fortls in mason-lspconfig ensure_installed.
--- v2.3.9b: version stamp corrected 2.3.8→2.3.9; options.lua matchparen restored
---          (vim-matchup owns it); advanced.lua vim-matchup spec added; dap.lua
---          large-file bp-restore guard; test.lua neotest-rust deferred on
---          LspAttach instead of FileType; completion.lua cmdline comment;
---          treesitter.lua latex parser removed; KEYMAP_REFERENCE.md xX/xL/xQ
---          documented; runner.lua c/cpp CTest entries; hud specs <leader>,r
---          global duplicate removed.
-vim.g.nvim_ide_version = "2.3.9"
+-- v2.3.10: test.lua once=true removed from neotest-rust LspAttach autocmd;
+--          advanced.lua vim-matchup standalone ts.setup() removed, replaced
+--          with optional=true treesitter extension spec;
+--          dap.lua "elixir-ls" added to mason-nvim-dap ensure_installed;
+--          runner.lua fortran/vhdl/cobol informational messages replacing
+--          opaque "No test runner" WARN.
+-- v2.3.9b: options.lua matchparen restored (vim-matchup owns it); advanced.lua
+--          vim-matchup spec added; dap.lua large-file bp-restore guard;
+--          test.lua neotest-rust deferred on LspAttach instead of FileType;
+--          completion.lua cmdline comment; treesitter.lua latex parser removed;
+--          runner.lua c/cpp CTest entries; hud specs <leader>,r global
+--          duplicate removed.
+vim.g.nvim_ide_version = "2.3.10"

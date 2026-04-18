@@ -16,6 +16,15 @@
 --     every setup but never used, adding unnecessary compile time and disk
 --     usage. rainbow-delimiters.nvim references "latex" strategy/query keys
 --     but those are no-ops when the parser is absent — no functional impact.
+--
+-- FIX (v2.3.10):
+--   • highlight.disable threshold raised from 100 KB to 500 KB to match the
+--     large_file threshold in autocmds.lua and nvim-ufo's provider_selector
+--     guard in advanced.lua. A file between 100–500 KB previously had
+--     treesitter highlights silently disabled here while ufo still attempted
+--     to attach the treesitter fold provider — an inconsistent state.
+--   • highlight.disable now also checks vim.b.large_file so the autocmd-set
+--     flag is honoured on re-enter without a redundant fs_stat call.
 
 return {
   {
@@ -70,7 +79,16 @@ return {
       highlight = {
         enable  = true,
         disable = function(lang, buf)
-          local max_filesize = 100 * 1024
+          -- FIX (v2.3.10): threshold raised from 100 KB to 500 KB to match the
+          -- large_file threshold in autocmds.lua (BufReadPre guard) and the
+          -- nvim-ufo provider_selector guard in advanced.lua. Previously a file
+          -- between 100 KB–500 KB had treesitter highlights disabled here but
+          -- ufo still attempted to attach the treesitter fold provider, causing
+          -- a silent mismatch. All three guards now use the same 500 KB limit.
+          -- Also checks vim.b.large_file so that the autocmd-set flag is honoured
+          -- without a redundant fs_stat call on every BufEnter.
+          if vim.b[buf] and vim.b[buf].large_file then return true end
+          local max_filesize = 500 * 1024
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
           if ok and stats and stats.size > max_filesize then return true end
           return lang == "vim"

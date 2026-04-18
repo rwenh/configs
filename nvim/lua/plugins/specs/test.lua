@@ -23,6 +23,13 @@
 --     neotest. Switching to LspAttach filtered by client name guarantees the
 --     client is attached and ready before the constructor runs.
 --
+-- FIX (v2.3.10a):
+--   • neotest-jest jestCommand changed from a hardcoded "npm test --" string
+--     to a function that probes bun/pnpm/yarn/npm lockfiles in the project
+--     root — the same detection logic used by runner.lua's detect_js_test_cmd().
+--     Previously neotest-jest always invoked npm regardless of the project's
+--     actual package manager, making it inconsistent with <leader>'t behaviour.
+--
 -- FIX (v2.3.10):
 --   • once=true removed from the LspAttach autocmd that defers neotest-rust.
 --     once=true fires and permanently removes the autocmd on the FIRST
@@ -145,7 +152,25 @@ return {
         {
           "neotest-jest",
           function()
-            return require("neotest-jest")({ jestCommand = "npm test --" })
+            -- FIX (v2.3.10): jestCommand is now a function that probes the
+            -- same lockfiles as runner.lua's detect_js_test_cmd() so that
+            -- bun/pnpm/yarn projects use the correct package manager instead
+            -- of always defaulting to npm.
+            return require("neotest-jest")({
+              jestCommand = function()
+                local ok_path, path = pcall(require, "core.util.path")
+                local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+                if vim.fn.filereadable(root .. "/bun.lockb") == 1
+                or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
+                  return "bun test --"
+                elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
+                  return "pnpm test --"
+                elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then
+                  return "yarn test --"
+                end
+                return "npm test --"
+              end,
+            })
           end,
         },
         {
