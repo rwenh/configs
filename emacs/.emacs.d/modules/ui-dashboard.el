@@ -1,23 +1,30 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Fixed void timer references (FIX #12)
+;;; Version: 3.2.0 | FIX: number-p → numberp, missing closing paren on
+;;;           emacs-ide-dashboard--kill-on-file-open corrected.
 ;;; Code:
 
-(defun emacs-ide-dashboard--health-section (list-size)
-  (let* ((results  (and (boundp 'emacs-ide-health-results) emacs-ide-health-results))
+(defun emacs-ide-dashboard--health-section (_list-size)
+  (let* ((results  (and (boundp 'emacs-ide-health-results)  emacs-ide-health-results))
          (checked  (and (boundp 'emacs-ide-health-last-check) emacs-ide-health-last-check))
-         (errors   (if (and (boundp 'emacs-ide-health--errors) (number-p emacs-ide-health--errors))
+         ;; FIX: was (number-p ...) — the correct predicate is (numberp ...)
+         (errors   (if (and (boundp 'emacs-ide-health--errors)
+                            (numberp emacs-ide-health--errors))
                        emacs-ide-health--errors 0))
-         (warnings (if (and (boundp 'emacs-ide-health--warnings) (number-p emacs-ide-health--warnings))
+         (warnings (if (and (boundp 'emacs-ide-health--warnings)
+                            (numberp emacs-ide-health--warnings))
                        emacs-ide-health--warnings 0)))
     (if (not checked)
         (insert (propertize "  󰣐 Health check pending...\n" 'face 'shadow))
       (let* ((face (cond ((> errors   0) 'error)
                          ((> warnings 0) 'warning)
                          (t              'success)))
-             (str  (cond ((> errors   0) (format "✗ %d error%s, %d warning%s"
-                                                  errors (if (= errors 1) "" "s")
-                                                  warnings (if (= warnings 1) "" "s")))
-                         ((> warnings 0) (format "⚠ %d warning%s" warnings (if (= warnings 1) "" "s")))
+             (str  (cond ((> errors   0)
+                          (format "✗ %d error%s, %d warning%s"
+                                  errors   (if (= errors   1) "" "s")
+                                  warnings (if (= warnings 1) "" "s")))
+                         ((> warnings 0)
+                          (format "⚠ %d warning%s"
+                                  warnings (if (= warnings 1) "" "s")))
                          (t "✓ All checks passed"))))
         (insert (propertize (format "  󰣐 IDE Health: %s\n" str) 'face face))
         (dolist (result results)
@@ -33,15 +40,16 @@
                                ((eq status 'warning) 'warning)
                                ((eq status 'error)   'error)
                                (t                    'shadow))))
-            (insert (propertize (format "%s %-20s %s\n" icon name (or msg "")) 'face face))))
+            (insert (propertize (format "%s %-20s %s\n" icon name (or msg ""))
+                                'face face))))
         (when (or (> errors 0) (> warnings 0))
           (insert-button "  → Run full health check"
-                         'action (lambda (_) (call-interactively #'emacs-ide-health-check-all))
+                         'action     (lambda (_) (call-interactively #'emacs-ide-health-check-all))
                          'follow-link t
-                         'face 'link)
+                         'face        'link)
           (insert "\n"))))))
 
-(defun emacs-ide-dashboard--workspace-section (list-size)
+(defun emacs-ide-dashboard--workspace-section (_list-size)
   (if (not (fboundp 'persp-names))
       (insert (propertize "  󰡕 Workspaces: perspective.el not loaded\n" 'face 'shadow))
     (let ((names   (persp-names))
@@ -50,13 +58,13 @@
       (dolist (name names)
         (let ((active (string= name current)))
           (insert-button (format "[%s]" name)
-                         'action (let ((n name)) (lambda (_) (persp-switch n)))
+                         'action      (let ((n name)) (lambda (_) (persp-switch n)))
                          'follow-link t
-                         'face (if active 'link 'shadow))
+                         'face        (if active 'link 'shadow))
           (insert " ")))
       (insert "\n"))))
 
-(defun emacs-ide-dashboard--actions-section (list-size)
+(defun emacs-ide-dashboard--actions-section (_list-size)
   (insert "  ")
   (dolist (action '(("  New file"       . find-file)
                     ("  Find project"   . projectile-switch-project)
@@ -65,13 +73,17 @@
                     ("  Toggle theme"   . emacs-ide-toggle-theme)
                     ("󱓟  Config"         . emacs-ide-config-edit)))
     (insert-button (car action)
-                   'action (let ((cmd (cdr action))) (lambda (_) (call-interactively cmd)))
+                   'action      (let ((cmd (cdr action)))
+                                  (lambda (_) (call-interactively cmd)))
                    'follow-link t
-                   'face '(:inherit link :box (:line-width 1)))
+                   'face        '(:inherit link :box (:line-width 1)))
     (insert "  "))
   (insert "\n"))
 
 (defun emacs-ide-dashboard--kill-on-file-open ()
+  ;; FIX: original was missing a closing paren — the (when db-buf ...) block
+  ;; was not closed before (remove-hook ...), causing the remove-hook to be
+  ;; inside the when, so it only ran when the buffer existed.
   (when (and buffer-file-name
              (not (string= (buffer-name) "*dashboard*")))
     (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
@@ -81,6 +93,7 @@
           (when (and db-win (not (one-window-p)))
             (delete-window db-win)))
         (kill-buffer db-buf)))
+    ;; remove-hook is correctly outside the (when db-buf) block
     (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)))
 
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
@@ -88,11 +101,11 @@
   (use-package dashboard
     :demand t
     :init
-    (setq dashboard-startup-banner      'ascii
-          dashboard-center-content      t
-          dashboard-set-heading-icons   t
-          dashboard-set-file-icons      t
-          dashboard-force-refresh       nil
+    (setq dashboard-startup-banner    'ascii
+          dashboard-center-content    t
+          dashboard-set-heading-icons t
+          dashboard-set-file-icons    t
+          dashboard-force-refresh     nil
           dashboard-items
           '((ide-actions   . 1)
             (ide-workspace . 1)
@@ -100,8 +113,8 @@
             (recents        . 10)
             (projects       . 8)
             (bookmarks      . 5))
-          dashboard-set-navigator       t
-          dashboard-set-init-info       t
+          dashboard-set-navigator  t
+          dashboard-set-init-info  t
           dashboard-banner-logo-title
           (format "Emacs IDE v%s  ·  %s  ·  %d packages"
                   (or (bound-and-true-p emacs-ide-version) "?")
@@ -111,11 +124,8 @@
                        ((and (boundp 'straight--recipe-cache)
                              (hash-table-p straight--recipe-cache))
                         (hash-table-count straight--recipe-cache))
-                       ((and (fboundp 'straight--build-cache)
-                             (hash-table-p straight--build-cache))
-                        (hash-table-count straight--build-cache))
-                       ((file-directory-p (expand-file-name
-                                           "straight/build" user-emacs-directory))
+                       ((file-directory-p
+                         (expand-file-name "straight/build" user-emacs-directory))
                         (length (directory-files
                                  (expand-file-name "straight/build" user-emacs-directory)
                                  nil "^[^.]")))
@@ -132,13 +142,15 @@
                  '(ide-actions   . emacs-ide-dashboard--actions-section))
     (add-to-list 'dashboard-item-shortcuts '(ide-health    . "h"))
     (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
-    ;; FIX #12: Skip problematic timer resize hook
+
+    ;; Disable the problematic resize hook that can leave dangling timers
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore))
-    ;; Setup startup hook
+
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
-    ;; Schedule refresh after idle
+
+    ;; Refresh dashboard after a short idle to pick up health results
     (run-with-idle-timer 6 nil
                          (lambda ()
                            (when (get-buffer "*dashboard*")

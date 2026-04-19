@@ -1,5 +1,5 @@
 ;;; tools-terminal.el --- Terminal Integration -*- lexical-binding: t -*-
-;;; Version: 3.1.0
+;;; Version: 3.1.1 | FIX: compilation-filter-hook wrapped in with-eval-after-load compile
 ;;; Code:
 
 (defun emacs-ide-terminal--cfg (key default)
@@ -24,6 +24,46 @@
         cfg-shell
       (emacs-ide-detect-shell))))
 
+;;; ─── compile settings ────────────────────────────────────────────────────────
+;; compile must be configured BEFORE the ANSI hook block that references
+;; compilation-filter-hook, so we declare it first (non-deferred).
+
+(use-package compile
+  :straight nil
+  :demand t                              ;; load immediately — not deferred
+  :config
+  (setq compilation-scroll-output               'first-error
+        compilation-window-height               20
+        compilation-ask-about-save              nil
+        compilation-always-kill                 t
+        compilation-skip-threshold              2
+        compilation-auto-jump-to-first-error    nil)
+
+  ;; ANSI colour support — registered here inside :config where
+  ;; compilation-filter-hook and compilation-filter-start are guaranteed bound.
+  (defun emacs-ide-terminal--ansi-compile ()
+    "Apply ANSI colour escapes in a compilation buffer."
+    (require 'ansi-color)
+    (let ((inhibit-read-only t))
+      (ansi-color-apply-on-region compilation-filter-start (point))))
+
+  (unless (memq #'emacs-ide-terminal--ansi-compile compilation-filter-hook)
+    (add-hook 'compilation-filter-hook #'emacs-ide-terminal--ansi-compile)))
+
+;;; ─── comint ──────────────────────────────────────────────────────────────────
+
+(use-package comint
+  :straight nil
+  :init
+  (setq comint-prompt-read-only            t
+        comint-scroll-to-bottom-on-input   t
+        comint-scroll-to-bottom-on-output  t
+        comint-scroll-show-maximum-output  t
+        comint-input-ignoredups            t
+        comint-completion-addsuffix        t
+        comint-buffer-maximum-size         20000
+        comint-move-point-for-output       t))
+
 ;;; ─── vterm ───────────────────────────────────────────────────────────────────
 
 (use-package vterm
@@ -45,7 +85,6 @@
   (add-to-list 'vterm-eval-cmds
                '("update-pwd" (lambda (path)
                                 (setq default-directory path))))
-  ;; Sync vterm directory with Emacs
   (add-hook 'vterm-mode-hook
             (lambda ()
               (setq-local confirm-kill-processes nil)
@@ -117,19 +156,19 @@
     (let* ((file   (buffer-file-name))
            (ext    (file-name-extension file))
            (interp (cond
-                    ((string= ext "py") (and (executable-find "python3") "python3"))
-                    ((string= ext "js") (and (executable-find "node")    "node"))
-                    ((string= ext "go") (and (executable-find "go")      "go run"))
-                    ((string= ext "rs") (and (executable-find "cargo")   "cargo run"))
-                    ((string= ext "rb") (and (executable-find "ruby")    "ruby"))
-                    ((string= ext "sh") (and (executable-find "bash")    "bash"))
-                    ((string= ext "lua") (and (executable-find "lua")    "lua"))
-                    ((string= ext "jl") (and (executable-find "julia")   "julia"))
+                    ((string= ext "py")  (and (executable-find "python3") "python3"))
+                    ((string= ext "js")  (and (executable-find "node")    "node"))
+                    ((string= ext "go")  (and (executable-find "go")      "go run"))
+                    ((string= ext "rs")  (and (executable-find "cargo")   "cargo run"))
+                    ((string= ext "rb")  (and (executable-find "ruby")    "ruby"))
+                    ((string= ext "sh")  (and (executable-find "bash")    "bash"))
+                    ((string= ext "lua") (and (executable-find "lua")     "lua"))
+                    ((string= ext "jl")  (and (executable-find "julia")   "julia"))
                     (t nil))))
       (if interp
           (emacs-ide-vterm-run-command
            (format "%s %s" interp (shell-quote-argument file)))
-        (message "No interpreter found for .%s files" ext)))))
+        (message "No interpreter found for .%s files" (or ext ""))))))
 
 ;;; ─── eshell ──────────────────────────────────────────────────────────────────
 
@@ -162,45 +201,10 @@
   (unless (fboundp 'eshell/e)
     (defun eshell/e (file) (find-file file)))
   (unless (fboundp 'eshell/v)
-    (defun eshell/v (file) (view-file file))))
-
-(defun eshell/clear ()
-  (let ((inhibit-read-only t)) (erase-buffer)))
-
-;;; ─── ANSI colors in compilation ─────────────────────────────────────────────
-
-(unless (memq 'emacs-ide-terminal--ansi-compile compilation-filter-hook)
-  (defun emacs-ide-terminal--ansi-compile ()
-    (require 'ansi-color)
-    (let ((inhibit-read-only t))
-      (ansi-color-apply-on-region compilation-filter-start (point))))
-  (add-hook 'compilation-filter-hook #'emacs-ide-terminal--ansi-compile))
-
-;;; ─── compile settings ────────────────────────────────────────────────────────
-
-(use-package compile
-  :straight nil
-  :init
-  (setq compilation-scroll-output    'first-error
-        compilation-window-height    20
-        compilation-ask-about-save   nil
-        compilation-always-kill      t
-        compilation-skip-threshold   2
-        compilation-auto-jump-to-first-error nil))
-
-;;; ─── comint ──────────────────────────────────────────────────────────────────
-
-(use-package comint
-  :straight nil
-  :init
-  (setq comint-prompt-read-only            t
-        comint-scroll-to-bottom-on-input   t
-        comint-scroll-to-bottom-on-output  t
-        comint-scroll-show-maximum-output  t
-        comint-input-ignoredups            t
-        comint-completion-addsuffix        t
-        comint-buffer-maximum-size         20000
-        comint-move-point-for-output       t))
+    (defun eshell/v (file) (view-file file)))
+  (unless (fboundp 'eshell/clear)
+    (defun eshell/clear ()
+      (let ((inhibit-read-only t)) (erase-buffer)))))
 
 ;;; ─── dired ───────────────────────────────────────────────────────────────────
 
@@ -210,12 +214,12 @@
   (setq dired-listing-switches
         (if (eq system-type 'darwin) "-alGh"
           "-alGh --group-directories-first")
-        dired-dwim-target                    t
-        dired-recursive-copies               'always
-        dired-recursive-deletes              'always
-        dired-kill-when-opening-new-dired-buffer t
-        dired-auto-revert-buffer             t
-        dired-hide-details-hide-symlink-targets nil)
+        dired-dwim-target                         t
+        dired-recursive-copies                    'always
+        dired-recursive-deletes                   'always
+        dired-kill-when-opening-new-dired-buffer  t
+        dired-auto-revert-buffer                  t
+        dired-hide-details-hide-symlink-targets   nil)
   :bind (:map dired-mode-map
               ("h"       . dired-up-directory)
               ("l"       . dired-find-alternate-file)

@@ -19,6 +19,13 @@
 --     matchparen: it handles multi-line matches, adds treesitter-aware % motions,
 --     and sets g:loaded_matchparen itself on init so the builtin never
 --     double-loads. Removing our override here lets vim-matchup's hand-off work.
+--
+-- FIX (v2.3.11):
+--   • matchit comment corrected. matchit remains in the disabled list (it is a
+--     separate builtin from matchparen and vim-matchup does NOT set
+--     g:loaded_matchit). The v2.3.9b comment only described the matchparen
+--     change but was positioned next to the matchit entry, implying matchit had
+--     also been re-enabled. Clarified in-place to avoid confusion.
 
 local opt = vim.opt
 local g   = vim.g
@@ -150,10 +157,16 @@ local builtin_plugins = {
   "vimball", "vimballPlugin",
   "2html_plugin",
   "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
-  -- FIX (v2.3.9b): matchparen intentionally NOT in this list.
-  -- vim-matchup (advanced.lua) supersedes the builtin and sets
-  -- g:loaded_matchparen itself, preventing double-loading. Disabling it here
-  -- blocked that hand-off and left bracket highlighting off since v2.0.
+  -- matchparen intentionally NOT in this list (FIX v2.3.9b):
+  --   vim-matchup (advanced.lua) supersedes the builtin and sets
+  --   g:loaded_matchparen itself, preventing double-loading. Disabling it
+  --   here blocked that hand-off and left bracket highlighting off since v2.0.
+  --
+  -- matchit IS still disabled here (FIX v2.3.11):
+  --   vim-matchup does NOT set g:loaded_matchit — these are two separate
+  --   builtins. matchit provides basic % motion; vim-matchup provides a
+  --   superior treesitter-aware replacement and works correctly without matchit
+  --   being active. Keeping matchit disabled avoids redundant % handling.
   "matchit",
 }
 

@@ -14,32 +14,22 @@
 --
 -- FIX (v2.3.9b):
 --   • neotest-rust deferred on LspAttach (client.name == "rust_analyzer")
---     instead of FileType. The FileType event fires when Neovim sets the
---     filetype — before rustaceanvim's LspAttach. vim.schedule() after
---     FileType only yields one tick, which is not enough time for rustaceanvim
---     to fully attach its client. neotest-rust probes for the rust-analyzer
---     client during its constructor; if the client isn't there yet the adapter
---     silently returns an invalid object and Rust tests never run through
---     neotest. Switching to LspAttach filtered by client name guarantees the
---     client is attached and ready before the constructor runs.
+--     instead of FileType.
 --
 -- FIX (v2.3.10a):
 --   • neotest-jest jestCommand changed from a hardcoded "npm test --" string
---     to a function that probes bun/pnpm/yarn/npm lockfiles in the project
---     root — the same detection logic used by runner.lua's detect_js_test_cmd().
---     Previously neotest-jest always invoked npm regardless of the project's
---     actual package manager, making it inconsistent with <leader>'t behaviour.
+--     to a function that probes bun/pnpm/yarn/npm lockfiles — same logic as
+--     runner.lua's detect_js_test_cmd().
 --
 -- FIX (v2.3.10):
 --   • once=true removed from the LspAttach autocmd that defers neotest-rust.
---     once=true fires and permanently removes the autocmd on the FIRST
---     LspAttach event regardless of client name. If any non-rust LSP (e.g.
---     lua_ls, basedpyright) attaches before rust_analyzer, the autocmd
---     fires, the `client.name ~= "rust_analyzer"` guard returns early, the
---     autocmd is gone, and neotest-rust is never registered for the rest of
---     the session. The _rust_registered boolean flag already provides the
---     idempotency guarantee that once=true was intended to give, so once=true
---     is redundant and harmful. Removed; the flag alone is sufficient.
+--
+-- FIX (v2.3.11):
+--   • neotest-jest jestCommand now calls runner.detect_js_test_cmd() directly
+--     instead of duplicating the lockfile-probe logic inline. Previously the
+--     two implementations could drift when a new package manager was added.
+--     The shared helper lives in core.util.runner and is the single source of
+--     truth for JS/TS package manager detection across the entire config.
 
 return {
   {
@@ -82,16 +72,9 @@ return {
       neotest.setup(opts)
 
       -- Defer neotest-rust registration until rust_analyzer is confirmed
-      -- attached and ready. LspAttach guarantees the client exists; the
-      -- _rust_registered flag prevents double-setup on subsequent attaches.
-      --
-      -- FIX (v2.3.10): once=true removed. With once=true the autocmd is
-      -- consumed by the first LspAttach event regardless of which client
-      -- fires it. Any non-rust LSP (lua_ls, basedpyright, clangd, …) that
-      -- attaches before rust_analyzer silently discards the autocmd and
-      -- neotest-rust is never registered for the session. The
-      -- _rust_registered boolean already ensures the setup body runs only
-      -- once, making once=true both redundant and harmful.
+      -- attached and ready. once=true removed (v2.3.10): it consumed the
+      -- autocmd on the first LspAttach regardless of client name, meaning
+      -- any non-rust LSP attaching first would permanently discard it.
       local _rust_registered = false
       vim.api.nvim_create_autocmd("LspAttach", {
         group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
@@ -127,8 +110,7 @@ return {
           "neotest-python",
           function() return require("neotest-python")({ runner = "pytest" }) end,
         },
-        -- neotest-rust intentionally absent here — registered in config() above
-        -- via LspAttach to guarantee rust_analyzer is ready.
+        -- neotest-rust intentionally absent — registered in config() via LspAttach.
         {
           "neotest-go",
           function() return require("neotest-go")({}) end,
@@ -152,14 +134,20 @@ return {
         {
           "neotest-jest",
           function()
-            -- FIX (v2.3.10): jestCommand is now a function that probes the
-            -- same lockfiles as runner.lua's detect_js_test_cmd() so that
-            -- bun/pnpm/yarn projects use the correct package manager instead
-            -- of always defaulting to npm.
+            -- FIX (v2.3.11): delegate to runner.detect_js_test_cmd() instead
+            -- of duplicating the lockfile-probe logic. Both <leader>'t and
+            -- neotest-jest now use the same detection logic from a single source.
             return require("neotest-jest")({
               jestCommand = function()
                 local ok_path, path = pcall(require, "core.util.path")
                 local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+                local ok_runner, runner = pcall(require, "core.util.runner")
+                if ok_runner then
+                  -- detect_js_test_cmd returns e.g. "bun test"; jest adapter
+                  -- appends its own "--" separator, so we return the bare cmd.
+                  return runner.detect_js_test_cmd(root) .. " --"
+                end
+                -- Fallback: manual probe if runner module is unavailable.
                 if vim.fn.filereadable(root .. "/bun.lockb") == 1
                 or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
                   return "bun test --"

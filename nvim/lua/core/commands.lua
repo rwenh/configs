@@ -28,6 +28,22 @@
 --     lsp.lua wires tailwindcss in the servers table and mason-lspconfig
 --     ensure_installed, but :MasonInstallAll never listed it — a fresh setup
 --     where mason-lspconfig had not yet auto-run would have no Tailwind LSP.
+--
+-- FIX (v2.3.11):
+--   • "typescript-language-server" removed from MasonInstallAll. lsp.lua uses
+--     typescript-tools.nvim (pmizio) for TS/JS — it registers its own internal
+--     tsserver instance and never calls lspconfig.tsserver.setup(). Having
+--     "typescript-language-server" in the list installed a Mason package that
+--     was never wired into any server config, wasting disk space and causing
+--     confusion during :checkhealth.
+--   • "jdtls" added to MasonInstallAll LSP section. java.lua uses nvim-jdtls
+--     directly (not mason-lspconfig), so mason-lspconfig's ensure_installed
+--     never auto-installs it. MasonInstallAll is the only install path for jdtls
+--     on a fresh setup.
+--   • "sqls" added to MasonInstallAll LSP section. lsp.lua added sqls to
+--     mason-lspconfig ensure_installed in v2.3.10, but MasonInstallAll still
+--     lacked it — a manual :MasonInstall sqls was required on fresh setups that
+--     ran MasonInstallAll before mason-lspconfig's auto_install triggered.
 
 local cmd = vim.api.nvim_create_user_command
 
@@ -232,18 +248,23 @@ cmd("MasonInstallAll", function()
 
   local pkgs = {
     -- LSP
-    -- FIX (v2.3.9): "fortls" added — lsp.lua attaches it as an optional server
-    -- when the binary is present, but there was no way to install it via
-    -- :MasonInstallAll. "gopls" added for the same reason.
-    -- FIX (v2.3.9b): "tailwindcss-language-server" added. lsp.lua wires
-    -- tailwindcss in the servers table and mason-lspconfig ensure_installed,
-    -- but MasonInstallAll never installed it. A fresh install with no prior
-    -- mason-lspconfig run would have no tailwind LSP.
-    "lua-language-server", "basedpyright", "typescript-language-server",
+    -- FIX (v2.3.9):  "fortls" added — lsp.lua attaches it as an optional server.
+    -- FIX (v2.3.9):  "gopls" added — wired in lsp.lua servers table.
+    -- FIX (v2.3.9b): "tailwindcss-language-server" added.
+    -- FIX (v2.3.11): "typescript-language-server" REMOVED — lsp.lua uses
+    --   typescript-tools.nvim which manages its own internal tsserver instance.
+    --   lspconfig.tsserver is never configured anywhere in the project; this
+    --   package was dead weight and caused :checkhealth confusion.
+    -- FIX (v2.3.11): "jdtls" added — java.lua uses nvim-jdtls directly (not
+    --   mason-lspconfig), so mason-lspconfig auto_install never pulls it.
+    --   MasonInstallAll is the only install path on a fresh setup.
+    -- FIX (v2.3.11): "sqls" added — lsp.lua added sqls to mason-lspconfig
+    --   ensure_installed in v2.3.10 but MasonInstallAll still lacked it.
+    "lua-language-server", "basedpyright",
     "html-lsp", "css-lsp", "json-lsp", "yaml-language-server",
     "clangd", "gopls", "solargraph", "elixir-ls", "kotlin-language-server",
     "tailwindcss-language-server",
-    "zls", "fortls", "sqls",
+    "zls", "fortls", "sqls", "jdtls",
     -- NOTE: cobol-language-server is NOT in the Mason registry.
     --       Install manually: npm i -g @broadcommfd/cobol-language-support
     -- NOTE: vhdl_ls (rust_hdl) must be installed via cargo:

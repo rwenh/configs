@@ -53,6 +53,21 @@
 --     wired in the optional servers table but absent from ensure_installed.
 --   • vhdl_ls binary comment clarified: Mason package is "rust_hdl" but its
 --     bin symlink is "vhdl_ls"; the executable check was already correct.
+--
+-- FIX (v2.3.11):
+--   • jdtls added to mason-lspconfig ensure_installed. java.lua uses nvim-jdtls
+--     directly (bypassing mason-lspconfig entirely), so automatic_installation
+--     never pulled the package. ensure_installed is the only reliable install
+--     path for jdtls short of a manual :MasonInstall.
+--   • "html" removed from the servers{} table. lsp.lua called lsp_setup("html",{})
+--     with an empty config table, but html.lua also calls vim.lsp.config("html",
+--     cfg) with provideFormatter=false and extra filetypes. On Nvim 0.11 the
+--     last vim.lsp.config() call wins depending on plugin load order, so one of
+--     the two configs was silently dropped. html.lua is now the sole owner of the
+--     html server config — it is wired via an optional nvim-lspconfig spec that
+--     runs at BufReadPost, which is always later than lsp.lua's config(). The
+--     html entry in mason-lspconfig ensure_installed is kept so the binary is
+--     still auto-installed.
 
 return {
   {
@@ -68,30 +83,24 @@ return {
     opts = {
       ensure_installed = {
         "lua_ls", "basedpyright",
+        -- html kept here so Mason auto-installs the binary; config is owned by html.lua
         "html", "cssls", "jsonls", "yamlls",
         "clangd", "gopls", "solargraph",
         "kotlin_language_server",
         "zls",
         "tailwindcss",
-        -- FIX (v2.3.7): elixir-ls added. elixir.lua sets elixirls.enable=false
-        -- inside elixir-tools so that lsp.lua is the sole owner of the server.
-        -- Without this entry the server was never auto-installed.
+        -- FIX (v2.3.7): elixir-ls added.
         "elixir-ls",
-        -- FIX (v2.3.9): fortls added. It is wired in the optional servers table
-        -- below but was absent from ensure_installed — never auto-installed on
-        -- fresh setups. Binary-presence check at runtime still guards attachment.
+        -- FIX (v2.3.9): fortls added.
         "fortls",
-        -- FIX (v2.3.10): sqls added. It is wired in the optional servers table
-        -- (binary-checked at runtime) but was absent from ensure_installed —
-        -- the same gap that affected elixir-ls (v2.3.7) and fortls (v2.3.9).
+        -- FIX (v2.3.10): sqls added.
         "sqls",
+        -- FIX (v2.3.11): jdtls added. java.lua uses nvim-jdtls directly so
+        -- mason-lspconfig's automatic_installation never pulls it otherwise.
+        "jdtls",
       },
       automatic_installation = true,
-      -- FIX (v2.3.4): suppress mason-lspconfig's default handler.
-      -- Without this, on Nvim 0.11 mason-lspconfig calls vim.lsp.enable() for
-      -- every installed server AND lsp.lua's config() calls it again — two
-      -- clients attach to every buffer. The no-op function here disables the
-      -- default handler; lsp.lua's lsp_setup() is the sole owner of setup.
+      -- FIX (v2.3.4): suppress mason-lspconfig's default handler on Nvim 0.11.
       handlers = { function() end },
     },
   },
@@ -193,9 +202,7 @@ return {
             end
           end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
 
-          -- FIX (v2.3.5): lsp_fallback → lsp_format. conform v6 renamed the
-          -- option; using the old key silently disables LSP fallback formatting
-          -- for filetypes not listed in formatters_by_ft.
+          -- FIX (v2.3.5): lsp_fallback → lsp_format (conform v6).
           local function fmt()
             pcall(function()
               require("conform").format({ bufnr = e.buf, lsp_format = "fallback" })
@@ -245,6 +252,12 @@ return {
       })
 
       -- ── Server configurations ─────────────────────────────────────────
+      -- FIX (v2.3.11): "html" removed from this table. html.lua owns the html
+      -- server config (provideFormatter=false, extra filetypes). Having an empty
+      -- lsp_setup("html",{}) here and a full vim.lsp.config("html", cfg) in
+      -- html.lua caused a race where the last setup() call won based on load
+      -- order. html.lua's BufReadPost autocmd always fires after lsp.lua's
+      -- config(), making html.lua the reliable sole owner.
       local servers = {
         lua_ls = {
           settings = {
@@ -286,7 +299,8 @@ return {
           },
         },
         tailwindcss            = {},
-        html                   = {},
+        -- html intentionally absent — html.lua is the sole config owner.
+        -- The binary is still auto-installed via mason-lspconfig ensure_installed.
         cssls                  = {},
         jsonls                 = {},
         yamlls                 = {},

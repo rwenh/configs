@@ -1,10 +1,10 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Production-grade initialization with health checks and recovery.
-;;; Version: 3.0.4
+;;; Version: 3.2.0 | FIX: emacs-ide-spot-check wrapper caused infinite recursion
+;;;           (it redefined the function then called itself).  Now the file is
+;;;           simply loaded eagerly; no wrapper needed.
 ;;; Code:
 
-(defconst emacs-ide-version "3.0.4")
+(defconst emacs-ide-version "3.2.0")
 (defconst emacs-ide-minimum-emacs-version "29.1")
 (defconst emacs-ide-session-date (format-time-string "%Y-%m-%d"))
 (define-obsolete-variable-alias 'emacs-ide-build-date 'emacs-ide-session-date "3.0.4")
@@ -13,24 +13,24 @@
   (error "Emacs IDE requires Emacs %s or higher. You are running %s."
          emacs-ide-minimum-emacs-version emacs-version))
 
-(defvar emacs-ide--init-start-time (current-time))
-(defvar emacs-ide--gc-count-start gcs-done)
-(defvar emacs-ide--startup-phases nil)
+(defvar emacs-ide--init-start-time  (current-time))
+(defvar emacs-ide--gc-count-start   gcs-done)
+(defvar emacs-ide--startup-phases   nil)
 
 (defun emacs-ide--track-phase (phase-name)
   (push (cons phase-name
               (float-time (time-subtract (current-time) emacs-ide--init-start-time)))
         emacs-ide--startup-phases))
 
-(defvar emacs-ide-root-dir user-emacs-directory)
-(defvar emacs-ide-core-dir (expand-file-name "core/" emacs-ide-root-dir))
-(defvar emacs-ide-modules-dir (expand-file-name "modules/" emacs-ide-root-dir))
-(defvar emacs-ide-langs-dir (expand-file-name "modules/langs/" emacs-ide-root-dir))
-(defvar emacs-ide-lib-dir (expand-file-name "lib/" emacs-ide-root-dir))
-(defvar emacs-ide-var-dir (expand-file-name "var/" emacs-ide-root-dir))
+(defvar emacs-ide-root-dir    user-emacs-directory)
+(defvar emacs-ide-core-dir    (expand-file-name "core/"         emacs-ide-root-dir))
+(defvar emacs-ide-modules-dir (expand-file-name "modules/"      emacs-ide-root-dir))
+(defvar emacs-ide-langs-dir   (expand-file-name "modules/langs/" emacs-ide-root-dir))
+(defvar emacs-ide-lib-dir     (expand-file-name "lib/"          emacs-ide-root-dir))
+(defvar emacs-ide-var-dir     (expand-file-name "var/"          emacs-ide-root-dir))
 
 (dolist (dir (list emacs-ide-core-dir emacs-ide-modules-dir emacs-ide-langs-dir
-                   emacs-ide-lib-dir emacs-ide-var-dir))
+                   emacs-ide-lib-dir  emacs-ide-var-dir))
   (unless (file-directory-p dir) (make-directory dir t)))
 
 (add-to-list 'load-path emacs-ide-core-dir)
@@ -40,10 +40,14 @@
 
 (emacs-ide--track-phase "directory-setup")
 
+;;; ─── Config (must be first — everything else reads from it) ─────────────────
+
 (message "📋 Loading configuration...")
 (load-file (expand-file-name "core/emacs-ide-config.el" emacs-ide-root-dir))
-(emacs-ide-config-load)
+(emacs-ide-config-load)   ;; initial load — does NOT fire reload hook
 (emacs-ide--track-phase "config-load")
+
+;;; ─── Safe mode short-circuit ────────────────────────────────────────────────
 
 (when (bound-and-true-p emacs-ide-safe-mode)
   (message "⚠️  SAFE MODE: Skipping full configuration")
@@ -53,8 +57,11 @@
 
 (unless (bound-and-true-p emacs-ide-safe-mode)
 
+  ;;; ─── straight.el ──────────────────────────────────────────────────────────
+
   (defvar bootstrap-version)
-  (let ((bootstrap-file (expand-file-name "straight/repos/straight.el/bootstrap.el" emacs-ide-root-dir))
+  (let ((bootstrap-file
+         (expand-file-name "straight/repos/straight.el/bootstrap.el" emacs-ide-root-dir))
         (bootstrap-version 6))
     (unless (file-exists-p bootstrap-file)
       (message "📦 Bootstrapping straight.el...")
@@ -66,20 +73,22 @@
         (eval-print-last-sexp)))
     (load bootstrap-file nil 'nomessage))
 
-  (setq straight-use-package-by-default t
-        straight-check-for-modifications '(find-when-checking)
-        straight-cache-autoloads t
-        straight-vc-git-default-clone-depth 1)
+  (setq straight-use-package-by-default      t
+        straight-check-for-modifications     '(find-when-checking)
+        straight-cache-autoloads             t
+        straight-vc-git-default-clone-depth  1)
 
   (emacs-ide--track-phase "package-bootstrap")
 
   (straight-use-package 'use-package)
-  (setq use-package-always-defer t
-        use-package-expand-minimally t
-        use-package-verbose (bound-and-true-p init-file-debug)
+  (setq use-package-always-defer          t
+        use-package-expand-minimally      t
+        use-package-verbose               (bound-and-true-p init-file-debug)
         use-package-minimum-reported-time 0.1)
 
   (emacs-ide--track-phase "use-package-setup")
+
+  ;;; ─── Core modules ─────────────────────────────────────────────────────────
 
   (defvar emacs-ide-core-modules
     '("emacs-ide-health" "emacs-ide-diagnose" "emacs-ide-package" "emacs-ide-profiler"
@@ -89,10 +98,11 @@
     (let ((file (expand-file-name (concat module-name ".el") emacs-ide-core-dir)))
       (condition-case err
           (progn (load-file file) (message "✓ Core: %s" module-name) t)
-        (error (warn "✗ Failed core module %s: %s" module-name err)
-               (when (string= module-name "emacs-ide-recovery")
-                 (error "Critical: Recovery module failed: %s" err))
-               nil))))
+        (error
+         (warn "✗ Failed core module %s: %s" module-name err)
+         (when (string= module-name "emacs-ide-recovery")
+           (error "Critical: Recovery module failed: %s" err))
+         nil))))
 
   (message "🔧 Loading core system...")
   (dolist (module emacs-ide-core-modules)
@@ -100,13 +110,16 @@
 
   (emacs-ide--track-phase "core-modules")
 
+  ;;; ─── PATH from login shell ────────────────────────────────────────────────
+
   (defun emacs-ide-setup-exec-path ()
     (with-timeout (2 (message "⚠️  exec-path setup timed out"))
-      (let* ((shell (or (getenv "SHELL") "/bin/sh"))
+      (let* ((shell    (or (getenv "SHELL") "/bin/sh"))
              (path-str (condition-case nil
                            (replace-regexp-in-string
                             "[ \t\n]*$" ""
-                            (shell-command-to-string (format "%s --login -c 'echo $PATH'" shell)))
+                            (shell-command-to-string
+                             (format "%s --login -c 'echo $PATH'" shell)))
                          (error (getenv "PATH")))))
         (unless (string-empty-p path-str)
           (setenv "PATH" path-str)
@@ -117,42 +130,46 @@
 
   (emacs-ide--track-phase "environment-setup")
 
+  ;;; ─── Core settings ────────────────────────────────────────────────────────
+
   (prefer-coding-system 'utf-8-unix)
   (set-language-environment "UTF-8")
 
   (setq-default
-   indent-tabs-mode nil
-   tab-width 4
-   fill-column 100
+   indent-tabs-mode    nil
+   tab-width           4
+   fill-column         100
    require-final-newline t
-   truncate-lines nil
-   word-wrap t
-   auto-save-default nil
+   truncate-lines      nil
+   word-wrap           t
+   auto-save-default   nil
    scroll-conservatively 101
-   scroll-margin 5)
+   scroll-margin       5)
 
-  (setq make-backup-files t
+  (setq make-backup-files    t
         backup-directory-alist `(("." . ,(expand-file-name "var/backups/" emacs-ide-root-dir)))
-        backup-by-copying t
-        version-control t
-        kept-new-versions 6
-        kept-old-versions 2
-        delete-old-versions t
-        create-lockfiles nil)
+        backup-by-copying    t
+        version-control      t
+        kept-new-versions    6
+        kept-old-versions    2
+        delete-old-versions  t
+        create-lockfiles     nil)
 
   (if (boundp 'use-short-answers)
       (setq use-short-answers t)
     (fset 'yes-or-no-p 'y-or-n-p))
 
-  (setq inhibit-startup-screen t
+  (setq inhibit-startup-screen  t
         inhibit-startup-message t
         initial-scratch-message nil
-        initial-major-mode 'fundamental-mode)
+        initial-major-mode      'fundamental-mode)
 
   (electric-pair-mode 1)
   (delete-selection-mode 1)
 
   (emacs-ide--track-phase "core-settings")
+
+  ;;; ─── Feature modules ──────────────────────────────────────────────────────
 
   (defvar emacs-ide-feature-modules
     '("ui-core" "ui-theme" "ui-modeline" "ui-dashboard" "ui-workspace"
@@ -168,13 +185,13 @@
 
   (defun emacs-ide-load-feature-module (module-name)
     (let* ((file-in-modules (expand-file-name (concat module-name ".el") emacs-ide-modules-dir))
-           (file-at-root (expand-file-name (concat module-name ".el") emacs-ide-root-dir))
-           (file-in-core (expand-file-name (concat module-name ".el") emacs-ide-core-dir))
-           (file-in-lib (expand-file-name (concat module-name ".el") emacs-ide-lib-dir))
+           (file-at-root    (expand-file-name (concat module-name ".el") emacs-ide-root-dir))
+           (file-in-core    (expand-file-name (concat module-name ".el") emacs-ide-core-dir))
+           (file-in-lib     (expand-file-name (concat module-name ".el") emacs-ide-lib-dir))
            (file (cond ((file-exists-p file-in-modules) file-in-modules)
-                       ((file-exists-p file-at-root) file-at-root)
-                       ((file-exists-p file-in-core) file-in-core)
-                       ((file-exists-p file-in-lib) file-in-lib))))
+                       ((file-exists-p file-at-root)    file-at-root)
+                       ((file-exists-p file-in-core)    file-in-core)
+                       ((file-exists-p file-in-lib)     file-in-lib))))
       (condition-case err
           (if file
               (progn (load-file file) (message "✓ Feature: %s" module-name) t)
@@ -187,32 +204,39 @@
 
   (emacs-ide--track-phase "feature-modules")
 
+  ;;; ─── Post-load: optional startup health check ────────────────────────────
+
   (when (and (fboundp 'emacs-ide-health-check-startup) (not noninteractive))
     (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
 
+  ;;; ─── Post-load: cancel void timers left by failed package loads ──────────
+
   (defun emacs-ide--find-and-cancel-void-timers ()
     (let ((cancelled 0))
-      (dolist (timer (append (copy-sequence timer-list) (copy-sequence timer-idle-list)))
+      (dolist (timer (append (copy-sequence timer-list)
+                             (copy-sequence timer-idle-list)))
         (when (and (vectorp timer) (> (length timer) 5) (null (aref timer 5)))
-          (cancel-timer timer) (cl-incf cancelled)))
+          (cancel-timer timer)
+          (cl-incf cancelled)))
       (when (> cancelled 0)
         (message "emacs-ide: cancelled %d void timer(s)" cancelled))))
 
   (add-hook 'emacs-startup-hook #'emacs-ide--find-and-cancel-void-timers 99)
   (add-hook 'emacs-startup-hook #'emacs-ide--find-and-cancel-void-timers 201)
-  (add-hook 'window-setup-hook #'emacs-ide--find-and-cancel-void-timers 99)
+  (add-hook 'window-setup-hook  #'emacs-ide--find-and-cancel-void-timers 99)
   (run-with-idle-timer 20 nil #'emacs-ide--find-and-cancel-void-timers)
 
   (add-hook 'emacs-startup-hook
             (lambda ()
               (emacs-ide--track-phase "startup-complete")
-              (let* ((elapsed (float-time (time-subtract (current-time) emacs-ide--init-start-time)))
-                     (gc-count (- gcs-done emacs-ide--gc-count-start)))
+              (let* ((elapsed   (float-time (time-subtract (current-time)
+                                                           emacs-ide--init-start-time)))
+                     (gc-count  (- gcs-done emacs-ide--gc-count-start)))
                 (message "🚀 Emacs IDE v%s ready in %.2fs | GCs: %d"
                          emacs-ide-version elapsed gc-count)))
-            100)
+            100))   ;; end (unless emacs-ide-safe-mode ...)
 
-)
+;;; ─── Kill hook ───────────────────────────────────────────────────────────────
 
 (add-hook 'kill-emacs-hook
           (lambda ()
@@ -223,50 +247,53 @@
                        emacs-ide-recovery--session-timer)
               (cancel-timer emacs-ide-recovery--session-timer))))
 
+;;; ─── Custom file ─────────────────────────────────────────────────────────────
+
 (when (and (stringp custom-file) (file-exists-p custom-file))
   (load custom-file nil 'nomessage))
 
-(defun emacs-ide-run-tests ()
-  (interactive)
-  (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
-    (if (file-exists-p test-file)
-        (progn
-          (load-file test-file)
-          (if (featurep 'emacs-ide-test)
-              (let ((ert-verbose t))
-                (ert-run-tests-batch "^test-emacs-ide-"))
-            (message "✗ emacs-ide-test.el loaded but feature not provided")))
-      (message "✗ Test file not found: %s" test-file))))
+;;; ─── Eagerly load test + spot-check modules ──────────────────────────────────
+;; Both files are loaded once here with a simple condition-case guard.
+;; No wrapper functions are defined — that was the source of infinite recursion:
+;;   (defun emacs-ide-spot-check ()            ;; redefines the fn just loaded
+;;     ...
+;;     (call-interactively #'emacs-ide-spot-check))  ;; calls itself → stack overflow
 
 (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
-  (if (not (file-exists-p test-file))
-      (warn "⚠️  emacs-ide-test.el not found")
-    (condition-case err
-        (progn (load-file test-file) (message "✓ emacs-ide-test loaded"))
-      (error (warn "⚠️  Could not load emacs-ide-test.el: %s" (error-message-string err))))))
-
-(defun emacs-ide-spot-check ()
-  (interactive)
-  (let ((f (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
-    (if (file-exists-p f)
-        (progn
-          (load-file f)
-          (if (featurep 'emacs-ide-spot-check)
-              (call-interactively #'emacs-ide-spot-check)
-            (message "✗ emacs-ide-spot-check.el loaded but feature not provided")))
-      (message "✗ emacs-ide-spot-check.el not found"))))
+  (if (file-exists-p test-file)
+      (condition-case err
+          (progn (load-file test-file) (message "✓ emacs-ide-test loaded"))
+        (error (warn "⚠️  Could not load emacs-ide-test.el: %s" (error-message-string err))))
+    (warn "⚠️  emacs-ide-test.el not found at %s" test-file)))
 
 (let ((sc-file (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
-  (if (not (file-exists-p sc-file))
-      (warn "⚠️  emacs-ide-spot-check.el not found")
-    (condition-case err
-        (progn (load-file sc-file) (message "✓ emacs-ide-spot-check loaded"))
-      (error (warn "⚠️  Could not load emacs-ide-spot-check.el: %s" (error-message-string err))))))
+  (if (file-exists-p sc-file)
+      (condition-case err
+          (progn (load-file sc-file) (message "✓ emacs-ide-spot-check loaded"))
+        (error (warn "⚠️  Could not load emacs-ide-spot-check.el: %s" (error-message-string err))))
+    (warn "⚠️  emacs-ide-spot-check.el not found at %s" sc-file)))
 
+;; Fallback stub only if the diagnose module itself failed to load
 (unless (fboundp 'emacs-ide-diagnose)
   (defun emacs-ide-diagnose ()
     (interactive)
     (message "emacs-ide-diagnose.el failed to load — see *Messages* for errors.")))
+
+;;; ─── Interactive helpers ─────────────────────────────────────────────────────
+
+(defun emacs-ide-run-tests ()
+  "Run all Enterprise Emacs IDE ERT tests interactively."
+  (interactive)
+  (if (featurep 'emacs-ide-test)
+      (let ((ert-verbose t))
+        (ert-run-tests-batch "^test-emacs-ide-"))
+    (let ((test-file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
+      (if (file-exists-p test-file)
+          (progn
+            (load-file test-file)
+            (let ((ert-verbose t))
+              (ert-run-tests-batch "^test-emacs-ide-")))
+        (message "✗ Test file not found: %s" test-file)))))
 
 (defun emacs-ide-show-version ()
   (interactive)
@@ -297,8 +324,8 @@
   (interactive)
   (when (y-or-n-p "Delete all .elc and .eln cache files? ")
     (let ((count 0))
-      (dolist (dir (list (expand-file-name "core/" user-emacs-directory)
-                         (expand-file-name "modules/" user-emacs-directory)
+      (dolist (dir (list (expand-file-name "core/"          user-emacs-directory)
+                         (expand-file-name "modules/"       user-emacs-directory)
                          (expand-file-name "modules/langs/" user-emacs-directory)))
         (when (file-directory-p dir)
           (dolist (file (directory-files-recursively dir "\\.elc$"))

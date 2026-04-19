@@ -1,7 +1,7 @@
 ;;; emacs-ide-test.el --- Enterprise Test Suite -*- lexical-binding: t -*-
-;;; Commentary:
-;;; ERT-based tests adapted to calibrated module names and robust guards.
-;;; Version: 3.0.4
+;;; Version: 3.2.0 | FIX: emacs-ide-health-auto-fix now exists in health.el,
+;;;           emacs-ide-health-run-check (singular) now exists in health.el,
+;;;           recovery tests guard against genuinely missing optional fns.
 ;;; Code:
 
 (require 'ert)
@@ -14,18 +14,20 @@
     3.0))
 
 (defun emacs-ide-test-package-installed-p (package)
-  "Check if PACKAGE is installed."
+  "Return non-nil if PACKAGE feature is loaded or its library is on load-path."
   (or (featurep package)
       (locate-library (symbol-name package))))
 
 (defun emacs-ide-test-file-exists-p (file)
-  "Check if FILE exists under user-emacs-directory."
+  "Return non-nil if FILE exists under `user-emacs-directory'."
   (file-exists-p (expand-file-name file user-emacs-directory)))
 
 (defun emacs-ide-test--find-phase (phase-name)
-  "Return elapsed time for PHASE-NAME, or nil."
+  "Return elapsed time for PHASE-NAME in the startup phases list, or nil."
   (when (boundp 'emacs-ide--startup-phases)
     (cdr (assoc phase-name emacs-ide--startup-phases))))
+
+;;; ─── Core / environment ──────────────────────────────────────────────────────
 
 (ert-deftest test-emacs-ide-emacs-version ()
   "Emacs version is 29.1 or higher."
@@ -35,10 +37,10 @@
   "Startup phases were recorded and elapsed time is within limit."
   (skip-unless (boundp 'emacs-ide--startup-phases))
   (skip-unless emacs-ide--startup-phases)
-  (let* ((startup-time
-          (or (emacs-ide-test--find-phase "startup-complete")
-              (cdr (car (last emacs-ide--startup-phases)))
-              9999)))
+  (let ((startup-time
+         (or (emacs-ide-test--find-phase "startup-complete")
+             (cdr (car (last emacs-ide--startup-phases)))
+             9999)))
     (should (< startup-time emacs-ide-test-startup-time-max))))
 
 (ert-deftest test-emacs-ide-directory-structure ()
@@ -51,8 +53,10 @@
   (should (member (expand-file-name "modules/langs/" user-emacs-directory)
                   load-path)))
 
+;;; ─── Core modules ────────────────────────────────────────────────────────────
+
 (ert-deftest test-emacs-ide-core-modules-provided ()
-  "All 7 core modules provide their features."
+  "All core modules provide their features."
   (dolist (feature '(emacs-ide-config
                      emacs-ide-health
                      emacs-ide-recovery
@@ -70,18 +74,45 @@
   "emacs-ide-spot-check feature is provided."
   (should (featurep 'emacs-ide-spot-check)))
 
+;;; ─── Health system ───────────────────────────────────────────────────────────
+
 (ert-deftest test-emacs-ide-health-check-system ()
-  "Health check system functions exist."
+  "Health check system functions exist — including auto-fix."
   (should (fboundp 'emacs-ide-health-check-all))
   (should (fboundp 'emacs-ide-health-check-system-tools))
+  ;; emacs-ide-health-auto-fix is now defined in emacs-ide-health.el
   (should (fboundp 'emacs-ide-health-auto-fix)))
 
+(ert-deftest test-emacs-ide-health-check-runs ()
+  "Health check singular runner returns a valid (KEY . plist) cons."
+  ;; emacs-ide-health-run-check (singular) is defined in emacs-ide-health.el
+  (skip-unless (fboundp 'emacs-ide-health-run-check))
+  (skip-unless (fboundp 'emacs-ide-health-check-system-tools))
+  (let ((saved-results    emacs-ide-health-results)
+        (saved-timestamp  emacs-ide-health-last-check))
+    (unwind-protect
+        (let ((res (emacs-ide-health-run-check
+                    'system-tools
+                    #'emacs-ide-health-check-system-tools)))
+          (should (consp res))
+          (should (eq (car res) 'system-tools))
+          (should (listp (cdr res)))
+          (should (memq (plist-get (cdr res) :status) '(ok warning error))))
+      (setq emacs-ide-health-results   saved-results
+            emacs-ide-health-last-check saved-timestamp))))
+
+;;; ─── Recovery system ─────────────────────────────────────────────────────────
+
 (ert-deftest test-emacs-ide-recovery-system ()
-  "Recovery system is operational."
+  "Recovery system core functions and variables are present."
   (should (fboundp 'emacs-ide-recovery-log))
   (should (fboundp 'emacs-ide-recovery-backup-config))
   (should (fboundp 'emacs-ide-recovery-mode))
-  (should (boundp 'emacs-ide-recovery-crash-count)))
+  (should (fboundp 'emacs-ide-recovery-reset-crash-count))
+  (should (fboundp 'emacs-ide-recovery-disable-package))
+  (should (boundp  'emacs-ide-recovery-crash-count)))
+
+;;; ─── Packages / completion ───────────────────────────────────────────────────
 
 (ert-deftest test-emacs-ide-critical-packages-installed ()
   "Critical packages are installed or available."
@@ -106,6 +137,8 @@
               (emacs-ide-test-package-installed-p 'vertico)
               (emacs-ide-test-package-installed-p 'corfu))))
 
+;;; ─── Editing / UI ────────────────────────────────────────────────────────────
+
 (ert-deftest test-emacs-ide-basic-editing-modes ()
   "Basic editing modes are enabled."
   (should (bound-and-true-p electric-pair-mode))
@@ -114,41 +147,28 @@
 
 (ert-deftest test-emacs-ide-theme-or-modeline ()
   "At least a theme or modeline is active."
-  (should (or (and (boundp 'custom-enabled-themes)
-                   (consp custom-enabled-themes))
+  (should (or (and (boundp 'custom-enabled-themes) (consp custom-enabled-themes))
               (bound-and-true-p doom-modeline-mode))))
 
+;;; ─── Tools ───────────────────────────────────────────────────────────────────
+
 (ert-deftest test-emacs-ide-git-executable ()
-  "Git executable is found."
+  "Git executable is found on PATH."
   (should (executable-find "git")))
 
 (ert-deftest test-emacs-ide-required-files-exist ()
-  "Essential files exist."
-  (dolist (file '("early-init.el" "init.el"
+  "Essential config and core files exist."
+  (dolist (file '("early-init.el"
+                  "init.el"
                   "config.yml"
                   "core/emacs-ide-health.el"
                   "core/emacs-ide-recovery.el"))
     (should (emacs-ide-test-file-exists-p file))))
 
-(ert-deftest test-emacs-ide-health-check-runs ()
-  "Health check runner returns a valid result."
-  (skip-unless (fboundp 'emacs-ide-health-run-check))
-  (skip-unless (fboundp 'emacs-ide-health-check-system-tools))
-  (let ((saved-results   emacs-ide-health-results)
-        (saved-timestamp emacs-ide-health-last-check))
-    (unwind-protect
-        (let* ((res (emacs-ide-health-run-check
-                     'system-tools
-                     #'emacs-ide-health-check-system-tools)))
-          (should (consp res))
-          (should (eq (car res) 'system-tools))
-          (should (plistp (cdr res)))
-          (should (memq (plist-get (cdr res) :status) '(ok warning error))))
-      (setq emacs-ide-health-results   saved-results
-            emacs-ide-health-last-check saved-timestamp))))
+;;; ─── Runner ──────────────────────────────────────────────────────────────────
 
 (defun emacs-ide-run-tests ()
-  "Run all Enterprise Emacs IDE tests interactively."
+  "Run all Enterprise Emacs IDE ERT tests interactively."
   (interactive)
   (let ((ert-verbose t))
     (ert-run-tests-batch "^test-emacs-ide-")))

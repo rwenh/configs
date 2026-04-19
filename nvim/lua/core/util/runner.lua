@@ -42,13 +42,14 @@
 --       fortran → <leader>ftb (gfortran build+run via fortran.lua)
 --       vhdl    → <leader>vhr (GHDL run+view via vhdl.lua)
 --       cobol   → <leader>cob (cobc compile+run via cobol.lua)
---     This removes the last "No test runner" entries from the known-issues
---     table. The notification uses INFO level (not WARN) since the absence of
---     a test runner is a language characteristic, not a config error.
---   • run_tests() c/cpp: ctest entries are now nil when `ctest` is not on
---     PATH, so a clear INFO message is shown (pointing to <leader>ccb to
---     build first) rather than a confusing shell error. Consistent with the
---     fortran/vhdl/cobol treatment added above.
+--
+-- FIX (v2.3.11):
+--   • detect_js_test_cmd() promoted to a PUBLIC export (M.detect_js_test_cmd).
+--     test.lua's neotest-jest jestCommand was duplicating the exact same
+--     lockfile-probe logic independently. Any future change to lockfile
+--     detection (e.g. a new package manager) had to be applied in two places.
+--     test.lua now calls require("core.util.runner").detect_js_test_cmd(root)
+--     so both code paths stay in sync automatically.
 
 local M = {}
 
@@ -368,7 +369,10 @@ end
 -- FIX (v2.3.2): probe lockfiles in project root.
 -- FIX (v2.3.3): also check bun.lock (text lockfile, Bun v1.1+).
 -- FIX (v2.3.9): returns bare command only; caller prepends "cd <root> && ".
-local function detect_js_test_cmd(root)
+-- FIX (v2.3.11): promoted to M.detect_js_test_cmd (public export) so that
+--   test.lua's neotest-jest jestCommand can reuse the same logic rather than
+--   maintaining a separate duplicate. Both callers must pass the project root.
+function M.detect_js_test_cmd(root)
   if vim.fn.filereadable(root .. "/bun.lockb") == 1
   or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
     return "bun test"
@@ -392,8 +396,8 @@ function M.run_tests()
     python     = "cd " .. escaped_root .. " && pytest",
     rust       = "cd " .. escaped_root .. " && cargo test",
     go         = "cd " .. escaped_root .. " && go test ./...",
-    javascript = "cd " .. escaped_root .. " && " .. detect_js_test_cmd(root),
-    typescript = "cd " .. escaped_root .. " && " .. detect_js_test_cmd(root),
+    javascript = "cd " .. escaped_root .. " && " .. M.detect_js_test_cmd(root),
+    typescript = "cd " .. escaped_root .. " && " .. M.detect_js_test_cmd(root),
     ruby       = "cd " .. escaped_root .. " && bundle exec rspec",
     elixir     = "cd " .. escaped_root .. " && mix test",
     kotlin = vim.fn.filereadable(root .. "/gradlew") == 1
@@ -403,11 +407,6 @@ function M.run_tests()
       and "cd " .. escaped_root .. " && ./gradlew test"
       or  "cd " .. escaped_root .. " && mvn test",
     zig        = "cd " .. escaped_root .. " && zig build test",
-    -- FIX (v2.3.9b): c and cpp delegate to ctest.
-    -- FIX (v2.3.10): ctest entries are now conditionally nil when ctest is not
-    -- installed. Previously a missing ctest binary produced a confusing shell
-    -- error message instead of a clear Neovim notification, which was
-    -- inconsistent with the explicit INFO messages added for fortran/vhdl/cobol.
     c   = vim.fn.executable("ctest") == 1
       and "cd " .. escaped_root .. " && ctest --test-dir build --output-on-failure"
       or  nil,
@@ -416,9 +415,7 @@ function M.run_tests()
       or  nil,
   }
 
-  -- FIX (v2.3.10): fortran, vhdl, cobol have no generic unit-test runner.
-  -- Instead of the opaque "No test runner for: <ft>" message, notify the
-  -- user of the language-specific build/run keymaps from the lang specs.
+  -- FIX (v2.3.10): informational messages for languages with no generic test runner.
   local no_test_runner_info = {
     fortran = "Fortran has no standard unit-test runner.\n"
       .. "Use <leader>ftb to build & run, or <leader>ftm for make.",
@@ -426,9 +423,6 @@ function M.run_tests()
       .. "Use <leader>vhr (GHDL Run & View) or <leader>vha/<vhe> to simulate.",
     cobol   = "COBOL has no standard unit-test runner.\n"
       .. "Use <leader>cob to compile & run the current file.",
-    -- FIX (v2.3.10): when ctest is not installed the test_commands entries
-    -- for c/cpp are nil. Fall through to a clear INFO message rather than
-    -- the generic "No test runner for: c" WARN.
     c   = vim.fn.executable("ctest") == 0
       and "C/C++ tests use CTest but `ctest` was not found.\n"
         .. "Install CMake (which ships ctest) and build the project first: <leader>ccb."
