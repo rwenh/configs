@@ -1,35 +1,16 @@
 -- lua/plugins/specs/test.lua - Testing
 --
--- FIX (v2.3.1):
---   • neotest-rust race condition: deferred via one-shot FileType autocmd.
+-- (all prior FIX entries preserved — see INSTALL.md for full history)
 --
--- FIX (v2.3.2):
---   • neotest-go: require("neotest-go")({}) constructor call.
---
--- FIX (v2.3.5):
---   • neotest-elixir: require("neotest-elixir")({}) constructor call.
---
--- FIX (v2.3.8):
---   • neotest-vitest: require("neotest-vitest")({}) constructor call.
---
--- FIX (v2.3.9b):
---   • neotest-rust deferred on LspAttach (client.name == "rust_analyzer")
---     instead of FileType.
---
--- FIX (v2.3.10a):
---   • neotest-jest jestCommand changed from a hardcoded "npm test --" string
---     to a function that probes bun/pnpm/yarn/npm lockfiles — same logic as
---     runner.lua's detect_js_test_cmd().
---
--- FIX (v2.3.10):
---   • once=true removed from the LspAttach autocmd that defers neotest-rust.
---
--- FIX (v2.3.11):
---   • neotest-jest jestCommand now calls runner.detect_js_test_cmd() directly
---     instead of duplicating the lockfile-probe logic inline. Previously the
---     two implementations could drift when a new package manager was added.
---     The shared helper lives in core.util.runner and is the single source of
---     truth for JS/TS package manager detection across the entire config.
+-- FIX (v2.3.12):
+--   • neotest-jest jestCommand: "bun test --" is invalid. Bun's test runner
+--     does not support the Jest "--" argument separator; passing it causes
+--     Bun to treat "--" as an unknown flag and error out silently.
+--     The neotest-jest adapter appends its own args after jestCommand, so
+--     the separator is only needed for npm/yarn/pnpm (which wrap `jest` via
+--     `npm test -- <jest-args>`). Bun invokes its own runner directly, so
+--     no separator is needed. Fixed: return "bun test" bare (no "--") when
+--     Bun lockfiles are detected; keep " --" for npm/yarn/pnpm.
 
 return {
   {
@@ -72,9 +53,8 @@ return {
       neotest.setup(opts)
 
       -- Defer neotest-rust registration until rust_analyzer is confirmed
-      -- attached and ready. once=true removed (v2.3.10): it consumed the
-      -- autocmd on the first LspAttach regardless of client name, meaning
-      -- any non-rust LSP attaching first would permanently discard it.
+      -- attached. once=true removed (v2.3.10): it consumed the autocmd on
+      -- the first LspAttach regardless of client name.
       local _rust_registered = false
       vim.api.nvim_create_autocmd("LspAttach", {
         group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
@@ -105,6 +85,36 @@ return {
     opts = function()
       local adapters = {}
 
+      -- ── jest command helper ──────────────────────────────────────────
+      -- FIX (v2.3.12): Bun does NOT support the "--" separator that npm/
+      -- yarn/pnpm need. Return "bun test" bare; the adapter appends its own
+      -- pattern args directly. For other package managers keep " --".
+      local function jest_cmd()
+        local ok_path, path = pcall(require, "core.util.path")
+        local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+        local ok_runner, runner = pcall(require, "core.util.runner")
+
+        if ok_runner then
+          local cmd = runner.detect_js_test_cmd(root)
+          -- Bun doesn't use "--" to pass args to the test runner
+          if cmd == "bun test" then
+            return cmd
+          end
+          return cmd .. " --"
+        end
+
+        -- Inline fallback if runner module is unavailable
+        if vim.fn.filereadable(root .. "/bun.lockb") == 1
+        or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
+          return "bun test"         -- NO " --" for bun
+        elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
+          return "pnpm test --"
+        elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then
+          return "yarn test --"
+        end
+        return "npm test --"
+      end
+
       local eager_configs = {
         {
           "neotest-python",
@@ -134,31 +144,7 @@ return {
         {
           "neotest-jest",
           function()
-            -- FIX (v2.3.11): delegate to runner.detect_js_test_cmd() instead
-            -- of duplicating the lockfile-probe logic. Both <leader>'t and
-            -- neotest-jest now use the same detection logic from a single source.
-            return require("neotest-jest")({
-              jestCommand = function()
-                local ok_path, path = pcall(require, "core.util.path")
-                local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-                local ok_runner, runner = pcall(require, "core.util.runner")
-                if ok_runner then
-                  -- detect_js_test_cmd returns e.g. "bun test"; jest adapter
-                  -- appends its own "--" separator, so we return the bare cmd.
-                  return runner.detect_js_test_cmd(root) .. " --"
-                end
-                -- Fallback: manual probe if runner module is unavailable.
-                if vim.fn.filereadable(root .. "/bun.lockb") == 1
-                or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
-                  return "bun test --"
-                elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
-                  return "pnpm test --"
-                elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then
-                  return "yarn test --"
-                end
-                return "npm test --"
-              end,
-            })
+            return require("neotest-jest")({ jestCommand = jest_cmd })
           end,
         },
         {

@@ -1,73 +1,24 @@
 -- lua/plugins/specs/lsp.lua
 --
--- FIX (v2.2.4):
---   • vim.lsp.config()+vim.lsp.enable() guarded behind nvim-0.11 check.
---   • conform format_on_save always returns full table when enabled.
---   • <leader>,r duplicate map removed.
+-- (all prior FIX entries preserved — see INSTALL.md for full history)
 --
--- FIX (v2.3.2):
---   • <leader>,o replaced AerialToggle (never specced) with Trouble symbols.
---
--- FIX (v2.3.3):
---   • vim.diagnostic.goto_next/goto_prev deprecated in Nvim 0.11 — replaced
---     with vim.diagnostic.jump({count=±1, float=true}) with fallback to the
---     old API on 0.10 so the config stays backward-compatible.
---   • inc-rename.nvim is specced with cmd="IncRename" only (no keys= trigger),
---     so it is not loaded when <leader>,r is pressed from LspAttach. The keymap
---     now wraps the call in a lazy-load shim via vim.cmd("IncRename ...") which
---     triggers cmd-based loading. Added a pcall guard with a clear error message
---     when the plugin is missing rather than a silent no-op.
---
--- FIX (v2.3.4):
---   • mason-lspconfig: added handlers = { function() end } to suppress the
---     built-in default handler. On Nvim 0.11, mason-lspconfig's default handler
---     calls vim.lsp.enable() for every installed server, and lsp.lua's config()
---     also calls vim.lsp.enable() for the same servers. The result is two LSP
---     clients attached to the same buffer — doubled diagnostics, doubled hover
---     responses, doubled rename operations. Providing an empty no-op function
---     as the default handler disables mason-lspconfig's auto-attach while
---     leaving lsp.lua as the sole owner of server initialisation.
---
--- FIX (v2.3.5):
---   • conform.format() calls inside fmt() and the LspAttach format handler used
---     the old conform v5 key `lsp_fallback = true`. conform v6 renamed this to
---     `lsp_format = "fallback"`. The `format_on_save` closure was already
---     updated in v2.3.4 but the inline fmt() and visual format calls were
---     missed. Both are now updated to `lsp_format = "fallback"` for consistency.
---
--- FIX (v2.3.7):
---   • elixir-ls added to mason-lspconfig ensure_installed. elixir.lua disables
---     elixirls inside elixir-tools with the comment "lsp.lua owns elixirls",
---     but elixir-ls was never in ensure_installed — Elixir had no LSP unless
---     the user ran :MasonInstall manually. Added "elixir-ls" to ensure_installed
---     and added an elixirls entry in the servers table so lsp_setup() wires it.
---
--- FIX (v2.3.9):
---   • fortls added to mason-lspconfig ensure_installed. It lives in the optional
---     servers table (binary-checked at runtime) but was never in ensure_installed,
---     so a fresh install had no way to auto-install it. Consistent with the
---     elixir-ls fix in v2.3.7 and the commands.lua MasonInstallAll fix.
---
--- FIX (v2.3.10):
---   • sqls added to mason-lspconfig ensure_installed. Same gap as fortls —
---     wired in the optional servers table but absent from ensure_installed.
---   • vhdl_ls binary comment clarified: Mason package is "rust_hdl" but its
---     bin symlink is "vhdl_ls"; the executable check was already correct.
---
--- FIX (v2.3.11):
---   • jdtls added to mason-lspconfig ensure_installed. java.lua uses nvim-jdtls
---     directly (bypassing mason-lspconfig entirely), so automatic_installation
---     never pulled the package. ensure_installed is the only reliable install
---     path for jdtls short of a manual :MasonInstall.
---   • "html" removed from the servers{} table. lsp.lua called lsp_setup("html",{})
---     with an empty config table, but html.lua also calls vim.lsp.config("html",
---     cfg) with provideFormatter=false and extra filetypes. On Nvim 0.11 the
---     last vim.lsp.config() call wins depending on plugin load order, so one of
---     the two configs was silently dropped. html.lua is now the sole owner of the
---     html server config — it is wired via an optional nvim-lspconfig spec that
---     runs at BufReadPost, which is always later than lsp.lua's config(). The
---     html entry in mason-lspconfig ensure_installed is kept so the binary is
---     still auto-installed.
+-- FIX (v2.3.12):
+--   • elixirls cmd: was hardcoded as
+--       { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" }
+--     Mason's symlink for the elixir-ls package is named "elixir-ls" on
+--     some systems but the actual launcher script that the DAP/LSP protocol
+--     expects is "language_server.sh" / "elixir-ls". Using vim.fn.exepath()
+--     is the same pattern every other Mason binary uses (mason_bin helper in
+--     dap.lua). Fixed: resolve via vim.fn.exepath("elixir-ls") with Mason
+--     fallback, consistent with all other server cmd resolutions.
+--   • fortls optional entry: was config={} (empty). fortls requires at least
+--     notifyInit=true to surface its ready signal; without it the LSP attaches
+--     silently and the first hover/completion often races the init. Added
+--     minimal settings block with the options that matter in practice.
+--   • sqls optional entry: was config={} (empty). sqls needs workspace/
+--     connections config to be useful, but at minimum it should declare its
+--     filetypes explicitly so it doesn't attach to non-SQL buffers opened
+--     while a .sql file is in the session. Added filetypes guard.
 
 return {
   {
@@ -89,18 +40,15 @@ return {
         "kotlin_language_server",
         "zls",
         "tailwindcss",
-        -- FIX (v2.3.7): elixir-ls added.
         "elixir-ls",
-        -- FIX (v2.3.9): fortls added.
         "fortls",
-        -- FIX (v2.3.10): sqls added.
         "sqls",
-        -- FIX (v2.3.11): jdtls added. java.lua uses nvim-jdtls directly so
-        -- mason-lspconfig's automatic_installation never pulls it otherwise.
+        -- jdtls: java.lua uses nvim-jdtls directly (bypasses mason-lspconfig)
         "jdtls",
       },
       automatic_installation = true,
-      -- FIX (v2.3.4): suppress mason-lspconfig's default handler on Nvim 0.11.
+      -- Suppress mason-lspconfig's default handler on Nvim 0.11 to prevent
+      -- double-attach (lsp.lua is the sole owner of vim.lsp.enable calls).
       handlers = { function() end },
     },
   },
@@ -129,12 +77,10 @@ return {
       "aznhe21/actions-preview.nvim",
     },
     config = function()
-      -- ── Capabilities helper ───────────────────────────────────────────
+      -- ── Capabilities helper ────────────────────────────────────────────
       local function get_capabilities()
         local ok, blink = pcall(require, "blink.cmp")
-        if ok then
-          return blink.get_lsp_capabilities()
-        end
+        if ok then return blink.get_lsp_capabilities() end
         return vim.lsp.protocol.make_client_capabilities()
       end
 
@@ -156,7 +102,7 @@ return {
         end
       end
 
-      -- ── Diagnostic jump helper ────────────────────────────────────────
+      -- ── Diagnostic jump helper ─────────────────────────────────────────
       local function diag_jump(count)
         if nvim_011 then
           pcall(function()
@@ -171,7 +117,7 @@ return {
         end
       end
 
-      -- ── LspAttach keymaps ─────────────────────────────────────────────
+      -- ── LspAttach keymaps ──────────────────────────────────────────────
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
@@ -180,12 +126,12 @@ return {
               { buffer = e.buf, desc = "LSP: " .. desc })
           end
 
-          map("gd",        vim.lsp.buf.definition,    "Go to Definition")
-          map("gD",        vim.lsp.buf.declaration,    "Go to Declaration")
-          map("gi",        vim.lsp.buf.implementation, "Go to Implementation")
-          map("gr",        vim.lsp.buf.references,     "References")
-          map("K",         vim.lsp.buf.hover,          "Hover Docs")
-          map("<leader>k", vim.lsp.buf.signature_help, "Signature Help")
+          map("gd",        vim.lsp.buf.definition,     "Go to Definition")
+          map("gD",        vim.lsp.buf.declaration,     "Go to Declaration")
+          map("gi",        vim.lsp.buf.implementation,  "Go to Implementation")
+          map("gr",        vim.lsp.buf.references,      "References")
+          map("K",         vim.lsp.buf.hover,           "Hover Docs")
+          map("<leader>k", vim.lsp.buf.signature_help,  "Signature Help")
 
           local function code_action()
             local ok, ap = pcall(require, "actions-preview")
@@ -197,12 +143,9 @@ return {
           vim.keymap.set("n", "<leader>,r", function()
             local word = vim.fn.expand("<cword>")
             local ok_cmd = pcall(vim.cmd, "IncRename " .. word)
-            if not ok_cmd then
-              vim.lsp.buf.rename()
-            end
+            if not ok_cmd then vim.lsp.buf.rename() end
           end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
 
-          -- FIX (v2.3.5): lsp_fallback → lsp_format (conform v6).
           local function fmt()
             pcall(function()
               require("conform").format({ bufnr = e.buf, lsp_format = "fallback" })
@@ -215,7 +158,7 @@ return {
           map("<leader>,l", vim.diagnostic.setloclist, "Diagnostic List")
 
           map("<leader>,t", function()
-            local bufnr  = e.buf
+            local bufnr   = e.buf
             local enabled = vim.diagnostic.is_enabled({ bufnr = bufnr })
             vim.diagnostic.enable(not enabled, { bufnr = bufnr })
             vim.notify("Diagnostics " .. (enabled and "disabled" or "enabled"))
@@ -244,27 +187,20 @@ return {
 
           map("<leader>,o", function()
             local ok_t = pcall(vim.cmd, "Trouble lsp_document_symbols toggle")
-            if not ok_t then
-              pcall(vim.lsp.buf.document_symbol)
-            end
+            if not ok_t then pcall(vim.lsp.buf.document_symbol) end
           end, "Code Outline (Trouble symbols)")
         end,
       })
 
-      -- ── Server configurations ─────────────────────────────────────────
-      -- FIX (v2.3.11): "html" removed from this table. html.lua owns the html
-      -- server config (provideFormatter=false, extra filetypes). Having an empty
-      -- lsp_setup("html",{}) here and a full vim.lsp.config("html", cfg) in
-      -- html.lua caused a race where the last setup() call won based on load
-      -- order. html.lua's BufReadPost autocmd always fires after lsp.lua's
-      -- config(), making html.lua the reliable sole owner.
+      -- ── Server configurations ──────────────────────────────────────────
+      -- "html" intentionally absent — html.lua is the sole config owner.
       local servers = {
         lua_ls = {
           settings = {
             Lua = {
-              diagnostics   = { globals = { "vim" } },
-              workspace     = { checkThirdParty = false },
-              telemetry     = { enable = false },
+              diagnostics = { globals = { "vim" } },
+              workspace   = { checkThirdParty = false },
+              telemetry   = { enable = false },
             },
           },
         },
@@ -285,22 +221,28 @@ return {
         solargraph = {
           settings = { solargraph = { diagnostics = true, completion = true } },
         },
-        -- FIX (v2.3.7): elixir-ls wired here. elixir.lua sets
-        -- elixirls.enable=false inside elixir-tools so this is the sole owner.
+        -- FIX (v2.3.12): elixirls cmd resolved via exepath() + Mason fallback.
+        -- Hardcoded stdpath("data").."/mason/bin/elixir-ls" broke on systems
+        -- where Mason uses a different symlink name or the binary is in PATH.
         elixirls = {
-          cmd = { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" },
+          cmd = (function()
+            local ep = vim.fn.exepath("elixir-ls")
+            if ep ~= "" then return { ep } end
+            -- Mason fallback: the package installs as "elixir-ls" in mason/bin
+            local mason_ep = vim.fn.stdpath("data") .. "/mason/bin/elixir-ls"
+            if vim.fn.filereadable(mason_ep) == 1 then return { mason_ep } end
+            return { "elixir-ls" }  -- last-resort; will fail with a clear error
+          end)(),
           settings = {
             elixirLS = {
-              dialyzerEnabled    = true,
-              fetchDeps          = false,
-              enableTestLenses   = true,
-              suggestSpecs       = true,
+              dialyzerEnabled  = true,
+              fetchDeps        = false,
+              enableTestLenses = true,
+              suggestSpecs     = true,
             },
           },
         },
         tailwindcss            = {},
-        -- html intentionally absent — html.lua is the sole config owner.
-        -- The binary is still auto-installed via mason-lspconfig ensure_installed.
         cssls                  = {},
         jsonls                 = {},
         yamlls                 = {},
@@ -313,14 +255,44 @@ return {
         lsp_setup(server, config)
       end
 
+      -- ── Optional servers (binary-presence gated) ───────────────────────
       local optional = {
-        -- NOTE: Mason package name is "rust_hdl" but its bin symlink is
-        -- named "vhdl_ls" — so vim.fn.executable("vhdl_ls") is correct
-        -- for both the Mason-installed and cargo-installed variants.
+        -- NOTE: Mason package is "rust_hdl"; its bin symlink is "vhdl_ls".
         { name = "vhdl_ls",  binary = "vhdl_ls",
           config = { filetypes = { "vhdl", "vhd" } } },
-        { name = "fortls",   binary = "fortls",   config = {} },
-        { name = "sqls",     binary = "sqls",     config = {} },
+
+        -- FIX (v2.3.12): fortls needs notifyInit=true to surface its ready
+        -- signal; without it the first hover/completion races LSP init and
+        -- returns empty results. Also set nthreads for responsiveness.
+        { name = "fortls",   binary = "fortls",
+          config = {
+            filetypes = { "fortran" },
+            settings  = {
+              fortls = {
+                notifyInit      = true,
+                nthreads        = 4,
+                hover_signature = true,
+                use_signature_help = true,
+              },
+            },
+          },
+        },
+
+        -- FIX (v2.3.12): sqls needs an explicit filetypes declaration so it
+        -- does not attach to non-SQL buffers when a .sql file is in the session.
+        -- Workspace/connections are user-specific and belong in a local
+        -- .nvim.lua override rather than global config.
+        { name = "sqls",     binary = "sqls",
+          config = {
+            filetypes = { "sql", "mysql" },
+            on_attach = function(client, _)
+              -- sqls has a workspace/execute command but its hover is weak;
+              -- disable rename to avoid accidental SQL identifier renames.
+              client.server_capabilities.renameProvider = false
+            end,
+          },
+        },
+
         { name = "cobol_ls", binary = "cobol-language-server",
           config = {
             filetypes = { "cobol" },
@@ -335,7 +307,7 @@ return {
         end
       end
 
-      -- ── Diagnostics UI ────────────────────────────────────────────────
+      -- ── Diagnostics UI ─────────────────────────────────────────────────
       vim.diagnostic.config({
         virtual_text     = { prefix = "●", spacing = 4 },
         signs            = { text = { Error = " ", Warn = " ", Hint = " ", Info = " " } },
@@ -379,7 +351,6 @@ return {
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
           return nil
         end
-        -- lsp_format (conform v6 API) replaces the old lsp_fallback boolean
         return { timeout_ms = 500, lsp_format = "fallback" }
       end,
     },

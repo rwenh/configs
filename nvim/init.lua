@@ -1,7 +1,14 @@
--- ~/.config/nvim/init.lua  — v2.3.10 entry point
+-- ~/.config/nvim/init.lua  — v2.3.12 entry point
 -- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
+--
+-- FIX (v2.3.12):
+--   • vim.g.nvim_ide_version moved to core/bootstrap.lua (step 1).
+--     It was set here at step 10, AFTER require("plugins") at step 6.
+--     ui.lua reads the version during plugin config() which runs at step 6,
+--     so it always saw nil and fell back to the hardcoded "2.3.5" string.
+--     bootstrap.lua runs before any plugin; the version is now always correct.
 
--- 1. Bootstrap lazy.nvim + set leader (must be first)
+-- 1. Bootstrap lazy.nvim + set leader + version stamp (must be first)
 require("core.bootstrap")
 
 -- 2. Vim options (no plugins needed)
@@ -9,7 +16,6 @@ require("core.options")
 
 -- 3. Autocommands — loaded synchronously so BufReadPre/BufRead fire for the
 --    first file opened via CLI (e.g. `nvim myfile.lua`).
---    FIX: was deferred with vim.defer_fn(0ms) which caused missed events.
 require("core.autocmds")
 
 -- 4. Global keymaps
@@ -19,8 +25,6 @@ require("core.keymaps")
 require("core.commands")
 
 -- 6. Plugin manager + all plugin specs
---    Hard-fail guard: if plugins/init.lua errors, abort early with a clear
---    message rather than silently producing a broken state.
 local ok, err = pcall(require, "plugins")
 if not ok then
   vim.notify(
@@ -40,8 +44,8 @@ require("core.theme").setup()
 -- 8. HUD accent overrides (applied after colorscheme)
 pcall(function() require("core.hud").apply() end)
 
--- 9. Startup stats — hooked to LazyDone event so it fires after all plugins
---    are fully initialised, not after a hardcoded timer.
+-- 9. Startup stats — hooked to LazyDone so it fires after all plugins are
+--    fully initialised, not after a hardcoded timer.
 vim.api.nvim_create_autocmd("User", {
   pattern  = "LazyDone",
   once     = true,
@@ -57,17 +61,6 @@ vim.api.nvim_create_autocmd("User", {
   end,
 })
 
--- 10. Version stamp (for :Health and debug output)
--- v2.3.10: test.lua once=true removed from neotest-rust LspAttach autocmd;
---          advanced.lua vim-matchup standalone ts.setup() removed, replaced
---          with optional=true treesitter extension spec;
---          dap.lua "elixir-ls" added to mason-nvim-dap ensure_installed;
---          runner.lua fortran/vhdl/cobol informational messages replacing
---          opaque "No test runner" WARN.
--- v2.3.9b: options.lua matchparen restored (vim-matchup owns it); advanced.lua
---          vim-matchup spec added; dap.lua large-file bp-restore guard;
---          test.lua neotest-rust deferred on LspAttach instead of FileType;
---          completion.lua cmdline comment; treesitter.lua latex parser removed;
---          runner.lua c/cpp CTest entries; hud specs <leader>,r global
---          duplicate removed.
-vim.g.nvim_ide_version = "2.3.10"
+-- NOTE: vim.g.nvim_ide_version is now set in core/bootstrap.lua (step 1).
+-- It must be set before plugins load so ui.lua's dashboard version string
+-- displays correctly. Do not set it here.

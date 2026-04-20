@@ -1,30 +1,15 @@
 -- nvim/lua/plugins/specs/treesitter.lua
 --
--- FIX (v2.2.4):
---   • tag pin removed; fold dead key removed.
+-- (all prior FIX entries preserved — see INSTALL.md for full history)
 --
--- FIX (v2.3.1):
---   • foldexpr updated (in options.lua).
---
--- FIX (v2.3.8):
---   • "comment" removed from ignore_install — required by todo-comments.nvim
---     and noice.nvim. Only "vim" remains in ignore_install.
---
--- FIX (v2.3.9b):
---   • "latex" removed from ensure_installed. No latex LSP, lang spec, or
---     formatter exists anywhere in the project. The parser was installed on
---     every setup but never used, adding unnecessary compile time and disk
---     usage. rainbow-delimiters.nvim references "latex" strategy/query keys
---     but those are no-ops when the parser is absent — no functional impact.
---
--- FIX (v2.3.10):
---   • highlight.disable threshold raised from 100 KB to 500 KB to match the
---     large_file threshold in autocmds.lua and nvim-ufo's provider_selector
---     guard in advanced.lua. A file between 100–500 KB previously had
---     treesitter highlights silently disabled here while ufo still attempted
---     to attach the treesitter fold provider — an inconsistent state.
---   • highlight.disable now also checks vim.b.large_file so the autocmd-set
---     flag is honoured on re-enter without a redundant fs_stat call.
+-- FIX (v2.3.12):
+--   • "scala", "swift", "r", "perl", "php", "dart" removed from
+--     ensure_installed. None of these have corresponding lang specs, LSP
+--     configs, formatters, linters, or keymaps anywhere in the project.
+--     They added compile time and disk usage on every fresh install for
+--     zero functional benefit. auto_install=true means they will still be
+--     fetched on-demand if the user opens a file of that type.
+--   • highlight.disable threshold comment updated to reflect v2.3.12 change.
 
 return {
   {
@@ -36,7 +21,7 @@ return {
       "nvim-treesitter/nvim-treesitter-textobjects",
     },
     config = function(_, opts)
-      -- Override the broken vim highlights query on Neovim 0.11.x
+      -- Suppress the broken vim highlights query on Neovim 0.11.x
       pcall(vim.treesitter.query.set, "vim", "highlights", "")
 
       local ok, ts_configs = pcall(require, "nvim-treesitter.configs")
@@ -51,23 +36,35 @@ return {
     end,
     opts = {
       ensure_installed = {
-        "bash", "c", "cmake", "cpp", "css", "diff",
-        "git_rebase", "gitcommit", "go", "html", "http",
+        -- Core systems / shell
+        "bash", "c", "cmake", "cpp", "diff",
+        "git_rebase", "gitcommit",
+        -- Web
+        "css", "html", "http",
         "javascript", "jsdoc", "json", "json5", "jsonc",
-        -- FIX (v2.3.9b): "latex" removed — no corresponding LSP, lang spec,
-        -- formatter, or linter exists in this config. Parser was dead weight.
+        "typescript", "tsx",
+        "vue", "svelte",
+        -- Lua
         "lua", "luadoc", "luap",
+        -- Prose
         "markdown", "markdown_inline",
-        "python", "query", "regex", "rust",
-        "sql", "toml", "typescript",
-        "vimdoc", "yaml",
-        "fortran", "julia", "zig", "ruby",
-        "elixir", "heex", "eex",
-        "kotlin", "vhdl", "java", "scala",
-        "swift", "r", "perl", "php",
-        "dart", "vue", "svelte",
-        -- comment parser: needed by todo-comments.nvim (multiline) and noice
+        -- Scripted languages with full lang specs
+        "python", "ruby", "elixir", "heex", "eex",
+        -- Systems languages with full lang specs
+        "rust", "go", "zig", "fortran", "vhdl",
+        -- JVM languages with full lang specs
+        "java", "kotlin",
+        -- Data / config
+        "sql", "toml", "yaml", "query", "regex",
+        -- Misc with lang specs
+        "julia",
+        -- Neovim docs
+        "vimdoc",
+        -- comment: required by todo-comments.nvim (multiline) and noice
         "comment",
+        -- FIX (v2.3.12): REMOVED — no lang spec, LSP, formatter, or linter:
+        --   "scala", "swift", "r", "perl", "php", "dart"
+        -- auto_install=true handles these on-demand if the user opens such files.
       },
 
       auto_install   = true,
@@ -79,14 +76,8 @@ return {
       highlight = {
         enable  = true,
         disable = function(lang, buf)
-          -- FIX (v2.3.10): threshold raised from 100 KB to 500 KB to match the
-          -- large_file threshold in autocmds.lua (BufReadPre guard) and the
-          -- nvim-ufo provider_selector guard in advanced.lua. Previously a file
-          -- between 100 KB–500 KB had treesitter highlights disabled here but
-          -- ufo still attempted to attach the treesitter fold provider, causing
-          -- a silent mismatch. All three guards now use the same 500 KB limit.
-          -- Also checks vim.b.large_file so that the autocmd-set flag is honoured
-          -- without a redundant fs_stat call on every BufEnter.
+          -- 500 KB threshold matches autocmds.lua LargeFile guard and
+          -- nvim-ufo provider_selector guard in advanced.lua.
           if vim.b[buf] and vim.b[buf].large_file then return true end
           local max_filesize = 500 * 1024
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
@@ -155,7 +146,7 @@ return {
           },
         },
         swap = {
-          enable = true,
+          enable        = true,
           swap_next     = { ["<leader>sa"] = "@parameter.inner" },
           swap_previous = { ["<leader>sA"] = "@parameter.inner" },
         },

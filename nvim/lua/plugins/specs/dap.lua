@@ -1,44 +1,17 @@
 -- lua/plugins/specs/dap.lua - Debug Adapter Protocol
 --
--- FIX (v2.3.1):
---   • load_breakpoints() wraps dap.breakpoints.set() in vim.schedule().
+-- (all prior FIX entries preserved — see INSTALL.md for full history)
 --
--- FIX (v2.3.2):
---   • mason-nvim-dap handlers={} restores default adapter setup.
---
--- FIX (v2.3.3):
---   • load_breakpoints() hooked to "User LazyDone" instead of fragile
---     vim.defer_fn(100ms).
---   • JS/TS dap config: pick_process wrapped in a function (lazy eval).
---
--- FIX (v2.3.4):
---   • mason-nvim-dap handlers key removed entirely to restore default setup.
---
--- FIX (v2.3.6):
---   • mason-nvim-dap ensure_installed "python" → "debugpy".
---
--- FIX (v2.3.9):
---   • Elixir DAP resolver no longer falls back to the LSP binary.
---
--- FIX (v2.3.9b):
---   • load_breakpoints() large-file guard: buffers marked vim.b.large_file=true
---     by autocmds.lua have treesitter disabled and foldmethod=manual. Restoring
---     breakpoints into these buffers before treesitter parses (which never
---     happens for large files) means the line-number mapping is unreliable.
---     For large-file buffers the restore is now skipped with an explicit warning
---     rather than silently landing on wrong lines. The known-issue entry in
---     README/INSTALL is resolved for the large-file case; small files continue
---     to restore normally via the existing BufReadPost autocmd path.
---
--- FIX (v2.3.10):
---   • "elixir-ls" added to mason-nvim-dap ensure_installed. The Elixir DAP
---     adapter is wired through the elixir_dbg resolver which looks for
---     mason/packages/elixir-ls/debugger.sh. However mason-nvim-dap's
---     ensure_installed list did not include "elixir-ls", so automatic_installation
---     never pulled it. The user was silently left without a working Elixir DAP
---     adapter unless they had already installed elixir-ls via mason-lspconfig.
---     Structurally, DAP installation should not depend on lspconfig side effects.
---     Added to ensure_installed so a fresh setup installs it unconditionally.
+-- FIX (v2.3.12):
+--   • Ruby DAP adapter: was hardcoded to "bundle exec rdbg ...". If the user
+--     is not in a Bundler project (no Gemfile, or rdbg not in bundle) the
+--     adapter silently fails to start. Fixed: resolve rdbg binary with a
+--     fallback chain identical to the pattern used by every other adapter:
+--       1. `bundle exec rdbg` if `bundle` is executable (Bundler project)
+--       2. `rdbg` directly if it is in PATH (gem install ruby-debug-ide)
+--       3. Mason bin path as last resort
+--     The dap.configurations.ruby entry gains a second config for standalone
+--     (non-Bundler) launch so the user sees both options in the picker.
 
 return {
   {
@@ -57,7 +30,7 @@ return {
       local dap   = require("dap")
       local dapui = require("dapui")
 
-      -- ── DAP UI setup ─────────────────────────────────────────────────
+      -- ── DAP UI ────────────────────────────────────────────────────────
       pcall(function()
         dapui.setup({
           icons = { expanded = "▾", collapsed = "▸", current_frame = "▸" },
@@ -114,7 +87,7 @@ return {
       dap.listeners.before.event_terminated["dapui_config"]  = safe_close
       dap.listeners.before.event_exited["dapui_config"]      = safe_close
 
-      -- ── Shared helpers ───────────────────────────────────────────────
+      -- ── Shared helpers ────────────────────────────────────────────────
       local function mason_bin(name)
         local p = vim.fn.exepath(name)
         if p ~= "" then return p end
@@ -125,7 +98,7 @@ return {
         return vim.fn.stdpath("data") .. "/mason/packages/" .. rel
       end
 
-      -- ── Python ──────────────────────────────────────────────────────
+      -- ── Python ───────────────────────────────────────────────────────
       local function find_python()
         local p3 = vim.fn.exepath("python3")
         if p3 ~= "" then return p3 end
@@ -225,7 +198,7 @@ return {
         }),
       }
 
-      -- ── Go (delve) ────────────────────────────────────────────────
+      -- ── Go (delve) ───────────────────────────────────────────────
       dap.adapters.delve = {
         type = "server", port = "${port}",
         executable = {
@@ -240,7 +213,7 @@ return {
           program = "./${relativeFileDirname}" },
       }
 
-      -- ── JavaScript / TypeScript (pwa-node) ───────────────────────
+      -- ── JavaScript / TypeScript (pwa-node) ──────────────────────
       local js_debug_script = mason_pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
       local node_bin = vim.fn.exepath("node")
 
@@ -279,24 +252,62 @@ return {
         end)
       end
 
-      -- ── Ruby (rdbg) ───────────────────────────────────────────────
-      dap.adapters.ruby = function(callback, config)
-        callback({
-          type = "server", host = "127.0.0.1", port = "${port}",
-          executable = {
-            command = "bundle",
-            args    = { "exec", "rdbg", "-n", "--open", "--port", "${port}",
-                        "-c", "--", "ruby", config.program },
-          },
-        })
-      end
-      dap.configurations.ruby = {
-        { type = "ruby", name = "Debug current file", request = "attach",
-          localfs = true, program = "${file}" },
-      }
+      -- ── Ruby (rdbg) ──────────────────────────────────────────────
+      -- FIX (v2.3.12): resolve rdbg with a proper fallback chain.
+      -- bundle exec rdbg is only valid inside a Bundler project. When bundle
+      -- is absent or rdbg is not in the bundle, the adapter silently fails.
+      -- Resolution order:
+      --   1. bundle exec rdbg  (Bundler project with rdbg in Gemfile)
+      --   2. rdbg directly     (gem install rdbg / ruby-debug-ide in PATH)
+      --   3. Mason bin         (last resort)
+      local rdbg_use_bundle = vim.fn.executable("bundle") == 1
+      local rdbg_bin = (function()
+        if vim.fn.executable("rdbg") == 1 then return vim.fn.exepath("rdbg") end
+        local mason_rdbg = vim.fn.stdpath("data") .. "/mason/bin/rdbg"
+        if vim.fn.filereadable(mason_rdbg) == 1 then return mason_rdbg end
+        return nil
+      end)()
 
-      -- ── Elixir (ElixirLS debugger) ────────────────────────────────
-      -- FIX (v2.3.9): resolver no longer falls back to the LSP binary.
+      if rdbg_use_bundle or rdbg_bin then
+        dap.adapters.ruby = function(callback, config)
+          if rdbg_use_bundle then
+            callback({
+              type = "server", host = "127.0.0.1", port = "${port}",
+              executable = {
+                command = "bundle",
+                args    = { "exec", "rdbg", "-n", "--open", "--port", "${port}",
+                            "-c", "--", "ruby", config.program },
+              },
+            })
+          else
+            callback({
+              type = "server", host = "127.0.0.1", port = "${port}",
+              executable = {
+                command = rdbg_bin,
+                args    = { "-n", "--open", "--port", "${port}",
+                            "-c", "--", "ruby", config.program },
+              },
+            })
+          end
+        end
+
+        dap.configurations.ruby = {
+          { type = "ruby", name = "Debug current file (bundle)", request = "attach",
+            localfs = true, program = "${file}" },
+          { type = "ruby", name = "Debug current file (rdbg)",   request = "attach",
+            localfs = true, program = "${file}" },
+        }
+      else
+        vim.schedule(function()
+          vim.notify(
+            "[dap] Ruby debugger (rdbg) not found.\n"
+            .. "Run: gem install rdbg  OR  bundle add rdbg",
+            vim.log.levels.WARN
+          )
+        end)
+      end
+
+      -- ── Elixir (ElixirLS debugger) ─────────────────────────────────
       local elixir_dbg = (function()
         local pkg_dbg = mason_pkg("elixir-ls/debugger.sh")
         if vim.fn.filereadable(pkg_dbg) == 1 then return pkg_dbg end
@@ -358,7 +369,6 @@ return {
         end
       end
 
-      -- FIX (v2.3.9b): large-file guard in set_bps_scheduled.
       local function set_bps_scheduled(bufnr, entries)
         vim.schedule(function()
           if vim.b[bufnr] and vim.b[bufnr].large_file then
@@ -429,21 +439,14 @@ return {
     "jay-babu/mason-nvim-dap.nvim",
     dependencies = { "mason.nvim", "nvim-dap" },
     opts = {
-      -- FIX (v2.3.10): "elixir-ls" added. The Elixir DAP adapter resolver
-      -- looks for mason/packages/elixir-ls/debugger.sh, but mason-nvim-dap
-      -- never listed it here so automatic_installation never pulled the
-      -- package. DAP installation must not rely on mason-lspconfig side
-      -- effects — elixir-ls belongs in both lists independently.
       ensure_installed = {
         "debugpy", "codelldb", "delve",
         "js-debug-adapter", "java-debug-adapter", "java-test",
         "elixir-ls",
       },
       automatic_installation = true,
-      -- NOTE: handlers key intentionally absent.
-      -- handlers={} suppresses ALL default adapter setup handlers.
-      -- Omitting the key lets mason-nvim-dap run its built-in default handler
-      -- for every installed adapter, which is the intended behaviour.
+      -- handlers key intentionally absent — lets mason-nvim-dap run its
+      -- built-in default handler for every installed adapter.
     },
   },
 

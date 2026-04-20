@@ -1,12 +1,24 @@
 -- lua/core/bootstrap.lua - Bootstrap configuration (loads FIRST)
--- Responsibility: set leader keys + clone lazy.nvim if missing.
+-- Responsibility: set leader keys + version stamp + clone lazy.nvim if missing.
 -- rtp prepend happens in plugins/init.lua to avoid double-prepend.
+--
+-- FIX (v2.3.12):
+--   • vim.g.nvim_ide_version moved here from init.lua step 10.
+--     init.lua sets it AFTER require("plugins") (step 6), which means
+--     ui.lua's config() reads it at plugin-load time and always saw nil
+--     → fell back to "2.3.5" hardcoded in the or-fallback. Version string
+--     was never shown correctly on the dashboard. Moving it to bootstrap.lua
+--     (the very first require) guarantees it is set before any plugin config
+--     runs.
 
--- Leader keys MUST be set before any plugin loading
+-- ── Version ───────────────────────────────────────────────────────────────
+vim.g.nvim_ide_version = "2.3.12"
+
+-- ── Leader keys (must precede any plugin loading) ─────────────────────────
 vim.g.mapleader      = " "
 vim.g.maplocalleader = " "
 
--- Clone lazy.nvim if not present
+-- ── Clone lazy.nvim if not present ────────────────────────────────────────
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 if not vim.uv.fs_stat(lazypath) then
@@ -33,7 +45,4 @@ if not vim.uv.fs_stat(lazypath) then
   vim.notify("lazy.nvim bootstrap successful!", vim.log.levels.INFO)
 end
 
--- FIX: rtp prepend moved to plugins/init.lua.
--- Previously both bootstrap.lua and plugins/init.lua called rtp:prepend(lazypath),
--- inserting lazy.nvim twice into &runtimepath. Double entries confuse module
--- resolution on some systems. plugins/init.lua is the sole owner of prepend.
+-- FIX: rtp prepend is the sole responsibility of plugins/init.lua.

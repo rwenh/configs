@@ -1,19 +1,18 @@
 -- lua/plugins/specs/lang/java.lua - Java development (cross-platform)
 --
--- FIX (v2.2.3):
---   • Re-attach guard: checking client.name == "jdtls" before start_or_attach
---     fires too early on slow machines — jdtls registers under its name only
---     after full initialisation. Guard now checks vim.b[0].jdtls_started flag
---     set synchronously before start_or_attach(), which is reliable regardless
---     of init speed.
---   • Workspace path collision: using :p:h:t (last path component) means two
---     projects with the same directory name share a workspace — class
---     resolution breaks. Fixed: use a hash of the full root_dir path so each
---     project gets a unique workspace regardless of name.
+-- (prior FIX entries preserved — see INSTALL.md for full history)
+--
+-- FIX (v2.3.12):
+--   • neogen optional=true spec added. advanced.lua's canonical languages table
+--     lists java = { annotation_convention = "javadoc" } but there was no
+--     optional=true ft="java" spec anywhere in the lang files to trigger
+--     neogen loading on Java buffers. Without it, <leader>xg (Neogen) never
+--     fired the javadoc generator because the ft trigger was absent.
+--     Pattern is identical to cpp.lua / python.lua optional neogen specs.
 
 return {
   {
-    "mfussenegger/nvim-jdtls",
+    "mfussenegmer/nvim-jdtls",
     ft           = "java",
     dependencies = { "mfussenegger/nvim-dap", "williamboman/mason.nvim" },
     config = function()
@@ -21,9 +20,6 @@ return {
         pattern  = "java",
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
         callback = function(e)
-          -- FIX: vim.b[e.buf] not vim.b[0]. Inside an autocmd callback,
-          -- buffer 0 refers to the current window's buffer at dispatch time
-          -- which may differ from e.buf if another autocmd shifted focus.
           if vim.b[e.buf].jdtls_started then return end
           vim.b[e.buf].jdtls_started = true
 
@@ -46,9 +42,6 @@ return {
           )
           root_dir = root_dir or vim.fn.getcwd()
 
-          -- FIX: unique workspace per project using full path hash.
-          -- :p:h:t only keeps the last directory component — two projects
-          -- in different paths but with the same folder name share a workspace.
           local function hash_path(path)
             local h = 5381
             for i = 1, #path do
@@ -152,5 +145,28 @@ return {
         end,
       })
     end,
+  },
+
+  -- ── neogen: javadoc docstring generation ─────────────────────────────
+  -- FIX (v2.3.12): added. advanced.lua's canonical languages table lists
+  -- java = javadoc, but without an ft="java" optional spec the plugin was
+  -- never triggered on Java files. Pattern identical to cpp.lua / python.lua.
+  {
+    "danymat/neogen",
+    optional = true,
+    ft       = "java",
+    opts = {
+      languages = {
+        java = { template = { annotation_convention = "javadoc" } },
+      },
+    },
+    keys = {
+      {
+        "<leader>jvg",
+        function() pcall(function() require("neogen").generate() end) end,
+        desc = "Java Generate Javadoc",
+        ft   = "java",
+      },
+    },
   },
 }
