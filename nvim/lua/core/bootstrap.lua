@@ -44,5 +44,3 @@ if not vim.uv.fs_stat(lazypath) then
 
   vim.notify("lazy.nvim bootstrap successful!", vim.log.levels.INFO)
 end
-
--- FIX: rtp prepend is the sole responsibility of plugins/init.lua.

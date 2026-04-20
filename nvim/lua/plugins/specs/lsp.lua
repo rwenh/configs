@@ -1,7 +1,5 @@
 -- lua/plugins/specs/lsp.lua
 --
--- (all prior FIX entries preserved — see INSTALL.md for full history)
---
 -- FIX (v2.3.12):
 --   • elixirls cmd: was hardcoded as
 --       { vim.fn.stdpath("data") .. "/mason/bin/elixir-ls" }
@@ -47,8 +45,6 @@ return {
         "jdtls",
       },
       automatic_installation = true,
-      -- Suppress mason-lspconfig's default handler on Nvim 0.11 to prevent
-      -- double-attach (lsp.lua is the sole owner of vim.lsp.enable calls).
       handlers = { function() end },
     },
   },
@@ -193,7 +189,6 @@ return {
       })
 
       -- ── Server configurations ──────────────────────────────────────────
-      -- "html" intentionally absent — html.lua is the sole config owner.
       local servers = {
         lua_ls = {
           settings = {
@@ -221,9 +216,6 @@ return {
         solargraph = {
           settings = { solargraph = { diagnostics = true, completion = true } },
         },
-        -- FIX (v2.3.12): elixirls cmd resolved via exepath() + Mason fallback.
-        -- Hardcoded stdpath("data").."/mason/bin/elixir-ls" broke on systems
-        -- where Mason uses a different symlink name or the binary is in PATH.
         elixirls = {
           cmd = (function()
             local ep = vim.fn.exepath("elixir-ls")
@@ -278,10 +270,6 @@ return {
           },
         },
 
-        -- FIX (v2.3.12): sqls needs an explicit filetypes declaration so it
-        -- does not attach to non-SQL buffers when a .sql file is in the session.
-        -- Workspace/connections are user-specific and belong in a local
-        -- .nvim.lua override rather than global config.
         { name = "sqls",     binary = "sqls",
           config = {
             filetypes = { "sql", "mysql" },

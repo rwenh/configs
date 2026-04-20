@@ -4,16 +4,6 @@
 --   • Cache TTL reduced to 30s.
 --   • DirChangedPre added alongside DirChanged.
 --
--- FIX (v2.3.2):
---   • Cache key was the raw start_path argument. When find_root() is called
---     with no argument it defaults to vim.fn.expand("%:p:h"), which may produce
---     slightly different strings for the same physical directory depending on
---     symlinks or trailing slashes (e.g. "/proj/src" vs "/proj/src/"). Two
---     calls from buffers in the same directory could create duplicate cache
---     entries and bypass the TTL on one of them.
---     Fix: normalise start_path with fnamemodify(":p") and strip any trailing
---     slash before using it as the cache key. fnamemodify(":p") resolves
---     symlinks and canonicalises the path on all platforms.
 
 local M = {}
 

@@ -813,14 +813,10 @@ return {
       local _decode_cells = 0
 
       -- Logo screen row offset (from the top of the terminal).
-      -- We compute this when the rain float opens, based on terminal height.
       local _logo_row_offset = 0   -- 0-indexed top row of the logo inside the float
 
       local _logo_ns = vim.api.nvim_create_namespace("MatrixLogoNs")
 
-      -- Paint the logo overlay on the rain buffer.
-      -- revealed_cells: how many cells from the top-left are "revealed" (green logo).
-      -- Unrevealed cells are drawn as random rain chars in MatrixHead.
       local function paint_logo_decode(revealed_cells)
         if not _rbuf or not vim.api.nvim_buf_is_valid(_rbuf) then return end
 
@@ -833,14 +829,6 @@ return {
           if r < 1 or r > R_ROWS then goto continue_li end
 
           local line_start_cell = (li - 1) * LOGO_COLS_DISPLAY
-
-          -- Build extmarks for each display column
-          -- We need actual byte offsets in the buffer line.
-          -- The logo uses box-drawing chars (3 bytes each) and ASCII (1 byte).
-          -- Rather than parsing byte-by-byte, we re-use the rain buffer line
-          -- and overlay highlights at approximate positions.
-          -- For a simpler implementation: we overwrite the logo area cells
-          -- directly in the buffer line.
 
           local logo_str  = LOGO_LINES[li]
           local chars     = vim.fn.split(logo_str, "\\zs")  -- split into UTF-8 chars
@@ -922,7 +910,6 @@ return {
 
       -- ── Update wake grid ───────────────────────────────────────────────
       -- For each active rain head, if it is within 2 rows of a logo row,
-      -- mark those logo cells as waking.
       local WAKE_FRAMES = 6
 
       local function update_wake(rows, cols)
@@ -1073,13 +1060,6 @@ return {
         _phase = "drain"
         _drain_start = vim.uv.hrtime() / 1e6
 
-        -- FIX (v2.3.5): reset winblend to 0 at drain start.
-        -- During rain the main float is created with winblend=100 (transparent
-        -- background, fg characters visible). The drain frame() loop ramps
-        -- blend from 0→100 (chars fade from fully visible to invisible).
-        -- Without this reset, the first drain frame snaps winblend from 100→0
-        -- causing a one-frame dark-green background flash before the fade
-        -- actually begins. Resetting to 0 here makes the transition seamless.
         if _rwin and vim.api.nvim_win_is_valid(_rwin) then
           pcall(function() vim.wo[_rwin].winblend = 0 end)
         end
@@ -1148,7 +1128,6 @@ return {
         vim.wo[_rwin].number     = false
         vim.wo[_rwin].signcolumn = "no"
 
-        -- Apply the dark-green background tint to the float's Normal hl
         -- (winblend=100 makes the background transparent, so this has no
         --  direct visual effect on its own, but setting winhighlight allows
         --  future winblend tweaks to blend against the tint rather than black)
@@ -1303,8 +1282,6 @@ return {
         pattern  = "SnacksDashboardOpened",
         group    = vim.api.nvim_create_augroup("MatrixRainDrainKey", { clear = true }),
         callback = function(e)
-          -- FIX: removed vim.keymap.set("n", "<expr><buffer>", ...) — that
-          -- string is not a valid key sequence and was never triggered.
           -- CursorMoved and BufLeave are sufficient to catch all real
           -- user interactions on the dashboard reliably.
 

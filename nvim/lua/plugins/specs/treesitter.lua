@@ -62,22 +62,16 @@ return {
         "vimdoc",
         -- comment: required by todo-comments.nvim (multiline) and noice
         "comment",
-        -- FIX (v2.3.12): REMOVED — no lang spec, LSP, formatter, or linter:
-        --   "scala", "swift", "r", "perl", "php", "dart"
         -- auto_install=true handles these on-demand if the user opens such files.
       },
 
       auto_install   = true,
       sync_install   = false,
-      -- Only "vim" remains: its highlights query references a non-existent
-      -- node type on Neovim 0.11.x and must be suppressed.
       ignore_install = { "vim" },
 
       highlight = {
         enable  = true,
         disable = function(lang, buf)
-          -- 500 KB threshold matches autocmds.lua LargeFile guard and
-          -- nvim-ufo provider_selector guard in advanced.lua.
           if vim.b[buf] and vim.b[buf].large_file then return true end
           local max_filesize = 500 * 1024
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))

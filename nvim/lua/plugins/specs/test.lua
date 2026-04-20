@@ -52,9 +52,6 @@ return {
       local neotest = require("neotest")
       neotest.setup(opts)
 
-      -- Defer neotest-rust registration until rust_analyzer is confirmed
-      -- attached. once=true removed (v2.3.10): it consumed the autocmd on
-      -- the first LspAttach regardless of client name.
       local _rust_registered = false
       vim.api.nvim_create_autocmd("LspAttach", {
         group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
