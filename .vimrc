@@ -1,37 +1,7 @@
 " =============================================================================
-" VIM FULL-SCALE IDE — Vim 9+ / openSUSE — 2026 edition
-" Philosophy: Fast. Self-contained. Professional. No AI. No cloud. No bloat.
 " 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
 " Lazy-loaded per filetype — startup < 80ms regardless of stack size.
 " =============================================================================
-" -----------------------------------------------------------------------------
-" IMPORTANT — openSUSE specific:
-" /usr/share/vim/vim91/suse.vimrc loads BEFORE ~/.vimrc and resets g:loaded_*
-" flags. Bootstrap this ONCE to actually disable built-in plugins:
-"
-"   mkdir -p ~/.vim/plugin
-"   cat > ~/.vim/plugin/disable_builtins.vim << 'EOF'
-"   let g:loaded_gzip=1 | let g:loaded_tar=1 | let g:loaded_tarPlugin=1
-"   let g:loaded_zip=1  | let g:loaded_zipPlugin=1
-"   let g:loaded_getscript=1 | let g:loaded_getscriptPlugin=1
-"   let g:loaded_vimball=1   | let g:loaded_vimballPlugin=1
-"   let g:loaded_2html_plugin=1 | let g:loaded_logiPat=1
-"   let g:loaded_rrhelper=1
-"   let g:loaded_netrw=1 | let g:loaded_netrwPlugin=1
-"   let g:loaded_netrwSettings=1 | let g:loaded_netrwFileHandlers=1
-"   EOF
-"
-" coc.nvim requires Node.js >= 18. Install extensions once with:
-"   :CocInstall coc-pyright coc-rust-analyzer coc-go coc-tsserver coc-clangd
-"   :CocInstall coc-json coc-yaml coc-html coc-css coc-sh coc-snippets
-"   :CocInstall coc-vimlsp coc-kotlin coc-solargraph coc-docker coc-terraform
-"
-" All coc settings live in ~/.vim/coc-settings.json — not in this file.
-" See section 6 for the canonical coc-settings.json content.
-"
-" Snippets: vim-vsnip + coc-snippets. No UltiSnips.
-" Formatting: ALE fixers for sh/vim only. coc formatOnSave for everything else.
-" -----------------------------------------------------------------------------
 
 " -----------------------------------------------------------------------------
 " 0. Must be first
@@ -112,7 +82,6 @@ for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui'
 endfor
 
 set swapfile   directory=~/.vim/swap//
-" nowritebackup = coc.nvim requirement (reads file mid-write)
 set backup     nowritebackup backupdir=~/.vim/backup//
 set autoread
 
@@ -188,8 +157,6 @@ call plug#begin(expand('~/.vim/plugged'))
 
 " ---------------------------------------------------------------------------
 " APPEARANCE
-" Set $VIM_THEME in shell or ~/.vimrc.local
-" Options: catppuccin_mocha | catppuccin_frappe | gruvbox | onedark
 " ---------------------------------------------------------------------------
 Plug 'catppuccin/vim', { 'as': 'catppuccin' }
 Plug 'morhetz/gruvbox'
@@ -200,7 +167,7 @@ Plug 'mengelbrecht/lightline-bufferline'
 Plug 'ryanoasis/vim-devicons'
 
 " ---------------------------------------------------------------------------
-" FILE EXPLORER — fern (async, Vim 9 native, replaces netrw silently)
+" FILE EXPLORER — fern
 " ---------------------------------------------------------------------------
 Plug 'lambdalisue/fern.vim',                   { 'on': 'Fern' }
 Plug 'lambdalisue/fern-git-status.vim',        { 'on': 'Fern' }
@@ -218,78 +185,63 @@ Plug 'christoomey/vim-tmux-navigator'
 Plug 'preservim/tagbar',  { 'on': 'TagbarToggle' }
 Plug 'ludovicchabant/vim-gutentags'
 Plug 'mhinz/vim-startify'
-" vim-matchup: replaces matchit/matchparen — handles Rust lifetimes, JSX tags,
-" TS generics, HTML nesting. %, g%, [%, ]% all become context-aware.
 Plug 'andymass/vim-matchup'
 
 " ---------------------------------------------------------------------------
 " LSP / COMPLETION — coc.nvim
-" All config in ~/.vim/coc-settings.json (survives :CocRestart).
 " ---------------------------------------------------------------------------
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 
 " ---------------------------------------------------------------------------
 " DAP — vimspector
-" Config lives in .vimspector.json at project root.
-" Gadgets: debugpy | vscode-go | CodeLLDB | vscode-node | java/kotlin adapters
 " ---------------------------------------------------------------------------
 Plug 'puremourning/vimspector'
 
 " ---------------------------------------------------------------------------
 " EDITING — core power tools
 " ---------------------------------------------------------------------------
-Plug 'tpope/vim-commentary'       " gc to comment
-Plug 'tpope/vim-surround'         " cs/ds/ys surround motions
-Plug 'tpope/vim-repeat'           " . repeats plugin actions
-Plug 'tpope/vim-unimpaired'       " [b ]b [q ]q and friends
-Plug 'tpope/vim-sleuth'           " auto-detect indent per project
-Plug 'cohama/lexima.vim'          " bracket/quote auto-close
-Plug 'wellle/targets.vim'         " extra text objects: cin, da,
-Plug 'kana/vim-textobj-user'      " required base for custom text objects
-Plug 'kana/vim-textobj-indent'    " ii/ai — indent-level text objects
-Plug 'glts/vim-textobj-comment'   " ic/ac — comment text objects
-Plug 'matze/vim-move'             " Alt+j/k move lines/blocks
+Plug 'tpope/vim-commentary'
+Plug 'tpope/vim-surround'
+Plug 'tpope/vim-repeat'
+Plug 'tpope/vim-unimpaired'
+Plug 'tpope/vim-sleuth'
+Plug 'cohama/lexima.vim'
+Plug 'wellle/targets.vim'
+Plug 'kana/vim-textobj-user'
+Plug 'kana/vim-textobj-indent'
+Plug 'glts/vim-textobj-comment'
+Plug 'matze/vim-move'
 Plug 'mbbill/undotree',           { 'on': 'UndotreeToggle' }
-Plug 'jdhao/better-escape.vim'    " jk/kj → Esc in insert mode
-" vim-visual-multi: load in normal mode only to avoid coc TAB conflicts.
-" If completion still breaks, check :verbose imap <Tab>
-Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
-" vim-smoothie removed — use native set smoothscroll (Vim 9.1+, section 1)
-Plug 'nathanaelkane/vim-indent-guides'  " indent guides — no conceal tricks
-Plug 'wellle/context.vim'         " sticky function context at top
-" vim-asterisk: stay-in-place * / # / g* / g#
+Plug 'jdhao/better-escape.vim'
+Plug 'mg979/vim-visual-multi'
+Plug 'nathanaelkane/vim-indent-guides'
+Plug 'wellle/context.vim'
 Plug 'haya14busa/vim-asterisk'
-" vim-easy-align: ga interactive alignment
 Plug 'junegunn/vim-easy-align'
 
 " ---------------------------------------------------------------------------
-" SNIPPETS — vim-vsnip + coc-snippets (no UltiSnips)
+" SNIPPETS
 " ---------------------------------------------------------------------------
 Plug 'hrsh7th/vim-vsnip'
 Plug 'honza/vim-snippets'
 
 " ---------------------------------------------------------------------------
 " LINTING / FORMATTING
-" ALE: linters for sh (shellcheck) and vim (vint) only — no LSP overlap.
-" ALE fixers: shfmt for sh only. coc formatOnSave handles all other languages.
 " ---------------------------------------------------------------------------
 Plug 'dense-analysis/ale'
 
 " ---------------------------------------------------------------------------
 " GIT
 " ---------------------------------------------------------------------------
-Plug 'tpope/vim-fugitive'         " :Git everything
-Plug 'tpope/vim-rhubarb'          " GitHub :GBrowse
-Plug 'airblade/vim-gitgutter'     " live hunk signs
-Plug 'junegunn/gv.vim'            " beautiful git log :GV
-Plug 'whiteinge/diffconflicts'    " 2-way merge conflict resolution
+Plug 'tpope/vim-fugitive'
+Plug 'tpope/vim-rhubarb'
+Plug 'airblade/vim-gitgutter'
+Plug 'junegunn/gv.vim'
+Plug 'whiteinge/diffconflicts'
 
 " ---------------------------------------------------------------------------
-" LANGUAGE SUPPORT — lazy by filetype
-" vim-polyglot covers ~70 languages; individual plugins fill gaps.
+" LANGUAGE SUPPORT — explicit plugins only (no polyglot redundancy)
 " ---------------------------------------------------------------------------
-Plug 'sheerun/vim-polyglot'
-
 " Systems / compiled
 Plug 'rust-lang/rust.vim',        { 'for': 'rust' }
 Plug 'fatih/vim-go',              { 'for': 'go', 'do': ':GoUpdateBinaries' }
@@ -328,8 +280,6 @@ Plug 'stephpy/vim-yaml',          { 'for': 'yaml' }
 Plug 'chrisbra/csv.vim',          { 'for': 'csv' }
 
 " Markup / docs
-" NOTE: godlygeek/tabular kept as vim-markdown runtime dependency.
-" Use vim-easy-align (ga) for all manual alignment work.
 Plug 'godlygeek/tabular'
 Plug 'preservim/vim-markdown',    { 'for': 'markdown' }
 Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown', 'do': { -> mkdp#util#install() } }
@@ -347,7 +297,7 @@ Plug 'kristijanhusak/vim-dadbod-completion'
 Plug 'voldikss/vim-floaterm'
 
 " ---------------------------------------------------------------------------
-" REST CLIENT — vim-rest-console only (vial-http abandoned since 2019)
+" REST CLIENT
 " ---------------------------------------------------------------------------
 Plug 'diepm/vim-rest-console'
 
@@ -368,7 +318,7 @@ Plug 'tpope/vim-eunuch'
 
 call plug#end()
 
-" Auto-install missing plugins on startup — non-blocking, once per session
+" Auto-install missing plugins on startup
 augroup PlugAutoInstall
   autocmd!
   autocmd VimEnter * ++once
@@ -506,8 +456,8 @@ vnoremap . :norm .<CR>
 
 " --- Yank / paste ---
 nnoremap Y         y$
-nnoremap <leader>p "+p
-nnoremap <leader>P "+P
+nnoremap <leader>yp "+p
+nnoremap <leader>yP "+P
 vnoremap <leader>y "+y
 nnoremap <leader>yy "+yy
 vnoremap <leader>vp "_dP
@@ -1109,7 +1059,7 @@ augroup FileTypeIndent
   autocmd FileType javascript,typescript            setlocal ts=2 sw=2 expandtab
   autocmd FileType javascriptreact,typescriptreact  setlocal ts=2 sw=2 expandtab
   autocmd FileType html,css,scss,sass,less          setlocal ts=2 sw=2 expandtab
-  autocmd FileType json,jsonc                       setlocal ts=2 sw=2 expandtab
+  autocmd FileType json,jsonc                       setlocal ts=2 sw=2 expandtab foldmethod=syntax
   autocmd FileType graphql                          setlocal ts=2 sw=2 expandtab
   autocmd FileType go,make                          setlocal ts=4 sw=4 noexpandtab
   autocmd FileType c,cpp                            setlocal ts=4 sw=4 expandtab
@@ -1133,7 +1083,7 @@ augroup FileTypeIndent
   autocmd FileType cobol                            setlocal ts=4 sw=4 noexpandtab
   autocmd FileType vhdl,verilog                     setlocal ts=2 sw=2 expandtab
   autocmd FileType markdown,text
-    \ setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
+    \ setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak foldmethod=expr foldexpr=0
   autocmd FileType gitcommit                        setlocal spell textwidth=72
   autocmd FileType tex                              setlocal ts=2 sw=2 expandtab spell
   autocmd FileType rst                              setlocal ts=3 sw=3 expandtab spell
