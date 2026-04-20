@@ -3,13 +3,11 @@
 " Philosophy: Fast. Self-contained. Professional. No AI. No cloud. No bloat.
 " 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
 " Lazy-loaded per filetype — startup < 80ms regardless of stack size.
-" 2026-upgrade: vim-matchup · vim-asterisk · vim-easy-align · gutentags+rg
-" 2026-final:   vim-indent-guides (replaces indentLine) · vim-textobj-user/indent/comment
 " =============================================================================
 " -----------------------------------------------------------------------------
 " IMPORTANT — openSUSE specific:
 " /usr/share/vim/vim91/suse.vimrc loads BEFORE ~/.vimrc and resets g:loaded_*
-" flags. To actually disable built-in plugins, run this ONCE:
+" flags. Bootstrap this ONCE to actually disable built-in plugins:
 "
 "   mkdir -p ~/.vim/plugin
 "   cat > ~/.vim/plugin/disable_builtins.vim << 'EOF'
@@ -23,26 +21,16 @@
 "   let g:loaded_netrwSettings=1 | let g:loaded_netrwFileHandlers=1
 "   EOF
 "
-" Migration from vim-lsp: remove old plugin dirs once coc.nvim is installed:
-"   rm -rf ~/.vim/plugged/vim-lsp ~/.vim/plugged/vim-lsp-settings
-"   rm -rf ~/.vim/plugged/asyncomplete.vim ~/.vim/plugged/asyncomplete-lsp.vim
-"   rm -rf ~/.vim/plugged/asyncomplete-ultisnips.vim ~/.vim/plugged/auto-pairs
-"
 " coc.nvim requires Node.js >= 18. Install extensions once with:
 "   :CocInstall coc-pyright coc-rust-analyzer coc-go coc-tsserver coc-clangd
 "   :CocInstall coc-json coc-yaml coc-html coc-css coc-sh coc-snippets
 "   :CocInstall coc-vimlsp coc-kotlin coc-solargraph coc-docker coc-terraform
 "
-" 2026 upgrade — new plugins (auto-installed on first launch):
-"   vim-matchup        : replaces matchit/matchparen — % g% [% ]% i% a%
-"   vim-asterisk       : non-jumpy * / # / g* / g# with visual star
-"   vim-easy-align     : ga interactive alignment (replaces manual :Tab use)
-"   gutentags          : now uses rg as file lister + aggressive --exclude list
-" 2026 final upgrade:
-"   vim-indent-guides  : replaces indentLine — highlight-based, no conceal issues
-"   vim-textobj-user   : base for custom text objects
-"   vim-textobj-indent : ii/ai — operate on indent block (dii, vii, cai, etc.)
-"   vim-textobj-comment: ic/ac — operate on comment block (dic, vac, etc.)
+" All coc settings live in ~/.vim/coc-settings.json — not in this file.
+" See section 6 for the canonical coc-settings.json content.
+"
+" Snippets: vim-vsnip + coc-snippets. No UltiSnips.
+" Formatting: ALE fixers for sh/vim only. coc formatOnSave for everything else.
 " -----------------------------------------------------------------------------
 
 " -----------------------------------------------------------------------------
@@ -59,12 +47,17 @@ set nomodeline modelines=0 secure
 " -----------------------------------------------------------------------------
 " 1. Performance
 " -----------------------------------------------------------------------------
-set regexpengine=0 synmaxcol=300 lazyredraw
+set regexpengine=0 synmaxcol=200 lazyredraw
 set updatetime=150 redrawtime=1500
 set ttimeoutlen=10 timeoutlen=500
 
 if has('mouse_sgr') | set ttymouse=sgr | endif
 set mouse=a
+
+" Vim 9.1+ native smooth scroll — no plugin needed
+if has('patch-9.0.0640')
+  set smoothscroll
+endif
 
 " -----------------------------------------------------------------------------
 " 2. Core Settings
@@ -119,8 +112,7 @@ for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui'
 endfor
 
 set swapfile   directory=~/.vim/swap//
-" backup=keep a tilde backup after write; nowritebackup=coc.nvim requirement
-" (coc needs to read the file mid-write; writebackup would break that)
+" nowritebackup = coc.nvim requirement (reads file mid-write)
 set backup     nowritebackup backupdir=~/.vim/backup//
 set autoread
 
@@ -129,7 +121,7 @@ if has('persistent_undo')
   set undofile undodir=~/.vim/undo
 endif
 
-" Folding (coc-based folding off; using indent folding at 99 = open by default)
+" Folding — indent-based, everything open by default
 set foldmethod=indent foldlevel=99 foldlevelstart=99
 
 " Visible whitespace
@@ -159,6 +151,13 @@ if has('wsl') && executable('clip.exe')
     \            '*': 'powershell.exe -NoProfile -Command "Get-Clipboard"' },
     \ 'cache_enabled': 0 }
 endif
+
+" Credentials in .env files must never touch swap/backup/undo
+augroup SensitiveFiles
+  autocmd!
+  autocmd BufNewFile,BufRead .env,.env.*,*.env
+    \ setlocal noswapfile nobackup noundofile
+augroup END
 
 " -----------------------------------------------------------------------------
 " 3. Plugin Manager — vim-plug (robust bootstrap: curl → wget → abort)
@@ -225,8 +224,7 @@ Plug 'andymass/vim-matchup'
 
 " ---------------------------------------------------------------------------
 " LSP / COMPLETION — coc.nvim
-" Replaces: vim-lsp, vim-lsp-settings, asyncomplete, asyncomplete-lsp,
-"           asyncomplete-ultisnips. One plugin, Node-powered, battle-tested.
+" All config in ~/.vim/coc-settings.json (survives :CocRestart).
 " ---------------------------------------------------------------------------
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 
@@ -245,38 +243,35 @@ Plug 'tpope/vim-surround'         " cs/ds/ys surround motions
 Plug 'tpope/vim-repeat'           " . repeats plugin actions
 Plug 'tpope/vim-unimpaired'       " [b ]b [q ]q and friends
 Plug 'tpope/vim-sleuth'           " auto-detect indent per project
-Plug 'cohama/lexima.vim'          " bracket/quote auto-close (replaces auto-pairs)
+Plug 'cohama/lexima.vim'          " bracket/quote auto-close
 Plug 'wellle/targets.vim'         " extra text objects: cin, da,
-Plug 'kana/vim-textobj-user'                " required base for custom text objects
-Plug 'kana/vim-textobj-indent'             " ii/ai — indent-level text objects
-Plug 'glts/vim-textobj-comment'            " ic/ac — comment text objects
+Plug 'kana/vim-textobj-user'      " required base for custom text objects
+Plug 'kana/vim-textobj-indent'    " ii/ai — indent-level text objects
+Plug 'glts/vim-textobj-comment'   " ic/ac — comment text objects
 Plug 'matze/vim-move'             " Alt+j/k move lines/blocks
 Plug 'mbbill/undotree',           { 'on': 'UndotreeToggle' }
 Plug 'jdhao/better-escape.vim'    " jk/kj → Esc in insert mode
-" Note: vim-visual-multi can conflict with coc.nvim insert-mode mappings.
-" If completion behaves oddly in multi-cursor mode, check :verbose imap <Tab>
+" vim-visual-multi: load in normal mode only to avoid coc TAB conflicts.
+" If completion still breaks, check :verbose imap <Tab>
 Plug 'mg979/vim-visual-multi'     " multi-cursor Ctrl+N
-Plug 'psliwka/vim-smoothie'       " smooth C-d/C-u scrolling
+" vim-smoothie removed — use native set smoothscroll (Vim 9.1+, section 1)
 Plug 'nathanaelkane/vim-indent-guides'  " indent guides — no conceal tricks
 Plug 'wellle/context.vim'         " sticky function context at top
-" vim-asterisk: non-jumpy * / # / g* / g# with visual star support.
-" Replaces manual *zzzv/#zzzv mappings with proper stay-in-place behaviour.
+" vim-asterisk: stay-in-place * / # / g* / g#
 Plug 'haya14busa/vim-asterisk'
-" vim-easy-align: ga interactive alignment — replaces tabular for daily use.
-" Works on YAML, JSON, SQL, Markdown tables, struct fields, assignment blocks.
+" vim-easy-align: ga interactive alignment
 Plug 'junegunn/vim-easy-align'
 
 " ---------------------------------------------------------------------------
-" SNIPPETS — vim-vsnip (pure Vimscript) integrates with coc-snippets
+" SNIPPETS — vim-vsnip + coc-snippets (no UltiSnips)
 " ---------------------------------------------------------------------------
-Plug 'hrsh7th/vim-vsnip'          " pure Vimscript, no Python needed
+Plug 'hrsh7th/vim-vsnip'
 Plug 'honza/vim-snippets'
 
 " ---------------------------------------------------------------------------
-" LINTING / FORMATTING — ALE kept for linters-only
-" coc.nvim handles: diagnostics, signature help, inlay hints, formatting
-" ALE handles: shellcheck (sh), vint (vim) — no LSP equivalent available
-" ALE fixers: black/isort/prettier/shfmt/rustfmt/gofmt/clang-format etc.
+" LINTING / FORMATTING
+" ALE: linters for sh (shellcheck) and vim (vint) only — no LSP overlap.
+" ALE fixers: shfmt for sh only. coc formatOnSave handles all other languages.
 " ---------------------------------------------------------------------------
 Plug 'dense-analysis/ale'
 
@@ -333,6 +328,8 @@ Plug 'stephpy/vim-yaml',          { 'for': 'yaml' }
 Plug 'chrisbra/csv.vim',          { 'for': 'csv' }
 
 " Markup / docs
+" NOTE: godlygeek/tabular kept as vim-markdown runtime dependency.
+" Use vim-easy-align (ga) for all manual alignment work.
 Plug 'godlygeek/tabular'
 Plug 'preservim/vim-markdown',    { 'for': 'markdown' }
 Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown', 'do': { -> mkdp#util#install() } }
@@ -350,10 +347,9 @@ Plug 'kristijanhusak/vim-dadbod-completion'
 Plug 'voldikss/vim-floaterm'
 
 " ---------------------------------------------------------------------------
-" REST CLIENT
+" REST CLIENT — vim-rest-console only (vial-http abandoned since 2019)
 " ---------------------------------------------------------------------------
 Plug 'diepm/vim-rest-console'
-Plug 'baverman/vial-http', { 'for': 'http' }
 
 " ---------------------------------------------------------------------------
 " TEST RUNNER
@@ -372,14 +368,13 @@ Plug 'tpope/vim-eunuch'
 
 call plug#end()
 
-" Auto-install any missing plugins on startup (catches newly added entries)
+" Auto-install missing plugins on startup — non-blocking, once per session
 augroup PlugAutoInstall
   autocmd!
-  autocmd VimEnter *
+  autocmd VimEnter * ++once
     \ let s:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)') |
     \ if len(s:missing) |
-    \   echom len(s:missing) . ' plugin(s) missing — installing…' |
-    \   PlugInstall --sync |
+    \   echom len(s:missing) . ' plugin(s) missing — run :PlugInstall' |
     \ endif
 augroup END
 
@@ -441,11 +436,7 @@ nnoremap <leader>wo :only<CR>
 nnoremap <leader>w= <C-w>=
 nnoremap <leader>wz :MaximizerToggle<CR>
 
-" --- Window resize ---
-nnoremap <C-w>, :vertical resize -5<CR>
-nnoremap <C-w>. :vertical resize +5<CR>
-nnoremap <C-w>- :resize -3<CR>
-nnoremap <C-w>+ :resize +3<CR>
+" --- Window resize — Alt arrows only (C-w variants shadow operator-pending) ---
 nnoremap <M-Up>    :resize +2<CR>
 nnoremap <M-Down>  :resize -2<CR>
 nnoremap <M-Left>  :vertical resize -2<CR>
@@ -498,13 +489,11 @@ vnoremap j gj
 vnoremap k gk
 nnoremap n     nzzzv
 nnoremap N     Nzzzv
-" vim-asterisk: stay-in-place * / # — cursor doesn't jump on first match.
-" z* / z# = stay put, gz* / gz# = stay put + whole-word off (useful in visual)
+" vim-asterisk: stay-in-place * / # — cursor doesn't jump on first match
 map *  <Plug>(asterisk-z*)zv
 map #  <Plug>(asterisk-z#)zv
 map g* <Plug>(asterisk-gz*)zv
 map g# <Plug>(asterisk-gz#)zv
-" Keep visual * on selection too
 xmap *  <Plug>(asterisk-z*)zv
 xmap #  <Plug>(asterisk-z#)zv
 nnoremap <C-d> <C-d>zz
@@ -525,8 +514,7 @@ vnoremap <leader>vp "_dP
 
 " --- Alignment (vim-easy-align) ---
 " ga in normal/visual then motion or text object — interactive, live preview
-" Examples: gaip=  (align paragraph on =)   ga2,  (align 2nd comma in line)
-"           vipga= (visual select then align) gaip* (align all = in paragraph)
+" Examples: gaip=  gaip*  ga2,  vipga=
 xmap ga <Plug>(EasyAlign)
 nmap ga <Plug>(EasyAlign)
 
@@ -584,7 +572,7 @@ inoremap <expr><S-TAB> coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"
 " CR confirms selection without adding an extra undo break
 inoremap <silent><expr> <CR>
   \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
-" Force refresh (replaces asyncomplete_force_refresh)
+" Force refresh
 inoremap <silent><expr> <C-Space> coc#refresh()
 
 " Navigation
@@ -593,7 +581,6 @@ nmap <silent> gD <Plug>(coc-declaration)
 nmap <silent> gy <Plug>(coc-type-definition)
 nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gr <Plug>(coc-references)
-" Hover (K) — show docs or fallback to keywordprg
 nnoremap <silent> K :call CocActionAsync('doHover')<CR>
 
 " LSP actions
@@ -602,12 +589,11 @@ nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
 nmap <silent> <leader>cf <Plug>(coc-format)
 nmap <silent> <leader>cs :CocList outline<CR>
 nmap <silent> <leader>cS :CocList -I symbols<CR>
-" Diagnostics (replaces ]e [e ]w [w from vim-lsp)
+" Diagnostics
 nmap <silent> ]g <Plug>(coc-diagnostic-next)
 nmap <silent> [g <Plug>(coc-diagnostic-prev)
 nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
 nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
-" Diagnostic list
 nnoremap <silent> <leader>cd :CocList diagnostics<CR>
 " Signature help in insert mode
 inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
@@ -683,10 +669,30 @@ nnoremap <silent> <F9> :call <SID>RunAction('test')<CR>
 " -----------------------------------------------------------------------------
 " 6. Plugin Configuration
 " -----------------------------------------------------------------------------
+" NOTE: All coc.nvim configuration belongs in ~/.vim/coc-settings.json.
+" The canonical content for that file is:
+"
+" {
+"   "diagnostic.errorSign":   "󰅚 ",
+"   "diagnostic.warningSign": "󰀪 ",
+"   "diagnostic.infoSign":    "󰋽 ",
+"   "diagnostic.hintSign":    "󰌶 ",
+"   "diagnostic.virtualText": false,
+"   "diagnostic.displayByAle": false,
+"   "signature.enable": true,
+"   "hover.autoHide": true,
+"   "snippets.enable": true,
+"   "coc.preferences.formatOnSaveFiletypes": [
+"     "python","javascript","typescript","javascriptreact","typescriptreact",
+"     "go","rust","sh","c","cpp","kotlin","ruby",
+"     "yaml","json","html","css","scss","zig"
+"   ]
+" }
 
-" --- context.vim — disable on large files to avoid scroll lag ---
-let g:context_max_height = 5
-autocmd BufReadPre * if getfsize(expand('<afile>')) > 500000 | let b:context_enabled = 0 | endif
+" --- context.vim — disable on large files ---
+let g:context_max_height       = 5
+let g:context_enabled          = 1
+let g:context_filetype_exclude = ['fern', 'startify', 'help', 'dbui']
 
 " --- better-escape ---
 let g:better_escape_shortcut = ['jk', 'kj']
@@ -731,31 +737,11 @@ let g:lightline#bufferline#show_number     = 1
 let g:lightline#bufferline#unicode_symbols = 1
 let g:lightline#bufferline#enable_devicons = 1
 
-" Refresh lightline when coc status changes
 augroup LightlineCoc
   autocmd!
   autocmd User CocStatusChange,CocDiagnosticChange
     \ silent call lightline#update()
 augroup END
-
-" --- coc.nvim ---
-" Diagnostic signs (matches former vim-lsp sign set)
-call coc#config('diagnostic.errorSign',       '󰅚 ')
-call coc#config('diagnostic.warningSign',     '󰀪 ')
-call coc#config('diagnostic.infoSign',        '󰋽 ')
-call coc#config('diagnostic.hintSign',        '󰌶 ')
-call coc#config('diagnostic.virtualText',     v:false)
-call coc#config('diagnostic.displayByAle',    v:false)
-call coc#config('signature.enable',           v:true)
-call coc#config('hover.autoHide',             v:true)
-" vsnip integration
-call coc#config('snippets.enable', v:true)
-" Format on save (coc handles the languages ALE used to fix)
-call coc#config('coc.preferences.formatOnSaveFiletypes', [
-  \ 'python', 'javascript', 'typescript', 'javascriptreact', 'typescriptreact',
-  \ 'go', 'rust', 'sh', 'c', 'cpp', 'kotlin', 'ruby',
-  \ 'yaml', 'json', 'html', 'css', 'scss', 'zig',
-  \ ])
 
 " --- Fern ---
 let g:fern#renderer       = 'nerdfont'
@@ -763,8 +749,8 @@ let g:fern#default_hidden = 1
 let g:fern#default_exclude =
   \ '^\%(\.git\|__pycache__\|node_modules\|\.DS_Store\|\.cache\|dist\|build\)$'
 
-let g:fern_git_status#disable_ignored   = 1
-let g:fern_git_status#disable_untracked = 0
+let g:fern_git_status#disable_ignored    = 1
+let g:fern_git_status#disable_untracked  = 0
 let g:fern_git_status#disable_submodules = 1
 
 function! s:FernInit() abort
@@ -794,7 +780,6 @@ augroup END
 let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'rounded': v:true } }
 let g:fzf_history_dir = expand('~/.vim/fzf-history')
 
-" Catppuccin Mocha palette
 let $FZF_DEFAULT_OPTS =
   \ '--layout=reverse --border=rounded --info=inline ' .
   \ '--color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8 ' .
@@ -805,40 +790,20 @@ if executable('bat')
   let $FZF_DEFAULT_OPTS .= ' --preview "bat --style=numbers --color=always {}"'
 endif
 
-" --- ALE (linters-only — coc.nvim owns diagnostics for LSP languages) ---
-let g:ale_disable_lsp          = 1   " critical: no LSP conflict with coc
-let g:ale_linters_explicit     = 1
+" --- ALE — linters and sh fixer only; coc owns everything else ---
+" IMPORTANT: ale_disable_lsp=1 prevents LSP conflicts with coc.nvim.
+" ALE fixers are intentionally restricted to sh/vim — coc formatOnSave
+" handles all other languages via LSP. Do NOT add fixers for python/go/rust
+" etc. here or you will get race conditions and double-writes on save.
+let g:ale_disable_lsp      = 1
+let g:ale_linters_explicit = 1
 let g:ale_linters = {
-  \ 'python':     ['ruff', 'mypy'],
-  \ 'javascript': ['eslint'],
-  \ 'typescript': ['eslint'],
-  \ 'sh':         ['shellcheck'],
-  \ 'vim':        ['vint'],
-  \ 'go':         [],
-  \ 'rust':       [],
-  \ 'c':          [],
-  \ 'cpp':        [],
+  \ 'sh':  ['shellcheck'],
+  \ 'vim': ['vint'],
   \ }
-" ALE fixers: run on save for all languages coc format-on-save also covers.
-" They are complementary — coc formats via LSP, ALE fixes via CLI tools.
-" If you see double-formatting, disable the fixers for that filetype here.
 let g:ale_fixers = {
-  \ '*':          ['remove_trailing_lines', 'trim_whitespace'],
-  \ 'python':     ['black', 'isort'],
-  \ 'javascript': ['prettier'],
-  \ 'typescript': ['prettier'],
-  \ 'go':         ['gofmt', 'goimports'],
-  \ 'rust':       ['rustfmt'],
-  \ 'sh':         ['shfmt'],
-  \ 'c':          ['clang-format'],
-  \ 'cpp':        ['clang-format'],
-  \ 'kotlin':     ['ktlint'],
-  \ 'ruby':       ['rubocop'],
-  \ 'yaml':       ['prettier'],
-  \ 'json':       ['prettier'],
-  \ 'html':       ['prettier'],
-  \ 'css':        ['prettier'],
-  \ 'zig':        ['zigfmt'],
+  \ '*':  ['remove_trailing_lines', 'trim_whitespace'],
+  \ 'sh': ['shfmt'],
   \ }
 let g:ale_fix_on_save          = 1
 let g:ale_lint_on_text_changed = 'never'
@@ -858,11 +823,13 @@ let g:vimspector_sign_priority = {
   \ 'vimspectorPC':         999,
   \ }
 
-" --- UltiSnips ---
-let g:UltiSnipsExpandTrigger       = '<C-e>'
-let g:UltiSnipsJumpForwardTrigger  = '<C-l>'
-let g:UltiSnipsJumpBackwardTrigger = '<C-b>'
-let g:UltiSnipsEditSplit           = 'vertical'
+" --- vim-vsnip (jump triggers — no UltiSnips) ---
+imap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'         : '<C-e>'
+smap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'         : '<C-e>'
+imap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)'      : '<C-l>'
+smap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)'      : '<C-l>'
+imap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)'      : '<C-b>'
+smap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)'      : '<C-b>'
 
 " --- vim-go ---
 let g:go_fmt_command            = 'goimports'
@@ -874,11 +841,9 @@ let g:go_def_mapping_enabled    = 0   " coc handles gd
 let g:go_doc_keywordprg_enabled = 0   " coc handles K
 
 " --- rust.vim ---
-let g:rustfmt_autosave = 0   " ALE/coc handles formatting
+let g:rustfmt_autosave = 0   " coc formatOnSave handles this
 
 " --- lexima.vim ---
-" Works out of the box. The one rule to add: don't double-close inside coc popup.
-" lexima is rule-based and does not fight CR/TAB the way auto-pairs did.
 let g:lexima_enable_basic_rules   = 1
 let g:lexima_enable_newline_rules = 1
 let g:lexima_enable_endwise_rules = 1
@@ -896,13 +861,7 @@ let g:floaterm_wintype     = 'float'
 let g:tmux_navigator_disable_when_zoomed = 1
 let g:tmux_navigator_save_on_switch      = 2
 
-" --- vim-smoothie ---
-let g:smoothie_speed_constant_factor = 30
-let g:smoothie_speed_linear_factor   = 30
-
 " --- vim-indent-guides ---
-" Uses actual highlight groups — no conceal tricks, no slowdown on large files.
-" Even columns get a subtle alternate background; odd columns stay as-is.
 let g:indent_guides_enable_on_vim_startup = 1
 let g:indent_guides_start_level           = 2
 let g:indent_guides_guide_size            = 1
@@ -915,11 +874,6 @@ augroup IndentGuideColors
     \ highlight IndentGuidesEven ctermbg=236 guibg=#313244
 augroup END
 
-" --- context.vim (sticky scroll) ---
-let g:context_enabled          = 1
-let g:context_max_height       = 5
-let g:context_filetype_exclude = ['fern', 'startify', 'help', 'dbui']
-
 " --- Gitgutter ---
 let g:gitgutter_enabled       = 1
 let g:gitgutter_map_keys      = 0
@@ -928,11 +882,11 @@ let g:gitgutter_sign_modified = '▎'
 let g:gitgutter_sign_removed  = '▎'
 
 " --- Gutentags ---
-let g:gutentags_cache_dir                 = expand('~/.vim/tags')
-let g:gutentags_generate_on_new           = 1
-let g:gutentags_generate_on_missing       = 1
-let g:gutentags_generate_on_write         = 1
-let g:gutentags_ctags_extra_args          = [
+let g:gutentags_cache_dir       = expand('~/.vim/tags')
+let g:gutentags_generate_on_new     = 1
+let g:gutentags_generate_on_missing = 1
+let g:gutentags_generate_on_write   = 1
+let g:gutentags_ctags_extra_args    = [
   \ '--tag-relative=yes', '--fields=+ailmnS',
   \ '--exclude=.git', '--exclude=.hg', '--exclude=.svn',
   \ '--exclude=node_modules', '--exclude=bower_components',
@@ -940,48 +894,38 @@ let g:gutentags_ctags_extra_args          = [
   \ '--exclude=target', '--exclude=__pycache__', '--exclude=.cache',
   \ '--exclude=*.min.js', '--exclude=*.min.css',
   \ ]
-" Use ripgrep as file lister if available — dramatically faster on monorepos
 if executable('rg')
   let g:gutentags_file_list_command = 'rg --files --follow'
 endif
 let g:gutentags_add_default_project_roots = 0
-let g:gutentags_project_root              =
+let g:gutentags_project_root =
   \ ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml']
 
 " --- vim-move ---
 let g:move_key_modifier = 'A'
 
 " --- vim-matchup ---
-" Disables the default matchit and matchparen — matchup supersedes both.
-" offscreen_position: show match in statusline when it's off-screen.
-let g:matchup_matchparen_offscreen   = { 'method': 'status_manual' }
-let g:matchup_matchparen_deferred    = 1   " defer highlights for speed
+let g:matchup_matchparen_offscreen        = { 'method': 'status_manual' }
+let g:matchup_matchparen_deferred         = 1
 let g:matchup_matchparen_hi_surround_always = 1
-let g:matchup_motion_enabled         = 1   " % g% [% ]% work everywhere
-let g:matchup_text_obj_enabled       = 1   " i% a% text objects
-" Don't fight coc.nvim's popup
-let g:matchup_matchparen_pumvisible  = 0
+let g:matchup_motion_enabled              = 1
+let g:matchup_text_obj_enabled            = 1
+let g:matchup_matchparen_pumvisible       = 0
 
 " --- vim-visual-multi ---
+" Restrict to normal mode to avoid coc insert-mode TAB collisions
 let g:VM_maps                       = {}
 let g:VM_maps['Find Under']         = '<C-n>'
 let g:VM_maps['Find Subword Under'] = '<C-n>'
 let g:VM_maps['Select All']         = '<leader>ma'
 let g:VM_maps['Skip Region']        = '<C-x>'
+let g:VM_set_statusline             = 0
+let g:VM_silent_exit                = 1
 
 " --- vim-asterisk ---
-" is_animated: flash the match highlight briefly on land (visual feedback)
-let g:asterisk#keeppos = 1   " cursor column preserved after z* jump
-
-" --- vim-textobj-user / vim-textobj-indent / vim-textobj-comment ---
-" Provided text objects (all work with d/c/y/v operators):
-"   ii / ai  — inner / around indent block (same level / including blank lines)
-"   ic / ac  — inner / around comment (line or block comment)
-" No config required — vim-textobj-user wires them automatically on load.
+let g:asterisk#keeppos = 1
 
 " --- vim-easy-align ---
-" Custom delimiters beyond the built-in set (=, :, |, #, &, ,, .)
-" Accessible interactively via: ga <motion> <key>
 let g:easy_align_delimiters = {
   \ '>':  { 'pattern': '>>\|=>\|>' },
   \ '/':  { 'pattern': '//\+\|/\*\|\*/', 'delimiter_align': 'l', 'ignore_groups': [] },
@@ -1102,6 +1046,14 @@ function! s:HandleLargeFile()
   endif
 endfunction
 
+" Disable expensive plugins on large files
+function! s:LargeFilePerfGuard()
+  if getfsize(expand('<afile>')) > 500000
+    let b:context_enabled          = 0
+    let b:matchup_matchparen_enabled = 0
+  endif
+endfunction
+
 function! s:StripTrailing()
   if &modifiable && &filetype !~# '\v^(markdown|diff|cobol)$'
     let l:view = winsaveview()
@@ -1121,20 +1073,23 @@ function! s:RestoreCursor()
   endif
 endfunction
 
+" Flash yanked region — fixed: each timer captures its own match id
 function! s:FlashYank()
   let l:pos = getpos("'[")
   let l:end = getpos("']")
-  if l:pos[1] > 0 && l:end[1] > 0
-    let l:id = matchadd('IncSearch',
-      \ '\%' . l:pos[1] . 'l\%' . l:pos[2] . 'c\_.*\%'
-      \ . l:end[1] . 'l\%' . l:end[2] . 'c')
-    call timer_start(250, {t -> l:id >= 1 ? matchdelete(l:id) : 0})
-  endif
+  if l:pos[1] <= 0 || l:end[1] <= 0 | return | endif
+  let l:pat = '\%' . l:pos[1] . 'l\%' . l:pos[2] . 'c\_.*\%'
+    \ . l:end[1] . 'l\%' . l:end[2] . 'c'
+  let l:id = matchadd('IncSearch', l:pat)
+  if l:id < 0 | return | endif
+  let l:Cb = {-> matchdelete(l:id)}
+  call timer_start(250, l:Cb)
 endfunction
 
 augroup VimrcEvents
   autocmd!
   autocmd BufReadPre          * call s:HandleLargeFile()
+  autocmd BufReadPre          * call s:LargeFilePerfGuard()
   autocmd BufWritePre         * call s:StripTrailing()
   autocmd BufWritePre         * call s:MkdirOnSave()
   autocmd BufReadPost         * call s:RestoreCursor()
@@ -1150,21 +1105,17 @@ augroup END
 " -----------------------------------------------------------------------------
 augroup FileTypeIndent
   autocmd!
-  " Python
   autocmd FileType python                           setlocal ts=4 sw=4 expandtab
-  " Web
   autocmd FileType javascript,typescript            setlocal ts=2 sw=2 expandtab
   autocmd FileType javascriptreact,typescriptreact  setlocal ts=2 sw=2 expandtab
   autocmd FileType html,css,scss,sass,less          setlocal ts=2 sw=2 expandtab
   autocmd FileType json,jsonc                       setlocal ts=2 sw=2 expandtab
   autocmd FileType graphql                          setlocal ts=2 sw=2 expandtab
-  " Systems
   autocmd FileType go,make                          setlocal ts=4 sw=4 noexpandtab
   autocmd FileType c,cpp                            setlocal ts=4 sw=4 expandtab
   autocmd FileType rust                             setlocal ts=4 sw=4 expandtab
   autocmd FileType zig                              setlocal ts=4 sw=4 expandtab
   autocmd FileType java,kotlin                      setlocal ts=4 sw=4 expandtab
-  " Scripting
   autocmd FileType lua,vim,ruby                     setlocal ts=2 sw=2 expandtab
   autocmd FileType sh,zsh,bash,fish                 setlocal ts=2 sw=2 expandtab
   autocmd FileType perl,php                         setlocal ts=4 sw=4 expandtab
@@ -1172,24 +1123,20 @@ augroup FileTypeIndent
   autocmd FileType haskell,ocaml,elm                setlocal ts=2 sw=2 expandtab
   autocmd FileType scala,clojure,lisp               setlocal ts=2 sw=2 expandtab
   autocmd FileType fsharp,csharp                    setlocal ts=4 sw=4 expandtab
-  " Data / config
   autocmd FileType yaml,toml                        setlocal ts=2 sw=2 expandtab
   autocmd FileType xml,xhtml                        setlocal ts=2 sw=2 expandtab
   autocmd FileType sql                              setlocal ts=2 sw=2 expandtab
   autocmd FileType csv                              setlocal ts=4 sw=4 noexpandtab
   autocmd FileType terraform                        setlocal ts=2 sw=2 expandtab
   autocmd FileType dockerfile                       setlocal ts=2 sw=2 expandtab
-  " Legacy / scientific
   autocmd FileType fortran                          setlocal ts=3 sw=3 expandtab
   autocmd FileType cobol                            setlocal ts=4 sw=4 noexpandtab
   autocmd FileType vhdl,verilog                     setlocal ts=2 sw=2 expandtab
-  " Docs
   autocmd FileType markdown,text
     \ setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak
   autocmd FileType gitcommit                        setlocal spell textwidth=72
   autocmd FileType tex                              setlocal ts=2 sw=2 expandtab spell
   autocmd FileType rst                              setlocal ts=3 sw=3 expandtab spell
-  " Niche but commonly needed
   autocmd FileType swift                            setlocal ts=4 sw=4 expandtab
   autocmd FileType dart                             setlocal ts=2 sw=2 expandtab
   autocmd FileType r,rmd                            setlocal ts=2 sw=2 expandtab
@@ -1203,25 +1150,25 @@ augroup END
 " 9. Terminal execution — F5/F6/F7/F9 run/compile/build/test
 " -----------------------------------------------------------------------------
 let s:runners = {
-  \ 'python':     { 'run': 'python3 "{filepath}"',       'test': 'python3 -m pytest "{dirname}"' },
-  \ 'javascript': { 'run': 'node "{filepath}"',           'test': 'npm test' },
-  \ 'typescript': { 'run': 'ts-node "{filepath}"',        'test': 'npm test', 'compile': 'tsc "{filepath}"' },
-  \ 'go':         { 'run': 'go run "{filepath}"',         'test': 'go test ./...', 'build': 'go build -o "{basename}" "{filepath}"' },
-  \ 'rust':       { 'run': './{basename}',                'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc "{filepath}"' },
-  \ 'c':          { 'run': './{basename}',                'compile': 'gcc -Wall -O2 -g "{filepath}" -o "{basename}" -lm' },
-  \ 'cpp':        { 'run': './{basename}',                'compile': 'g++ -Wall -O2 -g -std=c++17 "{filepath}" -o "{basename}" -lm' },
-  \ 'zig':        { 'run': 'zig run "{filepath}"',        'build': 'zig build', 'test': 'zig test "{filepath}"' },
-  \ 'kotlin':     { 'compile': 'kotlinc "{filepath}" -include-runtime -d "{basename}.jar"', 'run': 'java -jar "{basename}.jar"' },
-  \ 'sh':         { 'run': 'bash "{filepath}"' },
-  \ 'lua':        { 'run': 'lua "{filepath}"' },
-  \ 'ruby':       { 'run': 'ruby "{filepath}"',           'test': 'ruby -Itest "{filepath}"' },
-  \ 'fortran':    { 'compile': 'gfortran -O2 "{filepath}" -o "{basename}"', 'run': './{basename}' },
-  \ 'cobol':      { 'compile': 'cobc -x "{filepath}" -o "{basename}"',     'run': './{basename}' },
-  \ 'julia':      { 'run': 'julia "{filepath}"' },
-  \ 'r':          { 'run': 'Rscript "{filepath}"' },
-  \ 'nim':        { 'run': 'nim c -r "{filepath}"',       'build': 'nim c -d:release "{filepath}"' },
-  \ 'crystal':    { 'run': 'crystal run "{filepath}"',    'build': 'crystal build --release "{filepath}"' },
-  \ 'd':          { 'compile': 'dmd "{filepath}" -of="{basename}"', 'run': './{basename}' },
+  \ 'python':     { 'run': 'python3 {fp}',         'test': 'python3 -m pytest {dn}' },
+  \ 'javascript': { 'run': 'node {fp}',              'test': 'npm test' },
+  \ 'typescript': { 'run': 'ts-node {fp}',           'test': 'npm test', 'compile': 'tsc {fp}' },
+  \ 'go':         { 'run': 'go run {fp}',            'test': 'go test ./...', 'build': 'go build -o {bn} {fp}' },
+  \ 'rust':       { 'run': './{bn}',                 'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc {fp}' },
+  \ 'c':          { 'run': './{bn}',                 'compile': 'gcc -Wall -O2 -g {fp} -o {bn} -lm' },
+  \ 'cpp':        { 'run': './{bn}',                 'compile': 'g++ -Wall -O2 -g -std=c++17 {fp} -o {bn} -lm' },
+  \ 'zig':        { 'run': 'zig run {fp}',           'build': 'zig build', 'test': 'zig test {fp}' },
+  \ 'kotlin':     { 'compile': 'kotlinc {fp} -include-runtime -d {bn}.jar', 'run': 'java -jar {bn}.jar' },
+  \ 'sh':         { 'run': 'bash {fp}' },
+  \ 'lua':        { 'run': 'lua {fp}' },
+  \ 'ruby':       { 'run': 'ruby {fp}',              'test': 'ruby -Itest {fp}' },
+  \ 'fortran':    { 'compile': 'gfortran -O2 {fp} -o {bn}', 'run': './{bn}' },
+  \ 'cobol':      { 'compile': 'cobc -x {fp} -o {bn}',      'run': './{bn}' },
+  \ 'julia':      { 'run': 'julia {fp}' },
+  \ 'r':          { 'run': 'Rscript {fp}' },
+  \ 'nim':        { 'run': 'nim c -r {fp}',          'build': 'nim c -d:release {fp}' },
+  \ 'crystal':    { 'run': 'crystal run {fp}',        'build': 'crystal build --release {fp}' },
+  \ 'd':          { 'compile': 'dmd {fp} -of={bn}',  'run': './{bn}' },
   \ }
 
 function! s:RunAction(action)
@@ -1235,11 +1182,14 @@ function! s:RunAction(action)
   if empty(l:cmd)
     echohl WarningMsg | echom 'No ' . a:action . ' for filetype: ' . l:ft | echohl None | return
   endif
-  let l:vars = {
-    \ 'filepath': l:fp,        'dirname':  fnamemodify(l:fp, ':h'),
-    \ 'filename': expand('%:t'), 'basename': expand('%:t:r'),
+  " shellescape each substitution token to prevent shell injection
+  let l:subs = {
+    \ 'fp': shellescape(l:fp),
+    \ 'dn': shellescape(fnamemodify(l:fp, ':h')),
+    \ 'fn': shellescape(expand('%:t')),
+    \ 'bn': shellescape(expand('%:t:r')),
     \ }
-  let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:vars, submatch(1), submatch(0))', 'g')
+  let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:subs, submatch(1), submatch(0))', 'g')
   execute 'FloatermNew --autoclose=0 ' . l:cmd
 endfunction
 
@@ -1254,11 +1204,12 @@ function! s:VimInfo()
   echo 'Theme    : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
   echo '$VIM_THEME: ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set → catppuccin_mocha)')
   echo 'coc.nvim : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
+  echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
   echo 'Node     : ' . (executable('node')    ? trim(system('node --version'))    : 'not found')
   echo 'Python3  : ' . (executable('python3') ? trim(system('python3 --version')) : 'not found')
   echo 'Git      : ' . (executable('git')     ? trim(system('git --version'))     : 'not found')
   echo 'rg       : ' . (executable('rg')      ? trim(system('rg --version | head -1')) : 'not found')
-  echo 'bat      : ' . (executable('bat')     ? trim(system('bat --version'))     : 'not found (optional, FZF preview)')
+  echo 'bat      : ' . (executable('bat')     ? trim(system('bat --version'))     : 'not found (optional)')
   echo 'gopls    : ' . (executable('gopls')   ? 'found' : 'not found')
   echo 'tmux     : ' . (executable('tmux')    ? trim(system('tmux -V'))           : 'not found')
   echo '=================================='
@@ -1310,13 +1261,19 @@ command! ReloadConfig    source $MYVIMRC | echom 'Config reloaded'
 command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
 
 " -----------------------------------------------------------------------------
-" 11. tmux integration
+" 11. tmux integration — async window rename
 " -----------------------------------------------------------------------------
 if exists('$TMUX')
+  function! s:TmuxRenameAsync()
+    let l:name = expand('%:t')
+    if empty(l:name) | return | endif
+    call job_start(['tmux', 'rename-window', l:name])
+  endfunction
+
   augroup TmuxRename
     autocmd!
-    autocmd BufEnter * call system("tmux rename-window '" . expand('%:t') . "'")
-    autocmd VimLeave * call system('tmux set-window-option automatic-rename on')
+    autocmd BufEnter * call s:TmuxRenameAsync()
+    autocmd VimLeave * call job_start(['tmux', 'set-window-option', 'automatic-rename', 'on'])
   augroup END
 endif
 
@@ -1327,8 +1284,6 @@ endif
 "   export VIM_THEME=gruvbox              (in shell rc)
 "   let g:dbs['mydb'] = 'postgresql://...'
 "   let g:vimspector_configurations = {...}
-"   " Override a coc extension for a filetype:
-"   call coc#config('python.pythonPath', '/usr/local/bin/python3')
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
