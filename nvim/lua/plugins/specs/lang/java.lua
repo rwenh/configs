@@ -12,7 +12,7 @@
 
 return {
   {
-    "mfussenegmer/nvim-jdtls",
+    "mfussenegger/nvim-jdtls",
     ft           = "java",
     dependencies = { "mfussenegger/nvim-dap", "williamboman/mason.nvim" },
     config = function()
