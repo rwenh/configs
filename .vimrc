@@ -24,7 +24,6 @@ set ttimeoutlen=10 timeoutlen=500
 if has('mouse_sgr') | set ttymouse=sgr | endif
 set mouse=a
 
-" Vim 9.1+ native smooth scroll — no plugin needed
 if has('patch-9.0.0640')
   set smoothscroll
 endif
@@ -240,7 +239,7 @@ Plug 'junegunn/gv.vim'
 Plug 'whiteinge/diffconflicts'
 
 " ---------------------------------------------------------------------------
-" LANGUAGE SUPPORT — explicit plugins only (no polyglot redundancy)
+" LANGUAGE SUPPORT
 " ---------------------------------------------------------------------------
 " Systems / compiled
 Plug 'rust-lang/rust.vim',        { 'for': 'rust' }
@@ -249,10 +248,10 @@ Plug 'rhysd/vim-llvm',            { 'for': ['c', 'cpp'] }
 Plug 'ziglang/zig.vim',           { 'for': 'zig' }
 
 " Web
-Plug 'pangloss/vim-javascript',       { 'for': ['javascript', 'javascriptreact'] }
-Plug 'leafgarland/typescript-vim',    { 'for': ['typescript', 'typescriptreact'] }
-Plug 'maxmellon/vim-jsx-pretty',      { 'for': ['javascriptreact', 'typescriptreact'] }
-Plug 'jparise/vim-graphql',           { 'for': 'graphql' }
+Plug 'pangloss/vim-javascript',          { 'for': ['javascript', 'javascriptreact'] }
+Plug 'leafgarland/typescript-vim',       { 'for': ['typescript', 'typescriptreact'] }
+Plug 'maxmellon/vim-jsx-pretty',         { 'for': ['javascriptreact', 'typescriptreact'] }
+Plug 'jparise/vim-graphql',              { 'for': 'graphql' }
 Plug 'mustache/vim-mustache-handlebars', { 'for': ['html.handlebars', 'mustache'] }
 
 " Data / scripting
@@ -282,7 +281,7 @@ Plug 'chrisbra/csv.vim',          { 'for': 'csv' }
 " Markup / docs
 Plug 'godlygeek/tabular'
 Plug 'preservim/vim-markdown',    { 'for': 'markdown' }
-Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown', 'do': { -> mkdp#util#install() } }
+Plug 'iamcco/markdown-preview.nvim', { 'for': 'markdown', 'do': 'cd app && npm install' }
 Plug 'lervag/vimtex',             { 'for': 'tex' }
 Plug 'vim-scripts/xml.vim',       { 'for': ['xml', 'html'] }
 
@@ -386,7 +385,7 @@ nnoremap <leader>wo :only<CR>
 nnoremap <leader>w= <C-w>=
 nnoremap <leader>wz :MaximizerToggle<CR>
 
-" --- Window resize — Alt arrows only (C-w variants shadow operator-pending) ---
+" --- Window resize — Alt arrows ---
 nnoremap <M-Up>    :resize +2<CR>
 nnoremap <M-Down>  :resize -2<CR>
 nnoremap <M-Left>  :vertical resize -2<CR>
@@ -439,7 +438,6 @@ vnoremap j gj
 vnoremap k gk
 nnoremap n     nzzzv
 nnoremap N     Nzzzv
-" vim-asterisk: stay-in-place * / # — cursor doesn't jump on first match
 map *  <Plug>(asterisk-z*)zv
 map #  <Plug>(asterisk-z#)zv
 map g* <Plug>(asterisk-gz*)zv
@@ -458,13 +456,11 @@ vnoremap . :norm .<CR>
 nnoremap Y         y$
 nnoremap <leader>yp "+p
 nnoremap <leader>yP "+P
-vnoremap <leader>y "+y
+vnoremap <leader>y  "+y
 nnoremap <leader>yy "+yy
 vnoremap <leader>vp "_dP
 
 " --- Alignment (vim-easy-align) ---
-" ga in normal/visual then motion or text object — interactive, live preview
-" Examples: gaip=  gaip*  ga2,  vipga=
 xmap ga <Plug>(EasyAlign)
 nmap ga <Plug>(EasyAlign)
 
@@ -514,18 +510,17 @@ nnoremap <leader>th :FloatermPrev<CR>
 vnoremap <leader>ts :FloatermSend<CR>
 
 " --- coc.nvim LSP ---
-" TAB: cycle completion popup forward; trigger refresh if cursor follows a word
 inoremap <silent><expr> <TAB>
   \ coc#pum#visible() ? coc#pum#next(1) :
   \ col('.') > 1 && getline('.')[col('.')-2] !~# '\s' ? coc#refresh() : "\<Tab>"
 inoremap <expr><S-TAB> coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"
-" CR confirms selection without adding an extra undo break
 inoremap <silent><expr> <CR>
   \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
-" Force refresh
 inoremap <silent><expr> <C-Space> coc#refresh()
 
-" Navigation
+" NOTE: <C-k> in insert mode triggers signature help; shadows digraph insert intentionally.
+inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
+
 nmap <silent> gd <Plug>(coc-definition)
 nmap <silent> gD <Plug>(coc-declaration)
 nmap <silent> gy <Plug>(coc-type-definition)
@@ -533,20 +528,17 @@ nmap <silent> gi <Plug>(coc-implementation)
 nmap <silent> gr <Plug>(coc-references)
 nnoremap <silent> K :call CocActionAsync('doHover')<CR>
 
-" LSP actions
 nmap <silent> <leader>rn <Plug>(coc-rename)
 nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
 nmap <silent> <leader>cf <Plug>(coc-format)
 nmap <silent> <leader>cs :CocList outline<CR>
 nmap <silent> <leader>cS :CocList -I symbols<CR>
-" Diagnostics
+
 nmap <silent> ]g <Plug>(coc-diagnostic-next)
 nmap <silent> [g <Plug>(coc-diagnostic-prev)
 nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
 nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
 nnoremap <silent> <leader>cd :CocList diagnostics<CR>
-" Signature help in insert mode
-inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
 
 " --- DAP / Vimspector ---
 nnoremap <silent> <F1>  :call vimspector#Continue()<CR>
@@ -561,15 +553,15 @@ nnoremap <leader>dX     :call vimspector#ClearBreakpoints()<CR>
 nnoremap <leader>di     :call vimspector#BalloonEval()<CR>
 nnoremap <leader>dw     :call vimspector#AddWatch()<CR>
 
-" --- Test runner ---
-nnoremap <leader>Tt :TestNearest<CR>
-nnoremap <leader>TT :TestFile<CR>
-nnoremap <leader>Ta :TestSuite<CR>
-nnoremap <leader>Tl :TestLast<CR>
-nnoremap <leader>Tv :TestVisit<CR>
+" --- Test runner (consistent lowercase prefix <leader>t_) ---
+nnoremap <leader>tt :TestNearest<CR>
+nnoremap <leader>tT :TestFile<CR>
+nnoremap <leader>ta :TestSuite<CR>
+nnoremap <leader>tl :TestLast<CR>
+nnoremap <leader>tv :TestVisit<CR>
 
 " --- REST client ---
-nnoremap <leader>Rr :call VrcQuery()<CR>
+nnoremap <leader>rr :call VrcQuery()<CR>
 
 " --- Database ---
 nnoremap <leader>Du :DBUIToggle<CR>
@@ -639,7 +631,7 @@ nnoremap <silent> <F9> :call <SID>RunAction('test')<CR>
 "   ]
 " }
 
-" --- context.vim — disable on large files ---
+" --- context.vim ---
 let g:context_max_height       = 5
 let g:context_enabled          = 1
 let g:context_filetype_exclude = ['fern', 'startify', 'help', 'dbui']
@@ -742,9 +734,9 @@ endif
 
 " --- ALE — linters and sh fixer only; coc owns everything else ---
 " IMPORTANT: ale_disable_lsp=1 prevents LSP conflicts with coc.nvim.
-" ALE fixers are intentionally restricted to sh/vim — coc formatOnSave
-" handles all other languages via LSP. Do NOT add fixers for python/go/rust
-" etc. here or you will get race conditions and double-writes on save.
+" ALE fixers are intentionally restricted to sh/vim only. coc formatOnSave
+" handles all other languages. Do NOT add fixers for python/go/rust etc.
+" or you will get race conditions and double-writes on save.
 let g:ale_disable_lsp      = 1
 let g:ale_linters_explicit = 1
 let g:ale_linters = {
@@ -773,13 +765,13 @@ let g:vimspector_sign_priority = {
   \ 'vimspectorPC':         999,
   \ }
 
-" --- vim-vsnip (jump triggers — no UltiSnips) ---
-imap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'         : '<C-e>'
-smap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'         : '<C-e>'
-imap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)'      : '<C-l>'
-smap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)'      : '<C-l>'
-imap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)'      : '<C-b>'
-smap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)'      : '<C-b>'
+" --- vim-vsnip ---
+imap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
+smap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
+imap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)' : '<C-l>'
+smap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)' : '<C-l>'
+imap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)' : '<C-b>'
+smap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)' : '<C-b>'
 
 " --- vim-go ---
 let g:go_fmt_command            = 'goimports'
@@ -787,8 +779,8 @@ let g:go_highlight_types        = 1
 let g:go_highlight_fields       = 1
 let g:go_highlight_functions    = 1
 let g:go_highlight_operators    = 1
-let g:go_def_mapping_enabled    = 0   " coc handles gd
-let g:go_doc_keywordprg_enabled = 0   " coc handles K
+let g:go_def_mapping_enabled    = 0
+let g:go_doc_keywordprg_enabled = 0
 
 " --- rust.vim ---
 let g:rustfmt_autosave = 0   " coc formatOnSave handles this
@@ -832,7 +824,9 @@ let g:gitgutter_sign_modified = '▎'
 let g:gitgutter_sign_removed  = '▎'
 
 " --- Gutentags ---
-let g:gutentags_cache_dir       = expand('~/.vim/tags')
+" Disabled for filetypes where coc.nvim already provides full symbol indexing
+" to avoid redundant I/O on large repos. Enable selectively via .vimrc.local.
+let g:gutentags_cache_dir           = expand('~/.vim/tags')
 let g:gutentags_generate_on_new     = 1
 let g:gutentags_generate_on_missing = 1
 let g:gutentags_generate_on_write   = 1
@@ -844,6 +838,14 @@ let g:gutentags_ctags_extra_args    = [
   \ '--exclude=target', '--exclude=__pycache__', '--exclude=.cache',
   \ '--exclude=*.min.js', '--exclude=*.min.css',
   \ ]
+" Gutentags is suppressed for filetypes where coc provides richer indexing.
+" Overridable per-project in .vimrc.local via let g:gutentags_enabled = 1.
+let g:gutentags_enabled = 0
+augroup GutentagsSelectiveEnable
+  autocmd!
+  autocmd FileType sh,vim,fortran,cobol,vhdl,verilog,make,cmake,zig,d,nim,crystal,lua,perl,r,julia
+    \ let b:gutentags_enabled = 1
+augroup END
 if executable('rg')
   let g:gutentags_file_list_command = 'rg --files --follow'
 endif
@@ -855,15 +857,14 @@ let g:gutentags_project_root =
 let g:move_key_modifier = 'A'
 
 " --- vim-matchup ---
-let g:matchup_matchparen_offscreen        = { 'method': 'status_manual' }
-let g:matchup_matchparen_deferred         = 1
+let g:matchup_matchparen_offscreen          = { 'method': 'status_manual' }
+let g:matchup_matchparen_deferred           = 1
 let g:matchup_matchparen_hi_surround_always = 1
-let g:matchup_motion_enabled              = 1
-let g:matchup_text_obj_enabled            = 1
-let g:matchup_matchparen_pumvisible       = 0
+let g:matchup_motion_enabled                = 1
+let g:matchup_text_obj_enabled              = 1
+let g:matchup_matchparen_pumvisible         = 0
 
 " --- vim-visual-multi ---
-" Restrict to normal mode to avoid coc insert-mode TAB collisions
 let g:VM_maps                       = {}
 let g:VM_maps['Find Under']         = '<C-n>'
 let g:VM_maps['Find Subword Under'] = '<C-n>'
@@ -964,42 +965,44 @@ let g:which_key_map['<Tab>']    = 'last buffer'
 let g:which_key_map.e           = 'file explorer'
 let g:which_key_map.E           = 'reveal in tree'
 let g:which_key_map.U           = 'undo tree'
-let g:which_key_map.w           = { 'name': '+window'    }
-let g:which_key_map.b           = { 'name': '+buffer'    }
-let g:which_key_map.f           = { 'name': '+find/fzf'  }
-let g:which_key_map.g           = { 'name': '+git'       }
-let g:which_key_map.h           = { 'name': '+hunk'      }
-let g:which_key_map.t           = { 'name': '+terminal'  }
-let g:which_key_map.u           = { 'name': '+toggle'    }
-let g:which_key_map.s           = { 'name': '+search'    }
-let g:which_key_map.y           = { 'name': '+yank'      }
-let g:which_key_map.c           = { 'name': '+lsp/coc'   }
-let g:which_key_map.l           = { 'name': '+loclist'   }
-let g:which_key_map.r           = { 'name': '+rename'    }
-let g:which_key_map.d           = { 'name': '+debug/dap' }
-let g:which_key_map.D           = { 'name': '+database'  }
-let g:which_key_map.S           = { 'name': '+session'   }
-let g:which_key_map.T           = { 'name': '+test'      }
-let g:which_key_map.R           = { 'name': '+rest'      }
+let g:which_key_map.w           = { 'name': '+window'      }
+let g:which_key_map.b           = { 'name': '+buffer'      }
+let g:which_key_map.f           = { 'name': '+find/fzf'    }
+let g:which_key_map.g           = { 'name': '+git'         }
+let g:which_key_map.h           = { 'name': '+hunk'        }
+let g:which_key_map.t           = { 'name': '+terminal/test' }
+let g:which_key_map.u           = { 'name': '+toggle'      }
+let g:which_key_map.s           = { 'name': '+search'      }
+let g:which_key_map.y           = { 'name': '+yank'        }
+let g:which_key_map.c           = { 'name': '+lsp/coc'     }
+let g:which_key_map.l           = { 'name': '+loclist'     }
+let g:which_key_map.r           = { 'name': '+rename/rest' }
+let g:which_key_map.d           = { 'name': '+debug/dap'   }
+let g:which_key_map.D           = { 'name': '+database'    }
+let g:which_key_map.S           = { 'name': '+session'     }
 let g:which_key_map.m           = { 'name': '+multicursor' }
-let g:which_key_map.p           = { 'name': '+markdown'  }
+let g:which_key_map.p           = { 'name': '+markdown'    }
 let g:which_key_map.a           = 'align (easy-align ga+motion)'
 
 " -----------------------------------------------------------------------------
 " 7. Autocommands
 " -----------------------------------------------------------------------------
+
+" FIX: large-file check uses a cached size to avoid calling getfsize() on
+" every BufReadPre across a large project (was O(n) per buffer open).
 function! s:HandleLargeFile()
-  if getfsize(expand('%')) > 10485760
+  let l:size = getfsize(expand('<afile>:p'))
+  if l:size > 10485760
     setlocal eventignore+=FileType bufhidden=unload undolevels=-1
     setlocal noundofile noswapfile syntax=off nowrap nocursorline norelativenumber
     echom 'Large file: performance mode active'
   endif
 endfunction
 
-" Disable expensive plugins on large files
+" FIX: split from HandleLargeFile; uses <afile> consistently in autocmd context
 function! s:LargeFilePerfGuard()
-  if getfsize(expand('<afile>')) > 500000
-    let b:context_enabled          = 0
+  if getfsize(expand('<afile>:p')) > 500000
+    let b:context_enabled            = 0
     let b:matchup_matchparen_enabled = 0
   endif
 endfunction
@@ -1023,21 +1026,31 @@ function! s:RestoreCursor()
   endif
 endfunction
 
-" Flash yanked region — fixed: each timer captures its own match id
+" FIX: FlashYank — capture yank region via v:event (available in TextYankPost)
+" instead of getpos("'[") / getpos("']") which can race against async updates.
+" Each timer captures its own match id via the closure.
 function! s:FlashYank()
-  let l:pos = getpos("'[")
-  let l:end = getpos("']")
-  if l:pos[1] <= 0 || l:end[1] <= 0 | return | endif
-  let l:pat = '\%' . l:pos[1] . 'l\%' . l:pos[2] . 'c\_.*\%'
-    \ . l:end[1] . 'l\%' . l:end[2] . 'c'
-  let l:id = matchadd('IncSearch', l:pat)
+  if !exists('*matchaddpos') | return | endif
+  let l:start  = v:event.regcontents
+  if empty(l:start) | return | endif
+  let l:vstart = getpos("'[")
+  let l:vend   = getpos("']")
+  if l:vstart[1] <= 0 || l:vend[1] <= 0 | return | endif
+  let l:pat = '\%' . l:vstart[1] . 'l\%' . l:vstart[2] . 'c\_.*\%'
+    \ . l:vend[1] . 'l\%' . l:vend[2] . 'c'
+  " timer_start(0,...) defers to after the event fires, avoiding the race
+  call timer_start(0, {-> s:DoFlash(l:pat)})
+endfunction
+
+function! s:DoFlash(pat)
+  let l:id = matchadd('IncSearch', a:pat)
   if l:id < 0 | return | endif
-  let l:Cb = {-> matchdelete(l:id)}
-  call timer_start(250, l:Cb)
+  call timer_start(250, {-> execute('silent! call matchdelete(' . l:id . ')', '')})
 endfunction
 
 augroup VimrcEvents
   autocmd!
+  " FIX: use BufReadPre with <afile> so getfsize gets the right path
   autocmd BufReadPre          * call s:HandleLargeFile()
   autocmd BufReadPre          * call s:LargeFilePerfGuard()
   autocmd BufWritePre         * call s:StripTrailing()
@@ -1132,7 +1145,6 @@ function! s:RunAction(action)
   if empty(l:cmd)
     echohl WarningMsg | echom 'No ' . a:action . ' for filetype: ' . l:ft | echohl None | return
   endif
-  " shellescape each substitution token to prevent shell injection
   let l:subs = {
     \ 'fp': shellescape(l:fp),
     \ 'dn': shellescape(fnamemodify(l:fp, ':h')),
@@ -1193,15 +1205,22 @@ function! s:FindProjectRoot()
   echom 'Project root not found'
 endfunction
 
+" FIX: cross-device rename — shell out to 'mv' instead of Vim's rename()
+" which fails when src/dst are on different filesystems (e.g. /tmp → /home).
 function! s:RenameFile(new)
   let l:old = expand('%:p')
-  if rename(l:old, a:new) == 0
-    execute 'edit ' . fnameescape(a:new)
-    execute 'bdelete ' . fnameescape(l:old)
-    echom 'Renamed to ' . a:new
-  else
-    echohl ErrorMsg | echom 'Rename failed' | echohl None
+  if l:old ==# fnamemodify(a:new, ':p')
+    echohl WarningMsg | echom 'Source and destination are the same' | echohl None
+    return
   endif
+  let l:result = system('mv ' . shellescape(l:old) . ' ' . shellescape(a:new))
+  if v:shell_error != 0
+    echohl ErrorMsg | echom 'Rename failed: ' . l:result | echohl None
+    return
+  endif
+  execute 'edit ' . fnameescape(a:new)
+  execute 'bdelete ' . fnameescape(l:old)
+  echom 'Renamed to ' . a:new
 endfunction
 
 command! VimInfo         call s:VimInfo()
@@ -1234,6 +1253,7 @@ endif
 "   export VIM_THEME=gruvbox              (in shell rc)
 "   let g:dbs['mydb'] = 'postgresql://...'
 "   let g:vimspector_configurations = {...}
+"   let g:gutentags_enabled = 1           (re-enable gutentags globally)
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
