@@ -1,6 +1,8 @@
 ;;; emacs-ide-spot-check.el --- Spot-check commands and keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.0.4
+;;; Version: 3.2.1 | FIX: Added emacs-ide-diagnose-languages, emacs-ide-update,
+;;;           emacs-ide-freeze-versions, emacs-ide-lsp-check-servers to command
+;;;           list — all now defined in their respective modules.
 ;;; Code:
 
 (defun emacs-ide-spot-check--command-ok-p (fn)
@@ -33,6 +35,8 @@
       (princ "COMMANDS (M-x):\n")
       (dolist (fn '(emacs-ide-run-tests
                     emacs-ide-diagnose
+                    emacs-ide-diagnose-lsp
+                    emacs-ide-diagnose-languages
                     emacs-ide-show-version
                     emacs-ide-startup-report
                     emacs-ide-purge-bytecode-cache

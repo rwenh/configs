@@ -340,5 +340,28 @@
 (defalias 'emacs-ide-reload-config 'emacs-ide-config-reload
   "Reload config.yml and apply settings.")
 
+(defun emacs-ide-update ()
+  "Update all straight.el packages to their latest versions.
+Pulls from upstream for every package then rebuilds.
+Restart Emacs afterwards to load the new versions."
+  (interactive)
+  (if (fboundp 'straight-pull-all)
+      (progn
+        (message "📦 Updating all packages via straight.el…")
+        (straight-pull-all)
+        (straight-rebuild-all)
+        (message "✓ Packages updated. Restart Emacs to load new versions."))
+    (message "⚠ straight.el not available — cannot update packages.")))
+
+(defun emacs-ide-freeze-versions ()
+  "Write current package versions to straight/versions/default.el.
+Use this to pin a known-good state before running emacs-ide-update."
+  (interactive)
+  (if (fboundp 'straight-freeze-versions)
+      (progn
+        (straight-freeze-versions)
+        (message "✓ Package versions frozen to straight/versions/default.el"))
+    (message "⚠ straight.el not available — cannot freeze versions.")))
+
 (provide 'init)
 ;;; init.el ends here

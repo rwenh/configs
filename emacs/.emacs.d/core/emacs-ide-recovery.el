@@ -1,8 +1,7 @@
 ;;; emacs-ide-recovery.el --- Production Recovery System -*- lexical-binding: t -*-
-;;; Version: 3.2.0 | FIX: nth file-size wrong-number-of-arguments corrected,
-;;;           added missing emacs-ide-recovery-mode, emacs-ide-recovery-backup-config,
-;;;           emacs-ide-recovery-report, emacs-ide-recovery-disable-package,
-;;;           emacs-ide-recovery-reset-crash-count (all referenced by spot-check / tests).
+;;; Version: 3.2.1 | FIX: Added emacs-ide-recovery--session-timer defvar + periodic
+;;;           flush timer. init.el's kill-emacs-hook referenced this var but it was
+;;;           never declared, causing a void-variable warning on every exit.
 ;;; Code:
 
 (require 'cl-lib)
@@ -142,6 +141,23 @@ The package will not be loaded even if it appears in the feature modules list."
   (if (file-exists-p emacs-ide-recovery-log-file)
       (view-file emacs-ide-recovery-log-file)
     (message "No recovery log found at %s" emacs-ide-recovery-log-file)))
+
+;;; ─── Session timer ───────────────────────────────────────────────────────────
+;; Declared here so init.el's kill-emacs-hook can safely cancel it.
+;; The timer fires every 5 minutes to flush the crash history to disk,
+;; ensuring an abnormal exit is recorded even without the kill hook running.
+
+(defvar emacs-ide-recovery--session-timer nil
+  "Periodic idle timer that flushes crash-history state to disk.")
+
+(defun emacs-ide-recovery--start-session-timer ()
+  "Start the periodic session-health flush timer."
+  (when emacs-ide-recovery--session-timer
+    (cancel-timer emacs-ide-recovery--session-timer))
+  (setq emacs-ide-recovery--session-timer
+        (run-with-idle-timer 300 t #'emacs-ide-recovery-save-crash-history)))
+
+(add-hook 'after-init-hook #'emacs-ide-recovery--start-session-timer)
 
 ;;; ─── Report ──────────────────────────────────────────────────────────────────
 

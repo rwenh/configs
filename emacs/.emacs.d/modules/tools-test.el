@@ -1,5 +1,6 @@
 ;;; tools-test.el --- Language-Aware Test Runner -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.2.1 | FIX: Removed duplicate global-set-key calls (all 4 are set
+;;;           canonically in keybindings.el which loads last).
 ;;; Code:
 
 (require 'cl-lib)
@@ -162,11 +163,6 @@
                        (if (eq (plist-get entry :status) 'pass) "✓" "✗")
                        (plist-get entry :command)
                        (or (plist-get entry :duration) 0)))))))
-
-(global-set-key (kbd "C-c C-t") #'emacs-ide-test-run)
-(global-set-key (kbd "C-c C-T") #'emacs-ide-test-run-all)
-(global-set-key (kbd "C-c X l") #'emacs-ide-test-run-last)
-(global-set-key (kbd "C-c x R") #'emacs-ide-test-report)
 
 (provide 'tools-test)
 ;;; tools-test.el ends here

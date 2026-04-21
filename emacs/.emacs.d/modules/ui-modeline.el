@@ -1,5 +1,6 @@
 ;;; ui-modeline.el --- Modeline configuration -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.2.1 | FIX: health keymap deferred — was firing before doom-modeline
+;;;           loaded, producing "<nil> <mouse-1> is undefined" on TTY/early load.
 ;;; Code:
 
 (unless (locate-library "doom-modeline")
@@ -7,11 +8,23 @@
       (add-hook 'after-init-hook (lambda () (powerline-default-theme)))
     (message "ui-modeline: neither doom-modeline nor powerline found — using default modeline")))
 
-(defvar emacs-ide-modeline--health-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map [mode-line mouse-1] #'emacs-ide-health-check-all)
-    map)
-  "Keymap for the IDE health modeline segment click action.")
+;; FIX: The keymap must NOT be created at top level as a defvar initializer,
+;; because `define-key [mode-line mouse-1]` only makes sense in a GUI frame and
+;; fires a void-keymap / undefined-key error when Emacs loads in a terminal or
+;; before frames exist.  We create it lazily inside the function that uses it.
+
+(defvar emacs-ide-modeline--health-map nil
+  "Keymap for the IDE health modeline segment click action.
+Created lazily on first use so it never fires in a frameless/TTY context.")
+
+(defun emacs-ide-modeline--ensure-health-map ()
+  "Initialise `emacs-ide-modeline--health-map' if not yet done."
+  (unless emacs-ide-modeline--health-map
+    (let ((map (make-sparse-keymap)))
+      (condition-case nil
+          (define-key map [mode-line mouse-1] #'emacs-ide-health-check-all)
+        (error nil))
+      (setq emacs-ide-modeline--health-map map))))
 
 (defun emacs-ide-modeline--health-string ()
   (if (fboundp 'emacs-ide-health--summary-string)
@@ -21,6 +34,7 @@
                     ((string-prefix-p "⚠" s) 'warning)
                     ((string-prefix-p "?" s) 'shadow)
                     (t                       'success))))
+        (emacs-ide-modeline--ensure-health-map)
         (propertize (concat " 🏥" s " ")
                     'face       face
                     'help-echo  "IDE Health — click to run full check"

@@ -223,7 +223,7 @@
         try-complete-lisp-symbol))
 (with-eval-after-load 'yasnippet
   (add-to-list 'hippie-expand-try-functions-list 'yas-hippie-try-expand))
-(global-set-key (kbd "M-/") 'hippie-expand)
+;; M-/ binding is set in keybindings.el
 
 ;;; ─── History persistence ─────────────────────────────────────────────────────
 

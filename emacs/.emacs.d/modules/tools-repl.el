@@ -1,5 +1,5 @@
 ;;; tools-repl.el --- Unified REPL Hub -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Display rules now persistent across config reload (FIX #13-alt)
+;;; Version: 3.2.1 | FIX: Removed duplicate global-set-key calls (keybindings.el is canonical).
 ;;; Code:
 
 (require 'cl-lib)
@@ -217,13 +217,9 @@
   (add-hook 'emacs-ide-config-reload-hook #'emacs-ide-repl--setup-display-rules))
 
 ;;; ─── Global keys ─────────────────────────────────────────────────────────────
-
-(global-set-key (kbd "C-c x r") #'emacs-ide-repl-launch)
-(global-set-key (kbd "C-c x s") #'emacs-ide-repl-send-region)
-(global-set-key (kbd "C-c x b") #'emacs-ide-repl-send-buffer)
-(global-set-key (kbd "C-c x d") #'emacs-ide-repl-send-defun)
-(global-set-key (kbd "C-c x l") #'emacs-ide-repl-send-line)
-(global-set-key (kbd "C-c x t") #'emacs-ide-repl-toggle-window)
+;; Keybindings are set canonically in keybindings.el which loads last.
+;; Do NOT set global-set-key here — doing so causes duplicate bindings
+;; and makes keybindings.el the non-authoritative source of truth.
 
 ;;; ─── Status ──────────────────────────────────────────────────────────────────
 

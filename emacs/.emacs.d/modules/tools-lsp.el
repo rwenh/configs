@@ -1,5 +1,5 @@
 ;;; tools-lsp.el --- LSP Configuration -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Fixed LSP setq crash + added all bounds checks (FIX #13)
+;;; Version: 3.2.1 | PATCH: Added emacs-ide-lsp-check-servers (was missing, spot-check required it)
 ;;; Code:
 
 (when (bound-and-true-p emacs-ide-lsp-enable)
@@ -56,8 +56,48 @@
 ) ;; end lsp-enable
 
 (defun emacs-ide-lsp-status ()
+  "Show LSP status for the current buffer."
   (interactive)
   (message "LSP: %s" (if (bound-and-true-p lsp-mode) "✓ active" "✗ inactive")))
+
+(defun emacs-ide-lsp-check-servers ()
+  "Check which LSP servers are installed and available on PATH."
+  (interactive)
+  (let ((servers '(("pyright"                    . "Python")
+                   ("pylsp"                       . "Python (pylsp)")
+                   ("rust-analyzer"               . "Rust")
+                   ("gopls"                       . "Go")
+                   ("typescript-language-server"  . "JavaScript / TypeScript")
+                   ("clangd"                      . "C / C++")
+                   ("jdtls"                       . "Java")
+                   ("kotlin-language-server"      . "Kotlin")
+                   ("lua-language-server"          . "Lua")
+                   ("bash-language-server"        . "Shell / Bash")
+                   ("yaml-language-server"        . "YAML")
+                   ("sqls"                        . "SQL")
+                   ("solargraph"                  . "Ruby")
+                   ("elixir-ls"                   . "Elixir")
+                   ("clojure-lsp"                 . "Clojure")
+                   ("haskell-language-server"     . "Haskell")
+                   ("zls"                         . "Zig")
+                   ("nil"                         . "Nix")
+                   ("metals"                      . "Scala")
+                   ("r-languageserver"            . "R"))))
+    (with-output-to-temp-buffer "*LSP Server Status*"
+      (princ "=== LSP SERVER STATUS ===\n\n")
+      (princ (format "LSP enabled in config: %s\n\n"
+                     (if (bound-and-true-p emacs-ide-lsp-enable) "yes" "no")))
+      (let ((found 0) (missing 0))
+        (dolist (srv servers)
+          (let ((available (executable-find (car srv))))
+            (if available (cl-incf found) (cl-incf missing))
+            (princ (format "  %s %-36s %s\n"
+                           (if available "✓" "✗")
+                           (cdr srv)
+                           (if available (car srv) "(not on PATH)")))))
+        (princ (format "\n%d installed, %d not found.\n" found missing))
+        (when (= found 0)
+          (princ "\nTip: Install language servers — see README for per-distro instructions.\n"))))))
 
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

@@ -142,7 +142,7 @@
                          (shell-quote-argument query)
                          (shell-quote-argument emacs-ide-notes-directory))))))
 
-(global-set-key (kbd "C-c n /") 'emacs-ide-notes-search)
+;; C-c n / binding is set in keybindings.el
 
 (provide 'tools-notes)
 ;;; tools-notes.el ends here

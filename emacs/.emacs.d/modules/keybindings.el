@@ -1,5 +1,7 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.2.1 | FIX: Added C-c C-T, C-c x l, C-c r recovery prefix,
+;;;           C-c t/e terminal/eshell. These were checked by spot-check but
+;;;           never bound. Removed duplicate comments from tool modules.
 ;;; Code:
 
 (global-set-key (kbd "C-x C-b") 'ibuffer)
@@ -64,6 +66,7 @@
 (global-set-key (kbd "C-c x s") #'emacs-ide-repl-send-region)
 (global-set-key (kbd "C-c x b") #'emacs-ide-repl-send-buffer)
 (global-set-key (kbd "C-c x d") #'emacs-ide-repl-send-defun)
+(global-set-key (kbd "C-c x l") #'emacs-ide-repl-send-line)
 (global-set-key (kbd "C-c x t") #'emacs-ide-repl-toggle-window)
 (global-set-key (kbd "C-c x R") #'emacs-ide-test-report)
 
@@ -74,6 +77,32 @@
 (global-set-key (kbd "C-c X s") #'emacs-ide-test-runner-status)
 (global-set-key (kbd "C-c X l") #'emacs-ide-test-run-last)
 (global-set-key (kbd "C-c C-t") #'emacs-ide-test-run)
+(global-set-key (kbd "C-c C-T") #'emacs-ide-test-run-all)
+
+;;; ─── Recovery (C-c r prefix) ─────────────────────────────────────────────────
+
+(global-set-key (kbd "C-c r r")   #'emacs-ide-recovery-report)
+(global-set-key (kbd "C-c r v")   #'emacs-ide-recovery-view-log)
+(global-set-key (kbd "C-c r b")   #'emacs-ide-recovery-backup-config)
+(global-set-key (kbd "C-c r d")   #'emacs-ide-recovery-disable-package)
+(global-set-key (kbd "C-c r C-r") #'emacs-ide-recovery-reset-crash-count)
+
+;;; ─── Terminal / eshell ───────────────────────────────────────────────────────
+;; These are also set via use-package :bind in tools-terminal.el, but we set
+;; them here too so they appear in the canonical keybinding registry and are
+;; verified by spot-check regardless of package load order.
+
+(global-set-key (kbd "C-c t")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-vterm-here)
+        (emacs-ide-vterm-here)
+      (message "vterm not loaded yet"))))
+
+(global-set-key (kbd "C-c e")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-eshell-here)
+        (emacs-ide-eshell-here)
+      (eshell 'N))))
 
 (global-set-key (kbd "C-c D d") #'emacs-ide-detect-show-status)
 
@@ -100,6 +129,18 @@
 (global-set-key (kbd "C-c n") 'neotree-toggle)
 (global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
 (global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
+
+;;; ─── Completion / editing ────────────────────────────────────────────────────
+;; M-/ was set in completion-core.el — moved here for single source of truth.
+(global-set-key (kbd "M-/") 'hippie-expand)
+
+;;; ─── Notes ───────────────────────────────────────────────────────────────────
+;; C-c n / was set in tools-notes.el — moved here.
+(global-set-key (kbd "C-c n /")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-notes-search)
+        (emacs-ide-notes-search)
+      (message "tools-notes not loaded yet"))))
 
 (defun emacs-ide-show-keybindings-help ()
   (interactive)

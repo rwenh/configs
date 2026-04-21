@@ -1,5 +1,6 @@
 ;;; tools-test-runner-registry.el --- Per-lang test runner registry -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.2.1 | FIX: Removed duplicate global-set-key calls and dead define-prefix-command.
+;;;           Keybindings are set canonically in keybindings.el.
 ;;; Code:
 
 (require 'cl-lib)
@@ -84,14 +85,6 @@
                          (emacs-ide-test--format-fn (plist-get info :project-fn))
                          (emacs-ide-test--format-fn (plist-get info :point-fn))
                          (emacs-ide-test--format-fn (plist-get info :watch-fn)))))))))
-
-(define-prefix-command 'emacs-ide-test-map)
-(global-set-key (kbd "C-c X")   'emacs-ide-test-map)
-(global-set-key (kbd "C-c X f") #'emacs-ide-test-run-file)
-(global-set-key (kbd "C-c X p") #'emacs-ide-test-run-project)
-(global-set-key (kbd "C-c X .") #'emacs-ide-test-run-at-point)
-(global-set-key (kbd "C-c X w") #'emacs-ide-test-watch)
-(global-set-key (kbd "C-c X s") #'emacs-ide-test-runner-status)
 
 (provide 'tools-test-runner-registry)
 ;;; tools-test-runner-registry.el ends here
