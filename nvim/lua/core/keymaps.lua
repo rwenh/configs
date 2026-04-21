@@ -1,15 +1,29 @@
 -- lua/core/keymaps.lua - Safe Keybindings
 --
--- FIX (v2.3.8):
---   • Overseer duplicate maps removed. <leader>ot, <leader>or, and <leader>ob
---     are all owned by workflow.lua's keys= table, which also handles lazy-
---     loading and the smart run_template fallback for <leader>ob. Having them
---     here too caused which-key to list each entry twice and silently overwrote
---     workflow.lua's smart <leader>ob with a plain OverseerRun call depending
---     on registration order. All three removed; workflow.lua is sole owner.
+-- OPT (v2.3.13):
+--   • DAP <leader>;* maps consolidated from 13 hand-rolled blocks into a
+--     single declarative table + one loop.  The dap_fn() factory is now
+--     used for ALL dap/dapui/widgets calls uniformly (F-keys + leader).
+--   • Spectre maps consolidated: 3 hand-rolled blocks → 1 factory + table.
+--   • Todo-comments maps consolidated: 2 hand-rolled blocks → 1 factory.
+--   • Removed empty section headers that contained only FIX comments and
+--     no active code (FILE EXPLORER, OVERSEER).
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
+
+-- ── Lazy-require factory ────────────────────────────────────────────────────
+-- Returns a function that pcall-requires `mod`, then calls `fn(loaded_mod)`.
+-- On failure it notifies with `tag` and does nothing else.
+local function lazy(mod, tag)
+  return function(fn)
+    return function()
+      local ok, m = pcall(require, mod)
+      if ok then pcall(fn, m)
+      else vim.notify(tag .. " not loaded", vim.log.levels.WARN) end
+    end
+  end
+end
 
 -- ============================================================================
 -- BASIC EDITING
@@ -39,10 +53,7 @@ map("n", "<leader>sh", "<cmd>split<cr>",  { desc = "Horizontal split" })
 map("n", "<leader>se", "<C-w>=",          { desc = "Equal splits" })
 map("n", "<leader>sx", "<cmd>close<cr>",  { desc = "Close split" })
 
--- FIX (v2.3.5): <leader>sm no longer depends on MaximizerToggle (no plugin
--- was ever specced for it). Replaced with a native toggle: first press fills
--- the screen; second press restores equal splits. Uses a window-local flag
--- so multiple windows can each track their own state independently.
+-- Native maximize toggle — no plugin dependency (v2.3.5)
 map("n", "<leader>sm", function()
   if vim.w._maximized then
     vim.w._maximized = false
@@ -53,8 +64,8 @@ map("n", "<leader>sm", function()
   end
 end, { desc = "Maximize / restore split" })
 
--- NOTE: <C-j>/<C-k> are normal-mode only here. completion.lua maps them in
--- insert-mode only (via blink.cmp's InsertEnter event). No conflict.
+-- NOTE: <C-j>/<C-k> are normal-mode only. completion.lua maps them in insert
+-- mode via blink.cmp's InsertEnter event — no conflict.
 map("n", "<C-h>", "<C-w>h", opts)
 map("n", "<C-j>", "<C-w>j", opts)
 map("n", "<C-k>", "<C-w>k", opts)
@@ -77,13 +88,6 @@ map("n", "]b", "<cmd>bnext<cr>", { desc = "Next buffer" })
 map("n", "[b", "<cmd>bprev<cr>", { desc = "Prev buffer" })
 
 -- ============================================================================
--- FILE EXPLORER
--- FIX: <leader>ee/ef/ec/er removed — owned by editor.lua (neo-tree keys=).
--- Registering them here too caused which-key to show each entry twice and
--- bypassed lazy-loading of neo-tree on first keypress.
--- ============================================================================
-
--- ============================================================================
 -- TELESCOPE FIND
 -- ============================================================================
 
@@ -97,17 +101,12 @@ map("n", "<leader>fk", "<cmd>Telescope keymaps<cr>",     { desc = "Find keymaps"
 map("n", "<leader>fc", "<cmd>Telescope commands<cr>",    { desc = "Find commands" })
 map("n", "<leader>fr", "<cmd>TelescopeResume<cr>",       { desc = "Resume last search" })
 map("n", "<leader>fo", "<cmd>Telescope oldfiles<cr>",    { desc = "Recent files" })
-
-map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
+map("n", "<C-s>",      "<cmd>Telescope live_grep<cr>",   { desc = "Live grep" })
 
 -- ============================================================================
 -- GIT OPERATIONS
--- FIX: <leader>.p (preview_hunk) and <leader>.r (reset_hunk) removed.
---   git.lua's gitsigns on_attach registers these as BUFFER-LOCAL maps, which
---   is correct — they only exist inside git-tracked buffers.
---   The global versions here fired in every buffer (including non-git ones),
---   producing a no-op call to gitsigns outside git context.
--- FIX: <leader>.B (BlameToggle) removed — owned by hud.lua blame.nvim keys=.
+-- NOTE: <leader>.p/.r/.S are BUFFER-LOCAL in git.lua (gitsigns on_attach).
+--       <leader>.B is owned by hud.lua (blame.nvim keys=).
 -- ============================================================================
 
 map("n", "<leader>.g", "<cmd>LazyGit<cr>",                { desc = "LazyGit" })
@@ -118,106 +117,72 @@ map("n", "<leader>.d", "<cmd>DiffviewOpen<cr>",           { desc = "Git diff" })
 map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history" })
 
 -- ============================================================================
--- DEBUG (DAP)
--- FIX (v2.3.5): All require("dap") / require("dapui") calls now wrapped in
--- pcall. DAP only loads on the keys= triggers declared in dap.lua; if the
--- plugin failed to load (missing adapter, Mason not done) these mappings used
--- to throw unhandled errors. They now notify gracefully.
+-- DEBUG (DAP)  — consolidated table-driven registration (v2.3.13)
+--
+-- Three module families: "dap", "dapui", "dap.ui.widgets".
+-- Special cases (;B, ;l, ;r) need custom args — they are listed separately
+-- after the table loop.
 -- ============================================================================
 
-local function dap_fn(method)
-  return function()
-    local ok, dap = pcall(require, "dap")
-    if ok then pcall(dap[method])
-    else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-  end
+-- Generic safe-call helpers for each DAP module family
+local dap_call     = lazy("dap",            "[dap] nvim-dap")
+local dapui_call   = lazy("dapui",          "[dap] nvim-dap-ui")
+local widget_call  = lazy("dap.ui.widgets", "[dap] nvim-dap")
+
+-- Simple method dispatch: key → { module_family, method_or_fn, desc }
+-- module families: "d"=dap  "u"=dapui  "w"=widgets
+local _dap_maps = {
+  { "<leader>;b", "d", function(d) d.toggle_breakpoint() end,  "Toggle breakpoint" },
+  { "<leader>;c", "d", function(d) d.continue() end,           "Continue/Start" },
+  { "<leader>;i", "d", function(d) d.step_into() end,          "Step into" },
+  { "<leader>;o", "d", function(d) d.step_over() end,          "Step over" },
+  { "<leader>;O", "d", function(d) d.step_out() end,           "Step out" },
+  { "<leader>;L", "d", function(d) d.run_last() end,           "Run last" },
+  { "<leader>;x", "d", function(d) d.terminate() end,          "Terminate debug" },
+  { "<leader>;t", "u", function(u) u.toggle() end,             "Toggle debug UI" },
+  { "<leader>;h", "w", function(w) w.hover() end,              "Debug hover" },
+  { "<leader>;p", "w", function(w) w.preview() end,            "Debug preview" },
+}
+
+local _family = { d = dap_call, u = dapui_call, w = widget_call }
+for _, spec in ipairs(_dap_maps) do
+  local lhs, fam, fn, desc = spec[1], spec[2], spec[3], spec[4]
+  map("n", lhs, _family[fam](fn), { desc = desc })
 end
 
-map("n", "<leader>;b", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.toggle_breakpoint)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Toggle breakpoint" })
-
+-- Special cases: require user input before the dap call
 map("n", "<leader>;B", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.set_breakpoint, vim.fn.input("Breakpoint condition: "))
+  local ok, d = pcall(require, "dap")
+  if ok then pcall(d.set_breakpoint, vim.fn.input("Breakpoint condition: "))
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Conditional breakpoint" })
 
 map("n", "<leader>;l", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.set_breakpoint, nil, nil, vim.fn.input("Log point message: "))
+  local ok, d = pcall(require, "dap")
+  if ok then pcall(d.set_breakpoint, nil, nil, vim.fn.input("Log point message: "))
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Log point" })
 
-map("n", "<leader>;c", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.continue)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Continue/Start" })
-
-map("n", "<leader>;i", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.step_into)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Step into" })
-
-map("n", "<leader>;o", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.step_over)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Step over" })
-
-map("n", "<leader>;O", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.step_out)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Step out" })
-
 map("n", "<leader>;r", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(function() dap.repl.toggle() end)
+  local ok, d = pcall(require, "dap")
+  if ok then pcall(function() d.repl.toggle() end)
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Toggle REPL" })
 
-map("n", "<leader>;L", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.run_last)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Run last" })
-
-map("n", "<leader>;t", function()
-  local ok, dapui = pcall(require, "dapui")
-  if ok then pcall(dapui.toggle)
-  else vim.notify("[dap] nvim-dap-ui not loaded", vim.log.levels.WARN) end
-end, { desc = "Toggle debug UI" })
-
-map("n", "<leader>;x", function()
-  local ok, dap = pcall(require, "dap")
-  if ok then pcall(dap.terminate)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Terminate debug" })
-
-map("n", "<leader>;h", function()
-  local ok, widgets = pcall(require, "dap.ui.widgets")
-  if ok then pcall(widgets.hover)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Debug hover" })
-
-map("n", "<leader>;p", function()
-  local ok, widgets = pcall(require, "dap.ui.widgets")
-  if ok then pcall(widgets.preview)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Debug preview" })
-
-map("n", "<F5>",  dap_fn("continue"),        { desc = "Continue" })
-map("n", "<F6>",  dap_fn("toggle_breakpoint"),{ desc = "Toggle breakpoint" })
-map("n", "<F7>",  dap_fn("step_into"),        { desc = "Step into" })
-map("n", "<F8>",  dap_fn("step_over"),        { desc = "Step over" })
-map("n", "<F9>",  dap_fn("step_out"),         { desc = "Step out" })
-map("n", "<F10>", dap_fn("run_to_cursor"),    { desc = "Run to cursor" })
-map("n", "<F11>", dap_fn("terminate"),        { desc = "Terminate" })
+-- F-keys reuse dap_call helper
+local _fkey_maps = {
+  { "<F5>",  "continue"         },
+  { "<F6>",  "toggle_breakpoint"},
+  { "<F7>",  "step_into"        },
+  { "<F8>",  "step_over"        },
+  { "<F9>",  "step_out"         },
+  { "<F10>", "run_to_cursor"    },
+  { "<F11>", "terminate"        },
+}
+for _, spec in ipairs(_fkey_maps) do
+  local lhs, method = spec[1], spec[2]
+  map("n", lhs, dap_call(function(d) d[method]() end), { desc = method:gsub("_", " ") })
+end
 
 -- ============================================================================
 -- RUN & TEST
@@ -245,80 +210,53 @@ map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Te
 map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal" })
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal" })
-map("t", "<Esc>", "<C-\\><C-n>", opts)
+map("t", "<Esc>",  "<C-\\><C-n>",      opts)
 map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 
 -- ============================================================================
 -- UI TOGGLES
--- FIX: <leader>uz (ZenMode) removed — owned by hud.lua zen-mode.nvim keys=.
--- FIX: <leader>uT (Twilight) removed — owned by hud.lua twilight.nvim keys=.
--- Both were causing which-key duplicates and bypassing lazy-load triggers.
+-- NOTE: <leader>uz (ZenMode) owned by hud.lua zen-mode.nvim keys=.
+--       <leader>uT (Twilight)  owned by hud.lua twilight.nvim keys=.
 -- ============================================================================
 
-map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>",
-  { desc = "Toggle theme" })
-map("n", "<leader>uw", "<cmd>ToggleWrap<cr>",
-  { desc = "Toggle wrap" })
-map("n", "<leader>us", "<cmd>ToggleSpell<cr>",
-  { desc = "Toggle spell" })
-map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",
-  { desc = "Toggle line numbers" })
+map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>", { desc = "Toggle theme" })
+map("n", "<leader>uw", "<cmd>ToggleWrap<cr>",                          { desc = "Toggle wrap" })
+map("n", "<leader>us", "<cmd>ToggleSpell<cr>",                         { desc = "Toggle spell" })
+map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",         { desc = "Toggle line numbers" })
 
 -- ============================================================================
--- SEARCH & REPLACE
--- FIX (v2.3.5): require("spectre") was called bare — spectre only loads on
--- :Spectre (cmd=). Pressing these before that event threw an unhandled
--- "module not found" error. All three handlers now use pcall.
+-- SEARCH & REPLACE  — factory-driven (v2.3.13)
 -- ============================================================================
 
-map("n", "<leader>/s", function()
-  local ok, spectre = pcall(require, "spectre")
-  if ok then pcall(spectre.open)
-  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
-end, { desc = "Search & replace" })
-
-map("n", "<leader>/w", function()
-  local ok, spectre = pcall(require, "spectre")
-  if ok then pcall(spectre.open_visual, { select_word = true })
-  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
-end, { desc = "Replace word" })
-
-map("n", "<leader>/f", function()
-  local ok, spectre = pcall(require, "spectre")
-  if ok then pcall(spectre.open_file_search)
-  else vim.notify("[spectre] not loaded — try :Lazy load nvim-spectre", vim.log.levels.WARN) end
-end, { desc = "Replace in file" })
+local _spectre_maps = {
+  { "<leader>/s", function(s) s.open() end,                          "Search & replace" },
+  { "<leader>/w", function(s) s.open_visual({ select_word = true }) end, "Replace word" },
+  { "<leader>/f", function(s) s.open_file_search() end,              "Replace in file" },
+}
+local spectre_call = lazy("spectre", "[spectre] not loaded — try :Lazy load nvim-spectre")
+for _, spec in ipairs(_spectre_maps) do
+  map("n", spec[1], spectre_call(spec[2]), { desc = spec[3] })
+end
 
 -- ============================================================================
 -- HARPOON
--- FIX (v2.3.6): All harpoon keymaps wrapped in pcall.
 -- ============================================================================
 
 local function harpoon_call(fn)
   return function()
     local ok, h = pcall(require, "harpoon")
-    if ok then
-      pcall(fn, h)
-    else
-      vim.notify("[harpoon] not loaded — try :Lazy load harpoon", vim.log.levels.WARN)
-    end
+    if ok then pcall(fn, h)
+    else vim.notify("[harpoon] not loaded — try :Lazy load harpoon", vim.log.levels.WARN) end
   end
 end
 
-map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),
-  { desc = "Harpoon add" })
-map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end),
-  { desc = "Harpoon menu" })
-map("n", "<leader>h1", harpoon_call(function(h) h:list():select(1) end), { desc = "Harpoon 1" })
-map("n", "<leader>h2", harpoon_call(function(h) h:list():select(2) end), { desc = "Harpoon 2" })
-map("n", "<leader>h3", harpoon_call(function(h) h:list():select(3) end), { desc = "Harpoon 3" })
-map("n", "<leader>h4", harpoon_call(function(h) h:list():select(4) end), { desc = "Harpoon 4" })
-
-map("n", "<M-1>", harpoon_call(function(h) h:list():select(1) end), opts)
-map("n", "<M-2>", harpoon_call(function(h) h:list():select(2) end), opts)
-map("n", "<M-3>", harpoon_call(function(h) h:list():select(3) end), opts)
-map("n", "<M-4>", harpoon_call(function(h) h:list():select(4) end), opts)
+map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),               { desc = "Harpoon add" })
+map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end), { desc = "Harpoon menu" })
+for i = 1, 4 do
+  map("n", "<leader>h" .. i, harpoon_call(function(h) h:list():select(i) end), { desc = "Harpoon " .. i })
+  map("n", "<M-" .. i .. ">", harpoon_call(function(h) h:list():select(i) end), opts)
+end
 
 -- ============================================================================
 -- FLASH
@@ -326,68 +264,37 @@ map("n", "<M-4>", harpoon_call(function(h) h:list():select(4) end), opts)
 
 map({ "n", "x", "o" }, "s", function()
   local ok, flash = pcall(require, "flash")
-  if ok and flash.jump then
-    flash.jump()
-  else
-    vim.notify(
-      "flash.nvim not loaded — run :Lazy install and restart.",
-      vim.log.levels.WARN
-    )
-  end
+  if ok and flash.jump then flash.jump()
+  else vim.notify("flash.nvim not loaded — run :Lazy install and restart.", vim.log.levels.WARN) end
 end, { desc = "Flash jump" })
 
 -- ============================================================================
 -- MISC UTILITIES
 -- ============================================================================
 
-map("n", "<leader>xc", "<cmd>CopyPath<cr>",      { desc = "Copy file path" })
-map("n", "<leader>xr", "<cmd>CopyRelPath<cr>",   { desc = "Copy relative path" })
-map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",      { desc = "Change to file dir" })
-map("n", "<leader>xe", "<cmd>!chmod +x %<cr>",   { desc = "Make executable" })
-map("n", "<leader>xm", "<cmd>CleanUp<cr>",        { desc = "Clean memory" })
-map("n", "<leader>xh", "<cmd>Health<cr>",         { desc = "Health check" })
-map("n", "<leader>xp", "<cmd>ProjectRoot<cr>",    { desc = "Go to project root" })
-map("n", "<leader>xl", "<cmd>Lazy<cr>",           { desc = "Lazy" })
-map("n", "<leader>xn", "<cmd>Mason<cr>",          { desc = "Mason" })
+map("n", "<leader>xc", "<cmd>CopyPath<cr>",    { desc = "Copy file path" })
+map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy relative path" })
+map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",    { desc = "Change to file dir" })
+map("n", "<leader>xe", "<cmd>!chmod +x %<cr>", { desc = "Make executable" })
+map("n", "<leader>xm", "<cmd>CleanUp<cr>",     { desc = "Clean memory" })
+map("n", "<leader>xh", "<cmd>Health<cr>",      { desc = "Health check" })
+map("n", "<leader>xp", "<cmd>ProjectRoot<cr>", { desc = "Go to project root" })
+map("n", "<leader>xl", "<cmd>Lazy<cr>",        { desc = "Lazy" })
+map("n", "<leader>xn", "<cmd>Mason<cr>",       { desc = "Mason" })
 map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Trouble diagnostics" })
 map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
--- NOTE: <leader>xg (Neogen) is intentionally NOT registered here.
--- It is registered in advanced.lua via keys= which also handles lazy-loading.
--- A duplicate here would cause which-key to show the same entry twice.
+-- NOTE: <leader>xg owned by advanced.lua (Neogen keys= + lazy-load).
 
 -- ============================================================================
--- TODO COMMENTS
--- FIX (v2.3.6): require("todo-comments") was called bare. Wrapped in pcall.
+-- TODO COMMENTS — factory-driven (v2.3.13)
 -- ============================================================================
 
-map("n", "]t", function()
-  local ok, tc = pcall(require, "todo-comments")
-  if ok then pcall(tc.jump_next)
-  else vim.notify("[todo-comments] not loaded", vim.log.levels.WARN) end
-end, { desc = "Next todo" })
-
-map("n", "[t", function()
-  local ok, tc = pcall(require, "todo-comments")
-  if ok then pcall(tc.jump_prev)
-  else vim.notify("[todo-comments] not loaded", vim.log.levels.WARN) end
-end, { desc = "Previous todo" })
+local todo_call = lazy("todo-comments", "[todo-comments]")
+map("n", "]t", todo_call(function(tc) tc.jump_next() end), { desc = "Next todo" })
+map("n", "[t", todo_call(function(tc) tc.jump_prev() end), { desc = "Previous todo" })
 
 -- ============================================================================
--- OVERSEER
--- FIX (v2.3.8): All three overseer maps (<leader>ot, <leader>or, <leader>ob)
--- removed from this file. They are owned by workflow.lua's keys= table, which
--- also handles lazy-loading and the smart run_template fallback for <leader>ob.
--- Having them here too caused:
---   1. which-key to list each entry twice under <leader>o.
---   2. <leader>ob silently overwriting workflow.lua's smart build logic with a
---      plain OverseerRun call depending on which registration ran last.
--- workflow.lua keys= is now the sole owner of all <leader>o* overseer maps.
--- ============================================================================
-
--- ============================================================================
--- OIL
--- FIX: <leader>eo removed — owned by hud.lua oil.nvim keys=.
---   The "-" alias is kept here as a convenience binding that does not conflict.
+-- OIL  (convenience alias — <leader>eo owned by hud.lua oil.nvim keys=)
 -- ============================================================================
 
 map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent dir" })
@@ -400,8 +307,7 @@ map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications
 map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history" })
 
 -- ============================================================================
--- FOCUS & TWILIGHT
+-- FOCUS
 -- ============================================================================
 
-map("n", "<leader>uF", function() require("core.focus").toggle() end,
-  { desc = "Deep focus mode" })
+map("n", "<leader>uF", function() require("core.focus").toggle() end, { desc = "Deep focus mode" })

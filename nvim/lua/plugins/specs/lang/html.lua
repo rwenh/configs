@@ -1,42 +1,30 @@
 -- lua/plugins/specs/lang/html.lua - HTML development
 --
--- FIX (v2.2.5):
---   • vim.lsp.config() is Nvim 0.11-only API — calling it unguarded on 0.10
---     stable raises "attempt to call nil value" at BufReadPost. Guarded behind
---     vim.fn.has("nvim-0.11"); falls back to lspconfig.setup() on 0.10.
+-- FIX (v2.2.5): vim.lsp.config() is Nvim 0.11-only; guarded + 0.10 fallback.
+-- FIX (v2.3.11): html.lua is SOLE owner of html LSP config. BufReadPost in
+--   init() fires after lsp.lua's config(), making this the reliable last writer.
+--   "html" stays in mason-lspconfig ensure_installed for binary auto-install.
 --
--- FIX (v2.3.11):
---   • This file is now the SOLE owner of the html LSP server configuration.
---     Previously lsp.lua also called lsp_setup("html", {}) with an empty config
---     table. On Nvim 0.11 the last vim.lsp.config("html", ...) call wins; load
---     order between lsp.lua's config() and html.lua's BufReadPost autocmd was
---     non-deterministic, meaning provideFormatter=false and the extra filetypes
---     were silently dropped on some launches.
---     Fix: lsp.lua's "html" servers{} entry has been removed. html.lua's
---     BufReadPost autocmd fires after lsp.lua's config(), making it the
---     reliable last writer. The html binary is still auto-installed because
---     "html" remains in mason-lspconfig ensure_installed.
+-- OPT (v2.3.13):
+--   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
+--     Direct init() assignment is sufficient (see css.lua note).
+--     IMPORTANT: the html LSP spec MUST keep its BufReadPost (0.10 path) and
+--     direct init() call (0.11 path) — that is load-order logic, not lint
+--     boilerplate, and cannot be simplified away.
 
 return {
-  -- HTMLHint linting
+  -- ── HTMLHint linting ──────────────────────────────────────────────────
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
-      vim.api.nvim_create_autocmd("BufReadPost", {
-        pattern  = "*.html",
-        once     = true,
-        group    = vim.api.nvim_create_augroup("HtmlLint", { clear = true }),
-        callback = function()
-          local ok, lint = pcall(require, "lint")
-          if not ok then return end
-          lint.linters_by_ft.html = { "htmlhint" }
-        end,
-      })
+      local ok, lint = pcall(require, "lint")
+      if not ok then return end
+      lint.linters_by_ft.html = { "htmlhint" }
     end,
   },
 
-  -- Conform: prettier for HTML
+  -- ── Conform ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -46,7 +34,7 @@ return {
     end,
   },
 
-  -- Treesitter: HTML parser
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -57,10 +45,7 @@ return {
     end,
   },
 
-  -- LSP: html-lsp — SOLE owner of the html server config.
-  -- FIX (v2.3.11): lsp.lua's empty lsp_setup("html",{}) removed; this spec
-  -- is the only place vim.lsp.config("html", cfg) is called. BufReadPost fires
-  -- after lsp.lua's config(), so this always wins regardless of lazy load order.
+  -- ── LSP: html-lsp — SOLE owner of html server config ─────────────────
   {
     "neovim/nvim-lspconfig",
     optional = true,
@@ -71,18 +56,17 @@ return {
       }
 
       if vim.fn.has("nvim-0.11") == 1 then
-        -- Apply immediately — lsp.lua has already run config() by the time
-        -- this init() executes, so we are guaranteed to be the last writer.
+        -- init() runs after lsp.lua config() — guaranteed last writer on 0.11
         pcall(function()
           vim.lsp.config("html", cfg)
           vim.lsp.enable("html")
         end)
       else
-        -- On 0.10, defer to BufReadPost so lspconfig is loaded first.
+        -- 0.10: defer until lspconfig is loaded
         vim.api.nvim_create_autocmd("BufReadPost", {
-          pattern = { "*.html", "*.htmldjango" },
-          once    = true,
-          group   = vim.api.nvim_create_augroup("HtmlLspCfg", { clear = true }),
+          pattern  = { "*.html", "*.htmldjango" },
+          once     = true,
+          group    = vim.api.nvim_create_augroup("HtmlLspCfg", { clear = true }),
           callback = function()
             local ok, lspconfig = pcall(require, "lspconfig")
             if ok then pcall(function() lspconfig.html.setup(cfg) end) end

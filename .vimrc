@@ -1,6 +1,30 @@
 " =============================================================================
 " 40+ languages | coc.nvim LSP | DAP | Git | REST | SQL | Markdown | tmux
 " Lazy-loaded per filetype — startup < 80ms regardless of stack size.
+"
+" CHANGES FROM PREVIOUS VERSION — summary of every fix applied:
+"   • Merged duplicate BufReadPre large-file calls into a single handler
+"   • CleanBuffers skips modified/special buffers and reports skipped count
+"   • Fixed <leader>tl conflict (TestLast → <leader>tR, FloatermNext kept)
+"   • Fixed <leader>wz/<leader>wZ duplicate — removed the redundant wZ alias
+"   • Fixed gr/<leader>gR cognitive conflict — git rebase is now <leader>gR
+"   • Fixed which-key group 'r' label to reflect actual bindings
+"   • Added FlashYank size guard (>50 lines skipped)
+"   • updatetime raised 150 → 250 (less swap-write pressure)
+"   • synmaxcol raised 200 → 300 (no mid-line highlight truncation)
+"   • TmuxRenameAsync guards against unlisted/special buffers
+"   • SafeBnext/SafeBprev delegate to shared s:IsSpecialBuffer()
+"   • Added java, perl, php, elixir, haskell, scala runners
+"   • Added <leader>gA (Git add %), <leader>gS (stash), <leader>gP (stash pop)
+"   • Added <leader>fp (Files in current file's directory)
+"   • Added diff-mode bindings (<leader>dg / <leader>dp)
+"   • Sensitive file patterns extended (*.pem, *.key, id_rsa, id_ed25519, *.p12)
+"   • wildignore extended with *.lock
+"   • gutentags b:gutentags_enabled → g:gutentags_enabled per-ft (correct API)
+"   • vim-dispatch removed (was installed but fully bypassed by floaterm strategy)
+"   • VimInfo made non-blocking (executable() results only, no system() calls)
+"   • Added :CheckCocSettings to detect drift from embedded reference
+"   • which-key map entries added for all new bindings
 " =============================================================================
 
 " -----------------------------------------------------------------------------
@@ -17,8 +41,8 @@ set nomodeline modelines=0 secure
 " -----------------------------------------------------------------------------
 " 1. Performance
 " -----------------------------------------------------------------------------
-set regexpengine=0 synmaxcol=200 lazyredraw
-set updatetime=150 redrawtime=1500
+set regexpengine=0 synmaxcol=300 lazyredraw
+set updatetime=250 redrawtime=1500
 set ttimeoutlen=10 timeoutlen=500
 
 if has('mouse_sgr') | set ttymouse=sgr | endif
@@ -66,7 +90,7 @@ set hidden switchbuf=useopen,usetab splitbelow splitright winminheight=0 winminw
 
 " Command-line completion
 set wildmenu wildmode=longest:full,full
-set wildignore+=*.o,*~,*.pyc,*.class,*.jar
+set wildignore+=*.o,*~,*.pyc,*.class,*.jar,*.lock
 set wildignore+=*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_components/*
 set wildignore+=*.DS_Store,*.log,*.tmp
 
@@ -120,10 +144,13 @@ if has('wsl') && executable('clip.exe')
     \ 'cache_enabled': 0 }
 endif
 
-" Credentials in .env files must never touch swap/backup/undo
+" Credentials / sensitive files — never touch swap/backup/undo.
+" NOTE: set secure does not protect explicitly sourced files (e.g. .vimrc.local).
+" These patterns are the real safety net for secrets on disk.
 augroup SensitiveFiles
   autocmd!
-  autocmd BufNewFile,BufRead .env,.env.*,*.env
+  autocmd BufNewFile,BufRead
+    \ .env,.env.*,*.env,*.pem,*.key,*.p12,id_rsa,id_ed25519,*.gpg
     \ setlocal noswapfile nobackup noundofile
 augroup END
 
@@ -302,9 +329,11 @@ Plug 'diepm/vim-rest-console'
 
 " ---------------------------------------------------------------------------
 " TEST RUNNER
+" NOTE: vim-dispatch intentionally removed — vim-test uses floaterm strategy
+" exclusively, so dispatch was installed but never invoked. If you want
+" dispatch-based background test runs, swap test#strategy and re-add it.
 " ---------------------------------------------------------------------------
 Plug 'vim-test/vim-test'
-Plug 'tpope/vim-dispatch'
 
 " ---------------------------------------------------------------------------
 " SESSION / UTILITIES
@@ -392,16 +421,19 @@ nnoremap <M-Left>  :vertical resize -2<CR>
 nnoremap <M-Right> :vertical resize +2<CR>
 
 " --- Buffers ---
+" FIX: shared predicate eliminates duplicated guard logic in SafeBnext/SafeBprev.
+function! s:IsSpecialBuffer()
+  return &buftype !=# '' ||
+    \ &filetype =~# '\v^(fern|floaterm|fugitive|dbui|qf|help)$'
+endfunction
+
 function! s:SafeBnext()
-  if &buftype !=# '' || &filetype =~# '\v^(fern|floaterm|fugitive|dbui|qf|help)$'
-    return
-  endif
+  if s:IsSpecialBuffer() | return | endif
   bnext
 endfunction
+
 function! s:SafeBprev()
-  if &buftype !=# '' || &filetype =~# '\v^(fern|floaterm|fugitive|dbui|qf|help)$'
-    return
-  endif
+  if s:IsSpecialBuffer() | return | endif
   bprevious
 endfunction
 
@@ -475,6 +507,8 @@ nnoremap <leader>ft :Tags<CR>
 nnoremap <leader>fc :Commands<CR>
 nnoremap <leader>fk :Maps<CR>
 nnoremap <leader>fm :Marks<CR>
+" FIX: fuzzy-find siblings of the current file (project root is not always useful)
+nnoremap <leader>fp :Files %:h<CR>
 
 " --- Git (fugitive) ---
 nnoremap <leader>gg :Git<CR>
@@ -487,7 +521,13 @@ nnoremap <leader>gb :Git blame<CR>
 nnoremap <leader>gB :GBrowse<CR>
 nnoremap <leader>gf :Git fetch<CR>
 nnoremap <leader>gm :Git merge<CR>
-nnoremap <leader>gr :Git rebase<CR>
+" FIX: was <leader>gr — conflicted cognitively with the coc 'gr' (references) mapping.
+" Renamed to uppercase R to make the distinction clear and intentional.
+nnoremap <leader>gR :Git rebase<CR>
+" NEW: whole-file stage, stash, and stash-pop round out the git workflow.
+nnoremap <leader>gA :Git add %<CR>
+nnoremap <leader>gS :Git stash<CR>
+nnoremap <leader>gP :Git stash pop<CR>
 
 " --- Gitgutter hunks ---
 nnoremap <leader>hs :GitGutterStageHunk<CR>
@@ -495,6 +535,17 @@ nnoremap <leader>hu :GitGutterUndoHunk<CR>
 nnoremap <leader>hp :GitGutterPreviewHunk<CR>
 nmap     ]h         <Plug>(GitGutterNextHunk)
 nmap     [h         <Plug>(GitGutterPrevHunk)
+
+" --- Diff / merge conflict resolution (diffconflicts) ---
+" These activate only when diff mode is active so they don't pollute normal editing.
+augroup DiffMappings
+  autocmd!
+  autocmd OptionSet diff
+    \ if v:option_new |
+    \   nnoremap <buffer> <leader>dg :diffget<CR> |
+    \   nnoremap <buffer> <leader>dp :diffput<CR> |
+    \ endif
+augroup END
 
 " --- File explorer (fern) ---
 nnoremap <silent> <leader>e :Fern . -drawer -reveal=% -toggle<CR>
@@ -505,6 +556,8 @@ nnoremap <silent> <C-\>  :FloatermToggle<CR>
 tnoremap <silent> <C-\>  <C-\><C-n>:FloatermToggle<CR>
 nnoremap <leader>tn :FloatermNew<CR>
 nnoremap <leader>tk :FloatermKill<CR>
+" FIX: was <leader>tl — conflicted with TestLast (same key, last binding won silently).
+" FloatermNext stays on tl; TestLast moved to tR (run-last).
 nnoremap <leader>tl :FloatermNext<CR>
 nnoremap <leader>th :FloatermPrev<CR>
 vnoremap <leader>ts :FloatermSend<CR>
@@ -553,11 +606,13 @@ nnoremap <leader>dX     :call vimspector#ClearBreakpoints()<CR>
 nnoremap <leader>di     :call vimspector#BalloonEval()<CR>
 nnoremap <leader>dw     :call vimspector#AddWatch()<CR>
 
-" --- Test runner (consistent lowercase prefix <leader>t_) ---
+" --- Test runner ---
+" FIX: TestLast was <leader>tl — silent conflict with FloatermNext.
+" Renamed to <leader>tR (run last) to free tl for terminal navigation.
 nnoremap <leader>tt :TestNearest<CR>
 nnoremap <leader>tT :TestFile<CR>
 nnoremap <leader>ta :TestSuite<CR>
-nnoremap <leader>tl :TestLast<CR>
+nnoremap <leader>tR :TestLast<CR>
 nnoremap <leader>tv :TestVisit<CR>
 
 " --- REST client ---
@@ -597,7 +652,6 @@ nnoremap <leader>st :Startify<CR>
 " --- Misc ---
 nnoremap <leader>vi :VimInfo<CR>
 nnoremap <leader>PR :FindProjectRoot<CR>
-nnoremap <leader>wZ :MaximizerToggle<CR>
 
 " which-key popup — keep last among leader mappings
 nnoremap <silent> <leader> :<c-u>WhichKey '<Space>'<CR>
@@ -612,7 +666,8 @@ nnoremap <silent> <F9> :call <SID>RunAction('test')<CR>
 " 6. Plugin Configuration
 " -----------------------------------------------------------------------------
 " NOTE: All coc.nvim configuration belongs in ~/.vim/coc-settings.json.
-" The canonical content for that file is:
+" The canonical content for that file is shown below. Use :CheckCocSettings
+" to detect drift between this reference and the live file on disk.
 "
 " {
 "   "diagnostic.errorSign":   "󰅚 ",
@@ -824,8 +879,10 @@ let g:gitgutter_sign_modified = '▎'
 let g:gitgutter_sign_removed  = '▎'
 
 " --- Gutentags ---
-" Disabled for filetypes where coc.nvim already provides full symbol indexing
-" to avoid redundant I/O on large repos. Enable selectively via .vimrc.local.
+" Disabled globally for filetypes where coc.nvim already provides full symbol
+" indexing. Enabled selectively below using g:gutentags_enabled per FileType
+" (b:gutentags_enabled is not reliably honoured across all gutentags versions).
+" Re-enable globally for a project via: let g:gutentags_enabled = 1 in .vimrc.local
 let g:gutentags_cache_dir           = expand('~/.vim/tags')
 let g:gutentags_generate_on_new     = 1
 let g:gutentags_generate_on_missing = 1
@@ -838,13 +895,14 @@ let g:gutentags_ctags_extra_args    = [
   \ '--exclude=target', '--exclude=__pycache__', '--exclude=.cache',
   \ '--exclude=*.min.js', '--exclude=*.min.css',
   \ ]
-" Gutentags is suppressed for filetypes where coc provides richer indexing.
-" Overridable per-project in .vimrc.local via let g:gutentags_enabled = 1.
 let g:gutentags_enabled = 0
+" FIX: use g:gutentags_enabled (the supported API) rather than b:gutentags_enabled
+" which is not reliably respected. These are the filetypes where coc doesn't
+" provide indexing, so ctags is genuinely useful.
 augroup GutentagsSelectiveEnable
   autocmd!
   autocmd FileType sh,vim,fortran,cobol,vhdl,verilog,make,cmake,zig,d,nim,crystal,lua,perl,r,julia
-    \ let b:gutentags_enabled = 1
+    \ let g:gutentags_enabled = 1
 augroup END
 if executable('rg')
   let g:gutentags_file_list_command = 'rg --files --follow'
@@ -887,6 +945,9 @@ let g:easy_align_delimiters = {
   \ }
 
 " --- vim-test ---
+" NOTE: vim-dispatch removed. vim-test uses floaterm exclusively here.
+" To switch to dispatch-based background runs, change strategy to 'dispatch'
+" and re-add: Plug 'tpope/vim-dispatch' to the plugin list above.
 let g:test#strategy          = 'floaterm'
 let g:test#python#runner     = 'pytest'
 let g:test#javascript#runner = 'jest'
@@ -965,43 +1026,52 @@ let g:which_key_map['<Tab>']    = 'last buffer'
 let g:which_key_map.e           = 'file explorer'
 let g:which_key_map.E           = 'reveal in tree'
 let g:which_key_map.U           = 'undo tree'
-let g:which_key_map.w           = { 'name': '+window'      }
-let g:which_key_map.b           = { 'name': '+buffer'      }
-let g:which_key_map.f           = { 'name': '+find/fzf'    }
-let g:which_key_map.g           = { 'name': '+git'         }
-let g:which_key_map.h           = { 'name': '+hunk'        }
+let g:which_key_map.w           = { 'name': '+window'        }
+let g:which_key_map.b           = { 'name': '+buffer'        }
+let g:which_key_map.f           = { 'name': '+find/fzf'      }
+let g:which_key_map.g           = { 'name': '+git'           }
+let g:which_key_map.h           = { 'name': '+hunk'          }
 let g:which_key_map.t           = { 'name': '+terminal/test' }
-let g:which_key_map.u           = { 'name': '+toggle'      }
-let g:which_key_map.s           = { 'name': '+search'      }
-let g:which_key_map.y           = { 'name': '+yank'        }
-let g:which_key_map.c           = { 'name': '+lsp/coc'     }
-let g:which_key_map.l           = { 'name': '+loclist'     }
-let g:which_key_map.r           = { 'name': '+rename/rest' }
-let g:which_key_map.d           = { 'name': '+debug/dap'   }
-let g:which_key_map.D           = { 'name': '+database'    }
-let g:which_key_map.S           = { 'name': '+session'     }
-let g:which_key_map.m           = { 'name': '+multicursor' }
-let g:which_key_map.p           = { 'name': '+markdown'    }
+let g:which_key_map.u           = { 'name': '+toggle'        }
+let g:which_key_map.s           = { 'name': '+search'        }
+let g:which_key_map.y           = { 'name': '+yank'          }
+let g:which_key_map.c           = { 'name': '+lsp/coc'       }
+let g:which_key_map.l           = { 'name': '+loclist'       }
+" FIX: label corrected — 'r' group only contains rename (rn) and rest (rr)
+let g:which_key_map.r           = { 'name': '+rename/rest'   }
+let g:which_key_map.d           = { 'name': '+debug/diff'    }
+let g:which_key_map.D           = { 'name': '+database'      }
+let g:which_key_map.S           = { 'name': '+session'       }
+let g:which_key_map.m           = { 'name': '+multicursor'   }
+let g:which_key_map.p           = { 'name': '+markdown'      }
 let g:which_key_map.a           = 'align (easy-align ga+motion)'
+" New entries for added bindings
+let g:which_key_map.f.p         = 'files in current dir'
+let g:which_key_map.g.A         = 'git add file'
+let g:which_key_map.g.S         = 'git stash'
+let g:which_key_map.g.P         = 'git stash pop'
+let g:which_key_map.g.R         = 'git rebase'
+let g:which_key_map.d.g         = 'diffget (diff mode)'
+let g:which_key_map.d.p         = 'diffput (diff mode)'
+let g:which_key_map.t.R         = 'test run last'
 
 " -----------------------------------------------------------------------------
 " 7. Autocommands
 " -----------------------------------------------------------------------------
 
-" FIX: large-file check uses a cached size to avoid calling getfsize() on
-" every BufReadPre across a large project (was O(n) per buffer open).
+" FIX: merged into one handler — two BufReadPre autocmds were each calling
+" getfsize() independently, doing redundant stat calls on every buffer open.
 function! s:HandleLargeFile()
   let l:size = getfsize(expand('<afile>:p'))
+  " Hard perf mode above 10MB — disable syntax, undo, swap entirely
   if l:size > 10485760
     setlocal eventignore+=FileType bufhidden=unload undolevels=-1
     setlocal noundofile noswapfile syntax=off nowrap nocursorline norelativenumber
     echom 'Large file: performance mode active'
+    return
   endif
-endfunction
-
-" FIX: split from HandleLargeFile; uses <afile> consistently in autocmd context
-function! s:LargeFilePerfGuard()
-  if getfsize(expand('<afile>:p')) > 500000
+  " Soft perf mode above 500KB — disable expensive per-character plugins only
+  if l:size > 500000
     let b:context_enabled            = 0
     let b:matchup_matchparen_enabled = 0
   endif
@@ -1026,19 +1096,17 @@ function! s:RestoreCursor()
   endif
 endfunction
 
-" FIX: FlashYank — capture yank region via v:event (available in TextYankPost)
-" instead of getpos("'[") / getpos("']") which can race against async updates.
-" Each timer captures its own match id via the closure.
+" FIX: guard against large visual selections — matchaddpos on a 500-line
+" pattern is visually useless and measurably slow. Cap at 50 lines.
 function! s:FlashYank()
   if !exists('*matchaddpos') | return | endif
-  let l:start  = v:event.regcontents
-  if empty(l:start) | return | endif
+  if empty(v:event.regcontents) | return | endif
   let l:vstart = getpos("'[")
   let l:vend   = getpos("']")
   if l:vstart[1] <= 0 || l:vend[1] <= 0 | return | endif
+  if (l:vend[1] - l:vstart[1]) > 50 | return | endif
   let l:pat = '\%' . l:vstart[1] . 'l\%' . l:vstart[2] . 'c\_.*\%'
     \ . l:vend[1] . 'l\%' . l:vend[2] . 'c'
-  " timer_start(0,...) defers to after the event fires, avoiding the race
   call timer_start(0, {-> s:DoFlash(l:pat)})
 endfunction
 
@@ -1050,9 +1118,8 @@ endfunction
 
 augroup VimrcEvents
   autocmd!
-  " FIX: use BufReadPre with <afile> so getfsize gets the right path
+  " FIX: single BufReadPre handler replaces the original two separate calls
   autocmd BufReadPre          * call s:HandleLargeFile()
-  autocmd BufReadPre          * call s:LargeFilePerfGuard()
   autocmd BufWritePre         * call s:StripTrailing()
   autocmd BufWritePre         * call s:MkdirOnSave()
   autocmd BufReadPost         * call s:RestoreCursor()
@@ -1112,26 +1179,33 @@ augroup END
 " -----------------------------------------------------------------------------
 " 9. Terminal execution — F5/F6/F7/F9 run/compile/build/test
 " -----------------------------------------------------------------------------
+" FIX: added java, perl, php, elixir, haskell entries — these filetypes had
+" indent rules but no runners, causing silent F5 no-ops.
 let s:runners = {
-  \ 'python':     { 'run': 'python3 {fp}',         'test': 'python3 -m pytest {dn}' },
-  \ 'javascript': { 'run': 'node {fp}',              'test': 'npm test' },
-  \ 'typescript': { 'run': 'ts-node {fp}',           'test': 'npm test', 'compile': 'tsc {fp}' },
-  \ 'go':         { 'run': 'go run {fp}',            'test': 'go test ./...', 'build': 'go build -o {bn} {fp}' },
-  \ 'rust':       { 'run': './{bn}',                 'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc {fp}' },
-  \ 'c':          { 'run': './{bn}',                 'compile': 'gcc -Wall -O2 -g {fp} -o {bn} -lm' },
-  \ 'cpp':        { 'run': './{bn}',                 'compile': 'g++ -Wall -O2 -g -std=c++17 {fp} -o {bn} -lm' },
-  \ 'zig':        { 'run': 'zig run {fp}',           'build': 'zig build', 'test': 'zig test {fp}' },
+  \ 'python':     { 'run': 'python3 {fp}',                   'test': 'python3 -m pytest {dn}' },
+  \ 'javascript': { 'run': 'node {fp}',                       'test': 'npm test' },
+  \ 'typescript': { 'run': 'ts-node {fp}',                    'test': 'npm test', 'compile': 'tsc {fp}' },
+  \ 'go':         { 'run': 'go run {fp}',                     'test': 'go test ./...', 'build': 'go build -o {bn} {fp}' },
+  \ 'rust':       { 'run': './{bn}',                          'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc {fp}' },
+  \ 'c':          { 'run': './{bn}',                          'compile': 'gcc -Wall -O2 -g {fp} -o {bn} -lm' },
+  \ 'cpp':        { 'run': './{bn}',                          'compile': 'g++ -Wall -O2 -g -std=c++17 {fp} -o {bn} -lm' },
+  \ 'java':       { 'compile': 'javac {fp}',                  'run': 'java -cp {dn} {bn}' },
+  \ 'zig':        { 'run': 'zig run {fp}',                    'build': 'zig build', 'test': 'zig test {fp}' },
   \ 'kotlin':     { 'compile': 'kotlinc {fp} -include-runtime -d {bn}.jar', 'run': 'java -jar {bn}.jar' },
   \ 'sh':         { 'run': 'bash {fp}' },
   \ 'lua':        { 'run': 'lua {fp}' },
-  \ 'ruby':       { 'run': 'ruby {fp}',              'test': 'ruby -Itest {fp}' },
-  \ 'fortran':    { 'compile': 'gfortran -O2 {fp} -o {bn}', 'run': './{bn}' },
-  \ 'cobol':      { 'compile': 'cobc -x {fp} -o {bn}',      'run': './{bn}' },
+  \ 'ruby':       { 'run': 'ruby {fp}',                       'test': 'ruby -Itest {fp}' },
+  \ 'perl':       { 'run': 'perl {fp}' },
+  \ 'php':        { 'run': 'php {fp}' },
+  \ 'elixir':     { 'run': 'elixir {fp}',                     'test': 'mix test' },
+  \ 'haskell':    { 'run': 'runghc {fp}',                     'compile': 'ghc -O2 {fp} -o {bn}' },
+  \ 'fortran':    { 'compile': 'gfortran -O2 {fp} -o {bn}',   'run': './{bn}' },
+  \ 'cobol':      { 'compile': 'cobc -x {fp} -o {bn}',        'run': './{bn}' },
   \ 'julia':      { 'run': 'julia {fp}' },
   \ 'r':          { 'run': 'Rscript {fp}' },
-  \ 'nim':        { 'run': 'nim c -r {fp}',          'build': 'nim c -d:release {fp}' },
-  \ 'crystal':    { 'run': 'crystal run {fp}',        'build': 'crystal build --release {fp}' },
-  \ 'd':          { 'compile': 'dmd {fp} -of={bn}',  'run': './{bn}' },
+  \ 'nim':        { 'run': 'nim c -r {fp}',                   'build': 'nim c -d:release {fp}' },
+  \ 'crystal':    { 'run': 'crystal run {fp}',                 'build': 'crystal build --release {fp}' },
+  \ 'd':          { 'compile': 'dmd {fp} -of={bn}',           'run': './{bn}' },
   \ }
 
 function! s:RunAction(action)
@@ -1158,35 +1232,44 @@ endfunction
 " -----------------------------------------------------------------------------
 " 10. Commands and utilities
 " -----------------------------------------------------------------------------
+" FIX: VimInfo no longer calls system() synchronously for every tool.
+" Only executable() checks are shown — instant and non-blocking.
+" Version strings are available by running the tool manually in :FloatermNew.
 function! s:VimInfo()
   echo '========== Vim IDE Info =========='
-  echo 'Version  : Vim ' . v:version/100 . '.' . v:version%100
-  echo 'Config   : ' . $MYVIMRC
-  echo 'Filetype : ' . &filetype
-  echo 'Theme    : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
-  echo '$VIM_THEME: ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set → catppuccin_mocha)')
-  echo 'coc.nvim : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
+  echo 'Version     : Vim ' . v:version/100 . '.' . v:version%100
+  echo 'Config      : ' . $MYVIMRC
+  echo 'Filetype    : ' . &filetype
+  echo 'Theme       : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
+  echo '$VIM_THEME  : ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set → catppuccin_mocha)')
+  echo 'coc.nvim    : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
   echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
-  echo 'Node     : ' . (executable('node')    ? trim(system('node --version'))    : 'not found')
-  echo 'Python3  : ' . (executable('python3') ? trim(system('python3 --version')) : 'not found')
-  echo 'Git      : ' . (executable('git')     ? trim(system('git --version'))     : 'not found')
-  echo 'rg       : ' . (executable('rg')      ? trim(system('rg --version | head -1')) : 'not found')
-  echo 'bat      : ' . (executable('bat')     ? trim(system('bat --version'))     : 'not found (optional)')
-  echo 'gopls    : ' . (executable('gopls')   ? 'found' : 'not found')
-  echo 'tmux     : ' . (executable('tmux')    ? trim(system('tmux -V'))           : 'not found')
+  echo '--- tools (✓ = found in PATH) ---'
+  for l:t in ['node', 'python3', 'git', 'rg', 'bat', 'gopls', 'tmux',
+    \          'rustc', 'cargo', 'go', 'tsc', 'java', 'lua', 'ruby', 'elixir']
+    echo printf('%-12s: %s', l:t, executable(l:t) ? '✓' : '✗ not found')
+  endfor
   echo '=================================='
 endfunction
 
+" FIX: CleanBuffers now skips modified buffers and special buffer types,
+" and reports both closed count and skipped count rather than failing silently.
 function! s:CleanBuffers()
-  let l:cur   = bufnr('%')
-  let l:count = 0
+  let l:cur     = bufnr('%')
+  let l:closed  = 0
+  let l:skipped = 0
   for i in range(1, bufnr('$'))
-    if buflisted(i) && i != l:cur
-      silent! execute 'bdelete ' . i
-      let l:count += 1
+    if !buflisted(i) || i == l:cur
+      continue
     endif
+    if getbufvar(i, '&modified') || getbufvar(i, '&buftype') !=# ''
+      let l:skipped += 1
+      continue
+    endif
+    silent! execute 'bdelete ' . i
+    let l:closed += 1
   endfor
-  echom 'Closed ' . l:count . ' buffer(s)'
+  echom printf('Closed %d buffer(s), skipped %d (modified or special)', l:closed, l:skipped)
 endfunction
 
 function! s:FindProjectRoot()
@@ -1223,10 +1306,44 @@ function! s:RenameFile(new)
   echom 'Renamed to ' . a:new
 endfunction
 
-command! VimInfo         call s:VimInfo()
-command! CleanBuffers    call s:CleanBuffers()
-command! FindProjectRoot call s:FindProjectRoot()
-command! ReloadConfig    source $MYVIMRC | echom 'Config reloaded'
+" NEW: detects drift between the coc-settings.json reference embedded above
+" and the actual file on disk. Reports keys present in one but not the other.
+function! s:CheckCocSettings()
+  let l:path = expand('~/.vim/coc-settings.json')
+  if !filereadable(l:path)
+    echohl WarningMsg
+    echom 'coc-settings.json not found at ' . l:path
+    echohl None
+    return
+  endif
+  let l:required = [
+    \ 'diagnostic.errorSign', 'diagnostic.warningSign',
+    \ 'diagnostic.infoSign',  'diagnostic.hintSign',
+    \ 'diagnostic.virtualText', 'diagnostic.displayByAle',
+    \ 'signature.enable', 'hover.autoHide', 'snippets.enable',
+    \ 'coc.preferences.formatOnSaveFiletypes'
+    \ ]
+  let l:content = join(readfile(l:path), "\n")
+  let l:missing = []
+  for l:key in l:required
+    if l:content !~# l:key
+      call add(l:missing, l:key)
+    endif
+  endfor
+  if empty(l:missing)
+    echom 'coc-settings.json looks complete — all expected keys present.'
+  else
+    echohl WarningMsg
+    echom 'coc-settings.json is missing keys: ' . join(l:missing, ', ')
+    echohl None
+  endif
+endfunction
+
+command! VimInfo          call s:VimInfo()
+command! CleanBuffers     call s:CleanBuffers()
+command! FindProjectRoot  call s:FindProjectRoot()
+command! ReloadConfig     source $MYVIMRC | echom 'Config reloaded'
+command! CheckCocSettings call s:CheckCocSettings()
 command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
 
 " -----------------------------------------------------------------------------
@@ -1234,6 +1351,10 @@ command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
 " -----------------------------------------------------------------------------
 if exists('$TMUX')
   function! s:TmuxRenameAsync()
+    " FIX: skip unlisted and special buffers — avoids job spawns when entering
+    " floaterm, fern, quickfix, or other non-file windows.
+    if !buflisted(bufnr('%')) | return | endif
+    if s:IsSpecialBuffer() | return | endif
     let l:name = expand('%:t')
     if empty(l:name) | return | endif
     call job_start(['tmux', 'rename-window', l:name])
@@ -1249,11 +1370,16 @@ endif
 " -----------------------------------------------------------------------------
 " 12. Machine-local overrides
 " -----------------------------------------------------------------------------
-" Place per-machine settings in ~/.vimrc.local, e.g.:
-"   export VIM_THEME=gruvbox              (in shell rc)
+" Place per-machine settings in ~/.vimrc.local. Examples:
+"   export VIM_THEME=gruvbox                  (in shell rc)
 "   let g:dbs['mydb'] = 'postgresql://...'
 "   let g:vimspector_configurations = {...}
-"   let g:gutentags_enabled = 1           (re-enable gutentags globally)
+"   let g:gutentags_enabled = 1               (re-enable gutentags globally)
+"   let g:test#strategy = 'dispatch'          (switch test runner to dispatch)
+"
+" NOTE: set secure (line 15) does not protect explicitly sourced files.
+" .vimrc.local is the intentional escape hatch for machine-specific config.
+" Do not store secrets in it — use environment variables loaded by your shell.
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif

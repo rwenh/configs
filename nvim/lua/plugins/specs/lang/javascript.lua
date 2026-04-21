@@ -1,7 +1,11 @@
 -- lua/plugins/specs/lang/javascript.lua
+--
+-- OPT (v2.3.13):
+--   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
+--     Direct init() assignment is sufficient (see css.lua note).
 
 return {
-  -- Package.json dependency management
+  -- ── Package.json dependency management ───────────────────────────────
   {
     "vuki656/package-info.nvim",
     dependencies = "MunifTanjim/nui.nvim",
@@ -11,34 +15,27 @@ return {
       pcall(function() require("package-info").setup(opts) end)
     end,
     keys = {
-      { "<leader>jps", function() pcall(function() require("package-info").show() end) end,           desc = "Show package versions" },
-      { "<leader>jpu", function() pcall(function() require("package-info").update() end) end,         desc = "Update package" },
-      { "<leader>jpd", function() pcall(function() require("package-info").delete() end) end,         desc = "Delete package" },
-      { "<leader>jpi", function() pcall(function() require("package-info").install() end) end,        desc = "Install package" },
+      { "<leader>jps", function() pcall(function() require("package-info").show()           end) end, desc = "Show package versions" },
+      { "<leader>jpu", function() pcall(function() require("package-info").update()         end) end, desc = "Update package" },
+      { "<leader>jpd", function() pcall(function() require("package-info").delete()         end) end, desc = "Delete package" },
+      { "<leader>jpi", function() pcall(function() require("package-info").install()        end) end, desc = "Install package" },
       { "<leader>jpc", function() pcall(function() require("package-info").change_version() end) end, desc = "Change version" },
     },
   },
 
-  -- Lint: eslint_d
+  -- ── nvim-lint ─────────────────────────────────────────────────────────
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
-      vim.api.nvim_create_autocmd("BufReadPost", {
-        pattern  = { "*.js", "*.jsx" },
-        once     = true,
-        group    = vim.api.nvim_create_augroup("JavascriptLint", { clear = true }),
-        callback = function()
-          local ok, lint = pcall(require, "lint")
-          if not ok then return end
-          lint.linters_by_ft.javascript      = { "eslint_d" }
-          lint.linters_by_ft.javascriptreact = { "eslint_d" }
-        end,
-      })
+      local ok, lint = pcall(require, "lint")
+      if not ok then return end
+      lint.linters_by_ft.javascript      = { "eslint_d" }
+      lint.linters_by_ft.javascriptreact = { "eslint_d" }
     end,
   },
 
-  -- Conform: prettier for JSX
+  -- ── Conform ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -48,7 +45,7 @@ return {
     end,
   },
 
-  -- Treesitter
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,

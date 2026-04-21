@@ -1,18 +1,19 @@
 -- lua/plugins/specs/lang/css.lua - CSS development
 --
 -- FIX (v2.2.5):
---   • vim.lsp.config() + vim.lsp.enable() are Nvim 0.11-only API — calling
---     them unguarded on 0.10 stable raises "attempt to call nil value".
---     Both call sites now check vim.fn.has("nvim-0.11") and fall back to
---     lspconfig.setup() on 0.10 (which mason-lspconfig already wires for
---     cssmodules_ls if the binary is present).
---   • cssmodules binary check was in init() which runs at spec-parse time
---     (startup), running a vim.fn.executable() probe on every launch even
---     for non-CSS projects. Moved into a BufReadPost autocmd so the check
---     only fires the first time a CSS file is opened.
+--   • vim.lsp.config() + vim.lsp.enable() are Nvim 0.11-only API.
+--     Guarded behind has("nvim-0.11"); falls back to lspconfig on 0.10.
+--   • cssmodules binary check deferred to BufReadPost so it does not run
+--     on startup for non-CSS projects.
+--
+-- OPT (v2.3.13):
+--   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
+--     lsp.lua owns the single BufWritePost/InsertLeave lint trigger; lang
+--     specs only need to populate lint.linters_by_ft, which can be done
+--     directly in init() without an extra autocmd layer.
 
 return {
-  -- cssmodules LSP (CSS Modules intellisense)
+  -- ── cssmodules LSP (CSS Modules intellisense) ─────────────────────────
   {
     "neovim/nvim-lspconfig",
     optional = true,
@@ -47,7 +48,7 @@ return {
     end,
   },
 
-  -- Tailwind CSS intellisense (canonical spec — server.override=false required)
+  -- ── Tailwind CSS intellisense (canonical — server.override=false) ─────
   {
     "luckasRanarison/tailwind-tools.nvim",
     ft = {
@@ -66,6 +67,7 @@ return {
     end,
   },
 
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -76,6 +78,7 @@ return {
     end,
   },
 
+  -- ── Conform ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -87,21 +90,18 @@ return {
     end,
   },
 
+  -- ── nvim-lint ─────────────────────────────────────────────────────────
+  -- OPT: direct init() assignment — no autocmd wrapper needed.
+  -- lsp.lua's BufWritePost/InsertLeave autocmd drives try_lint(); lang specs
+  -- only need to populate linters_by_ft before that fires.
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
-      vim.api.nvim_create_autocmd("BufReadPost", {
-        pattern  = { "*.css", "*.scss" },
-        once     = true,
-        group    = vim.api.nvim_create_augroup("CssLint", { clear = true }),
-        callback = function()
-          local ok, lint = pcall(require, "lint")
-          if not ok then return end
-          lint.linters_by_ft.css  = { "stylelint" }
-          lint.linters_by_ft.scss = { "stylelint" }
-        end,
-      })
+      local ok, lint = pcall(require, "lint")
+      if not ok then return end
+      lint.linters_by_ft.css  = { "stylelint" }
+      lint.linters_by_ft.scss = { "stylelint" }
     end,
   },
 }

@@ -1,16 +1,12 @@
 -- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
 --
--- FIX (v2.2.3):
---   • vsg does not support stdin formatting (--stdin flag doesn't exist in
---     vsg's CLI). The previous conform spec piped the buffer via stdin and
---     got empty output back, silently clobbering every VHDL buffer on save.
---     Fixed: conform now uses a tempfile-based approach via the standard
---     "command writes to stdout from a file" pattern. vsg reads the file
---     path and writes formatted output to stdout with --output -.
---     If vsg doesn't support --output - on your version, the formatter is
---     disabled and a warning is shown rather than clobbering the buffer.
+-- FIX (v2.2.3): vsg stdin workaround — file-based conform formatter.
+--
+-- OPT (v2.3.13):
+--   • Build keymaps use core.util.term.float() — 4 × boilerplate removed.
 
 return {
+  -- ── Conform: vsg ─────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -18,15 +14,10 @@ return {
       opts.formatters_by_ft = opts.formatters_by_ft or {}
       opts.formatters_by_ft.vhdl = { "vsg" }
       opts.formatters = opts.formatters or {}
-      -- FIX: vsg does not support --stdin. Use file-based formatting:
-      --   vsg --output - <file>  (writes formatted VHDL to stdout)
-      -- conform's default $FILENAME substitution handles the temp file.
-      -- If vsg on your system doesn't support --output -, disable with
-      -- vim.g.disable_vsg_format = true.
       opts.formatters.vsg = {
-        command = "vsg",
-        args    = { "--output", "-", "$FILENAME" },
-        stdin   = false,  -- vsg reads from the file, writes to stdout
+        command   = "vsg",
+        args      = { "--output", "-", "$FILENAME" },
+        stdin     = false,
         condition = function()
           if vim.g.disable_vsg_format then return false end
           return vim.fn.executable("vsg") == 1
@@ -35,6 +26,7 @@ return {
     end,
   },
 
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -45,6 +37,7 @@ return {
     end,
   },
 
+  -- ── GHDL keymaps ─────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -52,17 +45,9 @@ return {
       {
         "<leader>vha",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd           = string.format("ghdl -a %s", vim.fn.shellescape(file)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "ghdl -a " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "GHDL Analyze",
         ft   = "vhdl",
@@ -70,18 +55,9 @@ return {
       {
         "<leader>vhe",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-          term.Terminal:new({
-            cmd           = string.format("ghdl -e %s", vim.fn.shellescape(entity)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float("ghdl -e " .. vim.fn.shellescape(entity))
         end,
         desc = "GHDL Elaborate",
         ft   = "vhdl",
@@ -89,21 +65,12 @@ return {
       {
         "<leader>vhr",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
-          term.Terminal:new({
-            cmd = string.format(
-              "ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd",
-              vim.fn.shellescape(entity)
-            ),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(string.format(
+            "ghdl -r %s --vcd=wave.vcd && gtkwave wave.vcd",
+            vim.fn.shellescape(entity)
+          ))
         end,
         desc = "GHDL Run & View",
         ft   = "vhdl",
@@ -111,17 +78,9 @@ return {
       {
         "<leader>vhc",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd           = string.format("ghdl -s %s", vim.fn.shellescape(file)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "ghdl -s " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "GHDL Syntax Check",
         ft   = "vhdl",
@@ -129,6 +88,7 @@ return {
     },
   },
 
+  -- ── LuaSnip snippets ──────────────────────────────────────────────────
   {
     "L3MON4D3/LuaSnip",
     optional = true,

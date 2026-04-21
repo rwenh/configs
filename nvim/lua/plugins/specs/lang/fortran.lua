@@ -1,7 +1,10 @@
 -- lua/plugins/specs/lang/fortran.lua - Fortran development
+--
+-- OPT (v2.3.13):
+--   • Build keymaps use core.util.term.float() — 3 × boilerplate removed.
 
 return {
-  -- Treesitter parser
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -12,7 +15,7 @@ return {
     end,
   },
 
-  -- Conform: fprettify formatter
+  -- ── Conform: fprettify ────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -28,7 +31,7 @@ return {
     end,
   },
 
-  -- Build integration via toggleterm
+  -- ── Build keymaps ─────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -36,23 +39,12 @@ return {
       {
         "<leader>ftb",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
-
-          term.Terminal:new({
-            cmd           = string.format("gfortran -Wall -o %s %s && %s",
-              vim.fn.shellescape(exe),
-              vim.fn.shellescape(file),
-              vim.fn.shellescape(exe)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(string.format(
+            "gfortran -Wall -o %s %s && %s",
+            vim.fn.shellescape(exe), vim.fn.shellescape(file), vim.fn.shellescape(exe)
+          ))
         end,
         desc = "Fortran Build & Run",
         ft   = "fortran",
@@ -60,45 +52,23 @@ return {
       {
         "<leader>ftc",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd           = string.format("gfortran -Wall -fsyntax-only %s",
-              vim.fn.shellescape(file)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "gfortran -Wall -fsyntax-only " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "Fortran Check Syntax",
         ft   = "fortran",
       },
       {
         "<leader>ftm",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          term.Terminal:new({
-            cmd           = "make",
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
-        end,
+        function() require("core.util.term").float("make") end,
         desc = "Fortran Make",
         ft   = "fortran",
       },
     },
   },
 
-  -- Snippets for common Fortran constructs
+  -- ── LuaSnip snippets ──────────────────────────────────────────────────
   {
     "L3MON4D3/LuaSnip",
     optional = true,

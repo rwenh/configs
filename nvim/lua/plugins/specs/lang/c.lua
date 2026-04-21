@@ -1,17 +1,17 @@
 -- lua/plugins/specs/lang/c.lua - C development
 --
--- FIX (v2.3.12):
---   • c.lua was a stub: only clangd_extensions. cpp.lua has CMake, conform,
---     build keymaps, docstring gen, snippets. C deserves feature parity.
---     Added:
---       • conform clang-format spec (was already in lsp.lua formatters_by_ft
---         but never declared in a lang spec for discoverability)
---       • nvim-lint: no standard C linter is in Mason that works without
---         project config, so clang-tidy is gated on executable presence
---       • toggleterm build keymaps: <leader>cb (gcc build+run), <leader>cm (make)
---       • LuaSnip: common C patterns (main, include guards, structs, loops)
---       • neogen optional=true for doxygen docstrings (cpp.lua already adds
---         this for "c" filetype; this spec ensures it loads on pure C projects)
+-- FIX (v2.3.12): Added feature parity with cpp.lua — conform, lint, build
+--   keymaps, LuaSnip patterns, neogen optional spec.
+--
+-- OPT (v2.3.13):
+--   • Build keymaps use core.util.term.float() — 3 × boilerplate removed.
+--   • nvim-lint: BufReadPost + once=true autocmd wrapper removed (see css.lua).
+--   • BUG FIX: lint.linters_by_ft.c was set to { "clangd" } — clangd is an
+--     LSP server, not an nvim-lint linter. Corrected to { "clang-tidy" }.
+--     clang-tidy still requires compile_commands.json to be useful; the
+--     executable guard is preserved.
+--   • <leader>cc keymap renamed to <leader>csy (C SYntax check) to avoid
+--     collision with the which-key <leader>cc group prefix owned by cpp/cmake.
 
 return {
   -- ── clangd extensions (AST / inlay hints) ────────────────────────────
@@ -50,105 +50,62 @@ return {
     end,
   },
 
-  -- ── conform: clang-format ────────────────────────────────────────────
+  -- ── Conform: clang-format ─────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
       opts.formatters_by_ft = opts.formatters_by_ft or {}
-      -- lsp.lua already sets c = { "clang-format" } but the lang spec
-      -- makes it explicit and allows local override.
       opts.formatters_by_ft.c = { "clang-format" }
     end,
   },
 
-  -- ── nvim-lint: clang-tidy (optional — requires compile_commands.json) ─
+  -- ── nvim-lint: clang-tidy (requires compile_commands.json) ───────────
+  -- OPT: direct init() — no autocmd wrapper (see css.lua note).
+  -- BUG FIX: was { "clangd" } — corrected to { "clang-tidy" }.
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
-      vim.api.nvim_create_autocmd("BufReadPost", {
-        pattern  = { "*.c", "*.h" },
-        once     = true,
-        group    = vim.api.nvim_create_augroup("CLint", { clear = true }),
-        callback = function()
-          if vim.fn.executable("clang-tidy") ~= 1 then return end
-          local ok, lint = pcall(require, "lint")
-          if not ok then return end
-          lint.linters_by_ft.c = { "clangd" }
-        end,
-      })
+      if vim.fn.executable("clang-tidy") ~= 1 then return end
+      local ok, lint = pcall(require, "lint")
+      if not ok then return end
+      lint.linters_by_ft.c = { "clang-tidy" }
     end,
   },
 
-  -- ── Build keymaps via toggleterm ─────────────────────────────────────
+  -- ── Build keymaps ─────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
     keys = {
-      -- <leader>cb — compile & run current file with gcc
       {
         "<leader>cb",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
-          term.Terminal:new({
-            cmd = string.format(
-              "gcc -Wall -Wextra -g -o %s %s && %s",
-              vim.fn.shellescape(exe),
-              vim.fn.shellescape(file),
-              vim.fn.shellescape(exe)
-            ),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(string.format(
+            "gcc -Wall -Wextra -g -o %s %s && %s",
+            vim.fn.shellescape(exe), vim.fn.shellescape(file), vim.fn.shellescape(exe)
+          ))
         end,
         desc = "C Build & Run (gcc)",
         ft   = "c",
       },
-      -- <leader>cm — run make from project root
       {
         "<leader>cm",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-          local ok_path, path = pcall(require, "core.util.path")
-          local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-          term.Terminal:new({
-            cmd           = "cd " .. vim.fn.shellescape(root) .. " && make",
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
-        end,
+        function() require("core.util.term").float_at_root("make") end,
         desc = "C Make",
         ft   = "c",
       },
-      -- <leader>cc — syntax check only (no output binary)
+      -- RENAMED from <leader>cc → <leader>csy to avoid collision with the
+      -- which-key <leader>cc* group prefix owned by cpp.lua / CMake.
       {
-        "<leader>cc",
+        "<leader>csy",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd = string.format(
-              "gcc -Wall -Wextra -fsyntax-only %s",
-              vim.fn.shellescape(file)
-            ),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "gcc -Wall -Wextra -fsyntax-only " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "C Syntax Check",
         ft   = "c",
@@ -156,10 +113,9 @@ return {
     },
   },
 
-  -- ── neogen: doxygen docstrings (extends advanced.lua primary spec) ────
-  -- cpp.lua already adds ft="c" to its optional neogen spec; this entry is
-  -- a no-op if cpp.lua is loaded. It exists so pure-C projects (no cpp.lua
-  -- activation) still get <leader>xg working on .c files via ft trigger.
+  -- ── neogen: doxygen docstrings ────────────────────────────────────────
+  -- No-op if cpp.lua is loaded (it also covers ft="c").
+  -- Ensures pure-C projects get <leader>xg via ft trigger.
   {
     "danymat/neogen",
     optional = true,
@@ -171,7 +127,7 @@ return {
     },
   },
 
-  -- ── LuaSnip: common C patterns ───────────────────────────────────────
+  -- ── LuaSnip: common C patterns ────────────────────────────────────────
   {
     "L3MON4D3/LuaSnip",
     optional = true,
@@ -184,13 +140,11 @@ return {
 
       pcall(function()
         ls.add_snippets("c", {
-          -- Full main() skeleton
           s("main", {
             t({ "#include <stdio.h>", "#include <stdlib.h>", "", "int main(int argc, char *argv[]) {", "    " }),
             i(0, "return 0;"),
             t({ "", "}" }),
           }),
-          -- Include guard
           s("guard", {
             t("#ifndef "), i(1, "HEADER_H"),
             t({ "", "#define " }), f(function(args) return args[1][1] end, { 1 }),
@@ -198,12 +152,10 @@ return {
             t({ "", "", "#endif /* " }), f(function(args) return args[1][1] end, { 1 }),
             t(" */"),
           }),
-          -- Struct definition
           s("struct", {
-            t("typedef struct {"), t({ "", "    " }), i(1, "int member"),  t(";"),
+            t("typedef struct {"), t({ "", "    " }), i(1, "int member"), t(";"),
             t({ "", "} " }), i(2, "MyStruct"), t(";"),
           }),
-          -- For loop
           s("for", {
             t("for (int "), i(1, "i"), t(" = 0; "),
             f(function(args) return args[1][1] end, { 1 }),
@@ -212,7 +164,6 @@ return {
             t("++) {"), t({ "", "    " }), i(0),
             t({ "", "}" }),
           }),
-          -- Malloc + null check
           s("malloc", {
             i(1, "Type"), t(" *"), i(2, "ptr"), t(" = malloc(sizeof("),
             f(function(args) return args[1][1] end, { 1 }),
@@ -225,14 +176,12 @@ return {
     end,
   },
 
-  -- ── Treesitter: ensure C parser installed ────────────────────────────
+  -- ── Treesitter ────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
     opts = function(_, opts)
       if type(opts.ensure_installed) == "table" then
-        -- "c" is already in treesitter.lua's ensure_installed list;
-        -- this is a safety net for completeness, matching every other lang spec.
         vim.list_extend(opts.ensure_installed, { "c" })
       end
     end,

@@ -1,6 +1,10 @@
 -- lua/plugins/specs/lang/cobol.lua - COBOL development
+--
+-- OPT (v2.3.13):
+--   • Build keymaps use core.util.term.float() — 2 × boilerplate removed.
 
 return {
+  -- ── Build keymaps ─────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -8,23 +12,12 @@ return {
       {
         "<leader>cob",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
           local file = vim.fn.expand("%:p")
           local exe  = vim.fn.expand("%:p:r")
-
-          term.Terminal:new({
-            cmd = string.format("cobc -x -o %s %s && %s",
-              vim.fn.shellescape(exe),
-              vim.fn.shellescape(file),
-              vim.fn.shellescape(exe)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(string.format(
+            "cobc -x -o %s %s && %s",
+            vim.fn.shellescape(exe), vim.fn.shellescape(file), vim.fn.shellescape(exe)
+          ))
         end,
         desc = "COBOL Compile & Run",
         ft   = "cobol",
@@ -32,18 +25,9 @@ return {
       {
         "<leader>coc",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd = string.format("cobc -fsyntax-only %s", vim.fn.shellescape(file)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "cobc -fsyntax-only " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "COBOL Syntax Check",
         ft   = "cobol",
@@ -51,6 +35,7 @@ return {
     },
   },
 
+  -- ── LuaSnip snippets ──────────────────────────────────────────────────
   {
     "L3MON4D3/LuaSnip",
     optional = true,
@@ -63,29 +48,16 @@ return {
 
       ls.add_snippets("cobol", {
         s("skeleton", {
+          t({ "       IDENTIFICATION DIVISION.", "       PROGRAM-ID. " }),
+          i(1, "PROGRAM-NAME"), t("."),
           t({
-            "       IDENTIFICATION DIVISION.",
-            "       PROGRAM-ID. ",
-          }), i(1, "PROGRAM-NAME"), t("."),
-          t({
-            "",
-            "       ENVIRONMENT DIVISION.",
-            "",
-            "       DATA DIVISION.",
-            "       WORKING-STORAGE SECTION.",
-            "       01  ",
-          }), i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
-          t({
-            "",
-            "",
-            "       PROCEDURE DIVISION.",
-            "       MAIN-PARA.",
-            "           ",
-          }), i(0),
-          t({
-            "",
-            "           STOP RUN.",
+            "", "       ENVIRONMENT DIVISION.", "",
+            "       DATA DIVISION.", "       WORKING-STORAGE SECTION.", "       01  ",
           }),
+          i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
+          t({ "", "", "       PROCEDURE DIVISION.", "       MAIN-PARA.", "           " }),
+          i(0),
+          t({ "", "           STOP RUN." }),
         }),
         s("if", {
           t("           IF "), i(1, "CONDITION"),

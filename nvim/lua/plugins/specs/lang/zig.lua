@@ -1,16 +1,17 @@
 -- lua/plugins/specs/lang/zig.lua - Zig development
+--
+-- OPT (v2.3.13):
+--   • Build keymaps use core.util.term.float() — 3 × boilerplate removed.
 
 return {
-  -- Zig syntax support
+  -- ── Syntax support ────────────────────────────────────────────────────
   {
     "ziglang/zig.vim",
     ft   = "zig",
-    init = function()
-      vim.g.zig_fmt_autosave = 0
-    end,
+    init = function() vim.g.zig_fmt_autosave = 0 end,
   },
 
-  -- Conform formatter for Zig
+  -- ── Conform ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -20,7 +21,7 @@ return {
     end,
   },
 
-  -- DAP: codelldb/lldb for Zig
+  -- ── DAP: codelldb / lldb ──────────────────────────────────────────────
   {
     "mfussenegger/nvim-dap",
     optional = true,
@@ -38,8 +39,7 @@ return {
           end
 
           local codelldb = vim.fn.stdpath("data") .. "/mason/bin/codelldb"
-
-          local lldb = vim.fn.exepath("lldb-vscode")
+          local lldb     = vim.fn.exepath("lldb-vscode")
           if lldb == "" then lldb = vim.fn.exepath("lldb-dap") end
           if lldb == "" then lldb = nil end
 
@@ -72,54 +72,29 @@ return {
     end,
   },
 
-  -- Build & test via toggleterm
+  -- ── Build & test keymaps ──────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
     keys = {
       {
         "<leader>zb",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          term.Terminal:new({ cmd = "zig build run", direction = "float", close_on_exit = false }):toggle()
-        end,
+        function() require("core.util.term").float("zig build run") end,
         desc = "Zig Build Run",
         ft   = "zig",
       },
       {
         "<leader>zt",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          term.Terminal:new({ cmd = "zig build test", direction = "float", close_on_exit = false }):toggle()
-        end,
+        function() require("core.util.term").float("zig build test") end,
         desc = "Zig Build Test",
         ft   = "zig",
       },
       {
         "<leader>zc",
         function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then
-            vim.notify("toggleterm not available", vim.log.levels.ERROR)
-            return
-          end
-
-          local file = vim.fn.expand("%:p")
-          term.Terminal:new({
-            cmd           = string.format("zig run %s", vim.fn.shellescape(file)),
-            direction     = "float",
-            close_on_exit = false,
-          }):toggle()
+          require("core.util.term").float(
+            "zig run " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+          )
         end,
         desc = "Zig Run File",
         ft   = "zig",

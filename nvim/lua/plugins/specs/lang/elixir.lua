@@ -1,17 +1,16 @@
 -- lua/plugins/specs/lang/elixir.lua - Elixir development
 --
--- FIX (v2.2.3):
---   • mhanberg/output-panel.nvim removed — plugin is archived/unmaintained;
---     setup() produced warnings on newer Neovim builds. Replaced with a
---     lightweight Phoenix log tail via toggleterm (more useful in practice).
---   • <leader>ex* keymaps added — the group was declared in which-key's spec
---     but no keymaps existed for it. At minimum: mix test, mix format,
---     Phoenix server toggle, and IEx session.
+-- FIX (v2.2.3): output-panel.nvim removed; <leader>ex* keymaps added.
+--
+-- OPT (v2.3.13):
+--   • Toggleterm keymaps table-driven; 4 × boilerplate replaced by a loop.
+--   • core.util.term.float() used for all launches.
 
 return {
+  -- ── elixir-tools ─────────────────────────────────────────────────────
   {
     "elixir-tools/elixir-tools.nvim",
-    ft = { "elixir", "eex", "heex", "surface" },
+    ft           = { "elixir", "eex", "heex", "surface" },
     dependencies = { "nvim-lua/plenary.nvim" },
     config = function()
       local ok, elixir = pcall(require, "elixir")
@@ -19,7 +18,6 @@ return {
         vim.notify("elixir-tools setup failed", vim.log.levels.WARN)
         return
       end
-
       pcall(function()
         elixir.setup({
           nextls   = { enable = false },
@@ -29,68 +27,30 @@ return {
     end,
   },
 
-  {
-    "mattreduce/vim-mix",
-    ft = "elixir",
-  },
+  { "mattreduce/vim-mix", ft = "elixir" },
 
-  -- Elixir-specific keymaps via toggleterm
+  -- ── Keymaps ───────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
-    keys = {
-      {
-        "<leader>ext",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then return end
-          term.Terminal:new({
-            cmd = "mix test",
-            direction = "float", close_on_exit = false,
-          }):toggle()
-        end,
-        desc = "Elixir mix test",
-        ft   = "elixir",
-      },
-      {
-        "<leader>exf",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then return end
-          term.Terminal:new({
-            cmd = "mix format",
-            direction = "float", close_on_exit = false,
-          }):toggle()
-        end,
-        desc = "Elixir mix format",
-        ft   = "elixir",
-      },
-      {
-        "<leader>exp",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then return end
-          term.Terminal:new({
-            cmd = "mix phx.server",
-            direction = "float", close_on_exit = false,
-          }):toggle()
-        end,
-        desc = "Elixir Phoenix server",
-        ft   = "elixir",
-      },
-      {
-        "<leader>exi",
-        function()
-          local ok, term = pcall(require, "toggleterm.terminal")
-          if not ok then return end
-          term.Terminal:new({
-            cmd = "iex -S mix",
-            direction = "float", close_on_exit = false,
-          }):toggle()
-        end,
-        desc = "Elixir IEx session",
-        ft   = "elixir",
-      },
-    },
+    keys = (function()
+      local cmds = {
+        { "<leader>ext", "mix test",      "Elixir mix test"      },
+        { "<leader>exf", "mix format",    "Elixir mix format"    },
+        { "<leader>exp", "mix phx.server","Elixir Phoenix server" },
+        { "<leader>exi", "iex -S mix",    "Elixir IEx session"   },
+      }
+      local keys = {}
+      for _, c in ipairs(cmds) do
+        local lhs, cmd, desc = c[1], c[2], c[3]
+        table.insert(keys, {
+          lhs,
+          function() require("core.util.term").float(cmd) end,
+          desc = desc,
+          ft   = "elixir",
+        })
+      end
+      return keys
+    end)(),
   },
 }
