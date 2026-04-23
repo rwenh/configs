@@ -1,16 +1,11 @@
 -- lua/plugins/specs/test.lua - Testing
 --
--- (all prior FIX entries preserved — see INSTALL.md for full history)
---
--- FIX (v2.3.12):
---   • neotest-jest jestCommand: "bun test --" is invalid. Bun's test runner
---     does not support the Jest "--" argument separator; passing it causes
---     Bun to treat "--" as an unknown flag and error out silently.
---     The neotest-jest adapter appends its own args after jestCommand, so
---     the separator is only needed for npm/yarn/pnpm (which wrap `jest` via
---     `npm test -- <jest-args>`). Bun invokes its own runner directly, so
---     no separator is needed. Fixed: return "bun test" bare (no "--") when
---     Bun lockfiles are detected; keep " --" for npm/yarn/pnpm.
+-- OPT (v2.3.14):
+--   • jest_cmd() inline lockfile-detection fallback removed. The fallback
+--     duplicated runner.detect_js_test_cmd() verbatim and was only necessary
+--     before that function was made a public export in v2.3.11. The module
+--     is always available in this context; the dead fallback branch is gone.
+--   • jest_cmd() is now a clean 6-line wrapper around runner.detect_js_test_cmd().
 
 return {
   {
@@ -83,33 +78,23 @@ return {
       local adapters = {}
 
       -- ── jest command helper ──────────────────────────────────────────
-      -- FIX (v2.3.12): Bun does NOT support the "--" separator that npm/
-      -- yarn/pnpm need. Return "bun test" bare; the adapter appends its own
-      -- pattern args directly. For other package managers keep " --".
+      -- OPT (v2.3.14): inline fallback removed. runner.detect_js_test_cmd()
+      -- was made public in v2.3.11 specifically for this use case. The module
+      -- is always available; duplicating its logic here was dead code.
+      --
+      -- Bun does NOT use the "--" separator that npm/yarn/pnpm need because
+      -- it invokes its test runner directly rather than wrapping `jest`.
       local function jest_cmd()
-        local ok_path, path = pcall(require, "core.util.path")
-        local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+        local ok_path, path   = pcall(require, "core.util.path")
         local ok_runner, runner = pcall(require, "core.util.runner")
-
-        if ok_runner then
-          local cmd = runner.detect_js_test_cmd(root)
-          -- Bun doesn't use "--" to pass args to the test runner
-          if cmd == "bun test" then
-            return cmd
-          end
-          return cmd .. " --"
+        if not ok_runner then
+          vim.notify("[test] core.util.runner unavailable — jest adapter may not work",
+            vim.log.levels.WARN)
+          return "npm test --"
         end
-
-        -- Inline fallback if runner module is unavailable
-        if vim.fn.filereadable(root .. "/bun.lockb") == 1
-        or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
-          return "bun test"         -- NO " --" for bun
-        elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then
-          return "pnpm test --"
-        elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then
-          return "yarn test --"
-        end
-        return "npm test --"
+        local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+        local cmd  = runner.detect_js_test_cmd(root)
+        return cmd == "bun test" and cmd or (cmd .. " --")
       end
 
       local eager_configs = {

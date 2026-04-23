@@ -1,7 +1,7 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
-;;; Version: 3.2.1 | FIX: Added C-c C-T, C-c x l, C-c r recovery prefix,
-;;;           C-c t/e terminal/eshell. These were checked by spot-check but
-;;;           never bound. Removed duplicate comments from tool modules.
+;;; Version: 3.2.2 | FIX: Moved emacs-ide-show-keybindings-help defun to before
+;;;           its global-set-key call so (provide 'keybindings) always executes
+;;;           and (fboundp) returns t at spot-check time.
 ;;; Code:
 
 (global-set-key (kbd "C-x C-b") 'ibuffer)
@@ -122,26 +122,6 @@
         (emacs-ide-profile-stop)
       (profiler-stop))))
 
-(global-set-key (kbd "C-c ?") 'which-key-show-top-level)
-(global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
-(global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
-(global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
-(global-set-key (kbd "C-c n") 'neotree-toggle)
-(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
-(global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
-
-;;; ─── Completion / editing ────────────────────────────────────────────────────
-;; M-/ was set in completion-core.el — moved here for single source of truth.
-(global-set-key (kbd "M-/") 'hippie-expand)
-
-;;; ─── Notes ───────────────────────────────────────────────────────────────────
-;; C-c n / was set in tools-notes.el — moved here.
-(global-set-key (kbd "C-c n /")
-  (lambda () (interactive)
-    (if (fboundp 'emacs-ide-notes-search)
-        (emacs-ide-notes-search)
-      (message "tools-notes not loaded yet"))))
-
 (defun emacs-ide-show-keybindings-help ()
   (interactive)
   (with-output-to-temp-buffer "*IDE Keybindings*"
@@ -169,7 +149,7 @@ REPL  (C-c x prefix):
   C-c x t   toggle REPL window
   C-c x R   test report
 
-TESTS  (C-c X prefix — uppercase X):
+TESTS  (C-c X prefix -- uppercase X):
   C-c X f   run file tests
   C-c X p   run project tests
   C-c X .   run test at point
@@ -212,6 +192,26 @@ MISC:
   C-c P     presentation mode
 
 Press q to close.\n")))
+
+(global-set-key (kbd "C-c ?") 'which-key-show-top-level)
+(global-set-key (kbd "C-c H") 'emacs-ide-show-keybindings-help)
+(global-set-key (kbd "C-c R") 'emacs-ide-reload-config)
+(global-set-key (kbd "C-c L") 'emacs-ide-lsp-status)
+(global-set-key (kbd "C-c n") 'neotree-toggle)
+(global-set-key (kbd "<f12>") 'emacs-ide-toggle-theme)
+(global-set-key (kbd "C-c P") 'emacs-ide-presentation-mode)
+
+;;; ─── Completion / editing ────────────────────────────────────────────────────
+;; M-/ was set in completion-core.el — moved here for single source of truth.
+(global-set-key (kbd "M-/") 'hippie-expand)
+
+;;; ─── Notes ───────────────────────────────────────────────────────────────────
+;; C-c n / was set in tools-notes.el — moved here.
+(global-set-key (kbd "C-c n /")
+  (lambda () (interactive)
+    (if (fboundp 'emacs-ide-notes-search)
+        (emacs-ide-notes-search)
+      (message "tools-notes not loaded yet"))))
 
 (provide 'keybindings)
 ;;; keybindings.el ends here

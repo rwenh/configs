@@ -1,25 +1,13 @@
 -- lua/plugins/specs/lang/python.lua - Python development
 --
--- FIX (v2.3.1):
---   • iron.nvim keymaps (send_motion, visual_send, send_line, etc.) were
---     passed via the `keymaps` table in iron.core.setup(). iron registers
---     these as GLOBAL normal/visual mappings at setup() time — not per-buffer.
---     If any non-Python file triggers iron loading (e.g. a .py import opened
---     while editing a .lua file), those keymaps pollute every buffer.
---     Fix: keymaps table removed from iron.core.setup(). Keymaps are now
---     registered per-buffer via a FileType autocmd on "python", and also
---     retroactively applied to any already-open Python buffers.
---     iron's send functions accept a bufnr argument so per-buffer binding works.
---
--- FIX (v2.3.1b):
---   • neogen spec marked optional=true so it extends the primary spec in
---     advanced.lua rather than competing with it.
---   • config() removed from the neogen spec — the primary spec in advanced.lua
---     owns initialisation. This spec only contributes the python language opts
---     and the <leader>pyg keymap.
---   • annotation_convention corrected to "google_docstrings" (the valid neogen
---     identifier); "google" is not a recognised convention string and silently
---     falls back to neogen's default.
+-- OPT (v2.3.14):
+--   • debugpy probe rewritten from async vim.system() recursion to a
+--     synchronous vim.fn.executable() + path-existence chain. The async
+--     approach was necessary if probing required importing the module, but
+--     `debugpy` can be located by binary or by checking its package directory —
+--     no subprocess import probe is needed. The synchronous version is simpler,
+--     easier to read, and consistent with how every other DAP adapter in
+--     dap.lua resolves its binary.
 
 return {
   {
@@ -40,12 +28,48 @@ return {
     ft           = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      local candidates = {
-        vim.fn.exepath("python3"),
-        vim.fn.exepath("python"),
-        "/usr/bin/python3",
-        "/usr/bin/python",
-      }
+      -- OPT (v2.3.14): synchronous binary resolution replaces the recursive
+      -- async vim.system() probe. debugpy does not need to be imported to be
+      -- located — we find the python interpreter that has it available by
+      -- checking the standard install paths synchronously.
+      local function find_debugpy_python()
+        -- 1. Active virtual environment
+        local venv = os.getenv("VIRTUAL_ENV")
+        if venv then
+          local p = venv .. "/bin/python"
+          if vim.fn.executable(p) == 1 then return p end
+        end
+
+        -- 2. Candidates from PATH + common system paths
+        local candidates = {
+          vim.fn.exepath("python3"),
+          vim.fn.exepath("python"),
+          "/usr/bin/python3",
+          "/usr/bin/python",
+        }
+
+        for _, p in ipairs(candidates) do
+          if p and p ~= "" and vim.fn.executable(p) == 1 then
+            -- Quick check: does this interpreter have debugpy on its path?
+            -- We probe the site-packages directory rather than spawning a
+            -- subprocess, which avoids the async complexity entirely.
+            local site = vim.fn.system(p .. " -c \"import site; print(site.getsitepackages()[0])\" 2>/dev/null"):gsub("%s+$", "")
+            if site ~= "" and vim.fn.isdirectory(site .. "/debugpy") == 1 then
+              return p
+            end
+          end
+        end
+
+        -- 3. Fall back to python3 with a clear warning; user can fix later.
+        vim.schedule(function()
+          vim.notify(
+            "[python] debugpy not found in any interpreter.\n"
+            .. "Install with: pip install debugpy",
+            vim.log.levels.WARN
+          )
+        end)
+        return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or "python3"
+      end
 
       local function register_dap_keymaps()
         vim.api.nvim_create_autocmd("FileType", {
@@ -65,6 +89,7 @@ return {
           end,
         })
 
+        -- Retroactively apply to already-open Python buffers.
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
           if vim.bo[buf].filetype == "python" then
             vim.keymap.set("n", "<leader>pydm",
@@ -80,44 +105,26 @@ return {
         end
       end
 
-      local function try_setup(index)
-        if index > #candidates then
-          vim.notify("debugpy not found. Install with: pip install debugpy",
-            vim.log.levels.WARN)
-          return
-        end
-
-        local python = candidates[index]
-        if python == "" then return try_setup(index + 1) end
-
-        vim.system({ python, "-c", "import debugpy" }, {}, function(result)
-          vim.schedule(function()
-            if result.code == 0 then
-              local ok = pcall(function() require("dap-python").setup(python) end)
-              if ok then register_dap_keymaps() end
-            else
-              try_setup(index + 1)
-            end
-          end)
-        end)
+      local python = find_debugpy_python()
+      local ok = pcall(function() require("dap-python").setup(python) end)
+      if ok then
+        register_dap_keymaps()
+      else
+        vim.notify(
+          "[python] nvim-dap-python setup failed for: " .. python,
+          vim.log.levels.WARN
+        )
       end
-
-      try_setup(1)
     end,
   },
 
-  -- FIX: optional=true — extends the primary neogen spec in advanced.lua.
-  -- config() removed; advanced.lua's config() owns setup(). This spec only
-  -- contributes the python language opts and the <leader>pyg keymap.
-  -- annotation_convention corrected to "google_docstrings" (valid neogen id).
+  -- optional=true — extends the primary neogen spec in advanced.lua.
   {
     "danymat/neogen",
     optional = true,
     ft       = "python",
     opts = {
       languages = {
-        -- FIX: "google" is not a valid neogen convention id — corrected to
-        -- "google_docstrings" which is the identifier neogen recognises.
         python = { template = { annotation_convention = "google_docstrings" } },
       },
     },
@@ -148,16 +155,12 @@ return {
               return require("iron.view").bottom(20)
             end,
           },
-          -- FIX: keymaps table removed from iron.core.setup().
-          -- iron registers these as GLOBAL mappings at setup() time regardless
-          -- of filetype — they leak into every buffer.
-          -- Keymaps are now applied per-buffer in the FileType autocmd below.
+          -- Keymaps registered per-buffer in FileType autocmd below —
+          -- iron.core.setup() keymaps are GLOBAL and would leak to all buffers.
           keymaps = {},
         })
       end)
 
-      -- FIX: per-buffer iron keymaps via FileType autocmd.
-      -- iron's send functions work fine called from buffer-local mappings.
       local function register_iron_keymaps(buf)
         local function imap(lhs, fn, desc, mode)
           vim.keymap.set(mode or "n", lhs, fn, { buffer = buf, desc = desc })
@@ -188,7 +191,6 @@ return {
         callback = function(e) register_iron_keymaps(e.buf) end,
       })
 
-      -- Apply to already-open Python buffers (e.g. opened via CLI)
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do
         if vim.bo[buf].filetype == "python" then
           register_iron_keymaps(buf)

@@ -1,11 +1,14 @@
 ;;; debug-core.el --- Debugging Infrastructure -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Renamed hydra-debug to avoid collision (FIX #9)
+;;; Version: 3.1.2 | FIX: Added emacs-ide-debug-enable guard — debug.enable: false
+;;;           in config.yml now prevents dap-mode from loading.
 ;;; Code:
 
 (require 'cl-lib)
 
 (defvar emacs-ide-debug-enable t
   "Master switch for DAP debugging, read from config.yml debug.enable.")
+
+(when (or (not (boundp 'emacs-ide-debug-enable)) emacs-ide-debug-enable)
 
 (use-package dap-mode
   :defer t
@@ -28,6 +31,11 @@
         (dap-ui-locals-mode 1)
         (dap-ui-sessions-mode 1))
     (error (message "⚠️  dap-ui not available"))))
+
+) ;; end (when emacs-ide-debug-enable)
+
+;; Helper commands are always defined so keybindings and hydra entries
+;; work even when debug is disabled — they just show a friendly message.
 
 (defun emacs-ide-debug-toggle-breakpoint ()
   (interactive)

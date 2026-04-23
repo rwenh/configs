@@ -1,4 +1,4 @@
-# NEOVIM KEYMAP REFERENCE — v2.3.10
+# NEOVIM KEYMAP REFERENCE — v2.3.14
 
 ## LEADER KEY
 Space (` `)
@@ -258,6 +258,7 @@ Space (` `)
 - `<leader>jvm` — Extract method *(visual only)*
 - `<leader>jvt` — Test class
 - `<leader>jvn` — Test nearest method
+- `<leader>jvg` — Generate Javadoc
 
 ### Kotlin (`<leader>kt*`)
 - `<leader>ktb` — Build
@@ -283,6 +284,11 @@ Space (` `)
 - `<leader>exf` — mix format
 - `<leader>exp` — Phoenix server
 - `<leader>exi` — IEx session
+
+### C (`<leader>c*`)
+- `<leader>cb` — Build & run (gcc)
+- `<leader>cm` — Make
+- `<leader>csy` — Syntax check *(renamed from `<leader>cc` to avoid collision with `<leader>cc*` CMake group)*
 
 ### C++ / CMake (`<leader>cc*`)
 - `<leader>ccg` — CMake generate

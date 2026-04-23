@@ -1183,7 +1183,7 @@ return {
       -- Plain static string — no function, avoids the dashboard.lua:382 crash.
       -- The rain float (zindex 190-200) overlays this from above with the
       -- animated decode + logo hl. After drain the snacks buffer is visible.
-      local ver = tostring(vim.g.nvim_ide_version or "2.3.5")
+      local ver = vim.g.nvim_ide_version and tostring(vim.g.nvim_ide_version) or "unknown"
       local LOGO_HEADER = table.concat({
         "╔══════════════════════════════════════════════════════════════╗",
         "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",

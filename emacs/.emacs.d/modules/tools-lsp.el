@@ -14,27 +14,30 @@
         lsp-idle-delay 0.3
         lsp-enable-snippet t
         lsp-semantic-tokens-enable t
-        lsp-lens-enable t
+        lsp-lens-enable             t
         lsp-headerline-breadcrumb-enable t
-        ;; FIX #13: was missing — now properly set
-        lsp-inlay-hints-enable t)
+        ;; Read from config var set by emacs-ide-config-apply — respects lsp.inlay-hints
+        lsp-inlay-hints-enable      (bound-and-true-p emacs-ide-lsp-enable-inlay-hints))
   :config
-  ;; FIX #13: LSP-specific vars moved to :config where packages are guaranteed loaded
+  ;; Propagate the config-driven inlay-hints flag to per-language LSP packages
   (with-eval-after-load 'lsp-rust
-    (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
-      (setq lsp-rust-analyzer-inlay-hints-mode t))
+    (let ((hints (bound-and-true-p emacs-ide-lsp-enable-inlay-hints)))
+      (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
+        (setq lsp-rust-analyzer-inlay-hints-mode hints)))
     (when (boundp 'lsp-rust-analyzer-cargo-watch-command)
       (setq lsp-rust-analyzer-cargo-watch-command "clippy")))
   (with-eval-after-load 'lsp-lua
-    (when (boundp 'lsp-lua-hint-enable)
-      (setq lsp-lua-hint-enable t))
+    (let ((hints (bound-and-true-p emacs-ide-lsp-enable-inlay-hints)))
+      (when (boundp 'lsp-lua-hint-enable)
+        (setq lsp-lua-hint-enable hints)))
     (when (boundp 'lsp-lua-diagnostics-globals)
       (setq lsp-lua-diagnostics-globals '())))
   (with-eval-after-load 'lsp-typescript
-    (when (boundp 'lsp-typescript-display-return-type-hints)
-      (setq lsp-typescript-display-return-type-hints t))
-    (when (boundp 'lsp-typescript-display-parameter-type-hints)
-      (setq lsp-typescript-display-parameter-type-hints t)))
+    (let ((hints (bound-and-true-p emacs-ide-lsp-enable-inlay-hints)))
+      (when (boundp 'lsp-typescript-display-return-type-hints)
+        (setq lsp-typescript-display-return-type-hints hints))
+      (when (boundp 'lsp-typescript-display-parameter-type-hints)
+        (setq lsp-typescript-display-parameter-type-hints hints))))
   :bind (:map lsp-mode-map
               ("C-c l r" . lsp-rename)
               ("C-c l f" . lsp-format-buffer)

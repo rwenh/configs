@@ -1,11 +1,14 @@
 ;;; tools-git.el --- Git Integration with Magit -*- lexical-binding: t -*-
-;;; Version: 3.1.0
+;;; Version: 3.1.1 | FIX: Added emacs-ide-git-enable guard — git.enable: false in
+;;;           config.yml now actually prevents Magit and git packages from loading.
 ;;; Code:
 
 (defun emacs-ide-git--cfg (key default)
   (if (fboundp 'emacs-ide-config-get)
       (emacs-ide-config-get 'git key default)
     default))
+
+(when (or (not (boundp 'emacs-ide-git-enable)) emacs-ide-git-enable)
 
 ;;; ─── Magit ──────────────────────────────────────────────────────────────────
 
@@ -228,6 +231,8 @@
           (when (fboundp 'magit-merge-plain)       (magit-merge-plain branch))
           (when (fboundp 'magit-branch-delete)     (magit-branch-delete (list branch)))))
     (message "Magit not available")))
+
+) ;; end (when emacs-ide-git-enable)
 
 (provide 'tools-git)
 ;;; tools-git.el ends here

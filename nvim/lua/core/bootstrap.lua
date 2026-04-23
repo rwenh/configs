@@ -2,17 +2,17 @@
 -- Responsibility: set leader keys + version stamp + clone lazy.nvim if missing.
 -- rtp prepend happens in plugins/init.lua to avoid double-prepend.
 --
--- FIX (v2.3.12):
---   • vim.g.nvim_ide_version moved here from init.lua step 10.
---     init.lua sets it AFTER require("plugins") (step 6), which means
---     ui.lua's config() reads it at plugin-load time and always saw nil
---     → fell back to "2.3.5" hardcoded in the or-fallback. Version string
---     was never shown correctly on the dashboard. Moving it to bootstrap.lua
---     (the very first require) guarantees it is set before any plugin config
---     runs.
+-- OPT (v2.3.14):
+--   • This is now the SOLE lazy.nvim clone site. The duplicate clone block
+--     in plugins/init.lua has been removed. Having two clone paths produced
+--     two distinct error messages and two slightly different fallback paths
+--     that could diverge silently. bootstrap.lua runs first (step 1 of
+--     init.lua), so by the time plugins/init.lua runs, lazy.nvim is already
+--     guaranteed to be present or the user has been notified of failure.
 
 -- ── Version ───────────────────────────────────────────────────────────────
-vim.g.nvim_ide_version = "2.3.12"
+-- Set before any plugin loads so ui.lua's dashboard version string is correct.
+vim.g.nvim_ide_version = "2.3.14"
 
 -- ── Leader keys (must precede any plugin loading) ─────────────────────────
 vim.g.mapleader      = " "

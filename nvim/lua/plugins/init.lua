@@ -1,31 +1,26 @@
 -- lua/plugins/init.lua - Lazy plugin manager setup
+--
+-- OPT (v2.3.14):
+--   • Duplicate lazy.nvim clone block removed. core/bootstrap.lua (step 1
+--     of init.lua) is the sole authoritative clone site. By the time this
+--     file is required (step 6), lazy.nvim is guaranteed to be present or
+--     the user has already been notified of the failure in bootstrap.lua.
+--     Keeping a second clone here produced divergent error messages and made
+--     the failure path harder to reason about.
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
-if not vim.uv.fs_stat(lazypath) then
-  vim.notify("Installing lazy.nvim...", vim.log.levels.INFO)
-
-  local out = vim.fn.system({
-    "git", "clone", "--filter=blob:none",
-    "https://github.com/folke/lazy.nvim.git",
-    "--branch=stable", lazypath,
-  })
-
-  if vim.v.shell_error ~= 0 then
-    vim.notify(
-      "Failed to clone lazy.nvim:\n" .. out
-        .. "\nCheck your network connection and that git is installed.",
-      vim.log.levels.ERROR
-    )
-    return
-  end
-end
-
+-- rtp prepend is still here (not in bootstrap.lua) to avoid double-prepend
+-- on subsequent startups where the path is already in rtp.
 vim.opt.rtp:prepend(lazypath)
 
 local ok, lazy = pcall(require, "lazy")
 if not ok then
-  vim.notify("Failed to load lazy.nvim", vim.log.levels.ERROR)
+  vim.notify(
+    "[plugins/init.lua] Failed to load lazy.nvim.\n"
+      .. "Delete ~/.local/share/nvim and restart Neovim to reinstall.",
+    vim.log.levels.ERROR
+  )
   return
 end
 

@@ -1,7 +1,6 @@
 ;;; emacs-ide-health.el --- Fast Health Checks -*- lexical-binding: t -*-
-;;; Version: 3.2.0 | FIX: added emacs-ide-health-auto-fix (was missing, ERT test
-;;;           required it), added emacs-ide-health-run-check singular (ERT test
-;;;           referenced this name), periodic timer uses correct t repeat arg.
+;;; Version: 3.2.2 | FIX: Added emacs-ide-health-status defalias — was
+;;;           referenced in README, spot-check, and all docs but never defined.
 ;;; Code:
 
 (require 'cl-lib)
@@ -105,7 +104,12 @@ This is the singular form referenced by the ERT test suite."
              (status (plist-get plist :status))
              (msg    (plist-get plist :message))
              (icon   (pcase status ('ok "✓") ('warning "⚠") ('error "✗") (_ "?"))))
-        (princ (format "%s %-20s %s\n" icon key (or msg "")))))))
+        (princ (format "%s %-20s %s\n" icon key (or msg ""))))))
+
+;; Alias: emacs-ide-health-status is the public-facing name documented
+;; in the README, spot-check, and all user-visible help text.
+(defalias 'emacs-ide-health-status 'emacs-ide-health-check-all
+  "Run all health checks and display a report.  Alias for `emacs-ide-health-check-all'.")
 
 (defun emacs-ide-health--summary-string ()
   "Return a one-line health summary string for the modeline."

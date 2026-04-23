@@ -18,13 +18,16 @@
 Created lazily on first use so it never fires in a frameless/TTY context.")
 
 (defun emacs-ide-modeline--ensure-health-map ()
-  "Initialise `emacs-ide-modeline--health-map' if not yet done."
+  "Initialise `emacs-ide-modeline--health-map' if not yet done.
+Only sets the map when define-key succeeds so a nil/empty map never
+reaches propertize as a local-map, which would produce
+\"<nil> <mouse-1> is undefined\" errors."
   (unless emacs-ide-modeline--health-map
-    (let ((map (make-sparse-keymap)))
-      (condition-case nil
+    (condition-case nil
+        (let ((map (make-sparse-keymap)))
           (define-key map [mode-line mouse-1] #'emacs-ide-health-check-all)
-        (error nil))
-      (setq emacs-ide-modeline--health-map map))))
+          (setq emacs-ide-modeline--health-map map))
+      (error nil))))
 
 (defun emacs-ide-modeline--health-string ()
   (if (fboundp 'emacs-ide-health--summary-string)

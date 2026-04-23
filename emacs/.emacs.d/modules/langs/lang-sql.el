@@ -9,11 +9,13 @@
 (when (emacs-ide-dev-lang-enabled-p "sql")
 
 (defun emacs-ide-sql--dialect ()
-  "Return the configured SQL dialect symbol, defaulting to 'postgres."
-  (let ((raw (and (fboundp 'emacs-ide-config-get-nested)
-                  (emacs-ide-config-get-nested "lang-settings.sql.dialect" nil))))
+  "Return the configured SQL dialect symbol, defaulting to 'postgres.
+Reads lang-settings.sql.dialect from config.yml via core-dev."
+  (let* ((settings (and (fboundp 'emacs-ide-dev--config-lang-settings)
+                        (emacs-ide-dev--config-lang-settings "sql")))
+         (raw      (and settings (cdr (assoc 'dialect settings)))))
     (if (and raw (not (eq raw 'postgres)))
-        (intern (if (stringp raw) raw (symbol-name raw)))
+        (if (stringp raw) (intern raw) raw)
       'postgres)))
 
 (use-package sql

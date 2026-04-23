@@ -206,8 +206,8 @@
 
   ;;; ─── Post-load: optional startup health check ────────────────────────────
 
-  (when (and (fboundp 'emacs-ide-health-check-startup) (not noninteractive))
-    (run-with-idle-timer 1 nil #'emacs-ide-health-check-startup))
+  (when (and (fboundp 'emacs-ide-health-run-checks) (not noninteractive))
+    (run-with-idle-timer 1 nil #'emacs-ide-health-run-checks))
 
   ;;; ─── Post-load: cancel void timers left by failed package loads ──────────
 
@@ -231,9 +231,16 @@
               (emacs-ide--track-phase "startup-complete")
               (let* ((elapsed   (float-time (time-subtract (current-time)
                                                            emacs-ide--init-start-time)))
-                     (gc-count  (- gcs-done emacs-ide--gc-count-start)))
+                     (gc-count  (- gcs-done emacs-ide--gc-count-start))
+                     (pkg-count (if (and (boundp 'straight--recipe-cache)
+                                         (hash-table-p straight--recipe-cache))
+                                    (hash-table-count straight--recipe-cache)
+                                  0)))
                 (message "🚀 Emacs IDE v%s ready in %.2fs | GCs: %d"
-                         emacs-ide-version elapsed gc-count)))
+                         emacs-ide-version elapsed gc-count)
+                ;; Log startup metrics to telemetry if enabled
+                (when (fboundp 'emacs-ide-telemetry-log-startup)
+                  (emacs-ide-telemetry-log-startup elapsed gc-count pkg-count))))
             100))   ;; end (unless emacs-ide-safe-mode ...)
 
 ;;; ─── Kill hook ───────────────────────────────────────────────────────────────

@@ -1,16 +1,29 @@
 -- lua/core/util/runner.lua - Code execution engine
 --
--- FIX (v2.3.11):
---   • detect_js_test_cmd() promoted to a PUBLIC export (M.detect_js_test_cmd).
---     test.lua's neotest-jest jestCommand was duplicating the exact same
---     lockfile-probe logic independently. Any future change to lockfile
---     detection (e.g. a new package manager) had to be applied in two places.
---     test.lua now calls require("core.util.runner").detect_js_test_cmd(root)
---     so both code paths stay in sync automatically.
+-- OPT (v2.3.14):
+--   • run_file(), run_tests(), run_selection() now all delegate terminal
+--     launch to core.util.term.float() / float_at_root(). The three
+--     independent inline toggleterm boilerplate blocks that existed here
+--     have been removed. term.lua was introduced specifically for this
+--     purpose; runner.lua was the last caller that hadn't adopted it.
+--   • detect_js_test_cmd() remains a public export (promoted in v2.3.11).
 
 local M = {}
 
--- Walk up from dir, return first ancestor containing marker file (up to N levels)
+-- ── Internal helpers ──────────────────────────────────────────────────────
+
+-- Lazy-require term so we don't hard-depend at module load time.
+local function term()
+  local ok, t = pcall(require, "core.util.term")
+  if not ok then
+    vim.notify("[runner] core.util.term not available — falling back to split terminal",
+      vim.log.levels.WARN)
+    return nil
+  end
+  return t
+end
+
+-- Walk up from dir, return first ancestor containing marker file (up to N levels).
 local function find_ancestor_with(dir, marker, levels)
   levels = levels or 5
   local current = dir
@@ -25,6 +38,8 @@ local function find_ancestor_with(dir, marker, levels)
   end
   return nil
 end
+
+-- ── File runners ──────────────────────────────────────────────────────────
 
 local runners = {
   python = function(file)
@@ -86,7 +101,6 @@ local runners = {
   java = function(file)
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
-    -- Java class names cannot contain spaces, so no shellescape needed for `name`.
     return "cd " .. vim.fn.shellescape(dir)
       .. " && javac " .. vim.fn.shellescape(file)
       .. " && java " .. name
@@ -185,6 +199,8 @@ local runners = {
   end,
 }
 
+-- ── Selection interpreters ────────────────────────────────────────────────
+
 local selection_interpreters = {
   python     = function() return vim.fn.executable("python3") == 1 and "python3" or "python" end,
   lua        = function() return "lua" end,
@@ -200,6 +216,8 @@ local selection_interpreters = {
   bash   = function() return "bash" end,
   julia  = function() return vim.fn.executable("julia") == 1 and "julia" or nil end,
 }
+
+-- ── Public: run_file ──────────────────────────────────────────────────────
 
 function M.run_file()
   local file = vim.fn.expand("%:p")
@@ -229,19 +247,16 @@ function M.run_file()
     return
   end
 
-  local ok, term = pcall(require, "toggleterm.terminal")
-  if ok and term then
-    pcall(function()
-      term.Terminal:new({
-        cmd           = cmd,
-        direction     = "float",
-        close_on_exit = false,
-      }):toggle()
-    end)
+  -- OPT (v2.3.14): delegate to term.float(); fallback to split terminal.
+  local t = term()
+  if t then
+    t.float(cmd)
   else
     vim.cmd("split | terminal " .. cmd)
   end
 end
+
+-- ── Public: run_selection ─────────────────────────────────────────────────
 
 function M.run_selection(start_line, end_line)
   local ft  = vim.bo.filetype
@@ -302,17 +317,10 @@ function M.run_selection(start_line, end_line)
     vim.defer_fn(function() pcall(os.remove, tmpfile) end, 500)
   end
 
-  local ok_t, term = pcall(require, "toggleterm.terminal")
-  if ok_t and term then
-    pcall(function()
-      local t = term.Terminal:new({
-        cmd           = cmd,
-        direction     = "float",
-        close_on_exit = false,
-        on_exit       = function() cleanup() end,
-      })
-      t:toggle()
-    end)
+  -- OPT (v2.3.14): delegate to term.float() with on_exit cleanup.
+  local t = term()
+  if t then
+    t.float(cmd, { on_exit = function() cleanup() end })
   else
     vim.api.nvim_create_autocmd("TermClose", {
       once     = true,
@@ -322,13 +330,9 @@ function M.run_selection(start_line, end_line)
   end
 end
 
--- ── JS/TS package manager detection ──────────────────────────────────────────
--- FIX (v2.3.2): probe lockfiles in project root.
--- FIX (v2.3.3): also check bun.lock (text lockfile, Bun v1.1+).
--- FIX (v2.3.9): returns bare command only; caller prepends "cd <root> && ".
--- FIX (v2.3.11): promoted to M.detect_js_test_cmd (public export) so that
---   test.lua's neotest-jest jestCommand can reuse the same logic rather than
---   maintaining a separate duplicate. Both callers must pass the project root.
+-- ── Public: detect_js_test_cmd ────────────────────────────────────────────
+-- Promoted to public export in v2.3.11 so test.lua can reuse it.
+-- Both callers must pass the project root.
 function M.detect_js_test_cmd(root)
   if vim.fn.filereadable(root .. "/bun.lockb") == 1
   or vim.fn.filereadable(root .. "/bun.lock")  == 1 then
@@ -340,6 +344,8 @@ function M.detect_js_test_cmd(root)
   end
   return "npm test"
 end
+
+-- ── Public: run_tests ─────────────────────────────────────────────────────
 
 function M.run_tests()
   local ft = vim.bo.filetype
@@ -372,7 +378,7 @@ function M.run_tests()
       or  nil,
   }
 
-  -- FIX (v2.3.10): informational messages for languages with no generic test runner.
+  -- Informational messages for languages with no generic test runner.
   local no_test_runner_info = {
     fortran = "Fortran has no standard unit-test runner.\n"
       .. "Use <leader>ftb to build & run, or <leader>ftm for make.",
@@ -402,15 +408,10 @@ function M.run_tests()
     return
   end
 
-  local ok, term = pcall(require, "toggleterm.terminal")
-  if ok and term then
-    pcall(function()
-      term.Terminal:new({
-        cmd           = cmd,
-        direction     = "float",
-        close_on_exit = false,
-      }):toggle()
-    end)
+  -- OPT (v2.3.14): delegate to term.float(); fallback to split terminal.
+  local t = term()
+  if t then
+    t.float(cmd)
   else
     vim.cmd("split | terminal " .. cmd)
   end

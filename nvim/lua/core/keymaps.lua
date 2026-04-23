@@ -1,18 +1,17 @@
 -- lua/core/keymaps.lua - Safe Keybindings
 --
--- OPT (v2.3.13):
---   • DAP <leader>;* maps consolidated from 13 hand-rolled blocks into a
---     single declarative table + one loop.  The dap_fn() factory is now
---     used for ALL dap/dapui/widgets calls uniformly (F-keys + leader).
---   • Spectre maps consolidated: 3 hand-rolled blocks → 1 factory + table.
---   • Todo-comments maps consolidated: 2 hand-rolled blocks → 1 factory.
---   • Removed empty section headers that contained only FIX comments and
---     no active code (FILE EXPLORER, OVERSEER).
+-- OPT (v2.3.14):
+--   • harpoon_call() hand-rolled factory removed. Harpoon maps now use the
+--     same lazy() factory that was introduced in v2.3.13 for DAP/Spectre/todo.
+--     This makes every lazy-require pattern in this file uniform.
+--   • Flash map wrapped through lazy() for consistency with all other
+--     plugin-dependent maps; bare pcall replaced.
+--   • <leader>uF focus map wrapped through lazy() for the same reason.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
 
--- ── Lazy-require factory ────────────────────────────────────────────────────
+-- ── Lazy-require factory ─────────────────────────────────────────────────
 -- Returns a function that pcall-requires `mod`, then calls `fn(loaded_mod)`.
 -- On failure it notifies with `tag` and does nothing else.
 local function lazy(mod, tag)
@@ -24,6 +23,16 @@ local function lazy(mod, tag)
     end
   end
 end
+
+-- Pre-built factories for every plugin family used below.
+local dap_call     = lazy("dap",            "[dap] nvim-dap")
+local dapui_call   = lazy("dapui",          "[dap] nvim-dap-ui")
+local widget_call  = lazy("dap.ui.widgets", "[dap] nvim-dap")
+local spectre_call = lazy("spectre",        "[spectre] not loaded — try :Lazy load nvim-spectre")
+local harpoon_call = lazy("harpoon",        "[harpoon] not loaded — try :Lazy load harpoon")
+local todo_call    = lazy("todo-comments",  "[todo-comments]")
+local flash_call   = lazy("flash",          "[flash] not loaded — run :Lazy install and restart")
+local focus_call   = lazy("core.focus",     "[focus]")
 
 -- ============================================================================
 -- BASIC EDITING
@@ -117,20 +126,9 @@ map("n", "<leader>.d", "<cmd>DiffviewOpen<cr>",           { desc = "Git diff" })
 map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history" })
 
 -- ============================================================================
--- DEBUG (DAP)  — consolidated table-driven registration (v2.3.13)
---
--- Three module families: "dap", "dapui", "dap.ui.widgets".
--- Special cases (;B, ;l, ;r) need custom args — they are listed separately
--- after the table loop.
+-- DEBUG (DAP) — table-driven registration (v2.3.13)
 -- ============================================================================
 
--- Generic safe-call helpers for each DAP module family
-local dap_call     = lazy("dap",            "[dap] nvim-dap")
-local dapui_call   = lazy("dapui",          "[dap] nvim-dap-ui")
-local widget_call  = lazy("dap.ui.widgets", "[dap] nvim-dap")
-
--- Simple method dispatch: key → { module_family, method_or_fn, desc }
--- module families: "d"=dap  "u"=dapui  "w"=widgets
 local _dap_maps = {
   { "<leader>;b", "d", function(d) d.toggle_breakpoint() end,  "Toggle breakpoint" },
   { "<leader>;c", "d", function(d) d.continue() end,           "Continue/Start" },
@@ -150,7 +148,7 @@ for _, spec in ipairs(_dap_maps) do
   map("n", lhs, _family[fam](fn), { desc = desc })
 end
 
--- Special cases: require user input before the dap call
+-- Special cases: require user input before the dap call.
 map("n", "<leader>;B", function()
   local ok, d = pcall(require, "dap")
   if ok then pcall(d.set_breakpoint, vim.fn.input("Breakpoint condition: "))
@@ -169,15 +167,15 @@ map("n", "<leader>;r", function()
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Toggle REPL" })
 
--- F-keys reuse dap_call helper
+-- F-keys reuse dap_call helper.
 local _fkey_maps = {
-  { "<F5>",  "continue"         },
-  { "<F6>",  "toggle_breakpoint"},
-  { "<F7>",  "step_into"        },
-  { "<F8>",  "step_over"        },
-  { "<F9>",  "step_out"         },
-  { "<F10>", "run_to_cursor"    },
-  { "<F11>", "terminate"        },
+  { "<F5>",  "continue"          },
+  { "<F6>",  "toggle_breakpoint" },
+  { "<F7>",  "step_into"         },
+  { "<F8>",  "step_over"         },
+  { "<F9>",  "step_out"          },
+  { "<F10>", "run_to_cursor"     },
+  { "<F11>", "terminate"         },
 }
 for _, spec in ipairs(_fkey_maps) do
   local lhs, method = spec[1], spec[2]
@@ -210,7 +208,7 @@ map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Te
 map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal" })
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal" })
-map("t", "<Esc>",  "<C-\\><C-n>",      opts)
+map("t", "<Esc>",  "<C-\\><C-n>",        opts)
 map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 
@@ -226,47 +224,42 @@ map("n", "<leader>us", "<cmd>ToggleSpell<cr>",                         { desc = 
 map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",         { desc = "Toggle line numbers" })
 
 -- ============================================================================
--- SEARCH & REPLACE  — factory-driven (v2.3.13)
+-- SEARCH & REPLACE — factory-driven
 -- ============================================================================
 
 local _spectre_maps = {
-  { "<leader>/s", function(s) s.open() end,                          "Search & replace" },
+  { "<leader>/s", function(s) s.open() end,                              "Search & replace" },
   { "<leader>/w", function(s) s.open_visual({ select_word = true }) end, "Replace word" },
-  { "<leader>/f", function(s) s.open_file_search() end,              "Replace in file" },
+  { "<leader>/f", function(s) s.open_file_search() end,                  "Replace in file" },
 }
-local spectre_call = lazy("spectre", "[spectre] not loaded — try :Lazy load nvim-spectre")
 for _, spec in ipairs(_spectre_maps) do
   map("n", spec[1], spectre_call(spec[2]), { desc = spec[3] })
 end
 
 -- ============================================================================
--- HARPOON
+-- HARPOON — now uses the shared lazy() factory (OPT v2.3.14)
 -- ============================================================================
 
-local function harpoon_call(fn)
-  return function()
-    local ok, h = pcall(require, "harpoon")
-    if ok then pcall(fn, h)
-    else vim.notify("[harpoon] not loaded — try :Lazy load harpoon", vim.log.levels.WARN) end
-  end
-end
-
-map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),               { desc = "Harpoon add" })
-map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end), { desc = "Harpoon menu" })
+map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),
+  { desc = "Harpoon add" })
+map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end),
+  { desc = "Harpoon menu" })
 for i = 1, 4 do
-  map("n", "<leader>h" .. i, harpoon_call(function(h) h:list():select(i) end), { desc = "Harpoon " .. i })
-  map("n", "<M-" .. i .. ">", harpoon_call(function(h) h:list():select(i) end), opts)
+  map("n", "<leader>h" .. i,
+    harpoon_call(function(h) h:list():select(i) end),
+    { desc = "Harpoon " .. i })
+  map("n", "<M-" .. i .. ">",
+    harpoon_call(function(h) h:list():select(i) end),
+    opts)
 end
 
 -- ============================================================================
--- FLASH
+-- FLASH — now uses lazy() factory (OPT v2.3.14)
 -- ============================================================================
 
-map({ "n", "x", "o" }, "s", function()
-  local ok, flash = pcall(require, "flash")
-  if ok and flash.jump then flash.jump()
-  else vim.notify("flash.nvim not loaded — run :Lazy install and restart.", vim.log.levels.WARN) end
-end, { desc = "Flash jump" })
+map({ "n", "x", "o" }, "s",
+  flash_call(function(f) f.jump() end),
+  { desc = "Flash jump" })
 
 -- ============================================================================
 -- MISC UTILITIES
@@ -286,15 +279,14 @@ map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
 -- NOTE: <leader>xg owned by advanced.lua (Neogen keys= + lazy-load).
 
 -- ============================================================================
--- TODO COMMENTS — factory-driven (v2.3.13)
+-- TODO COMMENTS — factory-driven
 -- ============================================================================
 
-local todo_call = lazy("todo-comments", "[todo-comments]")
 map("n", "]t", todo_call(function(tc) tc.jump_next() end), { desc = "Next todo" })
 map("n", "[t", todo_call(function(tc) tc.jump_prev() end), { desc = "Previous todo" })
 
 -- ============================================================================
--- OIL  (convenience alias — <leader>eo owned by hud.lua oil.nvim keys=)
+-- OIL (convenience alias — <leader>eo owned by hud.lua oil.nvim keys=)
 -- ============================================================================
 
 map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent dir" })
@@ -307,7 +299,9 @@ map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications
 map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history" })
 
 -- ============================================================================
--- FOCUS
+-- FOCUS — now uses lazy() factory (OPT v2.3.14)
 -- ============================================================================
 
-map("n", "<leader>uF", function() require("core.focus").toggle() end, { desc = "Deep focus mode" })
+map("n", "<leader>uF",
+  focus_call(function(f) f.toggle() end),
+  { desc = "Deep focus mode" })

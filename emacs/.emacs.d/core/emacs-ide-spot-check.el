@@ -1,8 +1,9 @@
 ;;; emacs-ide-spot-check.el --- Spot-check commands and keybindings -*- lexical-binding: t -*-
 ;;; Commentary:
-;;; Version: 3.2.1 | FIX: Added emacs-ide-diagnose-languages, emacs-ide-update,
-;;;           emacs-ide-freeze-versions, emacs-ide-lsp-check-servers to command
-;;;           list — all now defined in their respective modules.
+;;; Version: 3.2.2 | FIX: emacs-ide-spot-check--binding-ok-p now uses strict
+;;;           symbol equality only. The previous substring match caused
+;;;           emacs-ide-test-run-all to falsely satisfy emacs-ide-test-run,
+;;;           masking wrong bindings as passing.
 ;;; Code:
 
 (defun emacs-ide-spot-check--command-ok-p (fn)
@@ -13,11 +14,10 @@
         (error nil))))
 
 (defun emacs-ide-spot-check--binding-ok-p (actual expected)
-  "Return non-nil if ACTUAL binding satisfies EXPECTED."
-  (or (eq actual expected)
-      (and actual
-           (string-match-p (regexp-quote (symbol-name expected))
-                           (format "%s" actual)))))
+  "Return non-nil if ACTUAL binding equals EXPECTED symbol exactly.
+Uses strict symbol equality — no substring matching — so that
+emacs-ide-test-run-all never falsely satisfies emacs-ide-test-run."
+  (eq actual expected))
 
 (defun emacs-ide-spot-check ()
   "Spot-check all commands and keybindings."
@@ -94,17 +94,61 @@
                     emacs-ide-telemetry-report
                     emacs-ide-telemetry-clear
                     emacs-ide-update
-                    emacs-ide-freeze-versions))
+                    emacs-ide-freeze-versions
+                    emacs-ide-repl-send-line
+                    emacs-ide-test-run-all
+                    ;; Health alias
+                    emacs-ide-health-status
+                    ;; Profiler
+                    emacs-ide-profile-startup
+                    ;; Theme extras
+                    emacs-ide-select-theme
+                    emacs-ide-theme-enable-auto
+                    emacs-ide-theme-disable-auto
+                    ;; Telemetry toggles
+                    emacs-ide-telemetry-enable
+                    emacs-ide-telemetry-disable
+                    ;; Modal editing
+                    emacs-ide-toggle-meow
+                    emacs-ide-install-meow
+                    ;; Spelling
+                    emacs-ide-spell-toggle
+                    emacs-ide-spell-buffer
+                    ;; Terminal extras
+                    emacs-ide-vterm-toggle
+                    emacs-ide-vterm-project
+                    ;; Project helpers
+                    emacs-ide-project-info
+                    emacs-ide-project-compile
+                    emacs-ide-project-run
+                    emacs-ide-project-test
+                    ;; Debug helpers
+                    emacs-ide-debug-toggle-breakpoint
+                    emacs-ide-debug-repl
+                    ;; Recovery extras
+                    emacs-ide-recovery-restore-config
+                    ;; Hydra bodies — defined inside with-eval-after-load 'hydra
+                    hydra-window/body
+                    hydra-buffer/body
+                    hydra-git/body
+                    hydra-lsp/body
+                    hydra-project/body
+                    hydra-test/body
+                    hydra-debug/body
+                    hydra-toggle/body
+                    hydra-repl/body
+                    hydra-search/body))
         (let ((ok (emacs-ide-spot-check--command-ok-p fn)))
           (unless ok (push fn cmd-failures))
           (princ (format "  %s %s\n" (if ok "✓" "✗") fn))))
 
-      (princ "\nKEYBINDINGS:\n")
+      (princ "\nKEYBINDINGS (direct — verified by symbol equality):\n")
       (dolist (entry
                '(("C-c x r" emacs-ide-repl-launch)
                  ("C-c x s" emacs-ide-repl-send-region)
                  ("C-c x b" emacs-ide-repl-send-buffer)
                  ("C-c x d" emacs-ide-repl-send-defun)
+                 ("C-c x l" emacs-ide-repl-send-line)
                  ("C-c x t" emacs-ide-repl-toggle-window)
                  ("C-c x R" emacs-ide-test-report)
                  ("C-c X f" emacs-ide-test-run-file)
@@ -116,20 +160,7 @@
                  ("C-c V s" emacs-ide-rest-scratch)
                  ("C-c V i" emacs-ide-rest-insert-request)
                  ("C-c D d" emacs-ide-detect-show-status)
-                 ("C-c D s" emacs-ide-profile-start)
-                 ("C-c D r" emacs-ide-profile-report)
-                 ("C-c D q" emacs-ide-profile-stop)
                  ("C-c R"   emacs-ide-reload-config)
-                 ("C-c h w" hydra-window/body)
-                 ("C-c h b" hydra-buffer/body)
-                 ("C-c h g" hydra-git/body)
-                 ("C-c h l" hydra-lsp/body)
-                 ("C-c h p" hydra-project/body)
-                 ("C-c h t" hydra-test/body)
-                 ("C-c h d" hydra-debug/body)
-                 ("C-c h u" hydra-toggle/body)
-                 ("C-c h r" hydra-repl/body)
-                 ("C-c h s" hydra-search/body)
                  ("C-c W s" persp-switch)
                  ("C-c W n" persp-new)
                  ("C-c W k" persp-kill)
@@ -144,6 +175,7 @@
                  ("C-c B"   compile)
                  ("C-c b"   recompile)
                  ("C-c C-t" emacs-ide-test-run)
+                 ("C-c C-T" emacs-ide-test-run-all)
                  ("C-c t"   emacs-ide-vterm-here)
                  ("C-c e"   emacs-ide-eshell-here)
                  ("C-c a"   org-agenda)
@@ -170,6 +202,21 @@
                          (if (and (not ok) actual)
                              (format " [expected %s]" expected)
                            "")))))
+
+      ;; Lambda-bound keys: keybindings.el wraps these in fboundp-guarded lambdas
+      ;; (hydra bodies and profiler commands).  We can only verify they are bound
+      ;; to something non-nil — symbol equality is impossible with closures.
+      ;; The underlying commands/bodies are verified in the COMMANDS section above.
+      (princ "\nKEYBINDINGS (lambda-bound — verified as non-nil):\n")
+      (dolist (key '("C-c h w" "C-c h b" "C-c h g" "C-c h l" "C-c h p"
+                     "C-c h t" "C-c h d" "C-c h u" "C-c h r" "C-c h s"
+                     "C-c D s" "C-c D r" "C-c D q"))
+        (let* ((actual (with-temp-buffer (key-binding (kbd key))))
+               (ok     (not (null actual))))
+          (unless ok (push (list key 'lambda-bound nil) key-failures))
+          (princ (format "  %s %-14s → %s\n"
+                         (if ok "✓" "✗") key
+                         (if ok "lambda/compiled" "UNBOUND")))))
 
       (princ "\nMODULE FEATURES PROVIDED:\n")
       (dolist (feat '(emacs-ide-config

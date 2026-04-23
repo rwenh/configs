@@ -81,9 +81,6 @@
   (insert "\n"))
 
 (defun emacs-ide-dashboard--kill-on-file-open ()
-  ;; FIX: original was missing a closing paren — the (when db-buf ...) block
-  ;; was not closed before (remove-hook ...), causing the remove-hook to be
-  ;; inside the when, so it only ran when the buffer existed.
   (when (and buffer-file-name
              (not (string= (buffer-name) "*dashboard*")))
     (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
@@ -92,9 +89,10 @@
         (let ((db-win (get-buffer-window db-buf)))
           (when (and db-win (not (one-window-p)))
             (delete-window db-win)))
-        (kill-buffer db-buf)))
-    ;; remove-hook is correctly outside the (when db-buf) block
-    (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open)))
+        (kill-buffer db-buf))))
+  ;; Always remove the hook after the first file open, regardless of
+  ;; whether the dashboard buffer existed.
+  (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open))
 
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
 

@@ -76,6 +76,19 @@
 ;; Load on startup
 (emacs-ide-recovery-load-crash-history)
 
+;; Crash detection: increment the counter immediately on startup (before any
+;; clean-exit hook can run), then persist it.  The kill-emacs-hook below resets
+;; it to zero on a normal exit.  If Emacs crashes, the hook never fires and the
+;; incremented count stays on disk — so the NEXT startup will see count > 0.
+(cl-incf emacs-ide-recovery-crash-count)
+(emacs-ide-recovery-save-crash-history)
+
+;; Reset counter on clean exit so repeated normal startups don't accumulate.
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (setq emacs-ide-recovery-crash-count 0)
+            (emacs-ide-recovery-save-crash-history)))
+
 ;;; ─── Safe / recovery mode ────────────────────────────────────────────────────
 
 (defun emacs-ide-recovery-mode ()

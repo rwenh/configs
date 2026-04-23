@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.10
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.14
 
 ---
 
@@ -154,9 +154,9 @@ echo "✓ Done — run: nvim"
 ├── init.lua                    # entry point
 └── lua/
     ├── core/
-    │   ├── bootstrap.lua       # lazy.nvim bootstrap, leader key
+    │   ├── bootstrap.lua       # lazy.nvim bootstrap (sole clone site), leader key, version stamp
     │   ├── options.lua         # vim options
-    │   ├── keymaps.lua         # global keymaps
+    │   ├── keymaps.lua         # global keymaps — all lazy-requires via unified lazy() factory
     │   ├── autocmds.lua        # autocommands
     │   ├── commands.lua        # user commands (:MasonInstallAll etc.)
     │   ├── theme.lua           # theme management + dark/light toggle
@@ -164,9 +164,10 @@ echo "✓ Done — run: nvim"
     │   ├── hud.lua             # synthwave accent highlight overrides
     │   └── util/
     │       ├── path.lua        # project root detection + caching
-    │       └── runner.lua      # file/selection/test runner engine
+    │       ├── runner.lua      # file/selection/test runner engine
+    │       └── term.lua        # shared toggleterm launch helper (float / float_at_root)
     └── plugins/
-        ├── init.lua            # lazy.nvim setup
+        ├── init.lua            # lazy.nvim setup (rtp prepend + lazy.setup)
         └── specs/
             ├── ui.lua          # themes, statusline, bufferline, snacks dashboard
             ├── editor.lua      # telescope, tree, flash, harpoon, sessions
@@ -198,7 +199,7 @@ echo "✓ Done — run: nvim"
 | Kotlin | kotlin_language_server | — | ktlint | ktlint | JUnit |
 | Ruby | solargraph | rdbg | rubocop | rubocop | rspec |
 | Elixir | elixir-ls | elixir-ls | mix | — | ExUnit |
-| C | clangd | codelldb | clang-format | — | ctest |
+| C | clangd | codelldb | clang-format | clang-tidy | ctest |
 | C++ | clangd + clangd_extensions | codelldb | clang-format | — | ctest |
 | HTML | html-lsp | — | prettier | htmlhint | — |
 | CSS / SCSS | cssls + cssmodules_ls | — | prettier | stylelint | — |
@@ -300,12 +301,21 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.10)
+## Known Issues / Pending Fixes (v2.3.14)
 
-All previously listed known issues have been resolved in v2.3.10. No open issues remain.
+All previously listed known issues have been resolved. No open issues remain.
 
 | Resolved in | Issue | Fix |
 |-------------|-------|-----|
+| v2.3.14 | `runner.lua` launched terminals via three independent inline toggleterm blocks, bypassing `core.util.term` which was introduced specifically to centralise this pattern | Unified all terminal launches through `term.float()` / `term.float_at_root()` |
+| v2.3.14 | `keymaps.lua` defined a hand-rolled `harpoon_call()` factory immediately after establishing the `lazy()` factory — two identical patterns in the same file | Removed `harpoon_call()`; Harpoon, Flash, and focus maps all use `lazy()` |
+| v2.3.14 | `focus.lua` `enter()` and `exit()` each iterated the SPEC table independently with subtly different boolean-guard logic | Unified into a single `apply_spec(active)` function |
+| v2.3.14 | `test.lua` `jest_cmd()` contained an inline lockfile-detection fallback that duplicated `runner.detect_js_test_cmd()` verbatim — dead code since v2.3.11 | Fallback removed; function delegates cleanly to `runner.detect_js_test_cmd()` |
+| v2.3.14 | `lsp.lua` nvim-lint linter merge used a verbose hand-written nested deduplication loop | Replaced with `merge_linters(ft, linters)` helper |
+| v2.3.14 | `lsp.lua` optional server table used a structurally different call shape from the primary `servers` table, making the two paths harder to compare | Call shapes unified |
+| v2.3.14 | `python.lua` debugpy probe used recursive async `vim.system()` callbacks — unnecessary for path resolution, which requires no subprocess import | Replaced with a synchronous `vim.fn.executable()` + site-packages directory check |
+| v2.3.14 | `bootstrap.lua` and `plugins/init.lua` both contained a lazy.nvim clone block, producing two divergent error messages and two code paths for the same failure | Duplicate removed from `plugins/init.lua`; `bootstrap.lua` is the sole clone site |
+| v2.3.14 | `ui.lua` version fallback `or "2.3.5"` was dead code since v2.3.12 guaranteed the version is set before any plugin config runs | Replaced with `or "unknown"` to surface bootstrap failures visibly |
 | v2.3.10 | `test.lua` neotest-rust never registered when a non-rust LSP attached first (`once=true` consumed the autocmd) | Removed `once=true`; `_rust_registered` flag alone guards idempotency |
 | v2.3.10 | `advanced.lua` vim-matchup called `nvim-treesitter.configs.setup()` independently, overwriting treesitter.lua's full config | Removed standalone `setup()` call; replaced with `optional=true` treesitter extension spec |
 | v2.3.10 | `dap.lua` Elixir DAP adapter never auto-installed — `elixir-ls` absent from `mason-nvim-dap ensure_installed` | Added `"elixir-ls"` to `ensure_installed` |

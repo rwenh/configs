@@ -1,4 +1,4 @@
-# INSTALLATION INSTRUCTIONS — v2.3.10
+# INSTALLATION INSTRUCTIONS — v2.3.14
 
 ## What Was Changed (v2.0 → v2.1)
 
@@ -151,18 +151,6 @@
 
 ---
 
-## What Was Changed (v2.3.8 → v2.3.9) — Current
-
-87. **runner.lua — `run_tests()` JS/TS cd prefix** — `detect_js_test_cmd()` returned a bare package-manager command with no `cd <root> &&` prefix. When the shell's cwd differed from the project root, the package manager couldn't locate `package.json` and failed silently. All JS/TS test commands now prefixed with `cd <root> &&`, consistent with every other language.
-
-88. **commands.lua — MasonInstallAll missing `fortls` and `gopls`** — `lsp.lua` wires both as servers but neither was in `MasonInstallAll`. A fresh install had no way to auto-install them via `:MasonInstallAll`. Both added to the LSP section.
-
-89. **dap.lua — Elixir DAP debugger path resolver** — The fallback chain ended with `exepath("elixir-ls")` which resolves to the LSP binary, not the DAP debugger. Using the LSP binary as a DAP adapter silently failed every Elixir debug session. Resolver now only returns a known DAP-capable path (`debugger.sh` or `elixir-ls-debugger`); falls back to nil with a warning rather than wiring the wrong binary.
-
-90. **lsp.lua — `fortls` added to `mason-lspconfig ensure_installed`** — `fortls` was in the optional servers table (binary-checked at runtime) but absent from `ensure_installed`. A fresh install had no way to auto-install it. Consistent with the elixir-ls fix in v2.3.7.
-
----
-
 ## What Was Changed (v2.3.7 → v2.3.8)
 
 83. **test.lua — neotest-vitest constructor** — `neotest-vitest` was returned as a raw module table. neotest-vitest exports a callable constructor; not invoking it silently gave neotest an invalid adapter object and Vitest tests never ran. Fixed: `require("neotest-vitest")({})` — identical fix to neotest-go (v2.3.2) and neotest-elixir (v2.3.5).
@@ -172,6 +160,18 @@
 85. **keymaps.lua — Overseer duplicate maps removed** — `<leader>ot`, `<leader>or`, and `<leader>ob` were registered both here and in `workflow.lua`'s `keys=` table. `workflow.lua` is the sole owner (handles lazy-loading and the smart `run_template` fallback for `<leader>ob`). The duplicates here caused which-key to list each entry twice and silently overwrote `workflow.lua`'s smart build logic.
 
 86. **treesitter.lua — `"comment"` removed from `ignore_install`** — The comment treesitter parser is required by `todo-comments.nvim` (multiline TODO detection) and `noice.nvim` (`long_message_to_split` preset). Ignoring it silently disabled multiline todo highlighting. Only `"vim"` remains in `ignore_install`.
+
+---
+
+## What Was Changed (v2.3.8 → v2.3.9)
+
+87. **runner.lua — `run_tests()` JS/TS cd prefix** — `detect_js_test_cmd()` returned a bare package-manager command with no `cd <root> &&` prefix. When the shell's cwd differed from the project root, the package manager couldn't locate `package.json` and failed silently. All JS/TS test commands now prefixed with `cd <root> &&`, consistent with every other language.
+
+88. **commands.lua — MasonInstallAll missing `fortls` and `gopls`** — `lsp.lua` wires both as servers but neither was in `MasonInstallAll`. A fresh install had no way to auto-install them via `:MasonInstallAll`. Both added to the LSP section.
+
+89. **dap.lua — Elixir DAP debugger path resolver** — The fallback chain ended with `exepath("elixir-ls")` which resolves to the LSP binary, not the DAP debugger. Using the LSP binary as a DAP adapter silently failed every Elixir debug session. Resolver now only returns a known DAP-capable path (`debugger.sh` or `elixir-ls-debugger`); falls back to nil with a warning rather than wiring the wrong binary.
+
+90. **lsp.lua — `fortls` added to `mason-lspconfig ensure_installed`** — `fortls` was in the optional servers table (binary-checked at runtime) but absent from `ensure_installed`. A fresh install had no way to auto-install it. Consistent with the elixir-ls fix in v2.3.7.
 
 ---
 
@@ -187,11 +187,44 @@
 
 ---
 
-## Known Issues (v2.3.10)
+## What Was Changed (v2.3.10 → v2.3.14)
+
+95. **runner.lua — terminal launches unified through `core.util.term`** — `run_file()`, `run_tests()`, and `run_selection()` each contained an independent inline toggleterm boilerplate block. `core.util.term` was introduced specifically to centralise this pattern, yet `runner.lua` — the module most responsible for launching terminals — had never adopted it. All three launch sites now call `term.float()` (with a graceful split-terminal fallback if toggleterm is unavailable).
+
+96. **keymaps.lua — `harpoon_call()` removed; all lazy-requires unified** — A hand-rolled `harpoon_call()` factory was defined immediately after the `lazy(mod, tag)` factory established in v2.3.13, duplicating the same pattern in the same file. Removed: Harpoon, Flash, and the focus toggle all now go through the shared `lazy()` factory, so the file has exactly one factory definition and zero divergent patterns.
+
+97. **focus.lua — `apply_spec(active)` unifies enter/exit** — `enter()` and `exit()` each iterated the `SPEC` table independently. The boolean nil-safety guard lived only in `exit()`, making the two paths subtly different. A single `apply_spec(active)` function now handles both directions with consistent logic, eliminating the duplicated loop entirely.
+
+98. **test.lua — `jest_cmd()` inline fallback removed** — `jest_cmd()` contained an inline lockfile-detection block that duplicated `runner.detect_js_test_cmd()` verbatim. That function was promoted to a public export in v2.3.11 specifically for this use case. The inline fallback was dead code from that moment. The function is now a clean wrapper around the canonical implementation.
+
+99. **lsp.lua — `merge_linters()` helper; optional server shape unified** — The nvim-lint config block used a hand-written nested loop to deduplicate linters when merging with entries registered by lang specs. This is replaced by a `merge_linters(ft, linters)` helper that makes the intent explicit and reads as a single line per filetype. Separately, the `optional` server table previously used a structurally different call shape (with intermediate `name`/`binary`/`config` keys) compared to the primary `servers` table; both now call `lsp_setup()` directly with the same shape.
+
+100. **python.lua — synchronous debugpy probe** — The debugpy adapter setup used a recursive `vim.system()` async callback chain to probe whether each candidate Python interpreter had debugpy importable. This was unnecessarily complex: locating a binary for a DAP adapter does not require spawning a subprocess. The probe is now synchronous, checking `vim.fn.executable()` and the interpreter's site-packages directory directly, consistent with every other adapter resolution in `dap.lua`.
+
+101. **bootstrap.lua / plugins/init.lua — duplicate clone removed** — Both files contained a lazy.nvim clone block. `bootstrap.lua` runs as step 1 of `init.lua`; by step 6 when `plugins/init.lua` is required, lazy.nvim is guaranteed to be present or the user has already been notified. The duplicate clone in `plugins/init.lua` produced a divergent error message and a second code path for the same failure. `bootstrap.lua` is now the sole authoritative clone site.
+
+102. **ui.lua — dead version fallback replaced** — The version string construction used `or "2.3.5"` as a fallback, which was dead code since v2.3.12 guaranteed `vim.g.nvim_ide_version` is set in `bootstrap.lua` before any plugin config runs. The hardcoded fallback masked bootstrap failures silently. Replaced with `or "unknown"` so any regression is immediately visible on the dashboard.
+
+---
+
+## Known Issues (v2.3.14)
 
 No open known issues. All previously tracked issues have been resolved.
 
-### Issues resolved this release (v2.3.10)
+### Issues resolved this release (v2.3.10 → v2.3.14)
+
+| Issue | Fix |
+|-------|-----|
+| `runner.lua` terminal launches bypassed `core.util.term` despite being the pattern's origin | #95 |
+| `keymaps.lua` duplicate factory pattern (`harpoon_call` vs `lazy`) in same file | #96 |
+| `focus.lua` `enter()`/`exit()` iterated SPEC independently with inconsistent boolean guard | #97 |
+| `test.lua` `jest_cmd()` inline fallback was dead code post-v2.3.11 | #98 |
+| `lsp.lua` verbose linter merge loop; inconsistent optional server call shape | #99 |
+| `python.lua` async `vim.system()` probe unnecessary for path resolution | #100 |
+| `bootstrap.lua` and `plugins/init.lua` both cloned lazy.nvim with divergent error paths | #101 |
+| `ui.lua` dead `or "2.3.5"` version fallback masked bootstrap failures | #102 |
+
+### Issues resolved in v2.3.10
 
 | Issue | Fix |
 |-------|-----|
@@ -251,7 +284,7 @@ No open known issues. All previously tracked issues have been resolved.
 
 ---
 
-## File Structure (v2.3.10)
+## File Structure (v2.3.14)
 
 ```
 ~/.config/nvim/
@@ -259,54 +292,55 @@ No open known issues. All previously tracked issues have been resolved.
 └── lua/
     ├── core/
     │   ├── autocmds.lua              ← v2.3.3
-    │   ├── bootstrap.lua             ← v2.1.1
-    │   ├── commands.lua              ← v2.3.9  ✦ fortls + gopls in MasonInstallAll
-    │   ├── focus.lua                 ← v2.2.2
+    │   ├── bootstrap.lua             ← v2.3.14  ✦ sole lazy.nvim clone site
+    │   ├── commands.lua              ← v2.3.9   ✦ fortls + gopls in MasonInstallAll
+    │   ├── focus.lua                 ← v2.3.14  ✦ apply_spec() unifies enter/exit
     │   ├── hud.lua                   ← v2.2.4
-    │   ├── keymaps.lua               ← v2.3.8  ✦ overseer duplicates removed
+    │   ├── keymaps.lua               ← v2.3.14  ✦ all lazy-requires use unified lazy() factory
     │   ├── options.lua               ← v2.3.9b  ✦ matchparen restored (vim-matchup owns it)
     │   ├── theme.lua                 ← v2.2.2
     │   └── util/
     │       ├── path.lua              ← v2.3.2
-    │       └── runner.lua            ← v2.3.10  ✦ fortran/vhdl/cobol informational messages
+    │       ├── runner.lua            ← v2.3.14  ✦ all terminal launches via core.util.term
+    │       └── term.lua              ← v2.3.13  ✦ shared toggleterm helper (float / float_at_root)
     └── plugins/
-        ├── init.lua                  ← v2.1.1
+        ├── init.lua                  ← v2.3.14  ✦ duplicate lazy.nvim clone removed
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
             ├── advanced.lua          ← v2.3.10  ✦ vim-matchup treesitter ext; no standalone setup()
-            ├── completion.lua        ← v2.3.6  ✦ blink nav keys "show" removed
-            ├── dap.lua               ← v2.3.10  ✦ elixir-ls in mason-nvim-dap ensure_installed
+            ├── completion.lua        ← v2.3.6   ✦ blink nav keys "show" removed
+            ├── dap.lua               ← v2.3.12  ✦ Ruby DAP fallback chain; elixir-ls in ensure_installed
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
-            ├── hud.lua               ← v2.3.7  ✦ mini.animate opts→config
-            ├── lsp.lua               ← v2.3.9  ✦ fortls in ensure_installed
-            ├── test.lua              ← v2.3.10  ✦ once=true removed from LspAttach neotest-rust
-            ├── treesitter.lua        ← v2.3.8  ✦ "comment" removed from ignore_install
-            ├── ui.lua                ← v2.3.5  ✦ LOGO_WIDTH removed; drain flash
+            ├── hud.lua               ← v2.3.7   ✦ mini.animate opts→config
+            ├── lsp.lua               ← v2.3.14  ✦ merge_linters(); unified optional server shape
+            ├── test.lua              ← v2.3.14  ✦ jest_cmd() inline fallback removed
+            ├── treesitter.lua        ← v2.3.8   ✦ "comment" removed from ignore_install
+            ├── ui.lua                ← v2.3.14  ✦ dead version fallback replaced with "unknown"
             ├── workflow.lua          ← v2.3.1
             └── lang/
-                ├── c.lua             ← v2.2
-                ├── cobol.lua         ← v2.2
+                ├── c.lua             ← v2.3.13
+                ├── cobol.lua         ← v2.3.13
                 ├── cpp.lua           ← v2.3.1
                 ├── css.lua           ← v2.2.5
                 ├── database.lua      ← v2.2.3
-                ├── elixir.lua        ← v2.2.3
-                ├── fortran.lua       ← v2.2
+                ├── elixir.lua        ← v2.3.13
+                ├── fortran.lua       ← v2.3.13
                 ├── go.lua            ← v2.0
                 ├── html.lua          ← v2.2.5
-                ├── java.lua          ← v2.2.3
+                ├── java.lua          ← v2.3.12
                 ├── javascript.lua    ← v2.2
-                ├── kotlin.lua        ← v2.2.3
+                ├── kotlin.lua        ← v2.3.13
                 ├── markdown.lua      ← v2.2.3
-                ├── python.lua        ← v2.3.1b
+                ├── python.lua        ← v2.3.14  ✦ synchronous debugpy probe
                 ├── rest.lua          ← v2.2.5
                 ├── ruby.lua          ← v2.0
                 ├── rust.lua          ← v2.2.3
                 ├── sql.lua           ← v2.0
                 ├── typescript.lua    ← v2.2
-                ├── vhdl.lua          ← v2.2.3
+                ├── vhdl.lua          ← v2.3.13
                 ├── web.lua           ← v2.3.1
-                └── zig.lua           ← v2.2
+                └── zig.lua           ← v2.3.13
 ```
 
 > **Import order in specs/init.lua is load-order sensitive:**
