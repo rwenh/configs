@@ -17,9 +17,11 @@ let s:boot_time = reltime()
 let g:vimide_debug           = 0
 let g:vimide_minimal         = 0
 let g:vimide_diagnostics     = 'coc'
+" When 1: test/db/rest defer to BufReadPost; debug defers to CmdUndefined.
+" LSP and git are always eager regardless of this flag.
 let g:vimide_lazy_aggressive = 1
 
-" Feature module flags — set to 1 to enable
+" Feature module flags — override in ~/.vimrc.local
 let g:module_git_enabled     = 1
 let g:module_lsp_enabled     = 1
 let g:module_test_enabled    = 1
@@ -47,8 +49,7 @@ function! Log(msg, level) abort
 endfunction
 
 " --- Profiling mark ----------------------------------------------------------
-" Pure observer — does not alter execution semantics.
-" Enable with: let g:vimide_debug = 1
+" Pure observer. Enable with: let g:vimide_debug = 1
 
 function! s:Mark(label) abort
   if !g:vimide_debug | return | endif
@@ -56,12 +57,13 @@ function! s:Mark(label) abort
 endfunction
 
 " --- Error boundary ----------------------------------------------------------
+" Named so failures identify their source in the log.
 
-function! s:Safe(Fn) abort
+function! s:Safe(name, Fn) abort
   try
     call call(a:Fn, [])
   catch
-    call Log('Safe caught: ' . v:exception, 'error')
+    call Log(a:name . ' failed: ' . v:exception, 'error')
   endtry
 endfunction
 
@@ -91,28 +93,87 @@ function! FeatureEnabled(name) abort
   return get(g:, 'module_' . a:name . '_enabled', 0)
 endfunction
 
-" --- Feature loader (gated + safe + idempotent) ------------------------------
-" Contract: immutable session — features load exactly once per session.
-" s:ResetFeature() is a debug escape hatch only; it does NOT clean up
-" installed mappings, autocmds, or commands from the previous load.
+" --- Module registry ---------------------------------------------------------
+"
+" Contract:
+"   - Every feature is registered exactly once via s:RegisterModule()
+"   - s:LoadModules() is the single dispatch point
+"   - Features load once per session (immutable session model)
+"   - s:TeardownModule() / s:ReloadModule() are debug tools only
+"   - Teardown does NOT guarantee clean state for all side effects
+"     (installed <Plug> maps persist); document this limitation per module
+"
+" Spec keys:
+"   init     funcref  — required; called on load
+"   teardown funcref  — optional; called on teardown
+"   deps     list     — module names to load first (resolved before init)
+"   lazy     string   — '' (eager) | 'buf' (BufReadPost) | 'cmd' (CmdUndefined)
+"                       ignored when g:vimide_lazy_aggressive = 0
 
-let s:loaded    = {}
-let s:teardowns = {}
+let s:modules = {}
 
-function! s:Feature(name, Fn, ...) abort
-  if !FeatureEnabled(a:name) || has_key(s:loaded, a:name) | return | endif
-  let s:loaded[a:name] = 1
-  if a:0 | let s:teardowns[a:name] = a:1 | endif
-  call s:Safe(a:Fn)
+function! s:RegisterModule(name, spec) abort
+  let s:modules[a:name] = extend({
+    \ 'enabled':  FeatureEnabled(a:name),
+    \ 'loaded':   0,
+    \ 'init':     v:null,
+    \ 'teardown': v:null,
+    \ 'deps':     [],
+    \ 'lazy':     '',
+    \ }, a:spec)
 endfunction
 
-function! s:ResetFeature(name) abort
-  if has_key(s:teardowns, a:name)
-    call s:Safe(s:teardowns[a:name])
+function! s:LoadModule(name) abort
+  if !has_key(s:modules, a:name)
+    call Log('Unknown module: ' . a:name, 'error') | return
   endif
-  if has_key(s:loaded, a:name)
-    call remove(s:loaded, a:name)
+  let l:m = s:modules[a:name]
+  if !l:m.enabled || l:m.loaded | return | endif
+  for l:dep in l:m.deps
+    call s:LoadModule(l:dep)
+  endfor
+  let s:modules[a:name].loaded = 1
+  if l:m.init isnot v:null
+    call s:Mark(a:name . ' init start')
+    call s:Safe(a:name . ':init', l:m.init)
+    call s:Mark(a:name . ' init done')
   endif
+endfunction
+
+function! s:TeardownModule(name) abort
+  if !has_key(s:modules, a:name) | return | endif
+  let l:m = s:modules[a:name]
+  if !l:m.loaded | return | endif
+  if l:m.teardown isnot v:null
+    call s:Safe(a:name . ':teardown', l:m.teardown)
+  endif
+  let s:modules[a:name].loaded = 0
+endfunction
+
+function! s:ReloadModule(name) abort
+  call s:TeardownModule(a:name)
+  call s:LoadModule(a:name)
+endfunction
+
+function! s:LoadModules() abort
+  call s:Mark('LoadModules start')
+  for l:name in keys(s:modules)
+    let l:m = s:modules[l:name]
+    if !l:m.enabled | continue | endif
+    let l:strategy = g:vimide_lazy_aggressive ? l:m.lazy : ''
+    if l:strategy ==# 'buf'
+      call Augroup('LazyLoad_' . l:name, [
+        \ 'BufReadPost * ++once call s:LoadModule(' . string(l:name) . ')',
+        \ ])
+    elseif l:strategy ==# 'cmd'
+      call Augroup('LazyLoad_' . l:name, [
+        \ 'CmdUndefined * call s:LoadModule(' . string(l:name) . ')',
+        \ ])
+    else
+      call s:LoadModule(l:name)
+    endif
+  endfor
+  call s:Mark('LoadModules done')
 endfunction
 
 " --- Map() -------------------------------------------------------------------
@@ -155,8 +216,7 @@ endfunction
 
 function! RunTask(name) abort
   if !has_key(s:tasks, a:name)
-    call Log('Task not found: ' . a:name, 'error')
-    return
+    call Log('Task not found: ' . a:name, 'error') | return
   endif
   let l:task = s:tasks[a:name]
   for l:dep in get(l:task, 'deps', [])
@@ -457,7 +517,7 @@ function! s:SafeBprev() abort
 endfunction
 
 " =============================================================================
-" LAYER 6: KEYMAPS (core only — feature keymaps live in their loaders)
+" LAYER 6: KEYMAPS (core only — feature keymaps live in their module inits)
 " =============================================================================
 
 let mapleader      = ' '
@@ -854,16 +914,17 @@ let g:which_key_map = {
   \ }
 
 " =============================================================================
-" LAYER 8: FEATURE LOADERS
-" Each loader owns: config vars, autocmds, and keymaps for its feature.
-" Entry point: s:Feature(name, loader_fn) — gated, safe, idempotent.
+" LAYER 8: MODULE DEFINITIONS
+"
+" Each module owns: config vars, autocmds, keymaps, and optionally teardown.
+" Teardown note: Vim provides no native unmap API for non-buffer mappings.
+" Teardown cleans g: vars and augroups. Normal-mode maps persist for the
+" session — acceptable under the immutable session contract.
 " =============================================================================
 
 " --- Git ---------------------------------------------------------------------
 
-function! s:load_git() abort
-  call s:Mark('load_git start')
-
+function! s:git_init() abort
   let g:fern_git_status#disable_ignored    = 1
   let g:fern_git_status#disable_untracked  = 0
   let g:fern_git_status#disable_submodules = 1
@@ -894,15 +955,25 @@ function! s:load_git() abort
   call Map('n', '<leader>hp', ':GitGutterPreviewHunk<CR>', {})
   nmap ]h <Plug>(GitGutterNextHunk)
   nmap [h <Plug>(GitGutterPrevHunk)
-
-  call s:Mark('load_git done')
 endfunction
 
+function! s:git_teardown() abort
+  " Disables display. Maps persist for session (immutable contract).
+  let g:gitgutter_enabled = 0
+  silent! GitGutterDisable
+endfunction
+
+call s:RegisterModule('git', {
+  \ 'init':     function('s:git_init'),
+  \ 'teardown': function('s:git_teardown'),
+  \ 'lazy':     '',
+  \ })
+
 " --- LSP (coc.nvim) ----------------------------------------------------------
+" Always eager (lazy: ''): coc config vars must precede first BufReadPost.
+" Teardown: CocRestart is the only clean reset coc supports.
 
-function! s:load_lsp() abort
-  call s:Mark('load_lsp start')
-
+function! s:lsp_init() abort
   let g:coc_disable_startup_warning = 1
   let g:coc_global_extensions = [
     \ 'coc-json',
@@ -948,15 +1019,24 @@ function! s:load_lsp() abort
   call Augroup('LightlineCoc', [
     \ 'User CocStatusChange,CocDiagnosticChange silent call lightline#update()',
     \ ])
-
-  call s:Mark('load_lsp done')
 endfunction
 
+function! s:lsp_teardown() abort
+  call Augroup('LightlineCoc', [])
+  if exists(':CocRestart') | silent! CocRestart | endif
+endfunction
+
+call s:RegisterModule('lsp', {
+  \ 'init':     function('s:lsp_init'),
+  \ 'teardown': function('s:lsp_teardown'),
+  \ 'lazy':     '',
+  \ })
+
 " --- Debug (vimspector) ------------------------------------------------------
+" lazy='cmd': deferred until any CmdUndefined fires (e.g. :VimspectorLaunch).
+" Teardown: resets vimspector UI and removes the lazy trigger augroup.
 
-function! s:load_debug() abort
-  call s:Mark('load_debug start')
-
+function! s:debug_init() abort
   call plug#load('vimspector')
 
   call Map('n', '<F1>',       ':call vimspector#Continue()<CR>', {})
@@ -970,15 +1050,23 @@ function! s:load_debug() abort
   call Map('n', '<leader>dX', ':call vimspector#ClearBreakpoints()<CR>', {})
   call Map('n', '<leader>di', ':call vimspector#BalloonEval()<CR>', {})
   call Map('n', '<leader>dw', ':call vimspector#AddWatch()<CR>', {})
-
-  call s:Mark('load_debug done')
 endfunction
 
+function! s:debug_teardown() abort
+  if exists('*vimspector#Reset') | silent! call vimspector#Reset() | endif
+  call Augroup('LazyLoad_debug', [])
+endfunction
+
+call s:RegisterModule('debug', {
+  \ 'init':     function('s:debug_init'),
+  \ 'teardown': function('s:debug_teardown'),
+  \ 'lazy':     'cmd',
+  \ })
+
 " --- Test (vim-test) ---------------------------------------------------------
+" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
-function! s:load_test() abort
-  call s:Mark('load_test start')
-
+function! s:test_init() abort
   let g:test#strategy          = 'floaterm'
   let g:test#python#runner     = 'pytest'
   let g:test#javascript#runner = 'jest'
@@ -990,15 +1078,17 @@ function! s:load_test() abort
   call Map('n', '<leader>ta', ':TestSuite<CR>', {})
   call Map('n', '<leader>tR', ':TestLast<CR>', {})
   call Map('n', '<leader>tv', ':TestVisit<CR>', {})
-
-  call s:Mark('load_test done')
 endfunction
 
+call s:RegisterModule('test', {
+  \ 'init': function('s:test_init'),
+  \ 'lazy': 'buf',
+  \ })
+
 " --- Database (vim-dadbod) ---------------------------------------------------
+" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
-function! s:load_db() abort
-  call s:Mark('load_db start')
-
+function! s:db_init() abort
   let g:db_ui_use_nerd_fonts = 1
   let g:db_ui_winwidth       = 40
   let g:db_ui_save_location  = expand('~/.vim/db_ui')
@@ -1013,15 +1103,22 @@ function! s:load_db() abort
   call Augroup('DatabaseSQL', [
     \ 'FileType sql setlocal omnifunc=vim_dadbod_completion#omni',
     \ ])
-
-  call s:Mark('load_db done')
 endfunction
 
+function! s:db_teardown() abort
+  call Augroup('DatabaseSQL', [])
+endfunction
+
+call s:RegisterModule('db', {
+  \ 'init':     function('s:db_init'),
+  \ 'teardown': function('s:db_teardown'),
+  \ 'lazy':     'buf',
+  \ })
+
 " --- REST client (vim-rest-console) ------------------------------------------
+" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
-function! s:load_rest() abort
-  call s:Mark('load_rest start')
-
+function! s:rest_init() abort
   let g:vrc_curl_opts = {
     \ '--include':    '',
     \ '--location':   '',
@@ -1035,22 +1132,16 @@ function! s:load_rest() abort
   let g:vrc_output_buffer_name = '__VRC_OUTPUT__'
 
   call Map('n', '<leader>rr', ':call VrcQuery()<CR>', {})
-
-  call s:Mark('load_rest done')
 endfunction
 
-" --- Dispatch ----------------------------------------------------------------
+call s:RegisterModule('rest', {
+  \ 'init': function('s:rest_init'),
+  \ 'lazy': 'buf',
+  \ })
 
-call s:Mark('features start')
+" --- Dispatch all modules ----------------------------------------------------
 
-call s:Feature('git',   function('s:load_git'))
-call s:Feature('lsp',   function('s:load_lsp'))
-call s:Feature('debug', function('s:load_debug'))
-call s:Feature('test',  function('s:load_test'))
-call s:Feature('db',    function('s:load_db'))
-call s:Feature('rest',  function('s:load_rest'))
-
-call s:Mark('features done')
+call s:LoadModules()
 
 " =============================================================================
 " LAYER 9: LANGUAGE RUNNERS
@@ -1146,10 +1237,16 @@ function! s:FlashYank() abort
   let l:vend   = getpos("']")
   if l:vstart[1] <= 0 || l:vend[1] <= 0 | return | endif
   if (l:vend[1] - l:vstart[1]) > 50 | return | endif
-  let l:pat = '\%' . l:vstart[1] . 'l\%' . l:vstart[2] . 'c\_.*\%'
-    \ . l:vend[1] . 'l\%' . l:vend[2] . 'c'
+  " For linewise yanks, col is v:maxcol — use line-only pattern instead
+  if v:event.regtype ==# 'V' || l:vend[2] >= 2147483647
+    let l:pat = '\%>' . (l:vstart[1] - 1) . 'l\%<' . (l:vend[1] + 1) . 'l'
+  else
+    let l:pat = '\%' . l:vstart[1] . 'l\%' . l:vstart[2] . 'c\_.*\%'
+      \ . l:vend[1] . 'l\%' . l:vend[2] . 'c'
+  endif
   call timer_start(0, {-> s:DoFlash(l:pat)})
 endfunction
+
 
 function! s:DoFlash(pat) abort
   let l:id = matchadd('IncSearch', a:pat)
@@ -1258,19 +1355,21 @@ function! s:VimInfo() abort
   echo 'coc.nvim    : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
   echo 'Diagnostics : ' . g:vimide_diagnostics
   echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
+  echo 'Lazy mode   : ' . (g:vimide_lazy_aggressive ? 'on' : 'off')
   echo 'Project root: ' . State('project_root')
   echo 'Last task   : ' . get(State('last_task'), 'name', '(none)')
-  echo '--- features ---'
-  for l:f in ['git', 'lsp', 'test', 'db', 'rest', 'debug']
-    let l:status = has_key(s:loaded, l:f)  ? 'loaded'
-      \          : FeatureEnabled(l:f)      ? 'enabled/pending'
-      \          :                            'off'
-    echo printf('%-10s: %s', l:f, l:status)
+  echo '--- modules ---'
+  for [l:name, l:m] in items(s:modules)
+    let l:status = !l:m.enabled        ? 'off'
+      \          : l:m.loaded          ? 'loaded'
+      \          : l:m.lazy !=# ''     ? 'lazy/' . l:m.lazy
+      \          :                       'enabled/pending'
+    echo printf('  %-10s: %s', l:name, l:status)
   endfor
   echo '--- tools (✓ = found in PATH) ---'
   for l:t in ['node', 'python3', 'git', 'rg', 'bat', 'gopls', 'tmux',
     \          'rustc', 'cargo', 'go', 'tsc', 'java', 'lua', 'ruby', 'elixir']
-    echo printf('%-12s: %s', l:t, executable(l:t) ? '✓' : '✗ not found')
+    echo printf('  %-12s: %s', l:t, executable(l:t) ? '✓' : '✗ not found')
   endfor
   echo '=================================='
 endfunction
@@ -1324,13 +1423,14 @@ function! s:CheckCocSettings() abort
   endif
 endfunction
 
-command! VimInfo          call s:VimInfo()
-command! CleanBuffers     call s:CleanBuffers()
-command! FindProjectRoot  call s:InitProjectRoot()
-command! ReloadConfig     source $MYVIMRC | call Log('Config reloaded', 'info')
-command! CheckCocSettings call s:CheckCocSettings()
-command! -nargs=1 -complete=file Rename       call s:RenameFile(<q-args>)
-command! -nargs=1              ResetFeature   call s:ResetFeature(<q-args>)
+command! VimInfo            call s:VimInfo()
+command! CleanBuffers       call s:CleanBuffers()
+command! FindProjectRoot    call s:InitProjectRoot()
+command! ReloadConfig       source $MYVIMRC | call Log('Config reloaded', 'info')
+command! CheckCocSettings   call s:CheckCocSettings()
+command! -nargs=1 -complete=file Rename         call s:RenameFile(<q-args>)
+command! -nargs=1                ReloadModule   call s:ReloadModule(<q-args>)
+command! -nargs=1                TeardownModule call s:TeardownModule(<q-args>)
 
 " =============================================================================
 " LAYER 13: TMUX INTEGRATION
