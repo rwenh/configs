@@ -12,6 +12,15 @@
 --       3. Mason bin path as last resort
 --     The dap.configurations.ruby entry gains a second config for standalone
 --     (non-Bundler) launch so the user sees both options in the picker.
+--
+-- FIX (v2.3.15):
+--   • Python DAP section removed from dap.lua entirely.
+--     dap.lua manually registered dap.adapters.python and
+--     dap.configurations.python. python.lua's nvim-dap-python.setup()
+--     overwrites both on ft=python — the dap.lua entries were dead code
+--     that ran at startup for nothing and could diverge from the
+--     nvim-dap-python implementation. python.lua is now the sole owner
+--     of all Python DAP wiring.
 
 return {
   {
@@ -98,48 +107,10 @@ return {
         return vim.fn.stdpath("data") .. "/mason/packages/" .. rel
       end
 
-      -- ── Python ───────────────────────────────────────────────────────
-      local function find_python()
-        local p3 = vim.fn.exepath("python3")
-        if p3 ~= "" then return p3 end
-        local p = vim.fn.exepath("python")
-        if p ~= "" then return p end
-        return "python3"
-      end
-
-      dap.adapters.python = function(cb, config)
-        if config.request == "attach" then
-          local port = (config.connect or config).port
-          local host = (config.connect or config).host or "127.0.0.1"
-          cb({ type = "server", port = assert(port, "`connect.port` required"), host = host,
-               options = { source_filetype = "python" } })
-        else
-          cb({ type = "executable", command = find_python(),
-               args = { "-m", "debugpy.adapter" },
-               options = { source_filetype = "python" } })
-        end
-      end
-
-      dap.configurations.python = {
-        { type = "python", request = "launch", name = "Launch file", program = "${file}",
-          pythonPath = function()
-            local v = os.getenv("VIRTUAL_ENV")
-            return v and (v .. "/bin/python") or find_python()
-          end },
-        { type = "python", request = "launch", name = "Launch file with arguments", program = "${file}",
-          args = function() return vim.split(vim.fn.input("Arguments: "), " +") end,
-          pythonPath = function()
-            local v = os.getenv("VIRTUAL_ENV")
-            return v and (v .. "/bin/python") or find_python()
-          end },
-        { type = "python", request = "attach", name = "Attach remote",
-          connect = function()
-            local host = vim.fn.input("Host [127.0.0.1]: ")
-            host = host ~= "" and host or "127.0.0.1"
-            local port = tonumber(vim.fn.input("Port [5678]: ")) or 5678
-            return { host = host, port = port }
-          end },
-      }
+      -- NOTE: Python DAP (dap.adapters.python + dap.configurations.python)
+      -- is owned exclusively by python.lua via nvim-dap-python.setup().
+      -- Do not register it here — a second registration is overwritten on
+      -- ft=python and the two implementations can diverge silently.
 
       -- ── Java ─────────────────────────────────────────────────────────
       dap.configurations.java = {

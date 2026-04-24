@@ -8,6 +8,20 @@
 --     no subprocess import probe is needed. The synchronous version is simpler,
 --     easier to read, and consistent with how every other DAP adapter in
 --     dap.lua resolves its binary.
+--
+-- FIX (v2.3.15):
+--   • find_debugpy_python() was still spawning a subprocess via vim.fn.system()
+--     to query site.getsitepackages()[0], directly contradicting the OPT (v2.3.14)
+--     comment that claimed "no subprocess import probe is needed". The site-packages
+--     path can be derived from the interpreter path without any subprocess:
+--     the standard layout is <prefix>/lib/pythonX.Y/site-packages, where the
+--     version is read from the interpreter name in the filesystem. As a simpler
+--     and more portable guard we instead check for the `debugpy` binary itself
+--     (installed into the same bin/ as the interpreter when pip install debugpy
+--     is run in a venv or with --user) and for the debugpy package directory
+--     under the standard site-packages siblings. Both checks use only
+--     vim.fn.executable(), vim.fn.glob(), and vim.fn.isdirectory() — zero
+--     subprocesses, zero blocking I/O beyond stat calls.
 
 return {
   {
@@ -28,10 +42,18 @@ return {
     ft           = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      -- OPT (v2.3.14): synchronous binary resolution replaces the recursive
-      -- async vim.system() probe. debugpy does not need to be imported to be
-      -- located — we find the python interpreter that has it available by
-      -- checking the standard install paths synchronously.
+      -- FIX (v2.3.15): fully subprocess-free debugpy probe.
+      --
+      -- Strategy (no vim.fn.system() calls):
+      --   1. Active venv → check <venv>/bin/python is executable.
+      --      Venvs created with `pip install debugpy` put debugpy into the same
+      --      prefix, so finding the venv interpreter is sufficient.
+      --   2. PATH + system candidates → for each interpreter, look for a
+      --      `debugpy` directory alongside the interpreter's lib/ siblings via
+      --      glob patterns, and check for the `debugpy` executable in the same
+      --      bin/. Either presence is enough: nvim-dap-python only needs the
+      --      interpreter path, not the debugpy module path directly.
+      --   3. Fall back to python3 with a warning.
       local function find_debugpy_python()
         -- 1. Active virtual environment
         local venv = os.getenv("VIRTUAL_ENV")
@@ -50,12 +72,25 @@ return {
 
         for _, p in ipairs(candidates) do
           if p and p ~= "" and vim.fn.executable(p) == 1 then
-            -- Quick check: does this interpreter have debugpy on its path?
-            -- We probe the site-packages directory rather than spawning a
-            -- subprocess, which avoids the async complexity entirely.
-            local site = vim.fn.system(p .. " -c \"import site; print(site.getsitepackages()[0])\" 2>/dev/null"):gsub("%s+$", "")
-            if site ~= "" and vim.fn.isdirectory(site .. "/debugpy") == 1 then
-              return p
+            -- Derive the prefix directory (parent of bin/).
+            -- e.g. /usr/bin/python3 → prefix = /usr
+            -- e.g. /home/user/.venv/bin/python3 → prefix = /home/user/.venv
+            local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(p, ":h"), ":h")
+
+            -- Check 1: debugpy executable in the same bin/
+            local dbg_bin = prefix .. "/bin/debugpy"
+            if vim.fn.executable(dbg_bin) == 1 then return p end
+
+            -- Check 2: debugpy package directory under lib/pythonX.Y/site-packages
+            -- Use a glob so we don't need to know the exact Python version.
+            local pattern = prefix .. "/lib/python*/site-packages/debugpy"
+            if vim.fn.glob(pattern) ~= "" then return p end
+
+            -- Check 3: user site-packages (~/.local/lib/pythonX.Y/site-packages)
+            local home = os.getenv("HOME") or ""
+            if home ~= "" then
+              local user_pattern = home .. "/.local/lib/python*/site-packages/debugpy"
+              if vim.fn.glob(user_pattern) ~= "" then return p end
             end
           end
         end

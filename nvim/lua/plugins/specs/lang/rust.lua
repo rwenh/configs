@@ -11,6 +11,13 @@
 --   • nvim-coverage duplicate removed. test.lua is the sole owner.
 --     Having it here caused two config() calls; the last one won, silently
 --     resetting any test.lua customisation.
+--
+-- FIX (v2.3.15):
+--   • rustfmt was completely absent from conform. The README documents it as
+--     Rust's formatter and <leader>,f / format_on_save silently did nothing
+--     on Rust files. Added an optional=true conform spec so lsp.lua's
+--     primary conform spec is extended with rust = { "rustfmt" }.
+--     rustfmt ships with rustup and requires no Mason installation.
 
 return {
   {
@@ -84,5 +91,19 @@ return {
       { "<leader>rt", "<cmd>RustLsp testables<cr>",    desc = "Rust Test" },
     },
   },
+
+  -- FIX (v2.3.15): rustfmt was missing from conform entirely.
+  -- rustfmt ships with the Rust toolchain (rustup component add rustfmt);
+  -- it does not need a Mason package. The optional=true spec extends
+  -- lsp.lua's primary conform opts with the rust filetype entry.
+  {
+    "stevearc/conform.nvim",
+    optional = true,
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.rust = { "rustfmt" }
+    end,
+  },
+
   -- nvim-coverage intentionally removed — test.lua is the sole owner.
 }

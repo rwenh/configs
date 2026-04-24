@@ -1,4 +1,4 @@
-# INSTALLATION INSTRUCTIONS — v2.3.14
+# INSTALLATION INSTRUCTIONS — v2.3.15
 
 ## What Was Changed (v2.0 → v2.1)
 
@@ -207,11 +207,56 @@
 
 ---
 
-## Known Issues (v2.3.14)
+## What Was Changed (v2.3.14 → v2.3.15)
+
+103. **focus.lua — boolean restore ternary bug** — `apply_spec()` used the classic Lua `a and b or c` pattern for boolean restore. When a saved value was `false` (e.g. user had `number=false`), `true and false or default` evaluated to `default` (true), so focus exit forcibly re-enabled `number`, `relativenumber`, and `cursorline`. Fixed with an explicit `if saved ~= nil then saved else default end`.
+
+104. **dap.lua — dead Python DAP section removed** — `dap.lua` manually registered `dap.adapters.python` and `dap.configurations.python`. `python.lua`'s `nvim-dap-python.setup()` overwrote both on every `ft=python` trigger, making the `dap.lua` entries dead code that ran at startup for nothing. Python DAP section removed from `dap.lua`; `python.lua` is the sole authoritative owner.
+
+105. **rust.lua — rustfmt added to conform** — `rustfmt` was completely absent from the formatter pipeline despite being listed in the README. Added `optional=true` conform spec to `rust.lua` with `rust = { "rustfmt" }`. `rustfmt` ships with rustup; no Mason package needed.
+
+106. **python.lua — subprocess-free debugpy probe** — The v2.3.14 OPT claimed "no subprocess" but `vim.fn.system()` still spawned a process to query `site.getsitepackages()`. Replaced entirely with `vim.fn.glob()` and `vim.fn.executable()` checks against standard install paths; zero subprocess calls.
+
+107. **lsp.lua — shellcheck unconditional registration removed** — `shellcheck` was registered for `sh` outside the executable guard (unconditionally) AND inside it (redundantly). Binary-absent systems got lint errors on every sh-file write. Moved the `sh` registration inside the guard; dead duplicate removed.
+
+108. **advanced.lua — kotlin added to neogen languages** — neogen's languages table claimed "ALL languages" but omitted kotlin. Kotlin has full LSP, formatter, linter, DAP, and neotest coverage; neogen supports kotlin natively. Added `kotlin = { "kdoc" }` and a companion `optional=true` ft trigger spec.
+
+109. **zig.lua — `once=true` removed from FileType DAP autocmd** — Same anti-pattern fixed for neotest-rust in v2.3.10. Any non-zig FileType firing first permanently consumed the autocmd, preventing Zig DAP from registering. Removed `once=true`; augroup `clear=true` provides idempotency.
+
+110. **keymaps.lua — `<leader>xx` and `<leader>xu` duplicates removed** — Both were registered here AND in their owning plugin `keys=` specs (`ui.lua` for Trouble, `advanced.lua` for undotree). Duplicate entries caused double which-key entries and bypassed lazy-load gating. Both removed from `keymaps.lua`.
+
+111. **commands.lua — ToggleAutoformat notification fixed; disable_autoformat initialised** — Notification used double-negation of a `disable_*` variable, printing "false" when disabling. Rewritten to print "enabled" / "disabled". Added explicit initialisation of `vim.g.disable_autoformat = false` at module load, consistent with `auto_cd_root` in options.lua.
+
+112. **commands.lua — `gofumpt` added to MasonInstallAll** — `lsp.lua` conform wires `go = { "goimports", "gofumpt" }` but only `goimports` was in the list. Fresh installs silently lacked the second Go formatter.
+
+113. **autocmds.lua — TrimWhitespace buftype guard added** — The BufWritePre callback was the only one in the file without a `buftype ~= ""` guard. Added for consistency with every other callback.
+
+114. **README.md + INSTALL.md — openSUSE repo URL corrected** — Troubleshooting section referenced `openSUSE_Leap_15.5` while the header states the config is tested on Leap 16.0. Updated to `openSUSE_Leap_16.0` in both files.
+
+---
+
+## Known Issues (v2.3.15)
 
 No open known issues. All previously tracked issues have been resolved.
 
-### Issues resolved this release (v2.3.10 → v2.3.14)
+### Issues resolved this release (v2.3.14 → v2.3.15)
+
+| Issue | Fix |
+|-------|-----|
+| `focus.lua` boolean restore corrupted `number`/`relativenumber`/`cursorline` on exit | #103 |
+| `dap.lua` Python section was dead code overwritten by nvim-dap-python | #104 |
+| `rust.lua` rustfmt absent from conform pipeline | #105 |
+| `python.lua` still spawned a subprocess despite v2.3.14 OPT claiming otherwise | #106 |
+| `lsp.lua` shellcheck unconditionally registered for sh regardless of binary presence | #107 |
+| `advanced.lua` neogen missing kotlin despite "ALL languages" claim | #108 |
+| `zig.lua` once=true on FileType DAP autocmd — same pattern as neotest-rust v2.3.10 | #109 |
+| `keymaps.lua` duplicate `<leader>xx` and `<leader>xu` bypassed lazy-load gating | #110 |
+| `commands.lua` ToggleAutoformat notification inverted; disable_autoformat uninitialised | #111 |
+| `commands.lua` MasonInstallAll missing gofumpt | #112 |
+| `autocmds.lua` TrimWhitespace missing buftype guard | #113 |
+| `README.md` + `INSTALL.md` repo URL referenced wrong openSUSE version | #114 |
+
+### Issues resolved in v2.3.14
 
 | Issue | Fix |
 |-------|-----|
@@ -232,24 +277,6 @@ No open known issues. All previously tracked issues have been resolved.
 | vim-matchup standalone `ts.setup()` overwrote treesitter.lua config | #92 |
 | `elixir-ls` absent from `mason-nvim-dap ensure_installed` | #93 |
 | fortran/vhdl/cobol gave opaque "No test runner" with no guidance | #94 |
-
-### Issues resolved in v2.3.9
-
-| Issue | Fix |
-|-------|-----|
-| JS/TS `run_tests()` missing `cd <root> &&` prefix | #87 |
-| MasonInstallAll missing `fortls` and `gopls` | #88 |
-| Elixir DAP resolver fell back to LSP binary as DAP adapter | #89 |
-| `fortls` absent from `mason-lspconfig ensure_installed` | #90 |
-
-### Issues resolved in v2.3.8
-
-| Issue | Fix |
-|-------|-----|
-| neotest-vitest returned as raw module, not adapter | #83 |
-| `run_tests()` missing cd prefix for python/rust/go/zig | #84 |
-| Overseer keymaps duplicated in keymaps.lua and workflow.lua | #85 |
-| `"comment"` parser in `ignore_install` broke multiline TODOs | #86 |
 
 ### Issues resolved in earlier releases
 
@@ -284,19 +311,19 @@ No open known issues. All previously tracked issues have been resolved.
 
 ---
 
-## File Structure (v2.3.14)
+## File Structure (v2.3.15)
 
 ```
 ~/.config/nvim/
 ├── init.lua                          ← v2.3.8
 └── lua/
     ├── core/
-    │   ├── autocmds.lua              ← v2.3.3
+    │   ├── autocmds.lua              ← v2.3.15  ✦ TrimWhitespace buftype guard added
     │   ├── bootstrap.lua             ← v2.3.14  ✦ sole lazy.nvim clone site
-    │   ├── commands.lua              ← v2.3.9   ✦ fortls + gopls in MasonInstallAll
-    │   ├── focus.lua                 ← v2.3.14  ✦ apply_spec() unifies enter/exit
+    │   ├── commands.lua              ← v2.3.15  ✦ gofumpt added; ToggleAutoformat fixed; disable_autoformat initialised
+    │   ├── focus.lua                 ← v2.3.15  ✦ boolean restore ternary bug fixed
     │   ├── hud.lua                   ← v2.2.4
-    │   ├── keymaps.lua               ← v2.3.14  ✦ all lazy-requires use unified lazy() factory
+    │   ├── keymaps.lua               ← v2.3.15  ✦ <leader>xx and <leader>xu duplicates removed
     │   ├── options.lua               ← v2.3.9b  ✦ matchparen restored (vim-matchup owns it)
     │   ├── theme.lua                 ← v2.2.2
     │   └── util/
@@ -307,13 +334,13 @@ No open known issues. All previously tracked issues have been resolved.
         ├── init.lua                  ← v2.3.14  ✦ duplicate lazy.nvim clone removed
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
-            ├── advanced.lua          ← v2.3.10  ✦ vim-matchup treesitter ext; no standalone setup()
+            ├── advanced.lua          ← v2.3.15  ✦ kotlin added to neogen languages table
             ├── completion.lua        ← v2.3.6   ✦ blink nav keys "show" removed
-            ├── dap.lua               ← v2.3.12  ✦ Ruby DAP fallback chain; elixir-ls in ensure_installed
+            ├── dap.lua               ← v2.3.15  ✦ dead Python DAP section removed
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
             ├── hud.lua               ← v2.3.7   ✦ mini.animate opts→config
-            ├── lsp.lua               ← v2.3.14  ✦ merge_linters(); unified optional server shape
+            ├── lsp.lua               ← v2.3.15  ✦ shellcheck guard fixed; rustfmt note added
             ├── test.lua              ← v2.3.14  ✦ jest_cmd() inline fallback removed
             ├── treesitter.lua        ← v2.3.8   ✦ "comment" removed from ignore_install
             ├── ui.lua                ← v2.3.14  ✦ dead version fallback replaced with "unknown"
@@ -332,15 +359,15 @@ No open known issues. All previously tracked issues have been resolved.
                 ├── javascript.lua    ← v2.2
                 ├── kotlin.lua        ← v2.3.13
                 ├── markdown.lua      ← v2.2.3
-                ├── python.lua        ← v2.3.14  ✦ synchronous debugpy probe
+                ├── python.lua        ← v2.3.15  ✦ subprocess-free debugpy probe
                 ├── rest.lua          ← v2.2.5
                 ├── ruby.lua          ← v2.0
-                ├── rust.lua          ← v2.2.3
+                ├── rust.lua          ← v2.3.15  ✦ rustfmt added to conform
                 ├── sql.lua           ← v2.0
                 ├── typescript.lua    ← v2.2
                 ├── vhdl.lua          ← v2.3.13
                 ├── web.lua           ← v2.3.1
-                └── zig.lua           ← v2.3.13
+                └── zig.lua           ← v2.3.15  ✦ once=true removed from FileType DAP autocmd
 ```
 
 > **Import order in specs/init.lua is load-order sensitive:**
@@ -390,6 +417,18 @@ For `keymaps.lua` and `commands.lua` — pure Lua, no plugin state:
 :luafile ~/.config/nvim/lua/core/commands.lua
 ```
 
+For `focus.lua` — pure Lua, no plugin state:
+
+```vim
+:luafile ~/.config/nvim/lua/core/focus.lua
+```
+
+For `autocmds.lua` — reload autocommands:
+
+```vim
+:luafile ~/.config/nvim/lua/core/autocmds.lua
+```
+
 For `lsp.lua` — reload the plugin spec:
 
 ```vim
@@ -400,6 +439,31 @@ For `test.lua` — reload neotest:
 
 ```vim
 :Lazy reload neotest
+```
+
+For `dap.lua` — reload nvim-dap:
+
+```vim
+:Lazy reload nvim-dap
+```
+
+For `rust.lua` — reload rustaceanvim (conform picks up the new formatter automatically):
+
+```vim
+:Lazy reload rustaceanvim
+```
+
+For `python.lua` — reload nvim-dap-python (triggers on next ft=python buffer):
+
+```vim
+:Lazy reload nvim-dap-python
+```
+
+For `zig.lua` and `advanced.lua` — reload via lazy:
+
+```vim
+:Lazy reload nvim-dap
+:Lazy reload neogen
 ```
 
 For `ui.lua` — the snacks dashboard is `lazy=false`; a full Neovim restart is required for the changes to take effect cleanly.
@@ -435,7 +499,7 @@ nvim   # lazy.nvim reinstalls everything from scratch
 
 **Neovim version too old** (openSUSE default repos ship an outdated build)
 ```bash
-sudo zypper ar -f https://download.opensuse.org/repositories/editors/openSUSE_Leap_15.5/ editors
+sudo zypper ar -f https://download.opensuse.org/repositories/editors/openSUSE_Leap_16.0/ editors
 sudo zypper ref && sudo zypper in neovim
 ```
 

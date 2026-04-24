@@ -12,6 +12,15 @@
 --     nvim-treesitter spec is added that contributes only the matchup key via
 --     opts=function(), which lazy.nvim merges recursively into treesitter.lua's
 --     primary opts table — the correct pattern used by every other lang spec.
+--
+-- FIX (v2.3.15):
+--   • neogen languages table was missing kotlin despite the header comment
+--     claiming "ALL languages". kotlin has full LSP, formatter, linter, DAP
+--     and neotest coverage in the project; neogen supports kotlin natively.
+--     A v2.3.10 fix added java for the identical reason; kotlin was overlooked.
+--     Added kotlin = { annotation_convention = "kotlin_doc" } and added the
+--     corresponding optional=true ft="kotlin" extension spec so neogen loads
+--     on Kotlin buffers and <leader>xg works correctly.
 
 return {
     -- ┌─────────────────────────────────────────────────────┐
@@ -340,6 +349,10 @@ return {
     -- this spec via optional=true. The languages table here covers ALL languages
     -- so setup() always runs with a complete config regardless of load order.
     -- <leader>xg lives here only — the duplicate in keymaps.lua was removed.
+    --
+    -- FIX (v2.3.15): kotlin added. The project has full kotlin coverage (LSP,
+    -- formatter, linter, DAP, neotest) and neogen supports kotlin natively.
+    -- A v2.3.10 fix added java for the identical reason; kotlin was overlooked.
     {
         "danymat/neogen",
         lazy = true,
@@ -363,6 +376,22 @@ return {
                 -- neotest-java registered in test.lua, yet java was absent from
                 -- the "ALL supported languages" table claimed by the header comment.
                 java       = { template = { annotation_convention = "javadoc"           } },
+                -- FIX (v2.3.15): kotlin added for the same reason as java above.
+                kotlin     = { template = { annotation_convention = "kdoc"              } },
+            },
+        },
+    },
+
+    -- FIX (v2.3.15): optional=true ft trigger for kotlin so neogen lazy-loads
+    -- when a Kotlin buffer is opened and <leader>xg fires correctly.
+    -- Pattern is identical to cpp.lua and python.lua optional neogen specs.
+    {
+        "danymat/neogen",
+        optional = true,
+        ft       = "kotlin",
+        opts = {
+            languages = {
+                kotlin = { template = { annotation_convention = "kdoc" } },
             },
         },
     },

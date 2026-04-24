@@ -10,6 +10,14 @@
 --     has no effect on treesitter (it bypasses the syntax engine). Added an
 --     explicit vim.treesitter.stop(e.buf) call so highlight parsing is actually
 --     halted on large files.
+--
+-- FIX (v2.3.15):
+--   • TrimWhitespace BufWritePre callback was missing a buftype guard. Every
+--     other BufWritePre / BufEnter / BufReadPost callback in this file guards
+--     with `if vim.bo[e.buf].buftype ~= "" then return end` to skip special
+--     buffers (nofile, terminal, prompt, quickfix). TrimWhitespace only checked
+--     filetype. Although BufWritePre does not fire for most special buftypes in
+--     practice, the guard is added for consistency and forward safety.
 
 local au = vim.api.nvim_create_autocmd
 local ag = vim.api.nvim_create_augroup
@@ -87,6 +95,11 @@ au("FileType", {
 au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
+    -- FIX (v2.3.15): guard special buffers (nofile, terminal, prompt, quickfix).
+    -- Every other callback in this file that could affect special buffers already
+    -- has this guard; TrimWhitespace was the only one that did not.
+    if vim.bo[e.buf].buftype ~= "" then return end
+
     local ft = vim.bo[e.buf].filetype
     if vim.tbl_contains(
       { "markdown", "markdown_inline", "diff", "rst", "asciidoc", "mail" }, ft

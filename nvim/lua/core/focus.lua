@@ -7,6 +7,14 @@
 --     enter() and exit(). A single traversal handles both directions,
 --     eliminating the duplicated loop and the boolean-edge-case guard that
 --     only existed in exit().
+--
+-- FIX (v2.3.15):
+--   • apply_spec(active) boolean restore used the classic Lua false-value
+--     ternary anti-pattern: `(saved ~= nil) and saved or default`.
+--     When saved=false (user had number/relativenumber/cursorline disabled),
+--     `true and false or default` evaluates to `default` (true), so focus
+--     exit forcibly re-enabled those options. Fixed with an explicit
+--     if/else so a legitimately-false snapshot is preserved correctly.
 
 local M = {}
 
@@ -14,7 +22,7 @@ local M = {}
 -- { scope, key, off_value, default }
 --   scope      : "o" = vim.o   "wo" = vim.wo
 --   off_value  : value applied in focus mode
---   default    : fallback when snapshot is nil
+--   default    : fallback when snapshot is nil (i.e. enter() was never called)
 local SPEC = {
   { "o",  "laststatus",     0,     3       },
   { "o",  "showtabline",    0,     1       },
@@ -39,11 +47,16 @@ local function apply_spec(active)
       vim[scope][key] = off_value
     else
       local saved = _snap[key]
-      -- Boolean options: nil-safe (snapshot could legitimately be false).
-      if type(default) == "boolean" then
-        vim[scope][key] = (saved ~= nil) and saved or default
+      -- FIX (v2.3.15): use explicit if/else instead of `a and b or c`.
+      -- The ternary form fails when b is false: `true and false or default`
+      -- returns `default`, discarding a legitimately-false saved value.
+      -- This affected number, relativenumber, and cursorline (default=true):
+      -- if the user had any of them off before entering focus mode, exit
+      -- would wrongly re-enable them.
+      if saved ~= nil then
+        vim[scope][key] = saved
       else
-        vim[scope][key] = saved or default
+        vim[scope][key] = default
       end
     end
   end

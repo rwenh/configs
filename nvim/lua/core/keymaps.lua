@@ -7,6 +7,16 @@
 --   • Flash map wrapped through lazy() for consistency with all other
 --     plugin-dependent maps; bare pcall replaced.
 --   • <leader>uF focus map wrapped through lazy() for the same reason.
+--
+-- FIX (v2.3.15):
+--   • <leader>xx (Trouble diagnostics toggle) removed. It was registered here
+--     AND in ui.lua's Trouble keys= spec, producing duplicate which-key entries.
+--     ui.lua is the correct owner (handles lazy-loading via cmd=).
+--   • <leader>xu (UndotreeToggle) removed. It was registered here AND in
+--     advanced.lua's undotree keys= spec. advanced.lua is the correct owner
+--     (handles lazy-loading via cmd=). The duplicate here bypassed lazy-load
+--     gating, causing undotree to load eagerly on first keypress before
+--     its cmd trigger could manage it.
 
 local map = vim.keymap.set
 local opts = { noremap = true, silent = true }
@@ -263,6 +273,9 @@ map({ "n", "x", "o" }, "s",
 
 -- ============================================================================
 -- MISC UTILITIES
+-- NOTE: <leader>xx owned by ui.lua (Trouble keys= — handles lazy-loading).
+--       <leader>xu owned by advanced.lua (undotree keys= — handles lazy-loading).
+--       <leader>xg owned by advanced.lua (Neogen keys= + lazy-load).
 -- ============================================================================
 
 map("n", "<leader>xc", "<cmd>CopyPath<cr>",    { desc = "Copy file path" })
@@ -274,9 +287,6 @@ map("n", "<leader>xh", "<cmd>Health<cr>",      { desc = "Health check" })
 map("n", "<leader>xp", "<cmd>ProjectRoot<cr>", { desc = "Go to project root" })
 map("n", "<leader>xl", "<cmd>Lazy<cr>",        { desc = "Lazy" })
 map("n", "<leader>xn", "<cmd>Mason<cr>",       { desc = "Mason" })
-map("n", "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", { desc = "Trouble diagnostics" })
-map("n", "<leader>xu", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree" })
--- NOTE: <leader>xg owned by advanced.lua (Neogen keys= + lazy-load).
 
 -- ============================================================================
 -- TODO COMMENTS — factory-driven

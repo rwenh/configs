@@ -8,6 +8,8 @@ if has('vim_starting')
 endif
 scriptencoding utf-8
 
+let s:boot_time = reltime()
+
 " =============================================================================
 " LAYER 0: STARTUP PROFILING & FEATURE FLAGS
 " =============================================================================
@@ -44,6 +46,25 @@ function! Log(msg, level) abort
   echohl None
 endfunction
 
+" --- Profiling mark ----------------------------------------------------------
+" Pure observer — does not alter execution semantics.
+" Enable with: let g:vimide_debug = 1
+
+function! s:Mark(label) abort
+  if !g:vimide_debug | return | endif
+  call Log(a:label . ' +' . reltimestr(reltime(s:boot_time)), 'info')
+endfunction
+
+" --- Error boundary ----------------------------------------------------------
+
+function! s:Safe(Fn) abort
+  try
+    call call(a:Fn, [])
+  catch
+    call Log('Safe caught: ' . v:exception, 'error')
+  endtry
+endfunction
+
 " --- State store -------------------------------------------------------------
 
 let s:state = {}
@@ -68,6 +89,30 @@ endfunction
 
 function! FeatureEnabled(name) abort
   return get(g:, 'module_' . a:name . '_enabled', 0)
+endfunction
+
+" --- Feature loader (gated + safe + idempotent) ------------------------------
+" Contract: immutable session — features load exactly once per session.
+" s:ResetFeature() is a debug escape hatch only; it does NOT clean up
+" installed mappings, autocmds, or commands from the previous load.
+
+let s:loaded    = {}
+let s:teardowns = {}
+
+function! s:Feature(name, Fn, ...) abort
+  if !FeatureEnabled(a:name) || has_key(s:loaded, a:name) | return | endif
+  let s:loaded[a:name] = 1
+  if a:0 | let s:teardowns[a:name] = a:1 | endif
+  call s:Safe(a:Fn)
+endfunction
+
+function! s:ResetFeature(name) abort
+  if has_key(s:teardowns, a:name)
+    call s:Safe(s:teardowns[a:name])
+  endif
+  if has_key(s:loaded, a:name)
+    call remove(s:loaded, a:name)
+  endif
 endfunction
 
 " --- Map() -------------------------------------------------------------------
@@ -412,7 +457,7 @@ function! s:SafeBprev() abort
 endfunction
 
 " =============================================================================
-" LAYER 6: KEYMAPS
+" LAYER 6: KEYMAPS (core only — feature keymaps live in their loaders)
 " =============================================================================
 
 let mapleader      = ' '
@@ -498,30 +543,6 @@ call Map('n', '<leader>fk', ':Maps<CR>', {})
 call Map('n', '<leader>fm', ':Marks<CR>', {})
 call Map('n', '<leader>fp', ':Files %:h<CR>', {})
 
-" Git — gated on feature flag
-if FeatureEnabled('git')
-  call Map('n', '<leader>gg', ':Git<CR>', {})
-  call Map('n', '<leader>gc', ':Git commit<CR>', {})
-  call Map('n', '<leader>gp', ':Git push<CR>', {})
-  call Map('n', '<leader>gl', ':GV<CR>', {})
-  call Map('n', '<leader>gL', ':GV!<CR>', {})
-  call Map('n', '<leader>gd', ':Gdiffsplit<CR>', {})
-  call Map('n', '<leader>gb', ':Git blame<CR>', {})
-  call Map('n', '<leader>gB', ':GBrowse<CR>', {})
-  call Map('n', '<leader>gf', ':Git fetch<CR>', {})
-  call Map('n', '<leader>gm', ':Git merge<CR>', {})
-  call Map('n', '<leader>gR', ':Git rebase<CR>', {})
-  call Map('n', '<leader>gA', ':Git add %<CR>', {})
-  call Map('n', '<leader>gS', ':Git stash<CR>', {})
-  call Map('n', '<leader>gP', ':Git stash pop<CR>', {})
-
-  call Map('n', '<leader>hs', ':GitGutterStageHunk<CR>', {})
-  call Map('n', '<leader>hu', ':GitGutterUndoHunk<CR>', {})
-  call Map('n', '<leader>hp', ':GitGutterPreviewHunk<CR>', {})
-  nmap ]h <Plug>(GitGutterNextHunk)
-  nmap [h <Plug>(GitGutterPrevHunk)
-endif
-
 " Diff mode
 call Augroup('DiffMappings', [
   \ 'OptionSet diff if v:option_new'
@@ -542,72 +563,6 @@ call Map('n', '<leader>tk', ':FloatermKill<CR>', {})
 call Map('n', '<leader>tl', ':FloatermNext<CR>', {})
 call Map('n', '<leader>th', ':FloatermPrev<CR>', {})
 call Map('v', '<leader>ts', ':FloatermSend<CR>', {})
-
-" coc.nvim LSP — gated on feature flag
-if FeatureEnabled('lsp')
-  inoremap <silent><expr> <TAB>
-    \ coc#pum#visible() ? coc#pum#next(1) :
-    \ col('.') > 1 && getline('.')[col('.')-2] !~# '\s' ? coc#refresh() : "\<Tab>"
-  inoremap <expr><S-TAB> coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"
-  inoremap <silent><expr> <CR>
-    \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
-  inoremap <silent><expr> <C-Space> coc#refresh()
-  inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
-
-  nmap <silent> gd <Plug>(coc-definition)
-  nmap <silent> gD <Plug>(coc-declaration)
-  nmap <silent> gy <Plug>(coc-type-definition)
-  nmap <silent> gi <Plug>(coc-implementation)
-  nmap <silent> gr <Plug>(coc-references)
-  nnoremap <silent> K :call CocActionAsync('doHover')<CR>
-
-  nmap <silent> <leader>rn <Plug>(coc-rename)
-  nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
-  nmap <silent> <leader>cf <Plug>(coc-format)
-  nmap <silent> <leader>cs :CocList outline<CR>
-  nmap <silent> <leader>cS :CocList -I symbols<CR>
-
-  nmap <silent> ]g <Plug>(coc-diagnostic-next)
-  nmap <silent> [g <Plug>(coc-diagnostic-prev)
-  nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
-  nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
-  nnoremap <silent> <leader>cd :CocList diagnostics<CR>
-endif
-
-" DAP — gated on feature flag
-if FeatureEnabled('debug')
-  call Map('n', '<F1>',        ':call vimspector#Continue()<CR>', {})
-  call Map('n', '<F2>',        ':call vimspector#StepOver()<CR>', {})
-  call Map('n', '<F3>',        ':call vimspector#StepInto()<CR>', {})
-  call Map('n', '<F4>',        ':call vimspector#StepOut()<CR>', {})
-  call Map('n', '<F10>',       ':call vimspector#ToggleBreakpoint()<CR>', {})
-  call Map('n', '<F11>',       ':call vimspector#ToggleConditionalBreakpoint()<CR>', {})
-  call Map('n', '<F12>',       ':call vimspector#RunToCursor()<CR>', {})
-  call Map('n', '<leader>dx',  ':call vimspector#Reset()<CR>', {})
-  call Map('n', '<leader>dX',  ':call vimspector#ClearBreakpoints()<CR>', {})
-  call Map('n', '<leader>di',  ':call vimspector#BalloonEval()<CR>', {})
-  call Map('n', '<leader>dw',  ':call vimspector#AddWatch()<CR>', {})
-endif
-
-" Test runner — gated on feature flag
-if FeatureEnabled('test')
-  call Map('n', '<leader>tt', ':TestNearest<CR>', {})
-  call Map('n', '<leader>tT', ':TestFile<CR>', {})
-  call Map('n', '<leader>ta', ':TestSuite<CR>', {})
-  call Map('n', '<leader>tR', ':TestLast<CR>', {})
-  call Map('n', '<leader>tv', ':TestVisit<CR>', {})
-endif
-
-" REST — gated on feature flag
-if FeatureEnabled('rest')
-  call Map('n', '<leader>rr', ':call VrcQuery()<CR>', {})
-endif
-
-" Database — gated on feature flag
-if FeatureEnabled('db')
-  call Map('n', '<leader>Du', ':DBUIToggle<CR>', {})
-  call Map('n', '<leader>Df', ':DBUIFindBuffer<CR>', {})
-endif
 
 " Markdown
 call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
@@ -653,10 +608,11 @@ call Map('n', '<F9>', ':call <SID>RunAction("test")<CR>', {})
 nnoremap <silent> <leader> :<c-u>WhichKey '<Space>'<CR>
 
 " =============================================================================
-" LAYER 7: PLUGIN CONFIGURATION
+" LAYER 7: PLUGIN CONFIGURATION (non-feature — always active)
 " =============================================================================
 
-" Lightline
+" --- Lightline ---------------------------------------------------------------
+
 function! LightlineCocStatus() abort
   return get(g:, 'coc_status', '')
 endfunction
@@ -688,43 +644,38 @@ let g:lightline#bufferline#show_number     = 1
 let g:lightline#bufferline#unicode_symbols = 1
 let g:lightline#bufferline#enable_devicons = 1
 
-call Augroup('LightlineCoc', [
-  \ 'User CocStatusChange,CocDiagnosticChange silent call lightline#update()',
-  \ ])
+" --- context.vim -------------------------------------------------------------
 
-" context.vim
 let g:context_max_height       = 5
 let g:context_enabled          = 1
 let g:context_filetype_exclude = ['fern', 'startify', 'help', 'dbui', 'qf']
 
-" better-escape
+" --- better-escape -----------------------------------------------------------
+
 let g:better_escape_shortcut = ['jk', 'kj']
 let g:better_escape_interval = 200
 
-" Fern
+" --- Fern --------------------------------------------------------------------
+
 let g:fern#renderer       = 'nerdfont'
 let g:fern#default_hidden = 1
 let g:fern#default_exclude =
   \ '^\%(\.git\|__pycache__\|node_modules\|\.DS_Store\|\.cache\|dist\|build\)$'
 
-let g:fern_git_status#disable_ignored    = 1
-let g:fern_git_status#disable_untracked  = 0
-let g:fern_git_status#disable_submodules = 1
-
 function! s:FernInit() abort
-  call Map('n', '<C-f>', '<Plug>(fern-mapping-fzf-select)',  { 'buffer': 1, 'noremap': 0 })
+  call Map('n', '<C-f>', '<Plug>(fern-mapping-fzf-select)',    { 'buffer': 1, 'noremap': 0 })
   call Map('n', '<CR>',  '<Plug>(fern-action-open-or-expand)', { 'buffer': 1, 'noremap': 0 })
   call Map('n', 'l',     '<Plug>(fern-action-open-or-expand)', { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'h',     '<Plug>(fern-action-collapse)',      { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'ma',    '<Plug>(fern-action-new-path)',      { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'md',    '<Plug>(fern-action-remove)',        { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'mc',    '<Plug>(fern-action-copy)',          { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'mm',    '<Plug>(fern-action-move)',          { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'mr',    '<Plug>(fern-action-rename)',        { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'R',     '<Plug>(fern-action-reload)',        { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'I',     '<Plug>(fern-action-hidden-toggle)', { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 's',     '<Plug>(fern-action-open:split)',    { 'buffer': 1, 'noremap': 0 })
-  call Map('n', 'v',     '<Plug>(fern-action-open:vsplit)',   { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'h',     '<Plug>(fern-action-collapse)',       { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'ma',    '<Plug>(fern-action-new-path)',       { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'md',    '<Plug>(fern-action-remove)',         { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'mc',    '<Plug>(fern-action-copy)',           { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'mm',    '<Plug>(fern-action-move)',           { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'mr',    '<Plug>(fern-action-rename)',         { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'R',     '<Plug>(fern-action-reload)',         { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'I',     '<Plug>(fern-action-hidden-toggle)',  { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 's',     '<Plug>(fern-action-open:split)',     { 'buffer': 1, 'noremap': 0 })
+  call Map('n', 'v',     '<Plug>(fern-action-open:vsplit)',    { 'buffer': 1, 'noremap': 0 })
 endfunction
 
 call Augroup('FernEvents', [
@@ -732,7 +683,8 @@ call Augroup('FernEvents', [
   \ 'BufEnter * ++nested if winnr("$") == 1 && &filetype ==# "fern" | quit | endif',
   \ ])
 
-" FZF
+" --- FZF ---------------------------------------------------------------------
+
 let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'rounded': v:true } }
 let g:fzf_history_dir = expand('~/.vim/fzf-history')
 
@@ -746,24 +698,8 @@ if executable('bat')
   let $FZF_DEFAULT_OPTS .= ' --preview "bat --style=numbers --color=always {}"'
 endif
 
-" coc.nvim
-let g:coc_disable_startup_warning = 1
+" --- Floaterm ----------------------------------------------------------------
 
-let g:coc_global_extensions = [
-  \ 'coc-json',
-  \ 'coc-yaml',
-  \ 'coc-pyright',
-  \ 'coc-clangd',
-  \ 'coc-rust-analyzer',
-  \ 'coc-go',
-  \ 'coc-tsserver',
-  \ 'coc-eslint',
-  \ ]
-
-let g:coc_auto_copen = 0
-let g:coc_enable_locationlist = 0
-
-" Floaterm
 let g:floaterm_width       = 0.88
 let g:floaterm_height      = 0.88
 let g:floaterm_autoclose   = 1
@@ -772,7 +708,8 @@ let g:floaterm_borderchars = '─│─│╭╮╯╰'
 let g:floaterm_title       = '  terminal ($1/$2) '
 let g:floaterm_wintype     = 'float'
 
-" vim-vsnip
+" --- vim-vsnip ---------------------------------------------------------------
+
 imap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
 smap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
 imap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)' : '<C-l>'
@@ -780,36 +717,20 @@ smap <expr> <C-l> vsnip#jumpable(1)  ? '<Plug>(vsnip-jump-next)' : '<C-l>'
 imap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)' : '<C-b>'
 smap <expr> <C-b> vsnip#jumpable(-1) ? '<Plug>(vsnip-jump-prev)' : '<C-b>'
 
-" vim-test
-let g:test#strategy          = 'floaterm'
-let g:test#python#runner     = 'pytest'
-let g:test#javascript#runner = 'jest'
-let g:test#go#runner         = 'gotest'
-let g:test#rust#runner       = 'cargotest'
+" --- vim-move ----------------------------------------------------------------
 
-" vim-go
-let g:go_fmt_command            = 'goimports'
-let g:go_highlight_types        = 1
-let g:go_highlight_fields       = 1
-let g:go_highlight_functions    = 1
-let g:go_highlight_operators    = 1
-let g:go_def_mapping_enabled    = 0
-let g:go_doc_keywordprg_enabled = 0
-
-" rust.vim
-let g:rustfmt_autosave = 0
-
-" vim-move
 let g:move_key_modifier = 'A'
 
-" vim-matchup
+" --- vim-matchup -------------------------------------------------------------
+
 let g:matchup_matchparen_offscreen          = { 'method': 'status_manual' }
 let g:matchup_matchparen_deferred           = 1
 let g:matchup_matchparen_hi_surround_always = 1
 let g:matchup_motion_enabled                = 1
 let g:matchup_text_obj_enabled              = 1
 
-" vim-indent-guides
+" --- vim-indent-guides -------------------------------------------------------
+
 let g:indent_guides_enable_on_vim_startup = 1
 let g:indent_guides_start_level           = 2
 let g:indent_guides_guide_size            = 1
@@ -822,14 +743,8 @@ call Augroup('IndentGuideColors', [
   \   . ' | highlight IndentGuidesEven ctermbg=236 guibg=#313244',
   \ ])
 
-" Gitgutter
-let g:gitgutter_enabled       = 1
-let g:gitgutter_map_keys      = 0
-let g:gitgutter_sign_added    = '▎'
-let g:gitgutter_sign_modified = '▎'
-let g:gitgutter_sign_removed  = '▎'
+" --- Gutentags ---------------------------------------------------------------
 
-" Gutentags
 let g:gutentags_cache_dir           = expand('~/.vim/tags')
 let g:gutentags_generate_on_new     = 1
 let g:gutentags_generate_on_missing = 1
@@ -856,37 +771,27 @@ let g:gutentags_add_default_project_roots = 0
 let g:gutentags_project_root =
   \ ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml']
 
-" vim-easy-align
+" --- vim-easy-align ----------------------------------------------------------
+
 xmap ga <Plug>(EasyAlign)
 nmap ga <Plug>(EasyAlign)
 
-" REST console
-let g:vrc_curl_opts = {
-  \ '--include':    '',
-  \ '--location':   '',
-  \ '--show-error': '',
-  \ '--silent':     '',
-  \ }
-let g:vrc_auto_format_response_patterns = {
-  \ 'json': 'python3 -m json.tool',
-  \ 'xml':  'xmllint --format -',
-  \ }
-let g:vrc_output_buffer_name = '__VRC_OUTPUT__'
+" --- vim-go ------------------------------------------------------------------
 
-" Database
-let g:db_ui_use_nerd_fonts = 1
-let g:db_ui_winwidth       = 40
-let g:db_ui_save_location  = expand('~/.vim/db_ui')
-let g:dbs = {}
-if !empty($DATABASE_DEV_URL)     | let g:dbs['dev']     = $DATABASE_DEV_URL     | endif
-if !empty($DATABASE_STAGING_URL) | let g:dbs['staging'] = $DATABASE_STAGING_URL | endif
-if !empty($DATABASE_LOCAL_URL)   | let g:dbs['local']   = $DATABASE_LOCAL_URL   | endif
+let g:go_fmt_command            = 'goimports'
+let g:go_highlight_types        = 1
+let g:go_highlight_fields       = 1
+let g:go_highlight_functions    = 1
+let g:go_highlight_operators    = 1
+let g:go_def_mapping_enabled    = 0
+let g:go_doc_keywordprg_enabled = 0
 
-call Augroup('DatabaseSQL', [
-  \ 'FileType sql setlocal omnifunc=vim_dadbod_completion#omni',
-  \ ])
+" --- rust.vim ----------------------------------------------------------------
 
-" vim-markdown
+let g:rustfmt_autosave = 0
+
+" --- vim-markdown ------------------------------------------------------------
+
 let g:vim_markdown_folding_disabled = 1
 let g:vim_markdown_conceal          = 0
 let g:vim_markdown_frontmatter      = 1
@@ -896,12 +801,14 @@ let g:vim_markdown_fenced_languages = [
   \ 'sql', 'kotlin', 'ruby', 'lua', 'fortran', 'cobol'
   \ ]
 
-" MarkdownPreview
+" --- MarkdownPreview ---------------------------------------------------------
+
 let g:mkdp_auto_close = 1
 let g:mkdp_theme      = 'dark'
 let g:mkdp_browser    = ''
 
-" Startify
+" --- Startify ----------------------------------------------------------------
+
 let g:startify_session_dir         = expand('~/.vim/sessions')
 let g:startify_session_autoload    = 1
 let g:startify_session_persistence = 1
@@ -917,7 +824,8 @@ let g:startify_custom_header = startify#pad([
   \ '           your ide. your rules.',
   \ ])
 
-" which-key
+" --- which-key ---------------------------------------------------------------
+
 call which_key#register('<Space>', "g:which_key_map")
 let g:which_key_map = {
   \ '<CR>': 'reload config',
@@ -946,7 +854,206 @@ let g:which_key_map = {
   \ }
 
 " =============================================================================
-" LAYER 8: LANGUAGE RUNNERS
+" LAYER 8: FEATURE LOADERS
+" Each loader owns: config vars, autocmds, and keymaps for its feature.
+" Entry point: s:Feature(name, loader_fn) — gated, safe, idempotent.
+" =============================================================================
+
+" --- Git ---------------------------------------------------------------------
+
+function! s:load_git() abort
+  call s:Mark('load_git start')
+
+  let g:fern_git_status#disable_ignored    = 1
+  let g:fern_git_status#disable_untracked  = 0
+  let g:fern_git_status#disable_submodules = 1
+
+  let g:gitgutter_enabled       = 1
+  let g:gitgutter_map_keys      = 0
+  let g:gitgutter_sign_added    = '▎'
+  let g:gitgutter_sign_modified = '▎'
+  let g:gitgutter_sign_removed  = '▎'
+
+  call Map('n', '<leader>gg', ':Git<CR>', {})
+  call Map('n', '<leader>gc', ':Git commit<CR>', {})
+  call Map('n', '<leader>gp', ':Git push<CR>', {})
+  call Map('n', '<leader>gl', ':GV<CR>', {})
+  call Map('n', '<leader>gL', ':GV!<CR>', {})
+  call Map('n', '<leader>gd', ':Gdiffsplit<CR>', {})
+  call Map('n', '<leader>gb', ':Git blame<CR>', {})
+  call Map('n', '<leader>gB', ':GBrowse<CR>', {})
+  call Map('n', '<leader>gf', ':Git fetch<CR>', {})
+  call Map('n', '<leader>gm', ':Git merge<CR>', {})
+  call Map('n', '<leader>gR', ':Git rebase<CR>', {})
+  call Map('n', '<leader>gA', ':Git add %<CR>', {})
+  call Map('n', '<leader>gS', ':Git stash<CR>', {})
+  call Map('n', '<leader>gP', ':Git stash pop<CR>', {})
+
+  call Map('n', '<leader>hs', ':GitGutterStageHunk<CR>', {})
+  call Map('n', '<leader>hu', ':GitGutterUndoHunk<CR>', {})
+  call Map('n', '<leader>hp', ':GitGutterPreviewHunk<CR>', {})
+  nmap ]h <Plug>(GitGutterNextHunk)
+  nmap [h <Plug>(GitGutterPrevHunk)
+
+  call s:Mark('load_git done')
+endfunction
+
+" --- LSP (coc.nvim) ----------------------------------------------------------
+
+function! s:load_lsp() abort
+  call s:Mark('load_lsp start')
+
+  let g:coc_disable_startup_warning = 1
+  let g:coc_global_extensions = [
+    \ 'coc-json',
+    \ 'coc-yaml',
+    \ 'coc-pyright',
+    \ 'coc-clangd',
+    \ 'coc-rust-analyzer',
+    \ 'coc-go',
+    \ 'coc-tsserver',
+    \ 'coc-eslint',
+    \ ]
+  let g:coc_auto_copen          = 0
+  let g:coc_enable_locationlist = 0
+
+  inoremap <silent><expr> <TAB>
+    \ coc#pum#visible() ? coc#pum#next(1) :
+    \ col('.') > 1 && getline('.')[col('.')-2] !~# '\s' ? coc#refresh() : "\<Tab>"
+  inoremap <expr><S-TAB> coc#pum#visible() ? coc#pum#prev(1) : "\<C-h>"
+  inoremap <silent><expr> <CR>
+    \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
+  inoremap <silent><expr> <C-Space> coc#refresh()
+  inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
+
+  nmap <silent> gd <Plug>(coc-definition)
+  nmap <silent> gD <Plug>(coc-declaration)
+  nmap <silent> gy <Plug>(coc-type-definition)
+  nmap <silent> gi <Plug>(coc-implementation)
+  nmap <silent> gr <Plug>(coc-references)
+  nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+
+  nmap <silent> <leader>rn <Plug>(coc-rename)
+  nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
+  nmap <silent> <leader>cf <Plug>(coc-format)
+  nmap <silent> <leader>cs :CocList outline<CR>
+  nmap <silent> <leader>cS :CocList -I symbols<CR>
+
+  nmap <silent> ]g <Plug>(coc-diagnostic-next)
+  nmap <silent> [g <Plug>(coc-diagnostic-prev)
+  nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
+  nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
+  nnoremap <silent> <leader>cd :CocList diagnostics<CR>
+
+  call Augroup('LightlineCoc', [
+    \ 'User CocStatusChange,CocDiagnosticChange silent call lightline#update()',
+    \ ])
+
+  call s:Mark('load_lsp done')
+endfunction
+
+" --- Debug (vimspector) ------------------------------------------------------
+
+function! s:load_debug() abort
+  call s:Mark('load_debug start')
+
+  call plug#load('vimspector')
+
+  call Map('n', '<F1>',       ':call vimspector#Continue()<CR>', {})
+  call Map('n', '<F2>',       ':call vimspector#StepOver()<CR>', {})
+  call Map('n', '<F3>',       ':call vimspector#StepInto()<CR>', {})
+  call Map('n', '<F4>',       ':call vimspector#StepOut()<CR>', {})
+  call Map('n', '<F10>',      ':call vimspector#ToggleBreakpoint()<CR>', {})
+  call Map('n', '<F11>',      ':call vimspector#ToggleConditionalBreakpoint()<CR>', {})
+  call Map('n', '<F12>',      ':call vimspector#RunToCursor()<CR>', {})
+  call Map('n', '<leader>dx', ':call vimspector#Reset()<CR>', {})
+  call Map('n', '<leader>dX', ':call vimspector#ClearBreakpoints()<CR>', {})
+  call Map('n', '<leader>di', ':call vimspector#BalloonEval()<CR>', {})
+  call Map('n', '<leader>dw', ':call vimspector#AddWatch()<CR>', {})
+
+  call s:Mark('load_debug done')
+endfunction
+
+" --- Test (vim-test) ---------------------------------------------------------
+
+function! s:load_test() abort
+  call s:Mark('load_test start')
+
+  let g:test#strategy          = 'floaterm'
+  let g:test#python#runner     = 'pytest'
+  let g:test#javascript#runner = 'jest'
+  let g:test#go#runner         = 'gotest'
+  let g:test#rust#runner       = 'cargotest'
+
+  call Map('n', '<leader>tt', ':TestNearest<CR>', {})
+  call Map('n', '<leader>tT', ':TestFile<CR>', {})
+  call Map('n', '<leader>ta', ':TestSuite<CR>', {})
+  call Map('n', '<leader>tR', ':TestLast<CR>', {})
+  call Map('n', '<leader>tv', ':TestVisit<CR>', {})
+
+  call s:Mark('load_test done')
+endfunction
+
+" --- Database (vim-dadbod) ---------------------------------------------------
+
+function! s:load_db() abort
+  call s:Mark('load_db start')
+
+  let g:db_ui_use_nerd_fonts = 1
+  let g:db_ui_winwidth       = 40
+  let g:db_ui_save_location  = expand('~/.vim/db_ui')
+  let g:dbs = {}
+  if !empty($DATABASE_DEV_URL)     | let g:dbs['dev']     = $DATABASE_DEV_URL     | endif
+  if !empty($DATABASE_STAGING_URL) | let g:dbs['staging'] = $DATABASE_STAGING_URL | endif
+  if !empty($DATABASE_LOCAL_URL)   | let g:dbs['local']   = $DATABASE_LOCAL_URL   | endif
+
+  call Map('n', '<leader>Du', ':DBUIToggle<CR>', {})
+  call Map('n', '<leader>Df', ':DBUIFindBuffer<CR>', {})
+
+  call Augroup('DatabaseSQL', [
+    \ 'FileType sql setlocal omnifunc=vim_dadbod_completion#omni',
+    \ ])
+
+  call s:Mark('load_db done')
+endfunction
+
+" --- REST client (vim-rest-console) ------------------------------------------
+
+function! s:load_rest() abort
+  call s:Mark('load_rest start')
+
+  let g:vrc_curl_opts = {
+    \ '--include':    '',
+    \ '--location':   '',
+    \ '--show-error': '',
+    \ '--silent':     '',
+    \ }
+  let g:vrc_auto_format_response_patterns = {
+    \ 'json': 'python3 -m json.tool',
+    \ 'xml':  'xmllint --format -',
+    \ }
+  let g:vrc_output_buffer_name = '__VRC_OUTPUT__'
+
+  call Map('n', '<leader>rr', ':call VrcQuery()<CR>', {})
+
+  call s:Mark('load_rest done')
+endfunction
+
+" --- Dispatch ----------------------------------------------------------------
+
+call s:Mark('features start')
+
+call s:Feature('git',   function('s:load_git'))
+call s:Feature('lsp',   function('s:load_lsp'))
+call s:Feature('debug', function('s:load_debug'))
+call s:Feature('test',  function('s:load_test'))
+call s:Feature('db',    function('s:load_db'))
+call s:Feature('rest',  function('s:load_rest'))
+
+call s:Mark('features done')
+
+" =============================================================================
+" LAYER 9: LANGUAGE RUNNERS
 " =============================================================================
 
 call RegisterRunner('python',      { 'run': 'python3 {fp}',                   'test': 'python3 -m pytest {dn}' })
@@ -996,7 +1103,7 @@ function! s:RunAction(action) abort
 endfunction
 
 " =============================================================================
-" LAYER 9: EVENT HANDLERS
+" LAYER 10: EVENT HANDLERS
 " =============================================================================
 
 function! s:HandleLargeFile() abort
@@ -1051,18 +1158,18 @@ function! s:DoFlash(pat) abort
 endfunction
 
 call Augroup('VimrcEvents', [
-  \ 'BufReadPre          * call s:HandleLargeFile()',
-  \ 'BufWritePre         * call s:StripTrailing()',
-  \ 'BufWritePre         * call s:MkdirOnSave()',
-  \ 'BufReadPost         * call s:RestoreCursor()',
-  \ 'TextYankPost        * silent! call s:FlashYank()',
+  \ 'BufReadPre           * call s:HandleLargeFile()',
+  \ 'BufWritePre          * call s:StripTrailing()',
+  \ 'BufWritePre          * call s:MkdirOnSave()',
+  \ 'BufReadPost          * call s:RestoreCursor()',
+  \ 'TextYankPost         * silent! call s:FlashYank()',
   \ 'FocusGained,BufEnter * silent! checktime',
-  \ 'VimResized          * wincmd =',
-  \ 'TerminalOpen        * setlocal nonumber norelativenumber signcolumn=no',
+  \ 'VimResized           * wincmd =',
+  \ 'TerminalOpen         * setlocal nonumber norelativenumber signcolumn=no',
   \ ])
 
 " =============================================================================
-" LAYER 10: FILETYPE INDENTATION
+" LAYER 11: FILETYPE INDENTATION
 " =============================================================================
 
 call Augroup('FileTypeIndent', [
@@ -1108,7 +1215,7 @@ call Augroup('FileTypeIndent', [
   \ ])
 
 " =============================================================================
-" LAYER 11: COMMANDS & UTILITIES
+" LAYER 12: COMMANDS & UTILITIES
 " =============================================================================
 
 function! s:InitProjectRoot() abort
@@ -1129,7 +1236,7 @@ function! s:InitProjectRoot() abort
 endfunction
 
 call Augroup('ProjectRoot', [
-  \ 'VimEnter  * call s:InitProjectRoot()',
+  \ 'VimEnter   * call s:InitProjectRoot()',
   \ 'DirChanged * call s:InitProjectRoot()',
   \ ])
 
@@ -1155,7 +1262,10 @@ function! s:VimInfo() abort
   echo 'Last task   : ' . get(State('last_task'), 'name', '(none)')
   echo '--- features ---'
   for l:f in ['git', 'lsp', 'test', 'db', 'rest', 'debug']
-    echo printf('%-10s: %s', l:f, FeatureEnabled(l:f) ? 'on' : 'off')
+    let l:status = has_key(s:loaded, l:f)  ? 'loaded'
+      \          : FeatureEnabled(l:f)      ? 'enabled/pending'
+      \          :                            'off'
+    echo printf('%-10s: %s', l:f, l:status)
   endfor
   echo '--- tools (✓ = found in PATH) ---'
   for l:t in ['node', 'python3', 'git', 'rg', 'bat', 'gopls', 'tmux',
@@ -1219,10 +1329,11 @@ command! CleanBuffers     call s:CleanBuffers()
 command! FindProjectRoot  call s:InitProjectRoot()
 command! ReloadConfig     source $MYVIMRC | call Log('Config reloaded', 'info')
 command! CheckCocSettings call s:CheckCocSettings()
-command! -nargs=1 -complete=file Rename call s:RenameFile(<q-args>)
+command! -nargs=1 -complete=file Rename       call s:RenameFile(<q-args>)
+command! -nargs=1              ResetFeature   call s:ResetFeature(<q-args>)
 
 " =============================================================================
-" LAYER 12: TMUX INTEGRATION
+" LAYER 13: TMUX INTEGRATION
 " =============================================================================
 
 if exists('$TMUX')
@@ -1241,12 +1352,14 @@ if exists('$TMUX')
 endif
 
 " =============================================================================
-" LAYER 13: MACHINE-LOCAL OVERRIDES
+" LAYER 14: MACHINE-LOCAL OVERRIDES
 " =============================================================================
 
 if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
+
+call s:Mark('vimrc done')
 
 if g:vimide_debug
   call Log('Vim IDE loaded — :VimInfo for details', 'info')

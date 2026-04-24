@@ -15,8 +15,31 @@
 --     mason-lspconfig ensure_installed in v2.3.10, but MasonInstallAll still
 --     lacked it — a manual :MasonInstall sqls was required on fresh setups that
 --     ran MasonInstallAll before mason-lspconfig's auto_install triggered.
+--
+-- FIX (v2.3.15):
+--   • ToggleAutoformat notification was inverted. The command first toggles
+--     vim.g.disable_autoformat, then the old code read `not disable_autoformat`
+--     to compute the display string — a double negation of a disable_* variable
+--     that printed "false" when disabling and "true" when enabling.  Rewritten
+--     to read the already-toggled value directly and map it to "enabled" /
+--     "disabled" so the message is unambiguous.
+--   • vim.g.disable_autoformat is now initialised to false in this file's
+--     module-load preamble so the variable is always defined before the first
+--     toggle call, consistent with auto_cd_root being initialised in options.lua.
+--   • "gofumpt" added to MasonInstallAll formatters section. lsp.lua conform
+--     wires go = { "goimports", "gofumpt" }; goimports was already in the list
+--     but gofumpt was missing — a fresh :MasonInstallAll left the second Go
+--     formatter uninstalled and format-on-save silently skipped the gofumpt step.
 
 local cmd = vim.api.nvim_create_user_command
+
+-- FIX (v2.3.15): initialise disable_autoformat so the variable exists before
+-- the first ToggleAutoformat call. Mirrors the auto_cd_root = false pattern in
+-- options.lua. This does not change default behaviour (nil and false are both
+-- falsy in the format_on_save guard in lsp.lua).
+if vim.g.disable_autoformat == nil then
+  vim.g.disable_autoformat = false
+end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- HEALTH CHECK
@@ -185,10 +208,18 @@ cmd("ToggleDiagnostics", function()
   end)
 end, { desc = "Toggle diagnostics (buffer-local)" })
 
+-- FIX (v2.3.15): notification was doubly-negated. The old code toggled the
+-- flag then called tostring(not disable_autoformat), meaning:
+--   disable=true  (just disabled) → not true  = false → "Autoformat: false"
+--   disable=false (just enabled)  → not false = true  → "Autoformat: true"
+-- The message was technically correct but the double negation made "false"
+-- mean "disabled", which is confusing. Now maps directly to "enabled" /
+-- "disabled" for clarity, matching the ToggleDiagnostics message style.
 cmd("ToggleAutoformat", function()
   pcall(function()
     vim.g.disable_autoformat = not vim.g.disable_autoformat
-    vim.notify("Autoformat: " .. tostring(not vim.g.disable_autoformat))
+    local state = vim.g.disable_autoformat and "disabled" or "enabled"
+    vim.notify("Autoformat: " .. state)
   end)
 end, { desc = "Toggle autoformat" })
 
@@ -248,8 +279,11 @@ cmd("MasonInstallAll", function()
     -- NOTE: kotlin-debug-adapter is NOT in Mason registry.
     --       Kotlin DAP uses java-debug-adapter via jdtls (already listed above).
     -- Formatters
+    -- FIX (v2.3.15): "gofumpt" added. lsp.lua conform wires
+    --   go = { "goimports", "gofumpt" } but only goimports was listed here,
+    --   leaving the second Go formatter uninstalled on a fresh setup.
     "stylua", "prettier", "shfmt", "black", "isort",
-    "goimports", "ktlint", "rubocop", "clang-format", "fprettify",
+    "goimports", "gofumpt", "ktlint", "rubocop", "clang-format", "fprettify",
     -- Linters
     "ruff", "eslint_d", "shellcheck", "htmlhint", "stylelint",
   }

@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.14
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.15
 
 ---
 
@@ -175,7 +175,7 @@ echo "✓ Done — run: nvim"
             ├── completion.lua  # blink.cmp
             ├── treesitter.lua  # treesitter + context + textobjects
             ├── git.lua         # gitsigns, lazygit, diffview, octo
-            ├── dap.lua         # nvim-dap + UI + adapters (all languages)
+            ├── dap.lua         # nvim-dap + UI + adapters (all languages except Python)
             ├── test.lua        # neotest + coverage (all adapters)
             ├── advanced.lua    # colorizer, navic, rainbow, better-escape, ufo
             ├── hud.lua         # indent-blankline, neoscroll, noice, barbecue…
@@ -190,7 +190,7 @@ echo "✓ Done — run: nvim"
 | Language | LSP | DAP | Format | Lint | Test |
 |----------|-----|-----|--------|------|------|
 | Lua | lua_ls | — | stylua | — | — |
-| Python | basedpyright | debugpy | black + isort | ruff | pytest |
+| Python | basedpyright | debugpy *(nvim-dap-python)* | black + isort | ruff | pytest |
 | Rust | rust-analyzer *(rustaceanvim)* | codelldb | rustfmt | clippy | cargo |
 | Go | gopls | delve | goimports + gofumpt | staticcheck | go test |
 | TypeScript | typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
@@ -301,28 +301,33 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.14)
+## Known Issues / Pending Fixes (v2.3.15)
 
 All previously listed known issues have been resolved. No open issues remain.
 
 | Resolved in | Issue | Fix |
 |-------------|-------|-----|
+| v2.3.15 | `focus.lua` `apply_spec()` used a broken Lua `a and b or c` ternary for boolean restore; `number`, `relativenumber`, `cursorline` were forcibly re-enabled on focus exit if the user had them off | Replaced with explicit `if saved ~= nil then saved else default end` |
+| v2.3.15 | `dap.lua` manually registered `dap.adapters.python` and `dap.configurations.python`; `python.lua`'s `nvim-dap-python.setup()` silently overwrote both on ft=python — dap.lua's Python section was dead code | Python DAP section removed from `dap.lua`; `python.lua` is the sole owner |
+| v2.3.15 | `rust.lua` had no `conform` spec; `rustfmt` was entirely absent from the formatter pipeline despite being documented in the README | Added `optional=true` conform spec to `rust.lua` with `rust = { "rustfmt" }` |
+| v2.3.15 | `python.lua` OPT comment claimed "no subprocess" but `vim.fn.system()` still spawned a process for site-packages discovery | Replaced with pure stat/glob checks; zero subprocess calls |
+| v2.3.15 | `lsp.lua` registered `shellcheck` for `sh` unconditionally (outside the executable guard), then registered it again inside the guard — binary-absent systems got lint errors; the guarded `sh` entry was dead code | Moved `sh` inside the executable guard; deduplicated |
+| v2.3.15 | `advanced.lua` neogen languages table claimed "ALL languages" but omitted `kotlin`; `<leader>xg` was a no-op on Kotlin files | Added `kotlin = { "kdoc" }` to the languages table and an `optional=true` ft trigger spec |
+| v2.3.15 | `zig.lua` DAP FileType autocmd had `once=true` — the same pattern fixed for neotest-rust in v2.3.10; any non-zig FileType firing first discarded the registration | Removed `once=true`; augroup `clear=true` provides idempotency |
+| v2.3.15 | `keymaps.lua` registered `<leader>xx` (Trouble) and `<leader>xu` (Undotree) despite both being owned by plugin `keys=` specs in `ui.lua` and `advanced.lua` | Both removed from `keymaps.lua`; plugin specs are sole owners |
+| v2.3.15 | `commands.lua` `ToggleAutoformat` used a double-negated `disable_*` variable for its notification, printing "false" when disabling; `disable_autoformat` was also never initialised | Rewrote notification to print "enabled" / "disabled"; added initialisation guard |
+| v2.3.15 | `commands.lua` `MasonInstallAll` missing `gofumpt`; `lsp.lua` conform wires `go = { "goimports", "gofumpt" }` but only `goimports` was listed | Added `"gofumpt"` to the Formatters section |
+| v2.3.15 | `autocmds.lua` `TrimWhitespace` BufWritePre callback had no `buftype` guard, inconsistent with every other callback in the same file | Added `if vim.bo[e.buf].buftype ~= "" then return end` |
+| v2.3.15 | `README.md` and `INSTALL.md` troubleshooting repo URL referenced `openSUSE_Leap_15.5` while the header states the config is tested on Leap 16.0 | Updated URL to `openSUSE_Leap_16.0` in both files |
 | v2.3.14 | `runner.lua` launched terminals via three independent inline toggleterm blocks, bypassing `core.util.term` which was introduced specifically to centralise this pattern | Unified all terminal launches through `term.float()` / `term.float_at_root()` |
 | v2.3.14 | `keymaps.lua` defined a hand-rolled `harpoon_call()` factory immediately after establishing the `lazy()` factory — two identical patterns in the same file | Removed `harpoon_call()`; Harpoon, Flash, and focus maps all use `lazy()` |
 | v2.3.14 | `focus.lua` `enter()` and `exit()` each iterated the SPEC table independently with subtly different boolean-guard logic | Unified into a single `apply_spec(active)` function |
 | v2.3.14 | `test.lua` `jest_cmd()` contained an inline lockfile-detection fallback that duplicated `runner.detect_js_test_cmd()` verbatim — dead code since v2.3.11 | Fallback removed; function delegates cleanly to `runner.detect_js_test_cmd()` |
 | v2.3.14 | `lsp.lua` nvim-lint linter merge used a verbose hand-written nested deduplication loop | Replaced with `merge_linters(ft, linters)` helper |
 | v2.3.14 | `lsp.lua` optional server table used a structurally different call shape from the primary `servers` table, making the two paths harder to compare | Call shapes unified |
-| v2.3.14 | `python.lua` debugpy probe used recursive async `vim.system()` callbacks — unnecessary for path resolution, which requires no subprocess import | Replaced with a synchronous `vim.fn.executable()` + site-packages directory check |
+| v2.3.14 | `python.lua` debugpy probe used recursive async `vim.system()` callbacks — unnecessary for path resolution, which requires no subprocess import | Replaced with synchronous checks |
 | v2.3.14 | `bootstrap.lua` and `plugins/init.lua` both contained a lazy.nvim clone block, producing two divergent error messages and two code paths for the same failure | Duplicate removed from `plugins/init.lua`; `bootstrap.lua` is the sole clone site |
 | v2.3.14 | `ui.lua` version fallback `or "2.3.5"` was dead code since v2.3.12 guaranteed the version is set before any plugin config runs | Replaced with `or "unknown"` to surface bootstrap failures visibly |
-| v2.3.10 | `test.lua` neotest-rust never registered when a non-rust LSP attached first (`once=true` consumed the autocmd) | Removed `once=true`; `_rust_registered` flag alone guards idempotency |
-| v2.3.10 | `advanced.lua` vim-matchup called `nvim-treesitter.configs.setup()` independently, overwriting treesitter.lua's full config | Removed standalone `setup()` call; replaced with `optional=true` treesitter extension spec |
-| v2.3.10 | `dap.lua` Elixir DAP adapter never auto-installed — `elixir-ls` absent from `mason-nvim-dap ensure_installed` | Added `"elixir-ls"` to `ensure_installed` |
-| v2.3.10 | `runner.lua` fortran/vhdl/cobol gave opaque "No test runner" with no guidance | Replaced with informational messages pointing to the lang-specific build keymaps |
-| v2.3.9b | `dap.lua` breakpoint restore on large files landed on wrong lines | Large-file guard skips restore with warning |
-| v2.3.9b | `options.lua` matchparen disabled with no replacement | `vim-matchup` added to `advanced.lua`; `options.lua` no longer suppresses matchparen |
-| v2.3.9b | `runner.lua` `<leader>'t` notified "No test runner" for c and cpp | Delegated to `ctest --test-dir build` |
 
 ---
 
@@ -348,7 +353,7 @@ nvim  # re-installs everything
 
 **Neovim version too old** (openSUSE default repos)
 ```bash
-sudo zypper ar -f https://download.opensuse.org/repositories/editors/openSUSE_Leap_15.5/ editors
+sudo zypper ar -f https://download.opensuse.org/repositories/editors/openSUSE_Leap_16.0/ editors
 sudo zypper ref && sudo zypper in neovim
 ```
 

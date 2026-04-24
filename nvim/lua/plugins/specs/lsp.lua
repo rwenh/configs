@@ -8,6 +8,15 @@
 --   • Optional server table call shape unified. Each entry now passes its
 --     config directly to lsp_setup() the same way the primary `servers`
 --     table does — no structural difference between the two paths.
+--
+-- FIX (v2.3.15):
+--   • shellcheck was unconditionally registered for "sh" (line outside the
+--     executable guard) AND then registered again inside the guard — making
+--     the guard's "sh" entry dead code and, more importantly, causing
+--     nvim-lint to attempt invoking a missing shellcheck binary on every
+--     sh-file write. The unconditional call is removed; both "bash" and "sh"
+--     are now registered only when shellcheck is present, consistent with
+--     every other binary-gated linter in this file.
 
 return {
   {
@@ -327,6 +336,8 @@ return {
         c          = { "clang-format" },
         cpp        = { "clang-format" },
         fortran    = { "fprettify" },
+        -- NOTE: rust = { "rustfmt" } is owned by rust.lua (optional=true spec).
+        -- rustfmt ships with rustup and does not need a Mason entry.
       },
       format_on_save = function(bufnr)
         if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
@@ -359,16 +370,20 @@ return {
       merge_linters("python",     { "ruff" })
       merge_linters("javascript", { "eslint_d" })
       merge_linters("typescript", { "eslint_d" })
-      merge_linters("sh",         { "shellcheck" })
       merge_linters("ruby",       { "rubocop" })
 
       if vim.fn.executable("pylint") == 1 then
         merge_linters("python", { "pylint" })
       end
 
+      -- FIX (v2.3.15): shellcheck is now registered for both "sh" and "bash"
+      -- only when the binary is present. The previous unconditional
+      -- merge_linters("sh", {"shellcheck"}) outside this guard meant nvim-lint
+      -- tried to invoke a missing binary on every sh-file write. The duplicate
+      -- guarded "sh" entry inside the block was dead code and is removed.
       if vim.fn.executable("shellcheck") == 1 then
-        merge_linters("bash", { "shellcheck" })
         merge_linters("sh",   { "shellcheck" })
+        merge_linters("bash", { "shellcheck" })
       end
 
       vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {

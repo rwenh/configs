@@ -2,6 +2,15 @@
 --
 -- OPT (v2.3.13):
 --   • Build keymaps use core.util.term.float() — 3 × boilerplate removed.
+--
+-- FIX (v2.3.15):
+--   • DAP FileType autocmd had once=true, which is the same anti-pattern
+--     fixed for neotest-rust in v2.3.10 (INSTALL.md #91). once=true causes
+--     the autocmd to be permanently consumed by the FIRST FileType event
+--     that fires, regardless of the filetype name — any non-zig buffer
+--     opening first would discard the registration and Zig DAP would never
+--     configure for the session. Removed once=true; the augroup clear=true
+--     already provides idempotency on re-load.
 
 return {
   -- ── Syntax support ────────────────────────────────────────────────────
@@ -29,7 +38,10 @@ return {
     init = function()
       vim.api.nvim_create_autocmd("FileType", {
         pattern  = "zig",
-        once     = true,
+        -- FIX (v2.3.15): once=true removed. It caused the autocmd to be consumed
+        -- by the first FileType event of ANY filetype, not just zig. If any other
+        -- buffer opened before a .zig file the Zig DAP adapter was never registered.
+        -- The augroup with clear=true already guarantees idempotency on plugin reload.
         group    = vim.api.nvim_create_augroup("ZigDap", { clear = true }),
         callback = function()
           local ok, dap = pcall(require, "dap")
