@@ -9,6 +9,13 @@
 --     config directly to lsp_setup() the same way the primary `servers`
 --     table does — no structural difference between the two paths.
 --
+-- FIX (v2.3.16):
+--   • mason-lspconfig ensure_installed listed "elixir-ls" (the Mason package
+--     name) instead of "elixirls" (the lspconfig server name). mason-lspconfig
+--     validates entries against the lspconfig server registry and emits a
+--     startup warning for any unrecognised name; the server was never queued
+--     for auto-installation as a result. Corrected to "elixirls".
+--
 -- FIX (v2.3.15):
 --   • shellcheck was unconditionally registered for "sh" (line outside the
 --     executable guard) AND then registered again inside the guard — making
@@ -38,7 +45,7 @@ return {
         "kotlin_language_server",
         "zls",
         "tailwindcss",
-        "elixir-ls",
+        "elixirls",
         "fortls",
         "sqls",
         "jdtls",
