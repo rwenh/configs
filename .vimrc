@@ -17,7 +17,7 @@ let s:boot_time = reltime()
 let g:vimide_debug           = 0
 let g:vimide_minimal         = 0
 let g:vimide_diagnostics     = 'coc'
-" When 1: test/db/rest defer to BufReadPost; debug defers to CmdUndefined.
+" When 1: test/db/rest defer to BufReadPost; debug defers to BufReadPost.
 " LSP and git are always eager regardless of this flag.
 let g:vimide_lazy_aggressive = 1
 
@@ -49,7 +49,6 @@ function! Log(msg, level) abort
 endfunction
 
 " --- Profiling mark ----------------------------------------------------------
-" Pure observer. Enable with: let g:vimide_debug = 1
 
 function! s:Mark(label) abort
   if !g:vimide_debug | return | endif
@@ -57,7 +56,6 @@ function! s:Mark(label) abort
 endfunction
 
 " --- Error boundary ----------------------------------------------------------
-" Named so failures identify their source in the log.
 
 function! s:Safe(name, Fn) abort
   try
@@ -93,89 +91,6 @@ function! FeatureEnabled(name) abort
   return get(g:, 'module_' . a:name . '_enabled', 0)
 endfunction
 
-" --- Module registry ---------------------------------------------------------
-"
-" Contract:
-"   - Every feature is registered exactly once via s:RegisterModule()
-"   - s:LoadModules() is the single dispatch point
-"   - Features load once per session (immutable session model)
-"   - s:TeardownModule() / s:ReloadModule() are debug tools only
-"   - Teardown does NOT guarantee clean state for all side effects
-"     (installed <Plug> maps persist); document this limitation per module
-"
-" Spec keys:
-"   init     funcref  — required; called on load
-"   teardown funcref  — optional; called on teardown
-"   deps     list     — module names to load first (resolved before init)
-"   lazy     string   — '' (eager) | 'buf' (BufReadPost) | 'cmd' (CmdUndefined)
-"                       ignored when g:vimide_lazy_aggressive = 0
-
-let s:modules = {}
-
-function! s:RegisterModule(name, spec) abort
-  let s:modules[a:name] = extend({
-    \ 'enabled':  FeatureEnabled(a:name),
-    \ 'loaded':   0,
-    \ 'init':     v:null,
-    \ 'teardown': v:null,
-    \ 'deps':     [],
-    \ 'lazy':     '',
-    \ }, a:spec)
-endfunction
-
-function! s:LoadModule(name) abort
-  if !has_key(s:modules, a:name)
-    call Log('Unknown module: ' . a:name, 'error') | return
-  endif
-  let l:m = s:modules[a:name]
-  if !l:m.enabled || l:m.loaded | return | endif
-  for l:dep in l:m.deps
-    call s:LoadModule(l:dep)
-  endfor
-  let s:modules[a:name].loaded = 1
-  if l:m.init isnot v:null
-    call s:Mark(a:name . ' init start')
-    call s:Safe(a:name . ':init', l:m.init)
-    call s:Mark(a:name . ' init done')
-  endif
-endfunction
-
-function! s:TeardownModule(name) abort
-  if !has_key(s:modules, a:name) | return | endif
-  let l:m = s:modules[a:name]
-  if !l:m.loaded | return | endif
-  if l:m.teardown isnot v:null
-    call s:Safe(a:name . ':teardown', l:m.teardown)
-  endif
-  let s:modules[a:name].loaded = 0
-endfunction
-
-function! s:ReloadModule(name) abort
-  call s:TeardownModule(a:name)
-  call s:LoadModule(a:name)
-endfunction
-
-function! s:LoadModules() abort
-  call s:Mark('LoadModules start')
-  for l:name in keys(s:modules)
-    let l:m = s:modules[l:name]
-    if !l:m.enabled | continue | endif
-    let l:strategy = g:vimide_lazy_aggressive ? l:m.lazy : ''
-    if l:strategy ==# 'buf'
-      call Augroup('LazyLoad_' . l:name, [
-        \ 'BufReadPost * ++once call s:LoadModule(' . string(l:name) . ')',
-        \ ])
-    elseif l:strategy ==# 'cmd'
-      call Augroup('LazyLoad_' . l:name, [
-        \ 'CmdUndefined * call s:LoadModule(' . string(l:name) . ')',
-        \ ])
-    else
-      call s:LoadModule(l:name)
-    endif
-  endfor
-  call s:Mark('LoadModules done')
-endfunction
-
 " --- Map() -------------------------------------------------------------------
 
 function! Map(mode, lhs, rhs, opts) abort
@@ -185,6 +100,21 @@ function! Map(mode, lhs, rhs, opts) abort
   let l:nore   = get(a:opts, 'noremap',1) ? 'noremap'  : 'map'
   execute printf('%s%s %s %s %s %s %s',
     \ a:mode, l:nore, l:silent, l:expr, l:buf, a:lhs, a:rhs)
+endfunction
+
+" --- MapGroup() --------------------------------------------------------------
+" Batch normal-mode mappings under a common prefix.
+" opts: dict keyed by suffix for per-mapping overrides; falls back to defaults.
+"
+"   call MapGroup('<leader>g', {
+"     \ 's': ':Git<CR>',
+"     \ 'c': ':Git commit<CR>',
+"   \ }, {})
+
+function! MapGroup(prefix, maps, opts) abort
+  for [l:key, l:rhs] in items(a:maps)
+    call Map('n', a:prefix . l:key, l:rhs, get(a:opts, l:key, {}))
+  endfor
 endfunction
 
 " --- Augroup() ---------------------------------------------------------------
@@ -197,6 +127,27 @@ function! Augroup(name, cmds) abort
   endfor
   augroup END
 endfunction
+
+" --- CreateCommand() ---------------------------------------------------------
+" Thin wrapper so every user command goes through a single declaration point.
+"
+"   call CreateCommand('VimInfo', function('s:VimInfo'), {})
+"   call CreateCommand('Rename',  function('s:RenameFile'), { 'nargs': 1, 'complete': 'file' })
+
+function! CreateCommand(name, Fn, opts) abort
+  let l:nargs   = get(a:opts, 'nargs',   0)
+  let l:complete = get(a:opts, 'complete', '')
+  let l:nargs_s  = l:nargs > 0 ? ('-nargs=' . l:nargs . ' ') : ''
+  let l:comp_s   = !empty(l:complete) ? ('-complete=' . l:complete . ' ') : ''
+  " Store the funcref so the command can call it
+  let s:cmdfns[a:name] = a:Fn
+  let l:invoke = l:nargs > 0
+    \ ? 'call call(s:cmdfns["' . a:name . '"], [<q-args>])'
+    \ : 'call call(s:cmdfns["' . a:name . '"], [])'
+  execute 'command! ' . l:nargs_s . l:comp_s . a:name . ' ' . l:invoke
+endfunction
+
+let s:cmdfns = {}
 
 " --- Runner registry ---------------------------------------------------------
 
@@ -226,6 +177,110 @@ function! RunTask(name) abort
     call call(l:task.run, [])
   endif
   call SetState('last_task', { 'name': a:name, 'time': localtime() })
+endfunction
+
+" --- Module registry ---------------------------------------------------------
+"
+" Contract:
+"   - Every feature is registered exactly once via s:RegisterModule()
+"   - s:LoadModules() is the single dispatch point
+"   - Features load once per session (immutable session model)
+"   - Teardown/reload are debug tools; disabled when g:vimide_debug=0
+"   - <Plug> maps and inoremap definitions persist for the session;
+"     teardown clears augroups and g: vars only
+"
+" Spec keys:
+"   init     funcref  — required
+"   teardown funcref  — optional; debug use only
+"   deps     list     — module names to load first
+"   lazy     string   — '' (eager) | 'buf' (BufReadPost) | 'cmd' (CmdUndefined)
+
+let s:modules = {}
+
+function! s:ValidateModule(name, spec) abort
+  if !has_key(a:spec, 'init') || get(a:spec, 'init') is v:null
+    throw 'Module ' . a:name . ': init is required'
+  endif
+  if type(get(a:spec, 'init')) != type(function('tr'))
+    throw 'Module ' . a:name . ': init must be a funcref'
+  endif
+  if type(get(a:spec, 'deps', [])) != type([])
+    throw 'Module ' . a:name . ': deps must be a list'
+  endif
+  if index(['', 'buf', 'cmd'], get(a:spec, 'lazy', '')) < 0
+    throw 'Module ' . a:name . ': lazy must be "", "buf", or "cmd"'
+  endif
+endfunction
+
+function! s:RegisterModule(name, spec) abort
+  call s:ValidateModule(a:name, a:spec)
+  let s:modules[a:name] = extend({
+    \ 'enabled':  FeatureEnabled(a:name),
+    \ 'loaded':   0,
+    \ 'init':     v:null,
+    \ 'teardown': v:null,
+    \ 'deps':     [],
+    \ 'lazy':     '',
+    \ }, a:spec)
+endfunction
+
+function! s:LoadModule(name) abort
+  if !has_key(s:modules, a:name)
+    call Log('Unknown module: ' . a:name, 'error') | return
+  endif
+  let l:m = s:modules[a:name]
+  if !l:m.enabled || l:m.loaded | return | endif
+  for l:dep in l:m.deps
+    call s:LoadModule(l:dep)
+  endfor
+  let s:modules[a:name].loaded = 1
+  if l:m.init isnot v:null
+    call s:Mark(a:name . ' init start')
+    call s:Safe(a:name . ':init', l:m.init)
+    call s:Mark(a:name . ' init done')
+  endif
+endfunction
+
+function! s:TeardownModule(name) abort
+  if !g:vimide_debug
+    call Log('TeardownModule is a debug-only operation; set g:vimide_debug=1', 'warn') | return
+  endif
+  if !has_key(s:modules, a:name) | return | endif
+  let l:m = s:modules[a:name]
+  if !l:m.loaded | return | endif
+  if l:m.teardown isnot v:null
+    call s:Safe(a:name . ':teardown', l:m.teardown)
+  endif
+  let s:modules[a:name].loaded = 0
+endfunction
+
+function! s:ReloadModule(name) abort
+  if !g:vimide_debug
+    call Log('ReloadModule is a debug-only operation; set g:vimide_debug=1', 'warn') | return
+  endif
+  call s:TeardownModule(a:name)
+  call s:LoadModule(a:name)
+endfunction
+
+function! s:LoadModules() abort
+  call s:Mark('LoadModules start')
+  for l:name in keys(s:modules)
+    let l:m = s:modules[l:name]
+    if !l:m.enabled | continue | endif
+    let l:strategy = g:vimide_lazy_aggressive ? l:m.lazy : ''
+    if l:strategy ==# 'buf'
+      call Augroup('LazyLoad_' . l:name, [
+        \ 'BufReadPost * ++once call s:LoadModule(' . string(l:name) . ')',
+        \ ])
+    elseif l:strategy ==# 'cmd'
+      call Augroup('LazyLoad_' . l:name, [
+        \ 'CmdUndefined * call s:LoadModule(' . string(l:name) . ')',
+        \ ])
+    else
+      call s:LoadModule(l:name)
+    endif
+  endfor
+  call s:Mark('LoadModules done')
 endfunction
 
 " =============================================================================
@@ -553,12 +608,14 @@ call Map('n', '<leader>Q', ':quit!<CR>', {})
 call Map('n', '<leader>qa',':qall<CR>', {})
 
 " Window management
-call Map('n', '<leader>wv', ':vsplit<CR>', {})
-call Map('n', '<leader>ws', ':split<CR>', {})
-call Map('n', '<leader>wc', ':close<CR>', {})
-call Map('n', '<leader>wo', ':only<CR>', {})
-call Map('n', '<leader>w=', '<C-w>=', {})
-call Map('n', '<leader>wz', ':MaximizerToggle<CR>', {})
+call MapGroup('<leader>w', {
+  \ 'v': ':vsplit<CR>',
+  \ 's': ':split<CR>',
+  \ 'c': ':close<CR>',
+  \ 'o': ':only<CR>',
+  \ '=': '<C-w>=',
+  \ 'z': ':MaximizerToggle<CR>',
+  \ }, {})
 
 call Map('n', '<M-Up>',    ':resize +2<CR>', {})
 call Map('n', '<M-Down>',  ':resize -2<CR>', {})
@@ -567,11 +624,13 @@ call Map('n', '<M-Right>', ':vertical resize +2<CR>', {})
 
 " Buffer management
 call Map('n', '<leader><Tab>', '<C-^>', {})
-call Map('n', '<leader>bd',    ':bdelete<CR>', {})
-call Map('n', '<leader>bD',    ':bdelete!<CR>', {})
-call Map('n', '<leader>bn',    ':bnext<CR>', {})
-call Map('n', '<leader>bp',    ':bprevious<CR>', {})
-call Map('n', '<leader>bC',    ':CleanBuffers<CR>', {})
+call MapGroup('<leader>b', {
+  \ 'd': ':bdelete<CR>',
+  \ 'D': ':bdelete!<CR>',
+  \ 'n': ':bnext<CR>',
+  \ 'p': ':bprevious<CR>',
+  \ 'C': ':CleanBuffers<CR>',
+  \ }, {})
 
 " Search
 call Map('n', '<leader>sc', ':nohlsearch<CR>', {})
@@ -579,29 +638,35 @@ call Map('n', '<leader>sr', ':%s/\<<C-r><C-w>\>//gc<Left><Left><Left>', { 'silen
 call Map('v', '<leader>sr', '"hy:%s/<C-r>h//gc<Left><Left><Left>', { 'silent': 0 })
 
 " Quickfix
-call Map('n', '<leader>co', ':copen<CR>', {})
-call Map('n', '<leader>cc', ':cclose<CR>', {})
-call Map('n', '<leader>cn', ':cnext<CR>', {})
-call Map('n', '<leader>cp', ':cprevious<CR>', {})
+call MapGroup('<leader>c', {
+  \ 'o': ':copen<CR>',
+  \ 'c': ':cclose<CR>',
+  \ 'n': ':cnext<CR>',
+  \ 'p': ':cprevious<CR>',
+  \ }, {})
 
 " Location list
-call Map('n', '<leader>lo', ':lopen<CR>', {})
-call Map('n', '<leader>lc', ':lclose<CR>', {})
-call Map('n', '<leader>ln', ':lnext<CR>', {})
-call Map('n', '<leader>lp', ':lprevious<CR>', {})
+call MapGroup('<leader>l', {
+  \ 'o': ':lopen<CR>',
+  \ 'c': ':lclose<CR>',
+  \ 'n': ':lnext<CR>',
+  \ 'p': ':lprevious<CR>',
+  \ }, {})
 
 " FZF
-call Map('n', '<leader>ff', ':Files<CR>', {})
-call Map('n', '<leader>fg', ':GFiles<CR>', {})
-call Map('n', '<leader>fb', ':Buffers<CR>', {})
-call Map('n', '<leader>fh', ':History<CR>', {})
-call Map('n', '<leader>fr', ':Rg<CR>', {})
-call Map('n', '<leader>fl', ':Lines<CR>', {})
-call Map('n', '<leader>ft', ':Tags<CR>', {})
-call Map('n', '<leader>fc', ':Commands<CR>', {})
-call Map('n', '<leader>fk', ':Maps<CR>', {})
-call Map('n', '<leader>fm', ':Marks<CR>', {})
-call Map('n', '<leader>fp', ':Files %:h<CR>', {})
+call MapGroup('<leader>f', {
+  \ 'f': ':Files<CR>',
+  \ 'g': ':GFiles<CR>',
+  \ 'b': ':Buffers<CR>',
+  \ 'h': ':History<CR>',
+  \ 'r': ':Rg<CR>',
+  \ 'l': ':Lines<CR>',
+  \ 't': ':Tags<CR>',
+  \ 'c': ':Commands<CR>',
+  \ 'k': ':Maps<CR>',
+  \ 'm': ':Marks<CR>',
+  \ 'p': ':Files %:h<CR>',
+  \ }, {})
 
 " Diff mode
 call Augroup('DiffMappings', [
@@ -618,10 +683,12 @@ call Map('n', '<leader>E', ':Fern . -drawer -reveal=%<CR>', {})
 " Terminal
 call Map('n', '<C-\>', ':FloatermToggle<CR>', {})
 call Map('t', '<C-\>', '<C-\><C-n>:FloatermToggle<CR>', {})
-call Map('n', '<leader>tn', ':FloatermNew<CR>', {})
-call Map('n', '<leader>tk', ':FloatermKill<CR>', {})
-call Map('n', '<leader>tl', ':FloatermNext<CR>', {})
-call Map('n', '<leader>th', ':FloatermPrev<CR>', {})
+call MapGroup('<leader>t', {
+  \ 'n': ':FloatermNew<CR>',
+  \ 'k': ':FloatermKill<CR>',
+  \ 'l': ':FloatermNext<CR>',
+  \ 'h': ':FloatermPrev<CR>',
+  \ }, {})
 call Map('v', '<leader>ts', ':FloatermSend<CR>', {})
 
 " Markdown
@@ -629,26 +696,30 @@ call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
 call Map('n', '<leader>ms', ':MarkdownPreviewStop<CR>', {})
 
 " Toggles
-call Map('n', '<leader>un', ':set number!<CR>', {})
-call Map('n', '<leader>ur', ':set relativenumber!<CR>', {})
-call Map('n', '<leader>uw', ':set wrap!<CR>', {})
-call Map('n', '<leader>us', ':set spell!<CR>', {})
-call Map('n', '<leader>uh', ':set hlsearch!<CR>', {})
-call Map('n', '<leader>ub', ':call ToggleBackground()<CR>', {})
-call Map('n', '<leader>uc', ':set cursorline!<CR>', {})
-call Map('n', '<leader>ul', ':set list!<CR>', {})
-call Map('n', '<leader>ui', ':IndentGuidesToggle<CR>', {})
-call Map('n', '<leader>ux', ':ContextToggle<CR>', {})
+call MapGroup('<leader>u', {
+  \ 'n': ':set number!<CR>',
+  \ 'r': ':set relativenumber!<CR>',
+  \ 'w': ':set wrap!<CR>',
+  \ 's': ':set spell!<CR>',
+  \ 'h': ':set hlsearch!<CR>',
+  \ 'b': ':call ToggleBackground()<CR>',
+  \ 'c': ':set cursorline!<CR>',
+  \ 'l': ':set list!<CR>',
+  \ 'i': ':IndentGuidesToggle<CR>',
+  \ 'x': ':ContextToggle<CR>',
+  \ }, {})
 
 " Tools
 call Map('n', '<F8>',      ':TagbarToggle<CR>', {})
 call Map('n', '<leader>U', ':UndotreeToggle<CR>', {})
 
 " Session
-call Map('n', '<leader>SS', ':SSave<CR>', {})
-call Map('n', '<leader>SL', ':SLoad<CR>', {})
-call Map('n', '<leader>Sd', ':SDelete<CR>', {})
-call Map('n', '<leader>Sc', ':SClose<CR>', {})
+call MapGroup('<leader>S', {
+  \ 'S': ':SSave<CR>',
+  \ 'L': ':SLoad<CR>',
+  \ 'd': ':SDelete<CR>',
+  \ 'c': ':SClose<CR>',
+  \ }, {})
 call Map('n', '<leader>st', ':Startify<CR>', {})
 
 " Misc
@@ -916,10 +987,10 @@ let g:which_key_map = {
 " =============================================================================
 " LAYER 8: MODULE DEFINITIONS
 "
-" Each module owns: config vars, autocmds, keymaps, and optionally teardown.
-" Teardown note: Vim provides no native unmap API for non-buffer mappings.
-" Teardown cleans g: vars and augroups. Normal-mode maps persist for the
-" session — acceptable under the immutable session contract.
+" Teardown functions exist but are gated behind g:vimide_debug.
+" Limitation: <Plug>, inoremap, and nmap definitions cannot be removed at
+" runtime in Vim; teardown clears augroups and g: vars only. This is
+" intentional — Vim config is write-once, not transactional.
 " =============================================================================
 
 " --- Git ---------------------------------------------------------------------
@@ -935,30 +1006,34 @@ function! s:git_init() abort
   let g:gitgutter_sign_modified = '▎'
   let g:gitgutter_sign_removed  = '▎'
 
-  call Map('n', '<leader>gg', ':Git<CR>', {})
-  call Map('n', '<leader>gc', ':Git commit<CR>', {})
-  call Map('n', '<leader>gp', ':Git push<CR>', {})
-  call Map('n', '<leader>gl', ':GV<CR>', {})
-  call Map('n', '<leader>gL', ':GV!<CR>', {})
-  call Map('n', '<leader>gd', ':Gdiffsplit<CR>', {})
-  call Map('n', '<leader>gb', ':Git blame<CR>', {})
-  call Map('n', '<leader>gB', ':GBrowse<CR>', {})
-  call Map('n', '<leader>gf', ':Git fetch<CR>', {})
-  call Map('n', '<leader>gm', ':Git merge<CR>', {})
-  call Map('n', '<leader>gR', ':Git rebase<CR>', {})
-  call Map('n', '<leader>gA', ':Git add %<CR>', {})
-  call Map('n', '<leader>gS', ':Git stash<CR>', {})
-  call Map('n', '<leader>gP', ':Git stash pop<CR>', {})
+  call MapGroup('<leader>g', {
+    \ 'g': ':Git<CR>',
+    \ 'c': ':Git commit<CR>',
+    \ 'p': ':Git push<CR>',
+    \ 'l': ':GV<CR>',
+    \ 'L': ':GV!<CR>',
+    \ 'd': ':Gdiffsplit<CR>',
+    \ 'b': ':Git blame<CR>',
+    \ 'B': ':GBrowse<CR>',
+    \ 'f': ':Git fetch<CR>',
+    \ 'm': ':Git merge<CR>',
+    \ 'R': ':Git rebase<CR>',
+    \ 'A': ':Git add %<CR>',
+    \ 'S': ':Git stash<CR>',
+    \ 'P': ':Git stash pop<CR>',
+    \ }, {})
 
-  call Map('n', '<leader>hs', ':GitGutterStageHunk<CR>', {})
-  call Map('n', '<leader>hu', ':GitGutterUndoHunk<CR>', {})
-  call Map('n', '<leader>hp', ':GitGutterPreviewHunk<CR>', {})
+  call MapGroup('<leader>h', {
+    \ 's': ':GitGutterStageHunk<CR>',
+    \ 'u': ':GitGutterUndoHunk<CR>',
+    \ 'p': ':GitGutterPreviewHunk<CR>',
+    \ }, {})
+
   nmap ]h <Plug>(GitGutterNextHunk)
   nmap [h <Plug>(GitGutterPrevHunk)
 endfunction
 
 function! s:git_teardown() abort
-  " Disables display. Maps persist for session (immutable contract).
   let g:gitgutter_enabled = 0
   silent! GitGutterDisable
 endfunction
@@ -970,8 +1045,6 @@ call s:RegisterModule('git', {
   \ })
 
 " --- LSP (coc.nvim) ----------------------------------------------------------
-" Always eager (lazy: ''): coc config vars must precede first BufReadPost.
-" Teardown: CocRestart is the only clean reset coc supports.
 
 function! s:lsp_init() abort
   let g:coc_disable_startup_warning = 1
@@ -1007,14 +1080,17 @@ function! s:lsp_init() abort
   nmap <silent> <leader>rn <Plug>(coc-rename)
   nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
   nmap <silent> <leader>cf <Plug>(coc-format)
-  nmap <silent> <leader>cs :CocList outline<CR>
-  nmap <silent> <leader>cS :CocList -I symbols<CR>
+
+  call MapGroup('<leader>c', {
+    \ 's': ':CocList outline<CR>',
+    \ 'S': ':CocList -I symbols<CR>',
+    \ 'd': ':CocList diagnostics<CR>',
+    \ }, {})
 
   nmap <silent> ]g <Plug>(coc-diagnostic-next)
   nmap <silent> [g <Plug>(coc-diagnostic-prev)
   nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
   nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
-  nnoremap <silent> <leader>cd :CocList diagnostics<CR>
 
   call Augroup('LightlineCoc', [
     \ 'User CocStatusChange,CocDiagnosticChange silent call lightline#update()',
@@ -1033,38 +1109,41 @@ call s:RegisterModule('lsp', {
   \ })
 
 " --- Debug (vimspector) ------------------------------------------------------
-" lazy='cmd': deferred until any CmdUndefined fires (e.g. :VimspectorLaunch).
-" Teardown: resets vimspector UI and removes the lazy trigger augroup.
+" lazy='buf': load on first buffer open. Previously used 'cmd' (CmdUndefined *)
+" which fired on ANY undefined command — too broad, a latent bug.
+" vimspector is loaded explicitly via plug#load inside init, so the plugin
+" payload remains deferred regardless.
 
 function! s:debug_init() abort
   call plug#load('vimspector')
 
-  call Map('n', '<F1>',       ':call vimspector#Continue()<CR>', {})
-  call Map('n', '<F2>',       ':call vimspector#StepOver()<CR>', {})
-  call Map('n', '<F3>',       ':call vimspector#StepInto()<CR>', {})
-  call Map('n', '<F4>',       ':call vimspector#StepOut()<CR>', {})
-  call Map('n', '<F10>',      ':call vimspector#ToggleBreakpoint()<CR>', {})
-  call Map('n', '<F11>',      ':call vimspector#ToggleConditionalBreakpoint()<CR>', {})
-  call Map('n', '<F12>',      ':call vimspector#RunToCursor()<CR>', {})
-  call Map('n', '<leader>dx', ':call vimspector#Reset()<CR>', {})
-  call Map('n', '<leader>dX', ':call vimspector#ClearBreakpoints()<CR>', {})
-  call Map('n', '<leader>di', ':call vimspector#BalloonEval()<CR>', {})
-  call Map('n', '<leader>dw', ':call vimspector#AddWatch()<CR>', {})
+  call MapGroup('<leader>d', {
+    \ 'x': ':call vimspector#Reset()<CR>',
+    \ 'X': ':call vimspector#ClearBreakpoints()<CR>',
+    \ 'i': ':call vimspector#BalloonEval()<CR>',
+    \ 'w': ':call vimspector#AddWatch()<CR>',
+    \ }, {})
+
+  call Map('n', '<F1>',  ':call vimspector#Continue()<CR>', {})
+  call Map('n', '<F2>',  ':call vimspector#StepOver()<CR>', {})
+  call Map('n', '<F3>',  ':call vimspector#StepInto()<CR>', {})
+  call Map('n', '<F4>',  ':call vimspector#StepOut()<CR>', {})
+  call Map('n', '<F10>', ':call vimspector#ToggleBreakpoint()<CR>', {})
+  call Map('n', '<F11>', ':call vimspector#ToggleConditionalBreakpoint()<CR>', {})
+  call Map('n', '<F12>', ':call vimspector#RunToCursor()<CR>', {})
 endfunction
 
 function! s:debug_teardown() abort
   if exists('*vimspector#Reset') | silent! call vimspector#Reset() | endif
-  call Augroup('LazyLoad_debug', [])
 endfunction
 
 call s:RegisterModule('debug', {
   \ 'init':     function('s:debug_init'),
   \ 'teardown': function('s:debug_teardown'),
-  \ 'lazy':     'cmd',
+  \ 'lazy':     'buf',
   \ })
 
 " --- Test (vim-test) ---------------------------------------------------------
-" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
 function! s:test_init() abort
   let g:test#strategy          = 'floaterm'
@@ -1073,11 +1152,13 @@ function! s:test_init() abort
   let g:test#go#runner         = 'gotest'
   let g:test#rust#runner       = 'cargotest'
 
-  call Map('n', '<leader>tt', ':TestNearest<CR>', {})
-  call Map('n', '<leader>tT', ':TestFile<CR>', {})
-  call Map('n', '<leader>ta', ':TestSuite<CR>', {})
-  call Map('n', '<leader>tR', ':TestLast<CR>', {})
-  call Map('n', '<leader>tv', ':TestVisit<CR>', {})
+  call MapGroup('<leader>t', {
+    \ 't': ':TestNearest<CR>',
+    \ 'T': ':TestFile<CR>',
+    \ 'a': ':TestSuite<CR>',
+    \ 'R': ':TestLast<CR>',
+    \ 'v': ':TestVisit<CR>',
+    \ }, {})
 endfunction
 
 call s:RegisterModule('test', {
@@ -1086,7 +1167,6 @@ call s:RegisterModule('test', {
   \ })
 
 " --- Database (vim-dadbod) ---------------------------------------------------
-" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
 function! s:db_init() abort
   let g:db_ui_use_nerd_fonts = 1
@@ -1097,8 +1177,10 @@ function! s:db_init() abort
   if !empty($DATABASE_STAGING_URL) | let g:dbs['staging'] = $DATABASE_STAGING_URL | endif
   if !empty($DATABASE_LOCAL_URL)   | let g:dbs['local']   = $DATABASE_LOCAL_URL   | endif
 
-  call Map('n', '<leader>Du', ':DBUIToggle<CR>', {})
-  call Map('n', '<leader>Df', ':DBUIFindBuffer<CR>', {})
+  call MapGroup('<leader>D', {
+    \ 'u': ':DBUIToggle<CR>',
+    \ 'f': ':DBUIFindBuffer<CR>',
+    \ }, {})
 
   call Augroup('DatabaseSQL', [
     \ 'FileType sql setlocal omnifunc=vim_dadbod_completion#omni',
@@ -1116,7 +1198,6 @@ call s:RegisterModule('db', {
   \ })
 
 " --- REST client (vim-rest-console) ------------------------------------------
-" lazy='buf': deferred to first BufReadPost when g:vimide_lazy_aggressive=1.
 
 function! s:rest_init() abort
   let g:vrc_curl_opts = {
@@ -1237,7 +1318,6 @@ function! s:FlashYank() abort
   let l:vend   = getpos("']")
   if l:vstart[1] <= 0 || l:vend[1] <= 0 | return | endif
   if (l:vend[1] - l:vstart[1]) > 50 | return | endif
-  " For linewise yanks, col is v:maxcol — use line-only pattern instead
   if v:event.regtype ==# 'V' || l:vend[2] >= 2147483647
     let l:pat = '\%>' . (l:vstart[1] - 1) . 'l\%<' . (l:vend[1] + 1) . 'l'
   else
@@ -1247,18 +1327,19 @@ function! s:FlashYank() abort
   call timer_start(0, {-> s:DoFlash(l:pat)})
 endfunction
 
-
 function! s:DoFlash(pat) abort
   let l:id = matchadd('IncSearch', a:pat)
   if l:id < 0 | return | endif
   call timer_start(250, {-> execute('silent! call matchdelete(' . l:id . ')', '')})
 endfunction
 
+" All event callbacks go through s:Safe() so one handler failure cannot
+" silently corrupt editor state or prevent other handlers from running.
 call Augroup('VimrcEvents', [
-  \ 'BufReadPre           * call s:HandleLargeFile()',
-  \ 'BufWritePre          * call s:StripTrailing()',
-  \ 'BufWritePre          * call s:MkdirOnSave()',
-  \ 'BufReadPost          * call s:RestoreCursor()',
+  \ 'BufReadPre           * call s:Safe("HandleLargeFile", function("s:HandleLargeFile"))',
+  \ 'BufWritePre          * call s:Safe("StripTrailing",   function("s:StripTrailing"))',
+  \ 'BufWritePre          * call s:Safe("MkdirOnSave",     function("s:MkdirOnSave"))',
+  \ 'BufReadPost          * call s:Safe("RestoreCursor",   function("s:RestoreCursor"))',
   \ 'TextYankPost         * silent! call s:FlashYank()',
   \ 'FocusGained,BufEnter * silent! checktime',
   \ 'VimResized           * wincmd =',
@@ -1423,14 +1504,20 @@ function! s:CheckCocSettings() abort
   endif
 endfunction
 
-command! VimInfo            call s:VimInfo()
-command! CleanBuffers       call s:CleanBuffers()
-command! FindProjectRoot    call s:InitProjectRoot()
-command! ReloadConfig       source $MYVIMRC | call Log('Config reloaded', 'info')
-command! CheckCocSettings   call s:CheckCocSettings()
-command! -nargs=1 -complete=file Rename         call s:RenameFile(<q-args>)
-command! -nargs=1                ReloadModule   call s:ReloadModule(<q-args>)
-command! -nargs=1                TeardownModule call s:TeardownModule(<q-args>)
+call CreateCommand('VimInfo',          function('s:VimInfo'),          {})
+call CreateCommand('CleanBuffers',     function('s:CleanBuffers'),     {})
+call CreateCommand('FindProjectRoot',  function('s:InitProjectRoot'),  {})
+call CreateCommand('CheckCocSettings', function('s:CheckCocSettings'), {})
+call CreateCommand('Rename',           function('s:RenameFile'),       { 'nargs': 1, 'complete': 'file' })
+
+" ReloadConfig is a simple ex-command; no funcref needed
+command! ReloadConfig source $MYVIMRC | call Log('Config reloaded', 'info')
+
+" Debug-only commands: gated so they're invisible in normal operation
+if g:vimide_debug
+  command! -nargs=1 ReloadModule   call s:ReloadModule(<q-args>)
+  command! -nargs=1 TeardownModule call s:TeardownModule(<q-args>)
+endif
 
 " =============================================================================
 " LAYER 13: TMUX INTEGRATION
@@ -1459,8 +1546,19 @@ if filereadable(expand('~/.vimrc.local'))
   source ~/.vimrc.local
 endif
 
+" =============================================================================
+" LAYER 15: STARTUP THRESHOLD
+" =============================================================================
+
 call s:Mark('vimrc done')
 
+let s:elapsed = reltimefloat(reltime(s:boot_time))
+if s:elapsed > 0.10
+  echohl WarningMsg
+  echom printf('[vimide] Slow startup: %.0fms (threshold: 100ms)', s:elapsed * 1000)
+  echohl None
+endif
+
 if g:vimide_debug
-  call Log('Vim IDE loaded — :VimInfo for details', 'info')
+  call Log(printf('Vim IDE loaded in %.0fms — :VimInfo for details', s:elapsed * 1000), 'info')
 endif
