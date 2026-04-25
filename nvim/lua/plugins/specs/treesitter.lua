@@ -73,9 +73,21 @@ return {
         enable  = true,
         disable = function(lang, buf)
           if vim.b[buf] and vim.b[buf].large_file then return true end
+          -- FIX: vim.uv.fs_stat is synchronous here; on network-mounted paths
+          -- it blocks the main loop. Cache the result in a buffer variable so
+          -- the stat fires at most once per buffer lifetime, not on every
+          -- treesitter attach/re-check call.
+          if vim.b[buf] ~= nil and vim.b[buf]._ts_size_checked then
+            return (vim.b[buf]._ts_large == true) or lang == "vim"
+          end
           local max_filesize = 500 * 1024
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
-          if ok and stats and stats.size > max_filesize then return true end
+          local is_large = ok and stats and stats.size > max_filesize
+          pcall(function()
+            vim.b[buf]._ts_size_checked = true
+            vim.b[buf]._ts_large        = is_large and true or false
+          end)
+          if is_large then return true end
           return lang == "vim"
         end,
         additional_vim_regex_highlighting = false,

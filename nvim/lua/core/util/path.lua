@@ -65,7 +65,9 @@ function M.find_root(start_path)
   end
 
   -- No marker found — return cwd but do NOT cache.
-  return vim.fn.getcwd()
+  -- pcall: getcwd() can throw in headless / embedded contexts.
+  local ok_cwd, cwd = pcall(vim.fn.getcwd)
+  return (ok_cwd and cwd and cwd ~= "") and cwd or nil
 end
 
 function M.clear_cache()

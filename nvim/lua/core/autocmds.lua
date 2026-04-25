@@ -49,7 +49,13 @@ au("BufReadPost", {
 
     local lcount = vim.api.nvim_buf_line_count(e.buf)
     if mark[1] and mark[1] > 0 and mark[1] <= lcount then
-      pcall(vim.api.nvim_win_set_cursor, 0, mark)
+      -- FIX: nvim_win_set_cursor(0, …) targets the *current* window which
+      -- may be a different split from e.buf. Find the first window that
+      -- actually shows e.buf and move its cursor there instead.
+      local wins = vim.fn.win_findbuf(e.buf)
+      if #wins > 0 then
+        pcall(vim.api.nvim_win_set_cursor, wins[1], mark)
+      end
     end
   end,
 })

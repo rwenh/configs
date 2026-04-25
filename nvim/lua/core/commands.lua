@@ -244,9 +244,22 @@ end, { desc = "Resume last telescope picker" })
 -- INSTALL ALL MASON PACKAGES
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- FIX: guard against calling MasonInstallAll twice rapidly (e.g. user presses
+-- the key twice before the first run finishes). A second invocation would
+-- create competing pkg:install() chains on the same packages, causing
+-- unpredictable Mason state. _mason_install_running is reset when the run
+-- completes (success or timeout).
+local _mason_install_running = false
+
 cmd("MasonInstallAll", function()
   local ok, registry = pcall(require, "mason-registry")
   if not ok then vim.notify("mason-registry not available", vim.log.levels.ERROR); return end
+
+  if _mason_install_running then
+    vim.notify("MasonInstallAll is already running — please wait", vim.log.levels.WARN)
+    return
+  end
+  _mason_install_running = true
 
   local pkgs = {
     -- LSP
@@ -297,6 +310,7 @@ cmd("MasonInstallAll", function()
   local function check_done()
     if pending > 0 then return end
     if timer then timer:stop(); timer:close(); timer = nil end
+    _mason_install_running = false
     if #failed > 0 then
       vim.notify(
         string.format("MasonInstallAll: %d/%d done. Failed: %s",
@@ -320,6 +334,7 @@ cmd("MasonInstallAll", function()
       )
       if timer then timer:stop(); timer:close(); timer = nil end
     end
+    _mason_install_running = false
   end))
 
   for _, pkg_name in ipairs(pkgs) do

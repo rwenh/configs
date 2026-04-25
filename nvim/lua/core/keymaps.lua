@@ -62,8 +62,16 @@ map("n", "<Esc>", "<cmd>nohlsearch<cr>", opts)
 -- WINDOW MANAGEMENT
 -- ============================================================================
 
-map("n", "<leader>wq", "<cmd>wq<cr>",  { desc = "Save & Quit" })
-map("n", "<leader>ww", "<cmd>w<cr>",   { desc = "Save" })
+-- FIX: bare :wq / :w throw unhandled errors on read-only, nowrite, or
+-- terminal buffers. Wrap in pcall and surface a readable warning instead.
+map("n", "<leader>wq", function()
+  local ok, err = pcall(vim.cmd, "wq")
+  if not ok then vim.notify(tostring(err):gsub("^.*E%d+: ", ""), vim.log.levels.WARN) end
+end, { desc = "Save & Quit" })
+map("n", "<leader>ww", function()
+  local ok, err = pcall(vim.cmd, "w")
+  if not ok then vim.notify(tostring(err):gsub("^.*E%d+: ", ""), vim.log.levels.WARN) end
+end, { desc = "Save" })
 map("n", "<leader>qq", "<cmd>q<cr>",   { desc = "Quit" })
 map("n", "<leader>qa", "<cmd>qa<cr>",  { desc = "Quit all" })
 

@@ -51,7 +51,12 @@ return {
       end
 
       local function build_cmd(root, task)
-        if vim.fn.filereadable(root .. "/gradlew") == 1 then
+        -- FIX: filereadable alone is insufficient — gradlew may exist but
+        -- lack the executable bit (e.g. fresh clone without chmod +x).
+        -- Check executable() as well so we don't silently hand a non-runnable
+        -- path to the shell.
+        local gradlew = root .. "/gradlew"
+        if vim.fn.filereadable(gradlew) == 1 and vim.fn.executable(gradlew) == 1 then
           return "cd " .. vim.fn.shellescape(root) .. " && ./gradlew " .. task
         elseif vim.fn.filereadable(root .. "/pom.xml") == 1 then
           local mvn_task = task == "run" and "exec:java" or task

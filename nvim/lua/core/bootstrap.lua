@@ -31,6 +31,12 @@ if not vim.uv.fs_stat(lazypath) then
   })
 
   if vim.v.shell_error ~= 0 then
+    -- FIX: a failed clone leaves a partial directory at lazypath.
+    -- On the next launch vim.uv.fs_stat(lazypath) succeeds (directory exists)
+    -- so the clone block is skipped, lazy.nvim fails to require(), and the
+    -- error is confusing. Remove the partial directory so the next launch
+    -- retries the clone cleanly.
+    vim.fn.system({ "rm", "-rf", lazypath })
     vim.notify(
       "Failed to clone lazy.nvim:\n" .. tostring(out)
         .. "\n\nTroubleshooting:\n"

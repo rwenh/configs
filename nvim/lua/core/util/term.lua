@@ -39,6 +39,10 @@ function M.float_at_root(cmd, opts)
 
   local ok_path, path = pcall(require, "core.util.path")
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then
+    vim.notify("[term] could not resolve project root — command not launched", vim.log.levels.WARN)
+    return
+  end
   M.float("cd " .. vim.fn.shellescape(root) .. " && " .. cmd, opts)
 end
 

@@ -1,4 +1,4 @@
-# INSTALLATION INSTRUCTIONS — v2.3.15
+# INSTALLATION INSTRUCTIONS — v2.3.16
 
 ## What Was Changed (v2.0 → v2.1)
 
@@ -207,6 +207,54 @@
 
 ---
 
+## What Was Changed (v2.3.15 → v2.3.16)
+
+115. **path.lua — `find_root()` fallback pcall** — `vim.fn.getcwd()` can throw in headless / embedded contexts. The fallback return now uses `pcall` and returns `nil` on failure instead of propagating the error to every caller.
+
+116. **runner.lua — `run_selection()` line clamp** — Visual marks can be inverted when selecting upward (`'<` > `'>`). `start_line` and `end_line` are now swapped into ascending order before the buffer read so selection runners never receive a negative range.
+
+117. **runner.lua — `c` / `cpp` / `java` / `lua` executable guards** — All four runners previously returned a command string unconditionally. Added `vim.fn.executable()` guards so they return `nil` (producing a clear "No suitable runtime" message) when the required binary is absent.
+
+118. **runner.lua — VHDL `io.open` replaced with `vim.fn.readfile`** — `io.open()` on the current file blocks the main loop on slow / network-mounted filesystems. Replaced with `vim.fn.readfile(file, "", 200)` wrapped in `pcall`; reads at most 200 lines to locate the entity name.
+
+119. **term.lua — `float_at_root()` empty-root guard** — `path.find_root()` can now return `nil` (see #115). Added a nil/empty check before `shellescape`; a clear warning is emitted and the command is not launched rather than passing an empty string to the shell.
+
+120. **java.lua — `hash_path()` replaced with `vim.fn.sha256`** — The custom 32-bit DJB2 hash produced collisions for paths differing only in tail characters, silently aliasing distinct projects to the same jdtls workspace directory. Replaced with `vim.fn.sha256(root_dir):sub(1, 16)`.
+
+121. **test.lua — neotest-rust deferred setup stale snapshot fixed** — The deferred Rust adapter re-setup closed over `opts.adapters` captured at `config()` time. Any adapters registered between initial setup and the `LspAttach` callback were dropped. Now queries neotest's live adapter state and falls back to the `opts` snapshot only if that query fails.
+
+122. **dap.lua — codelldb binary existence check** — The codelldb adapter was registered unconditionally; a missing binary only surfaced as a cryptic DAP server error at session-start time. Added `executable()` / `filereadable()` check with an actionable startup warning pointing to `:MasonInstall codelldb`.
+
+123. **dap.lua — `DapBpRestore_*` augroup cleanup clarified** — The `pcall(vim.api.nvim_del_augroup_by_id, aug)` call already existed inside the BufReadPost callback; added an explicit comment explaining that this is the intentional cleanup point to prevent per-path augroup accumulation across the session.
+
+124. **autocmds.lua — `RestoreCursor` targets correct window** — `nvim_win_set_cursor(0, mark)` targeted the *current* window, not necessarily the window showing `e.buf`. On multi-split layouts the cursor was restored into the wrong split. Now uses `vim.fn.win_findbuf(e.buf)` to find the first window that actually displays the buffer.
+
+125. **kotlin.lua — `gradlew` executable-bit check** — `vim.fn.filereadable()` only checks existence and readability, not the executable bit. Fresh clones often lack `chmod +x gradlew`. Added `vim.fn.executable(gradlew) == 1` alongside the `filereadable` check.
+
+126. **bootstrap.lua — partial clone cleanup on git error** — A failed `git clone` leaves a partial directory at `lazypath`. On the next launch `vim.uv.fs_stat(lazypath)` succeeds, the clone block is skipped, and `lazy.nvim` fails with a confusing module-not-found error. Added `vim.fn.system({"rm","-rf",lazypath})` before returning on clone failure so the next launch retries cleanly.
+
+127. **lsp.lua — double-pcall `blink.get_lsp_capabilities()`** — `blink.cmp` may load successfully but fail `setup()`. `get_capabilities()` now wraps `blink.get_lsp_capabilities()` in a second `pcall` and falls back to vanilla `make_client_capabilities()` on failure.
+
+128. **lsp.lua — `format_on_save` invalid-buffer guard** — `vim.b[bufnr].disable_autoformat` throws if `bufnr` is no longer valid. Access is now wrapped in `pcall`; the formatter is skipped on error.
+
+129. **focus.lua — `VimLeavePre` option restore** — If Neovim is quit while focus mode is active, `number` / `relativenumber` / `laststatus` etc. are left in their "off" state. A `VimLeavePre` autocmd now calls `apply_spec(false)` whenever `_active` is true.
+
+130. **theme.lua — stale `_manual_override` on external `:colorscheme`** — Running `:colorscheme <n>` directly bypassed `theme.lua`, leaving `_cache._manual_override` set to the previous toggle state. A `ColorScheme` autocmd now clears the cache when the newly active scheme does not match `M.config.theme`.
+
+131. **commands.lua — `MasonInstallAll` concurrent-invocation mutex** — Calling `:MasonInstallAll` twice before the first run finishes created competing `pkg:install()` chains. A `_mason_install_running` boolean is set on entry and cleared on completion or timeout.
+
+132. **python.lua — duplicate DAP keymap registration guard** — The retroactive loop in `register_dap_keymaps()` re-applied maps to all open Python buffers on every setup call. Added `vim.b[buf].python_dap_keymaps_registered` flag; maps are applied at most once per buffer lifetime.
+
+133. **keymaps.lua — `<leader>ww` / `<leader>wq` pcall wrappers** — Bare `:w` and `:wq` throw unhandled errors on read-only, `nowrite`, or terminal buffers. Both maps now use `pcall(vim.cmd, …)` and surface a trimmed readable warning on failure.
+
+134. **ui.lua — `open_rain` pcall around `nvim_open_win`** — `nvim_open_win` can fail in very small terminals or during headless runs. Both the main and reflection floats now check the return value; on failure `close_rain()` cleans up orphaned buffers rather than leaving the engine in a broken half-open state.
+
+135. **ui.lua — timer idle-phase bail** — The normal-speed `uv.timer` callback delivers one additional tick after `close_rain()` stops it due to `vim.schedule_wrap` queuing. Added an explicit `_phase == "idle"` early return to prevent touching nil/invalid `_rbuf`/`_rwin` handles on that final ghost tick.
+
+136. **treesitter.lua — `fs_stat` per-buffer cache** — `highlight.disable` called `vim.uv.fs_stat` synchronously on every treesitter attach event. On network-mounted filesystems this blocked the main loop per buffer open. Result is now cached in `vim.b[buf]._ts_size_checked` / `_ts_large` so the stat fires at most once per buffer lifetime.
+
+---
+
 ## What Was Changed (v2.3.14 → v2.3.15)
 
 103. **focus.lua — boolean restore ternary bug** — `apply_spec()` used the classic Lua `a and b or c` pattern for boolean restore. When a saved value was `false` (e.g. user had `number=false`), `true and false or default` evaluated to `default` (true), so focus exit forcibly re-enabled `number`, `relativenumber`, and `cursorline`. Fixed with an explicit `if saved ~= nil then saved else default end`.
@@ -235,9 +283,35 @@
 
 ---
 
-## Known Issues (v2.3.15)
+## Known Issues (v2.3.16)
 
 No open known issues. All previously tracked issues have been resolved.
+
+### Issues resolved this release (v2.3.15 → v2.3.16)
+
+| Issue | Fix |
+|-------|-----|
+| `path.lua` fallback `getcwd()` throws in headless/embedded contexts | #115 |
+| `runner.lua` inverted visual selection marks produce negative range | #116 |
+| `runner.lua` `c`/`cpp`/`java`/`lua` runners silently fail if binary absent | #117 |
+| `runner.lua` VHDL entity detection blocks main loop via `io.open` | #118 |
+| `term.lua` `float_at_root()` passes empty string to shell when root is nil | #119 |
+| `java.lua` custom `hash_path()` has 32-bit collisions for similar paths | #120 |
+| `test.lua` neotest-rust deferred setup drops adapters registered after config() | #121 |
+| `dap.lua` missing codelldb binary produces cryptic DAP error at session start | #122 |
+| `autocmds.lua` `RestoreCursor` moves cursor in wrong split window | #124 |
+| `kotlin.lua` `gradlew` used without executable-bit check | #125 |
+| `bootstrap.lua` partial clone directory blocks retry on next launch | #126 |
+| `lsp.lua` `blink.get_lsp_capabilities()` throws when blink setup failed | #127 |
+| `lsp.lua` `format_on_save` throws on invalid buffer number | #128 |
+| `focus.lua` option state not restored when Neovim is quit during focus mode | #129 |
+| `theme.lua` `_manual_override` stale after external `:colorscheme` command | #130 |
+| `commands.lua` `MasonInstallAll` concurrent calls corrupt Mason state | #131 |
+| `python.lua` DAP keymaps re-registered on every `:luafile` reload | #132 |
+| `keymaps.lua` `<leader>ww`/`<leader>wq` crash on read-only buffers | #133 |
+| `ui.lua` `nvim_open_win` failure leaves rain engine in broken state | #134 |
+| `ui.lua` ghost timer tick after `close_rain()` touches nil handles | #135 |
+| `treesitter.lua` `fs_stat` blocks main loop on every treesitter attach | #136 |
 
 ### Issues resolved this release (v2.3.14 → v2.3.15)
 
@@ -318,32 +392,32 @@ No open known issues. All previously tracked issues have been resolved.
 ├── init.lua                          ← v2.3.8
 └── lua/
     ├── core/
-    │   ├── autocmds.lua              ← v2.3.15  ✦ TrimWhitespace buftype guard added
-    │   ├── bootstrap.lua             ← v2.3.14  ✦ sole lazy.nvim clone site
-    │   ├── commands.lua              ← v2.3.15  ✦ gofumpt added; ToggleAutoformat fixed; disable_autoformat initialised
-    │   ├── focus.lua                 ← v2.3.15  ✦ boolean restore ternary bug fixed
+    │   ├── autocmds.lua              ← v2.3.16  ✦ RestoreCursor targets correct window
+    │   ├── bootstrap.lua             ← v2.3.16  ✦ partial clone cleanup on git error; v2.3.16
+    │   ├── commands.lua              ← v2.3.16  ✦ MasonInstallAll concurrent-invocation mutex
+    │   ├── focus.lua                 ← v2.3.16  ✦ VimLeavePre option-restore guard
     │   ├── hud.lua                   ← v2.2.4
-    │   ├── keymaps.lua               ← v2.3.15  ✦ <leader>xx and <leader>xu duplicates removed
+    │   ├── keymaps.lua               ← v2.3.16  ✦ ww/wq pcall wrappers
     │   ├── options.lua               ← v2.3.9b  ✦ matchparen restored (vim-matchup owns it)
-    │   ├── theme.lua                 ← v2.2.2
+    │   ├── theme.lua                 ← v2.3.16  ✦ ColorScheme autocmd clears stale _manual_override
     │   └── util/
-    │       ├── path.lua              ← v2.3.2
-    │       ├── runner.lua            ← v2.3.14  ✦ all terminal launches via core.util.term
-    │       └── term.lua              ← v2.3.13  ✦ shared toggleterm helper (float / float_at_root)
+    │       ├── path.lua              ← v2.3.16  ✦ getcwd() fallback pcall
+    │       ├── runner.lua            ← v2.3.16  ✦ line clamp; executable guards; non-blocking vhdl
+    │       └── term.lua              ← v2.3.16  ✦ float_at_root() empty-root guard
     └── plugins/
         ├── init.lua                  ← v2.3.14  ✦ duplicate lazy.nvim clone removed
         └── specs/
             ├── init.lua              ← v2.1 (import order load-sensitive)
             ├── advanced.lua          ← v2.3.15  ✦ kotlin added to neogen languages table
             ├── completion.lua        ← v2.3.6   ✦ blink nav keys "show" removed
-            ├── dap.lua               ← v2.3.15  ✦ dead Python DAP section removed
+            ├── dap.lua               ← v2.3.16  ✦ codelldb binary existence check
             ├── editor.lua            ← v2.2.4
             ├── git.lua               ← v2.2.2
             ├── hud.lua               ← v2.3.7   ✦ mini.animate opts→config
-            ├── lsp.lua               ← v2.3.15  ✦ shellcheck guard fixed; rustfmt note added
-            ├── test.lua              ← v2.3.14  ✦ jest_cmd() inline fallback removed
-            ├── treesitter.lua        ← v2.3.8   ✦ "comment" removed from ignore_install
-            ├── ui.lua                ← v2.3.14  ✦ dead version fallback replaced with "unknown"
+            ├── lsp.lua               ← v2.3.16  ✦ double-pcall blink capabilities; format_on_save buffer guard
+            ├── test.lua              ← v2.3.16  ✦ neotest-rust stale adapter snapshot fixed
+            ├── treesitter.lua        ← v2.3.16  ✦ fs_stat per-buffer cache
+            ├── ui.lua                ← v2.3.16  ✦ open_win pcall; timer idle-phase bail
             ├── workflow.lua          ← v2.3.1
             └── lang/
                 ├── c.lua             ← v2.3.13
@@ -355,11 +429,11 @@ No open known issues. All previously tracked issues have been resolved.
                 ├── fortran.lua       ← v2.3.13
                 ├── go.lua            ← v2.0
                 ├── html.lua          ← v2.2.5
-                ├── java.lua          ← v2.3.12
+                ├── java.lua          ← v2.3.16  ✦ hash_path() replaced with vim.fn.sha256
                 ├── javascript.lua    ← v2.2
-                ├── kotlin.lua        ← v2.3.13
+                ├── kotlin.lua        ← v2.3.16  ✦ gradlew executable-bit check
                 ├── markdown.lua      ← v2.2.3
-                ├── python.lua        ← v2.3.15  ✦ subprocess-free debugpy probe
+                ├── python.lua        ← v2.3.16  ✦ duplicate DAP keymap registration guard
                 ├── rest.lua          ← v2.2.5
                 ├── ruby.lua          ← v2.0
                 ├── rust.lua          ← v2.3.15  ✦ rustfmt added to conform

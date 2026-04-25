@@ -112,6 +112,9 @@ return {
           group    = vim.api.nvim_create_augroup("PythonDapKeymaps", { clear = true }),
           callback = function(e)
             local buf = e.buf
+            -- FIX: guard against duplicate registration on :luafile reload.
+            if vim.b[buf].python_dap_keymaps_registered then return end
+            vim.b[buf].python_dap_keymaps_registered = true
             vim.keymap.set("n", "<leader>pydm",
               function() pcall(function() require("dap-python").test_method() end) end,
               { buffer = buf, desc = "Python Debug Method" })
@@ -126,7 +129,9 @@ return {
 
         -- Retroactively apply to already-open Python buffers.
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-          if vim.bo[buf].filetype == "python" then
+          if vim.bo[buf].filetype == "python"
+          and not vim.b[buf].python_dap_keymaps_registered then
+            vim.b[buf].python_dap_keymaps_registered = true
             vim.keymap.set("n", "<leader>pydm",
               function() pcall(function() require("dap-python").test_method() end) end,
               { buffer = buf, desc = "Python Debug Method" })

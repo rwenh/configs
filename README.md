@@ -2,7 +2,7 @@
 
 A modular Neovim IDE config — lazy-loaded, LSP-first, 20+ languages.
 
-> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.15
+> Tested on **openSUSE Leap 16.0** · Neovim **0.11+** required · v2.3.16
 
 ---
 
@@ -301,12 +301,33 @@ Toggle at runtime: `<leader>ut`
 
 ---
 
-## Known Issues / Pending Fixes (v2.3.15)
+## Known Issues / Pending Fixes (v2.3.16)
 
 All previously listed known issues have been resolved. No open issues remain.
 
 | Resolved in | Issue | Fix |
 |-------------|-------|-----|
+| v2.3.16 | `path.lua` `getcwd()` fallback throws in headless contexts | pcall guard; returns nil |
+| v2.3.16 | `runner.lua` inverted visual selection marks produce negative range | clamp to ascending order |
+| v2.3.16 | `runner.lua` `c`/`cpp`/`java`/`lua` runners silent-fail when binary absent | `executable()` guards |
+| v2.3.16 | `runner.lua` VHDL `io.open` blocks main loop | replaced with `vim.fn.readfile` |
+| v2.3.16 | `term.lua` `float_at_root()` passes empty string to shell when root nil | nil/empty guard |
+| v2.3.16 | `java.lua` `hash_path()` 32-bit collisions alias distinct projects | replaced with `vim.fn.sha256` |
+| v2.3.16 | `test.lua` neotest-rust deferred setup drops adapters registered after config() | query live state |
+| v2.3.16 | `dap.lua` missing codelldb gives cryptic DAP error at session start | binary check + warning |
+| v2.3.16 | `autocmds.lua` `RestoreCursor` moves cursor into wrong split | `win_findbuf()` fix |
+| v2.3.16 | `kotlin.lua` `gradlew` used without executable-bit check | added `executable()` guard |
+| v2.3.16 | `bootstrap.lua` partial clone blocks retry on next launch | cleanup on git error |
+| v2.3.16 | `lsp.lua` `blink.get_lsp_capabilities()` throws when blink setup failed | double-pcall |
+| v2.3.16 | `lsp.lua` `format_on_save` throws on invalid buffer | pcall guard |
+| v2.3.16 | `focus.lua` options not restored when quitting during focus mode | `VimLeavePre` autocmd |
+| v2.3.16 | `theme.lua` `_manual_override` stale after external `:colorscheme` | `ColorScheme` autocmd |
+| v2.3.16 | `commands.lua` concurrent `MasonInstallAll` corrupts Mason state | mutex guard |
+| v2.3.16 | `python.lua` DAP keymaps duplicated on every `:luafile` reload | buffer-flag guard |
+| v2.3.16 | `keymaps.lua` `<leader>ww`/`wq` crash on read-only buffers | pcall wrappers |
+| v2.3.16 | `ui.lua` `nvim_open_win` failure leaves rain engine in broken state | pcall + cleanup |
+| v2.3.16 | `ui.lua` ghost timer tick after `close_rain()` touches nil handles | idle-phase bail |
+| v2.3.16 | `treesitter.lua` `fs_stat` blocks main loop on every treesitter attach | per-buffer cache |
 | v2.3.15 | `focus.lua` `apply_spec()` used a broken Lua `a and b or c` ternary for boolean restore; `number`, `relativenumber`, `cursorline` were forcibly re-enabled on focus exit if the user had them off | Replaced with explicit `if saved ~= nil then saved else default end` |
 | v2.3.15 | `dap.lua` manually registered `dap.adapters.python` and `dap.configurations.python`; `python.lua`'s `nvim-dap-python.setup()` silently overwrote both on ft=python — dap.lua's Python section was dead code | Python DAP section removed from `dap.lua`; `python.lua` is the sole owner |
 | v2.3.15 | `rust.lua` had no `conform` spec; `rustfmt` was entirely absent from the formatter pipeline despite being documented in the README | Added `optional=true` conform spec to `rust.lua` with `rust = { "rustfmt" }` |

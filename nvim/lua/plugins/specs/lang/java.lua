@@ -42,15 +42,10 @@ return {
           )
           root_dir = root_dir or vim.fn.getcwd()
 
-          local function hash_path(path)
-            local h = 5381
-            for i = 1, #path do
-              h = ((h * 33) + string.byte(path, i)) % 2^32
-            end
-            return string.format("%x", h)
-          end
-
-          local workspace = data_dir .. "/jdtls-workspace/" .. hash_path(root_dir)
+          -- FIX: use vim.fn.sha256 for a collision-free, stable workspace hash.
+          -- The previous pure-Lua integer hash used 32-bit overflow arithmetic
+          -- which collided for paths differing only in tail characters.
+          local workspace = data_dir .. "/jdtls-workspace/" .. vim.fn.sha256(root_dir):sub(1, 16)
 
           local os_map    = { Linux = "linux", Darwin = "mac", Windows_NT = "win" }
           local os_key    = os_map[vim.uv.os_uname().sysname] or "linux"

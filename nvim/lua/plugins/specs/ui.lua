@@ -1112,7 +1112,11 @@ return {
         for r = 1, R_ROWS do blank[r] = string.rep(" ", R_COLS) end
         vim.api.nvim_buf_set_lines(_rbuf, 0, -1, false, blank)
 
-        _rwin = vim.api.nvim_open_win(_rbuf, false, {
+        -- FIX: nvim_open_win can fail in very small terminals or headless
+        -- contexts. If it throws, close_rain() cleans up the orphaned buffer
+        -- and returns cleanly rather than leaving the engine in a broken state.
+        local ok_rwin
+        ok_rwin, _rwin = pcall(vim.api.nvim_open_win, _rbuf, false, {
           relative  = "editor",
           row       = 0,
           col       = 0,
@@ -1122,6 +1126,11 @@ return {
           focusable = false,
           zindex    = 200,
         })
+        if not ok_rwin then
+          close_rain()
+          vim.notify("[matrix] terminal too small for rain overlay", vim.log.levels.INFO)
+          return
+        end
         vim.wo[_rwin].winblend   = 100   -- transparent bg; only fg chars visible
         vim.wo[_rwin].wrap       = false
         vim.wo[_rwin].cursorline = false
@@ -1144,7 +1153,8 @@ return {
         for r = 1, R_ROWS do rblank[r] = string.rep(" ", R_COLS) end
         vim.api.nvim_buf_set_lines(_xbuf, 0, -1, false, rblank)
 
-        _xwin = vim.api.nvim_open_win(_xbuf, false, {
+        local ok_xwin
+        ok_xwin, _xwin = pcall(vim.api.nvim_open_win, _xbuf, false, {
           relative  = "editor",
           row       = 0,
           col       = 0,
@@ -1154,6 +1164,10 @@ return {
           focusable = false,
           zindex    = 190,
         })
+        if not ok_xwin then
+          close_rain()
+          return
+        end
         vim.wo[_xwin].winblend   = 92    -- ≈15% opacity for faint reflection
         vim.wo[_xwin].wrap       = false
         vim.wo[_xwin].cursorline = false
@@ -1171,8 +1185,10 @@ return {
         -- Normal-speed timer for decode + rain phases
         _timer = vim.uv.new_timer()
         _timer:start(TICK_MS, TICK_MS, vim.schedule_wrap(function()
-          if _phase == "drain" or _phase == "idle" then
-            -- drain phase uses its own timer (already switched in trigger_drain)
+          -- FIX: schedule_wrap may deliver one more tick after close_rain()
+          -- stops the timer. Bail immediately if the engine has already
+          -- transitioned to idle so we don't touch nil/invalid handles.
+          if _phase == "idle" or _phase == "drain" then
             return
           end
           frame()

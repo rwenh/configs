@@ -140,10 +140,29 @@ return {
       }
 
       -- ── C / C++ / Rust (codelldb) ─────────────────────────────────
+      -- FIX: resolve the path once and verify the binary is present before
+      -- registering the adapter. Without this guard a missing codelldb
+      -- produces a cryptic "failed to start debug server" DAP error rather
+      -- than a clear actionable message at startup.
+      local codelldb_cmd = mason_bin("codelldb")
+      local codelldb_ok  = vim.fn.executable(codelldb_cmd) == 1
+                        or vim.fn.filereadable(codelldb_cmd) == 1
+      if not codelldb_ok then
+        vim.schedule(function()
+          vim.notify(
+            "[dap] codelldb not found — C / C++ / Rust / Zig debug unavailable.\n"
+            .. "Run: :MasonInstall codelldb",
+            vim.log.levels.WARN
+          )
+        end)
+      end
+      -- Register unconditionally so the config table exists; nvim-dap's
+      -- lazy adapter-start will surface the missing-binary error at the
+      -- moment the user actually tries to start a session.
       dap.adapters.codelldb = {
         type = "server", port = "${port}",
         executable = {
-          command = mason_bin("codelldb"),
+          command = codelldb_cmd,
           args    = { "--port", "${port}" },
         },
       }
@@ -385,6 +404,8 @@ return {
                 local evfile = vim.api.nvim_buf_get_name(e.buf)
                 if evfile ~= path then return end
                 set_bps_scheduled(e.buf, entries)
+                -- FIX: delete the augroup after it fires so one-shot restore
+                -- augroups don't accumulate across the session lifetime.
                 pcall(vim.api.nvim_del_augroup_by_id, aug)
               end,
             })

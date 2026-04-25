@@ -83,22 +83,26 @@ local runners = {
   end,
 
   lua = function(file)
+    if vim.fn.executable("lua") ~= 1 then return nil end
     return "lua " .. vim.fn.shellescape(file)
   end,
 
   c = function(file)
+    if vim.fn.executable("gcc") ~= 1 then return nil end
     local exe = vim.fn.fnamemodify(file, ":r")
     return "gcc -Wall -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file)
       .. " && " .. vim.fn.shellescape(exe)
   end,
 
   cpp = function(file)
+    if vim.fn.executable("g++") ~= 1 then return nil end
     local exe = vim.fn.fnamemodify(file, ":r")
     return "g++ -Wall -std=c++17 -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file)
       .. " && " .. vim.fn.shellescape(exe)
   end,
 
   java = function(file)
+    if vim.fn.executable("javac") ~= 1 or vim.fn.executable("java") ~= 1 then return nil end
     local dir  = vim.fn.fnamemodify(file, ":h")
     local name = vim.fn.fnamemodify(file, ":t:r")
     return "cd " .. vim.fn.shellescape(dir)
@@ -167,26 +171,25 @@ local runners = {
   end,
 
   vhdl = function(file)
-    if vim.fn.executable("ghdl") == 1 then
-      local entity = nil
-      local f = io.open(file, "r")
-      if f then
-        for line in f:lines() do
-          entity = line:match("entity%s+(%w+)%s+is")
-          if entity then break end
-        end
-        f:close()
-      end
-      if entity then
-        return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s",
-          vim.fn.shellescape(file),
-          vim.fn.shellescape(entity),
-          vim.fn.shellescape(entity))
-      else
-        return "ghdl -s " .. vim.fn.shellescape(file)
+    if vim.fn.executable("ghdl") ~= 1 then return nil end
+    local entity = nil
+    -- vim.fn.readfile is non-blocking for small files and avoids blocking the
+    -- main loop that io.open() would cause on slow/network filesystems.
+    local ok_rf, lines = pcall(vim.fn.readfile, file, "", 200)
+    if ok_rf and lines then
+      for _, line in ipairs(lines) do
+        entity = line:match("entity%s+(%w+)%s+is")
+        if entity then break end
       end
     end
-    return nil
+    if entity then
+      return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s",
+        vim.fn.shellescape(file),
+        vim.fn.shellescape(entity),
+        vim.fn.shellescape(entity))
+    else
+      return "ghdl -s " .. vim.fn.shellescape(file)
+    end
   end,
 
   fortran = function(file)
@@ -276,6 +279,11 @@ function M.run_selection(start_line, end_line)
   if start_line == 0 or end_line == 0 then
     vim.notify("No visual selection found — make a selection first", vim.log.levels.WARN)
     return
+  end
+
+  -- Clamp: marks can be inverted when selecting upward.
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
   end
 
   local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)

@@ -84,4 +84,19 @@ function M.toggle()
   if _active then M.exit() else M.enter() end
 end
 
+-- FIX: if the user quits Neovim while focus mode is active, options like
+-- number/relativenumber/laststatus would be left in their "off" state for
+-- the next session (persisted by sessionoptions or terminal state).
+-- Restore them gracefully on VimLeavePre.
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  group    = vim.api.nvim_create_augroup("FocusModeCleanup", { clear = true }),
+  callback = function()
+    if _active then
+      _active = false
+      apply_spec(false)
+    end
+  end,
+  desc = "Restore focus-mode options before Neovim exits",
+})
+
 return M

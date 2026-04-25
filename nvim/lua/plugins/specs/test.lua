@@ -61,10 +61,18 @@ return {
             end)
             if ok and rust_adapter then
               _rust_registered = true
-              local current_adapters = vim.deepcopy(opts.adapters or {})
-              table.insert(current_adapters, rust_adapter)
+              -- Re-read the live adapter list from neotest's current state
+              -- rather than closing over the stale opts snapshot captured at
+              -- setup time.  Any adapters registered between initial setup and
+              -- this deferred callback are preserved.
+              local ok_nt, nt_state = pcall(function()
+                return require("neotest.lib").func_util.filter_list(
+                  require("neotest.client").get_adapters(), function(_) return true end)
+              end)
+              local base = (ok_nt and nt_state) or vim.deepcopy(opts.adapters or {})
+              table.insert(base, rust_adapter)
               pcall(function()
-                neotest.setup(vim.tbl_extend("force", opts, { adapters = current_adapters }))
+                neotest.setup(vim.tbl_extend("force", opts, { adapters = base }))
               end)
             else
               vim.notify("neotest-rust: adapter failed to load after rust_analyzer attach",

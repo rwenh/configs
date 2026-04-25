@@ -82,7 +82,13 @@ return {
       -- ── Capabilities helper ────────────────────────────────────────────
       local function get_capabilities()
         local ok, blink = pcall(require, "blink.cmp")
-        if ok then return blink.get_lsp_capabilities() end
+        if ok then
+          -- FIX: blink may have loaded but failed setup (e.g. missing luasnip).
+          -- A second pcall around get_lsp_capabilities() prevents a hard error
+          -- in that case and falls back to the vanilla capabilities table.
+          local ok2, caps = pcall(blink.get_lsp_capabilities)
+          if ok2 and caps then return caps end
+        end
         return vim.lsp.protocol.make_client_capabilities()
       end
 
@@ -347,9 +353,13 @@ return {
         -- rustfmt ships with rustup and does not need a Mason entry.
       },
       format_on_save = function(bufnr)
-        if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then
-          return nil
-        end
+        if vim.g.disable_autoformat then return nil end
+        -- FIX: vim.b[bufnr] throws if bufnr is no longer valid (e.g. BufWritePre
+        -- fired for a buffer that was concurrently deleted). Guard with pcall.
+        local ok_b, buf_disable = pcall(function()
+          return vim.b[bufnr].disable_autoformat
+        end)
+        if ok_b and buf_disable then return nil end
         return { timeout_ms = 500, lsp_format = "fallback" }
       end,
     },

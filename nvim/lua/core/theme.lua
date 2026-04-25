@@ -127,4 +127,21 @@ function M.get_active_theme()
   return M.config.theme or "tokyonight"
 end
 
+-- FIX: if the user runs :colorscheme <name> directly (bypassing theme.lua),
+-- _manual_override stays set to the previous toggle state and
+-- resolve_background() will keep reporting the old value on the next
+-- toggle() call. Listen for ColorScheme and clear the override when the
+-- newly active scheme no longer matches what theme.lua set.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group    = vim.api.nvim_create_augroup("ThemeCacheSync", { clear = true }),
+  callback = function(e)
+    if e.match ~= M.config.theme and not e.match:match("^" .. M.config.theme) then
+      _cache._manual_override = nil
+      _cache.hour  = nil
+      _cache.value = nil
+    end
+  end,
+  desc = "Clear theme.lua manual-override cache on external :colorscheme",
+})
+
 return M
