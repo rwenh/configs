@@ -17,8 +17,6 @@ let s:boot_time = reltime()
 let g:vimide_debug           = 0
 let g:vimide_minimal         = 0
 let g:vimide_diagnostics     = 'coc'
-" When 1: test/db/rest defer to BufReadPost; debug defers to BufReadPost.
-" LSP and git are always eager regardless of this flag.
 let g:vimide_lazy_aggressive = 1
 
 " Feature module flags — override in ~/.vimrc.local
@@ -28,6 +26,7 @@ let g:module_test_enabled    = 1
 let g:module_db_enabled      = 1
 let g:module_rest_enabled    = 1
 let g:module_debug_enabled   = 1
+let g:module_ale_enabled     = (g:vimide_diagnostics !=# 'coc')
 
 " =============================================================================
 " LAYER 1: CORE ABSTRACTION APIs
@@ -98,8 +97,8 @@ function! Map(mode, lhs, rhs, opts) abort
   let l:expr   = get(a:opts, 'expr',   0) ? '<expr>'   : ''
   let l:buf    = get(a:opts, 'buffer', 0) ? '<buffer>'  : ''
   let l:nore   = get(a:opts, 'noremap',1) ? 'noremap'  : 'map'
-  execute printf('%s%s %s %s %s %s %s',
-    \ a:mode, l:nore, l:silent, l:expr, l:buf, a:lhs, a:rhs)
+  let l:flags  = join(filter([l:silent, l:expr, l:buf], '!empty(v:val)'), ' ')
+  execute a:mode . l:nore . ' ' . l:flags . ' ' . a:lhs . ' ' . a:rhs
 endfunction
 
 " --- MapGroup() --------------------------------------------------------------
@@ -330,14 +329,14 @@ for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui'
 endfor
 
 set swapfile   directory=~/.vim/swap//
-set backup     nowritebackup backupdir=~/.vim/backup//
+set nobackup   nowritebackup backupdir=~/.vim/backup//
 set autoread
 
 if has('persistent_undo')
   set undofile undodir=~/.vim/undo
 endif
 
-set foldmethod=indent foldlevel=99 foldlevelstart=99
+set foldmethod=indent foldlevelstart=99
 set list listchars=tab:▸\ ,trail:·,extends:→,precedes:←,nbsp:⦸
 set fillchars=vert:│,fold:─
 set spelllang=en_us
@@ -518,6 +517,17 @@ Plug 'liuchengxu/vim-which-key'
 Plug 'szw/vim-maximizer', { 'on': 'MaximizerToggle' }
 Plug 'tpope/vim-eunuch'
 
+let g:coc_global_extensions = [
+  \ 'coc-json',
+  \ 'coc-yaml',
+  \ 'coc-pyright',
+  \ 'coc-clangd',
+  \ 'coc-rust-analyzer',
+  \ 'coc-go',
+  \ 'coc-tsserver',
+  \ 'coc-eslint',
+  \ ]
+
 call plug#end()
 
 call Augroup('PlugAutoInstall', [
@@ -533,6 +543,16 @@ call Augroup('PlugAutoInstall', [
 " =============================================================================
 
 let s:theme = !empty($VIM_THEME) ? $VIM_THEME : 'catppuccin_mocha'
+
+let s:lightline_theme_map = {
+  \ 'catppuccin_mocha':     'catppuccin_mocha',
+  \ 'catppuccin_latte':     'catppuccin_latte',
+  \ 'catppuccin_frappe':    'catppuccin_frappe',
+  \ 'catppuccin_macchiato': 'catppuccin_macchiato',
+  \ 'gruvbox':              'gruvbox',
+  \ 'onedark':              'one',
+  \ }
+let s:lightline_theme = get(s:lightline_theme_map, s:theme, 'catppuccin_mocha')
 
 function! s:ApplyTheme() abort
   set background=dark
@@ -600,12 +620,10 @@ call Map('n', '<leader><CR>', ':source $MYVIMRC \| echom "reloaded"<CR>', {})
 call Map('n', '<leader>ec',   ':edit $MYVIMRC<CR>', {})
 
 " Save / quit
-call Map('n', '<C-s>',     ':write<CR>', {})
-call Map('i', '<C-s>',     '<C-o>:write<CR>', {})
-call Map('n', '<leader>w', ':write<CR>', {})
+call Map('n', '<C-s>', ':write<CR>', {})
+call Map('i', '<C-s>', '<C-o>:write<CR>', {})
 call Map('n', '<leader>q', ':quit<CR>', {})
 call Map('n', '<leader>Q', ':quit!<CR>', {})
-call Map('n', '<leader>qa',':qall<CR>', {})
 
 " Window management
 call MapGroup('<leader>w', {
@@ -668,11 +686,11 @@ call MapGroup('<leader>f', {
   \ 'p': ':Files %:h<CR>',
   \ }, {})
 
-" Diff mode
+" Diff mode — use Map() wrapper for consistency
 call Augroup('DiffMappings', [
   \ 'OptionSet diff if v:option_new'
-  \   . ' | nnoremap <buffer> <leader>dg :diffget<CR>'
-  \   . ' | nnoremap <buffer> <leader>dp :diffput<CR>'
+  \   . ' | nnoremap <silent><buffer> <leader>dg :diffget<CR>'
+  \   . ' | nnoremap <silent><buffer> <leader>dp :diffput<CR>'
   \   . ' | endif',
   \ ])
 
@@ -691,7 +709,7 @@ call MapGroup('<leader>t', {
   \ }, {})
 call Map('v', '<leader>ts', ':FloatermSend<CR>', {})
 
-" Markdown
+" Markdown — maps live under <leader>m (not <leader>p; see which-key fix below)
 call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
 call Map('n', '<leader>ms', ':MarkdownPreviewStop<CR>', {})
 
@@ -749,7 +767,7 @@ function! LightlineCocStatus() abort
 endfunction
 
 let g:lightline = {
-  \ 'colorscheme': 'catppuccin_mocha',
+  \ 'colorscheme': s:lightline_theme,
   \ 'active': {
   \   'left':  [['mode', 'paste'],
   \             ['gitbranch', 'readonly', 'filename', 'modified']],
@@ -916,6 +934,8 @@ let g:go_highlight_functions    = 1
 let g:go_highlight_operators    = 1
 let g:go_def_mapping_enabled    = 0
 let g:go_doc_keywordprg_enabled = 0
+let g:go_gopls_enabled          = 0
+let g:go_fmt_autosave           = 0
 
 " --- rust.vim ----------------------------------------------------------------
 
@@ -979,10 +999,12 @@ let g:which_key_map = {
   \ 'd': { 'name': '+debug/diff' },
   \ 'D': { 'name': '+database' },
   \ 'S': { 'name': '+session' },
-  \ 'm': { 'name': '+multicursor' },
-  \ 'p': { 'name': '+markdown' },
-  \ 'a': 'align (easy-align ga+motion)',
+  \ 'm': { 'name': '+markdown' },
   \ }
+
+if g:vimide_diagnostics !=# 'coc'
+  let g:which_key_map['a'] = { 'name': '+ale' }
+endif
 
 " =============================================================================
 " LAYER 8: MODULE DEFINITIONS
@@ -1003,8 +1025,8 @@ function! s:git_init() abort
   let g:gitgutter_enabled       = 1
   let g:gitgutter_map_keys      = 0
   let g:gitgutter_sign_added    = '▎'
-  let g:gitgutter_sign_modified = '▎'
-  let g:gitgutter_sign_removed  = '▎'
+  let g:gitgutter_sign_modified = '░'
+  let g:gitgutter_sign_removed  = '▸'
 
   call MapGroup('<leader>g', {
     \ 'g': ':Git<CR>',
@@ -1048,16 +1070,6 @@ call s:RegisterModule('git', {
 
 function! s:lsp_init() abort
   let g:coc_disable_startup_warning = 1
-  let g:coc_global_extensions = [
-    \ 'coc-json',
-    \ 'coc-yaml',
-    \ 'coc-pyright',
-    \ 'coc-clangd',
-    \ 'coc-rust-analyzer',
-    \ 'coc-go',
-    \ 'coc-tsserver',
-    \ 'coc-eslint',
-    \ ]
   let g:coc_auto_copen          = 0
   let g:coc_enable_locationlist = 0
 
@@ -1107,6 +1119,49 @@ call s:RegisterModule('lsp', {
   \ 'teardown': function('s:lsp_teardown'),
   \ 'lazy':     '',
   \ })
+
+" --- ALE (non-coc diagnostics) -----------------------------------------------
+
+if g:vimide_diagnostics !=# 'coc'
+  function! s:ale_init() abort
+    let g:ale_sign_error           = '✘'
+    let g:ale_sign_warning         = '▲'
+    let g:ale_sign_info            = '●'
+    let g:ale_echo_msg_format      = '[%linter%] %s [%severity%]'
+    let g:ale_fix_on_save          = 1
+    let g:ale_lint_on_text_changed = 'never'
+    let g:ale_lint_on_insert_leave = 1
+    let g:ale_linters_explicit     = 1
+    let g:ale_linters = {
+      \ 'python':     ['flake8', 'mypy'],
+      \ 'javascript': ['eslint'],
+      \ 'typescript': ['tsserver', 'eslint'],
+      \ 'go':         ['golangci-lint'],
+      \ 'rust':       ['cargo'],
+      \ }
+    let g:ale_fixers = {
+      \ '*':          ['remove_trailing_lines', 'trim_whitespace'],
+      \ 'python':     ['black', 'isort'],
+      \ 'javascript': ['prettier', 'eslint'],
+      \ 'typescript': ['prettier', 'eslint'],
+      \ 'go':         ['goimports'],
+      \ 'rust':       ['rustfmt'],
+      \ }
+    call MapGroup('<leader>a', {
+      \ 'n': ':ALENextWrap<CR>',
+      \ 'p': ':ALEPreviousWrap<CR>',
+      \ 'f': ':ALEFix<CR>',
+      \ 'd': ':ALEDetail<CR>',
+      \ }, {})
+    nmap <silent> ]a <Plug>(ale_next_wrap)
+    nmap <silent> [a <Plug>(ale_prev_wrap)
+  endfunction
+
+  call s:RegisterModule('ale', {
+    \ 'init': function('s:ale_init'),
+    \ 'lazy': 'buf',
+    \ })
+endif
 
 " --- Debug (vimspector) ------------------------------------------------------
 " lazy='buf': load on first buffer open. Previously used 'cmd' (CmdUndefined *)
@@ -1340,7 +1395,7 @@ call Augroup('VimrcEvents', [
   \ 'BufWritePre          * call s:Safe("StripTrailing",   function("s:StripTrailing"))',
   \ 'BufWritePre          * call s:Safe("MkdirOnSave",     function("s:MkdirOnSave"))',
   \ 'BufReadPost          * call s:Safe("RestoreCursor",   function("s:RestoreCursor"))',
-  \ 'TextYankPost         * silent! call s:FlashYank()',
+  \ 'TextYankPost         * call s:FlashYank()',
   \ 'FocusGained,BufEnter * silent! checktime',
   \ 'VimResized           * wincmd =',
   \ 'TerminalOpen         * setlocal nonumber norelativenumber signcolumn=no',
@@ -1399,8 +1454,9 @@ call Augroup('FileTypeIndent', [
 function! s:InitProjectRoot() abort
   let l:markers = ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml',
     \ 'go.mod', 'Makefile', 'pyproject.toml', 'build.gradle', 'build.zig']
-  let l:dir = expand('%:p:h')
-  while l:dir !=# '/'
+  let l:dir  = expand('%:p:h')
+  let l:prev = ''
+  while l:dir !=# l:prev
     for l:m in l:markers
       if isdirectory(l:dir . '/' . l:m) || filereadable(l:dir . '/' . l:m)
         call SetState('project_root', l:dir)
@@ -1408,7 +1464,8 @@ function! s:InitProjectRoot() abort
         return
       endif
     endfor
-    let l:dir = fnamemodify(l:dir, ':h')
+    let l:prev = l:dir
+    let l:dir  = fnamemodify(l:dir, ':h')
   endwhile
   call Log('Project root not found', 'warn')
 endfunction
@@ -1424,7 +1481,7 @@ endfunction
 
 call RegisterTask('project:root', { 'run': function('s:InitProjectRoot') })
 call RegisterTask('lsp:restart',  { 'run': function('s:LspRestart') })
-call RegisterTask('project:init', { 'deps': ['project:root'], 'run': function('s:InitProjectRoot') })
+call RegisterTask('project:init', { 'deps': ['project:root'] })
 
 function! s:VimInfo() abort
   echo '========== Vim IDE Info =========='
@@ -1471,16 +1528,16 @@ function! s:CleanBuffers() abort
 endfunction
 
 function! s:RenameFile(new) abort
-  let l:old = expand('%:p')
-  if l:old ==# fnamemodify(a:new, ':p')
+  let l:old     = expand('%:p')
+  let l:new_abs = fnamemodify(a:new, ':p')
+  if l:old ==# l:new_abs
     call Log('Source and destination are the same', 'warn') | return
   endif
-  let l:result = system('mv ' . shellescape(l:old) . ' ' . shellescape(a:new))
-  if v:shell_error != 0
-    call Log('Rename failed: ' . l:result, 'error') | return
+  if rename(l:old, a:new) != 0
+    call Log('Rename failed: ' . a:new, 'error') | return
   endif
   execute 'edit ' . fnameescape(a:new)
-  execute 'bdelete ' . fnameescape(l:old)
+  silent! execute 'bwipeout ' . fnameescape(l:old)
   call Log('Renamed to ' . a:new, 'info')
 endfunction
 
@@ -1489,14 +1546,18 @@ function! s:CheckCocSettings() abort
   if !filereadable(l:path)
     call Log('coc-settings.json not found at ' . l:path, 'warn') | return
   endif
+  try
+    let l:cfg = json_decode(join(readfile(l:path), "\n"))
+  catch
+    call Log('coc-settings.json is not valid JSON', 'error') | return
+  endtry
   let l:required = [
     \ 'diagnostic.errorSign', 'diagnostic.warningSign',
     \ 'diagnostic.infoSign',  'diagnostic.hintSign',
     \ 'diagnostic.virtualText', 'signature.enable', 'hover.autoHide',
     \ 'snippets.enable', 'coc.preferences.formatOnSaveFiletypes'
     \ ]
-  let l:content = join(readfile(l:path), "\n")
-  let l:missing = filter(copy(l:required), 'l:content !~# v:val')
+  let l:missing = filter(copy(l:required), '!has_key(l:cfg, v:val)')
   if empty(l:missing)
     call Log('coc-settings.json looks complete', 'info')
   else
@@ -1510,10 +1571,8 @@ call CreateCommand('FindProjectRoot',  function('s:InitProjectRoot'),  {})
 call CreateCommand('CheckCocSettings', function('s:CheckCocSettings'), {})
 call CreateCommand('Rename',           function('s:RenameFile'),       { 'nargs': 1, 'complete': 'file' })
 
-" ReloadConfig is a simple ex-command; no funcref needed
 command! ReloadConfig source $MYVIMRC | call Log('Config reloaded', 'info')
 
-" Debug-only commands: gated so they're invisible in normal operation
 if g:vimide_debug
   command! -nargs=1 ReloadModule   call s:ReloadModule(<q-args>)
   command! -nargs=1 TeardownModule call s:TeardownModule(<q-args>)
