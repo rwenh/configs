@@ -28,6 +28,12 @@ let g:module_rest_enabled    = 1
 let g:module_debug_enabled   = 1
 let g:module_ale_enabled     = (g:vimide_diagnostics !=# 'coc')
 
+if g:vimide_minimal
+  let g:module_db_enabled    = 0
+  let g:module_rest_enabled  = 0
+  let g:module_debug_enabled = 0
+endif
+
 " =============================================================================
 " LAYER 1: CORE ABSTRACTION APIs
 " =============================================================================
@@ -134,11 +140,11 @@ endfunction
 "   call CreateCommand('Rename',  function('s:RenameFile'), { 'nargs': 1, 'complete': 'file' })
 
 function! CreateCommand(name, Fn, opts) abort
-  let l:nargs   = get(a:opts, 'nargs',   0)
+  let l:nargs    = get(a:opts, 'nargs',    0)
   let l:complete = get(a:opts, 'complete', '')
   let l:nargs_s  = l:nargs > 0 ? ('-nargs=' . l:nargs . ' ') : ''
   let l:comp_s   = !empty(l:complete) ? ('-complete=' . l:complete . ' ') : ''
-  " Store the funcref so the command can call it
+  " Store the funcref so the command can call it.
   let s:cmdfns[a:name] = a:Fn
   let l:invoke = l:nargs > 0
     \ ? 'call call(s:cmdfns["' . a:name . '"], [<q-args>])'
@@ -232,12 +238,12 @@ function! s:LoadModule(name) abort
   for l:dep in l:m.deps
     call s:LoadModule(l:dep)
   endfor
-  let s:modules[a:name].loaded = 1
   if l:m.init isnot v:null
     call s:Mark(a:name . ' init start')
     call s:Safe(a:name . ':init', l:m.init)
     call s:Mark(a:name . ' init done')
   endif
+  let s:modules[a:name].loaded = 1
 endfunction
 
 function! s:TeardownModule(name) abort
@@ -320,7 +326,7 @@ set wildignore+=*.o,*~,*.pyc,*.class,*.jar,*.lock
 set wildignore+=*/.git/*,*/.hg/*,*/.svn/*,*/node_modules/*,*/bower_components/*
 set wildignore+=*.DS_Store,*.log,*.tmp
 
-set completeopt=menuone,noselect,noinsert
+set completeopt=menuone,noselect
 
 for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui']
   if !isdirectory(expand('~/.vim/' . s:d))
@@ -530,12 +536,15 @@ let g:coc_global_extensions = [
 
 call plug#end()
 
+function! s:CheckMissingPlugins() abort
+  let l:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)')
+  if !empty(l:missing)
+    echom len(l:missing) . ' plugin(s) missing — run :PlugInstall'
+  endif
+endfunction
+
 call Augroup('PlugAutoInstall', [
-  \ 'VimEnter * ++once'
-  \   . ' let s:missing = filter(values(g:plugs), "!isdirectory(v:val.dir)")'
-  \   . ' | if len(s:missing)'
-  \   . ' | echom len(s:missing) . " plugin(s) missing — run :PlugInstall"'
-  \   . ' | endif',
+  \ 'VimEnter * ++once call s:CheckMissingPlugins()',
   \ ])
 
 " =============================================================================
@@ -709,7 +718,7 @@ call MapGroup('<leader>t', {
   \ }, {})
 call Map('v', '<leader>ts', ':FloatermSend<CR>', {})
 
-" Markdown — maps live under <leader>m (not <leader>p; see which-key fix below)
+" Markdown
 call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
 call Map('n', '<leader>ms', ':MarkdownPreviewStop<CR>', {})
 
@@ -753,8 +762,7 @@ call Map('n', '<F6>', ':call <SID>RunAction("compile")<CR>', {})
 call Map('n', '<F7>', ':call <SID>RunAction("build")<CR>', {})
 call Map('n', '<F9>', ':call <SID>RunAction("test")<CR>', {})
 
-" which-key
-nnoremap <silent> <leader> :<c-u>WhichKey '<Space>'<CR>
+call Map('n', '<leader>', ":<C-u>WhichKey '<Space>'<CR>", {})
 
 " =============================================================================
 " LAYER 7: PLUGIN CONFIGURATION (non-feature — always active)
@@ -834,7 +842,7 @@ call Augroup('FernEvents', [
 
 " --- FZF ---------------------------------------------------------------------
 
-let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'rounded': v:true } }
+let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'border': 'rounded' } }
 let g:fzf_history_dir = expand('~/.vim/fzf-history')
 
 let $FZF_DEFAULT_OPTS =
@@ -853,7 +861,7 @@ let g:floaterm_width       = 0.88
 let g:floaterm_height      = 0.88
 let g:floaterm_autoclose   = 1
 let g:floaterm_position    = 'center'
-let g:floaterm_borderchars = '─│─│╭╮╯╰'
+let g:floaterm_borderchars = ['─', '│', '─', '│', '╭', '╮', '╯', '╰']
 let g:floaterm_title       = '  terminal ($1/$2) '
 let g:floaterm_wintype     = 'float'
 
@@ -906,12 +914,12 @@ let g:gutentags_ctags_extra_args    = [
   \ '--exclude=target', '--exclude=__pycache__', '--exclude=.cache',
   \ '--exclude=*.min.js', '--exclude=*.min.css',
   \ ]
-let g:gutentags_enabled = 0
 
-call Augroup('GutentagsSelectiveEnable', [
-  \ 'FileType sh,vim,fortran,cobol,vhdl,verilog,make,cmake,zig,d,nim,crystal,lua,perl,r,julia'
-  \   . ' let g:gutentags_enabled = 1',
-  \ ])
+let g:gutentags_enabled = 1
+let g:gutentags_exclude_filetypes = [
+  \ 'python', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact',
+  \ 'go', 'rust', 'c', 'cpp', 'java', 'kotlin', 'ruby', 'json', 'yaml', 'graphql',
+  \ ]
 
 if executable('rg')
   let g:gutentags_file_list_command = 'rg --files --follow'
@@ -965,7 +973,7 @@ let g:startify_session_autoload    = 1
 let g:startify_session_persistence = 1
 let g:startify_change_to_vcs_root  = 1
 let g:startify_fortune_use_unicode = 1
-let g:startify_custom_header = startify#pad([
+let g:startify_custom_header = [
   \ '  ██╗   ██╗██╗███╗   ███╗',
   \ '  ██║   ██║██║████╗ ████║',
   \ '  ██║   ██║██║██╔████╔██║',
@@ -973,7 +981,7 @@ let g:startify_custom_header = startify#pad([
   \ '   ╚████╔╝ ██║██║ ╚═╝ ██║',
   \ '    ╚═══╝  ╚═╝╚═╝     ╚═╝',
   \ '           your ide. your rules.',
-  \ ])
+  \ ]
 
 " --- which-key ---------------------------------------------------------------
 
@@ -1051,8 +1059,8 @@ function! s:git_init() abort
     \ 'p': ':GitGutterPreviewHunk<CR>',
     \ }, {})
 
-  nmap ]h <Plug>(GitGutterNextHunk)
-  nmap [h <Plug>(GitGutterPrevHunk)
+  call Map('n', ']h', '<Plug>(GitGutterNextHunk)', { 'noremap': 0 })
+  call Map('n', '[h', '<Plug>(GitGutterPrevHunk)', { 'noremap': 0 })
 endfunction
 
 function! s:git_teardown() abort
@@ -1080,7 +1088,7 @@ function! s:lsp_init() abort
   inoremap <silent><expr> <CR>
     \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
   inoremap <silent><expr> <C-Space> coc#refresh()
-  inoremap <silent> <C-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
+  inoremap <silent> <M-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
 
   nmap <silent> gd <Plug>(coc-definition)
   nmap <silent> gD <Plug>(coc-declaration)
@@ -1283,30 +1291,30 @@ call s:LoadModules()
 " LAYER 9: LANGUAGE RUNNERS
 " =============================================================================
 
-call RegisterRunner('python',      { 'run': 'python3 {fp}',                   'test': 'python3 -m pytest {dn}' })
-call RegisterRunner('javascript',  { 'run': 'node {fp}',                       'test': 'npm test' })
-call RegisterRunner('typescript',  { 'run': 'ts-node {fp}',                    'test': 'npm test', 'compile': 'tsc {fp}' })
-call RegisterRunner('go',          { 'run': 'go run {fp}',                     'test': 'go test ./...', 'build': 'go build -o {bn} {fp}' })
-call RegisterRunner('rust',        { 'run': './{bn}',                          'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc {fp}' })
-call RegisterRunner('c',           { 'run': './{bn}',                          'compile': 'gcc -Wall -O2 -g {fp} -o {bn} -lm' })
-call RegisterRunner('cpp',         { 'run': './{bn}',                          'compile': 'g++ -Wall -O2 -g -std=c++17 {fp} -o {bn} -lm' })
-call RegisterRunner('java',        { 'compile': 'javac {fp}',                  'run': 'java -cp {dn} {bn}' })
-call RegisterRunner('zig',         { 'run': 'zig run {fp}',                    'build': 'zig build', 'test': 'zig test {fp}' })
-call RegisterRunner('kotlin',      { 'compile': 'kotlinc {fp} -include-runtime -d {bn}.jar', 'run': 'java -jar {bn}.jar' })
-call RegisterRunner('sh',          { 'run': 'bash {fp}' })
-call RegisterRunner('lua',         { 'run': 'lua {fp}' })
-call RegisterRunner('ruby',        { 'run': 'ruby {fp}',                       'test': 'ruby -Itest {fp}' })
-call RegisterRunner('perl',        { 'run': 'perl {fp}' })
-call RegisterRunner('php',         { 'run': 'php {fp}' })
-call RegisterRunner('elixir',      { 'run': 'elixir {fp}',                     'test': 'mix test' })
-call RegisterRunner('haskell',     { 'run': 'runghc {fp}',                     'compile': 'ghc -O2 {fp} -o {bn}' })
-call RegisterRunner('fortran',     { 'compile': 'gfortran -O2 {fp} -o {bn}',   'run': './{bn}' })
-call RegisterRunner('cobol',       { 'compile': 'cobc -x {fp} -o {bn}',        'run': './{bn}' })
-call RegisterRunner('julia',       { 'run': 'julia {fp}' })
-call RegisterRunner('r',           { 'run': 'Rscript {fp}' })
-call RegisterRunner('nim',         { 'run': 'nim c -r {fp}',                   'build': 'nim c -d:release {fp}' })
-call RegisterRunner('crystal',     { 'run': 'crystal run {fp}',                'build': 'crystal build --release {fp}' })
-call RegisterRunner('d',           { 'compile': 'dmd {fp} -of={bn}',           'run': './{bn}' })
+call RegisterRunner('python',     { 'run': 'python3 {fp}',                   'test': 'python3 -m pytest {dn}' })
+call RegisterRunner('javascript', { 'run': 'node {fp}',                       'test': 'npm test' })
+call RegisterRunner('typescript', { 'run': 'ts-node {fp}',                    'test': 'npm test', 'compile': 'tsc {fp}' })
+call RegisterRunner('go',         { 'run': 'go run {fp}',                     'test': 'go test ./...', 'build': 'go build -o {bn} {fp}' })
+call RegisterRunner('rust',       { 'run': 'cargo run',                       'test': 'cargo test', 'build': 'cargo build --release', 'compile': 'rustc {fp}' })
+call RegisterRunner('c',          { 'run': './{bn}',                          'compile': 'gcc -Wall -O2 -g {fp} -o {bn} -lm' })
+call RegisterRunner('cpp',        { 'run': './{bn}',                          'compile': 'g++ -Wall -O2 -g -std=c++17 {fp} -o {bn} -lm' })
+call RegisterRunner('java',       { 'compile': 'javac {fp}',                  'run': 'java -cp {dn} {bn}' })
+call RegisterRunner('zig',        { 'run': 'zig run {fp}',                    'build': 'zig build', 'test': 'zig test {fp}' })
+call RegisterRunner('kotlin',     { 'compile': 'kotlinc {fp} -include-runtime -d {bn}.jar', 'run': 'java -jar {bn}.jar' })
+call RegisterRunner('sh',         { 'run': 'bash {fp}' })
+call RegisterRunner('lua',        { 'run': 'lua {fp}' })
+call RegisterRunner('ruby',       { 'run': 'ruby {fp}',                       'test': 'ruby -Itest {fp}' })
+call RegisterRunner('perl',       { 'run': 'perl {fp}' })
+call RegisterRunner('php',        { 'run': 'php {fp}' })
+call RegisterRunner('elixir',     { 'run': 'elixir {fp}',                     'test': 'mix test' })
+call RegisterRunner('haskell',    { 'run': 'runghc {fp}',                     'compile': 'ghc -O2 {fp} -o {bn}' })
+call RegisterRunner('fortran',    { 'compile': 'gfortran -O2 {fp} -o {bn}',   'run': './{bn}' })
+call RegisterRunner('cobol',      { 'compile': 'cobc -x {fp} -o {bn}',        'run': './{bn}' })
+call RegisterRunner('julia',      { 'run': 'julia {fp}' })
+call RegisterRunner('r',          { 'run': 'Rscript {fp}' })
+call RegisterRunner('nim',        { 'run': 'nim c -r {fp}',                   'build': 'nim c -d:release {fp}' })
+call RegisterRunner('crystal',    { 'run': 'crystal run {fp}',                'build': 'crystal build --release {fp}' })
+call RegisterRunner('d',          { 'compile': 'dmd {fp} -of={bn}',           'run': './{bn}' })
 
 function! s:RunAction(action) abort
   if &modified | write | endif
@@ -1395,7 +1403,7 @@ call Augroup('VimrcEvents', [
   \ 'BufWritePre          * call s:Safe("StripTrailing",   function("s:StripTrailing"))',
   \ 'BufWritePre          * call s:Safe("MkdirOnSave",     function("s:MkdirOnSave"))',
   \ 'BufReadPost          * call s:Safe("RestoreCursor",   function("s:RestoreCursor"))',
-  \ 'TextYankPost         * call s:FlashYank()',
+  \ 'TextYankPost         * call s:Safe("FlashYank",       function("s:FlashYank"))',
   \ 'FocusGained,BufEnter * silent! checktime',
   \ 'VimResized           * wincmd =',
   \ 'TerminalOpen         * setlocal nonumber norelativenumber signcolumn=no',
@@ -1460,7 +1468,8 @@ function! s:InitProjectRoot() abort
     for l:m in l:markers
       if isdirectory(l:dir . '/' . l:m) || filereadable(l:dir . '/' . l:m)
         call SetState('project_root', l:dir)
-        execute 'cd ' . fnameescape(l:dir)
+        if haslocaldir() && getcwd(winnr()) ==# l:dir | return | endif
+        execute 'lcd ' . fnameescape(l:dir)
         return
       endif
     endfor
@@ -1471,8 +1480,8 @@ function! s:InitProjectRoot() abort
 endfunction
 
 call Augroup('ProjectRoot', [
-  \ 'VimEnter   * call s:InitProjectRoot()',
-  \ 'DirChanged * call s:InitProjectRoot()',
+  \ 'VimEnter    *      call s:InitProjectRoot()',
+  \ 'DirChanged  global call s:InitProjectRoot()',
   \ ])
 
 function! s:LspRestart() abort
@@ -1492,6 +1501,7 @@ function! s:VimInfo() abort
   echo '$VIM_THEME  : ' . (!empty($VIM_THEME) ? $VIM_THEME : '(not set → catppuccin_mocha)')
   echo 'coc.nvim    : ' . (exists('g:did_coc_loaded') ? 'loaded' : 'NOT loaded')
   echo 'Diagnostics : ' . g:vimide_diagnostics
+  echo 'Minimal mode: ' . (g:vimide_minimal ? 'on' : 'off')
   echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
   echo 'Lazy mode   : ' . (g:vimide_lazy_aggressive ? 'on' : 'off')
   echo 'Project root: ' . State('project_root')
@@ -1582,7 +1592,7 @@ endif
 " LAYER 13: TMUX INTEGRATION
 " =============================================================================
 
-if exists('$TMUX')
+if exists('$TMUX') && has('job')
   function! s:TmuxRenameAsync() abort
     if !buflisted(bufnr('%')) | return | endif
     if s:IsSpecialBuffer() | return | endif
