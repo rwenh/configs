@@ -25,7 +25,7 @@ let g:module_lsp_enabled     = 1
 let g:module_test_enabled    = 1
 let g:module_db_enabled      = 1
 let g:module_rest_enabled    = 1
-let g:module_debug_enabled   = 1
+let g:module_debug_enabled   = 0   " FIX #7: opt-in; heavy plugin — set 1 in ~/.vimrc.local
 let g:module_ale_enabled     = (g:vimide_diagnostics !=# 'coc')
 
 if g:vimide_minimal
@@ -65,8 +65,10 @@ endfunction
 function! s:Safe(name, Fn) abort
   try
     call call(a:Fn, [])
+    return 1
   catch
     call Log(a:name . ' failed: ' . v:exception, 'error')
+    return 0
   endtry
 endfunction
 
@@ -109,12 +111,6 @@ endfunction
 
 " --- MapGroup() --------------------------------------------------------------
 " Batch normal-mode mappings under a common prefix.
-" opts: dict keyed by suffix for per-mapping overrides; falls back to defaults.
-"
-"   call MapGroup('<leader>g', {
-"     \ 's': ':Git<CR>',
-"     \ 'c': ':Git commit<CR>',
-"   \ }, {})
 
 function! MapGroup(prefix, maps, opts) abort
   for [l:key, l:rhs] in items(a:maps)
@@ -134,25 +130,20 @@ function! Augroup(name, cmds) abort
 endfunction
 
 " --- CreateCommand() ---------------------------------------------------------
-" Thin wrapper so every user command goes through a single declaration point.
-"
-"   call CreateCommand('VimInfo', function('s:VimInfo'), {})
-"   call CreateCommand('Rename',  function('s:RenameFile'), { 'nargs': 1, 'complete': 'file' })
+
+let g:vimide_cmdfns = {}
 
 function! CreateCommand(name, Fn, opts) abort
   let l:nargs    = get(a:opts, 'nargs',    0)
   let l:complete = get(a:opts, 'complete', '')
   let l:nargs_s  = l:nargs > 0 ? ('-nargs=' . l:nargs . ' ') : ''
   let l:comp_s   = !empty(l:complete) ? ('-complete=' . l:complete . ' ') : ''
-  " Store the funcref so the command can call it.
-  let s:cmdfns[a:name] = a:Fn
+  let g:vimide_cmdfns[a:name] = a:Fn
   let l:invoke = l:nargs > 0
-    \ ? 'call call(s:cmdfns["' . a:name . '"], [<q-args>])'
-    \ : 'call call(s:cmdfns["' . a:name . '"], [])'
+    \ ? 'call call(g:vimide_cmdfns["' . a:name . '"], [<q-args>])'
+    \ : 'call call(g:vimide_cmdfns["' . a:name . '"], [])'
   execute 'command! ' . l:nargs_s . l:comp_s . a:name . ' ' . l:invoke
 endfunction
-
-let s:cmdfns = {}
 
 " --- Runner registry ---------------------------------------------------------
 
@@ -238,12 +229,15 @@ function! s:LoadModule(name) abort
   for l:dep in l:m.deps
     call s:LoadModule(l:dep)
   endfor
+  let l:ok = 1
   if l:m.init isnot v:null
     call s:Mark(a:name . ' init start')
-    call s:Safe(a:name . ':init', l:m.init)
+    let l:ok = s:Safe(a:name . ':init', l:m.init)
     call s:Mark(a:name . ' init done')
   endif
-  let s:modules[a:name].loaded = 1
+  if l:ok
+    let s:modules[a:name].loaded = 1
+  endif
 endfunction
 
 function! s:TeardownModule(name) abort
@@ -431,7 +425,7 @@ Plug 'andymass/vim-matchup'
 " LSP / COMPLETION
 Plug 'neoclide/coc.nvim', { 'branch': 'release' }
 
-" DAP
+" DAP — deferred; only plug#load'd when module_debug_enabled=1
 Plug 'puremourning/vimspector', { 'on': [] }
 
 " EDITING
@@ -613,8 +607,8 @@ call Map('n', '<C-j>', '<C-w>j', {})
 call Map('n', '<C-k>', '<C-w>k', {})
 call Map('n', '<C-l>', '<C-w>l', {})
 
-nnoremap <silent> <Tab>   :call <SID>SafeBnext()<CR>
-nnoremap <silent> <S-Tab> :call <SID>SafeBprev()<CR>
+call Map('n', '<Tab>',   ':call <SID>SafeBnext()<CR>', {})
+call Map('n', '<S-Tab>', ':call <SID>SafeBprev()<CR>', {})
 
 call Map('n', 'j', 'gj', {})
 call Map('n', 'k', 'gk', {})
@@ -664,8 +658,8 @@ call Map('n', '<leader>sc', ':nohlsearch<CR>', {})
 call Map('n', '<leader>sr', ':%s/\<<C-r><C-w>\>//gc<Left><Left><Left>', { 'silent': 0 })
 call Map('v', '<leader>sr', '"hy:%s/<C-r>h//gc<Left><Left><Left>', { 'silent': 0 })
 
-" Quickfix
-call MapGroup('<leader>c', {
+" FIX #10: Quickfix under <leader>q — <leader>c is now exclusively LSP/CoC.
+call MapGroup('<leader>q', {
   \ 'o': ':copen<CR>',
   \ 'c': ':cclose<CR>',
   \ 'n': ':cnext<CR>',
@@ -695,7 +689,7 @@ call MapGroup('<leader>f', {
   \ 'p': ':Files %:h<CR>',
   \ }, {})
 
-" Diff mode — use Map() wrapper for consistency
+" Diff mode
 call Augroup('DiffMappings', [
   \ 'OptionSet diff if v:option_new'
   \   . ' | nnoremap <silent><buffer> <leader>dg :diffget<CR>'
@@ -707,16 +701,9 @@ call Augroup('DiffMappings', [
 call Map('n', '<leader>e', ':Fern . -drawer -reveal=% -toggle<CR>', {})
 call Map('n', '<leader>E', ':Fern . -drawer -reveal=%<CR>', {})
 
-" Terminal
+" Terminal — core toggle only; <leader>T group lives in Layer 7 with floaterm config.
 call Map('n', '<C-\>', ':FloatermToggle<CR>', {})
 call Map('t', '<C-\>', '<C-\><C-n>:FloatermToggle<CR>', {})
-call MapGroup('<leader>t', {
-  \ 'n': ':FloatermNew<CR>',
-  \ 'k': ':FloatermKill<CR>',
-  \ 'l': ':FloatermNext<CR>',
-  \ 'h': ':FloatermPrev<CR>',
-  \ }, {})
-call Map('v', '<leader>ts', ':FloatermSend<CR>', {})
 
 " Markdown
 call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
@@ -852,7 +839,7 @@ let $FZF_DEFAULT_OPTS =
   \ '--color=marker:#f5e0dc,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8'
 
 if executable('bat')
-  let $FZF_DEFAULT_OPTS .= ' --preview "bat --style=numbers --color=always {}"'
+  let g:fzf_preview_window = ['right:50%:hidden', 'ctrl-/']
 endif
 
 " --- Floaterm ----------------------------------------------------------------
@@ -864,6 +851,15 @@ let g:floaterm_position    = 'center'
 let g:floaterm_borderchars = ['─', '│', '─', '│', '╭', '╮', '╯', '╰']
 let g:floaterm_title       = '  terminal ($1/$2) '
 let g:floaterm_wintype     = 'float'
+
+" <leader>t). FloatermSend also lives here — not in core Layer 6.
+call MapGroup('<leader>T', {
+  \ 'n': ':FloatermNew<CR>',
+  \ 'k': ':FloatermKill<CR>',
+  \ 'l': ':FloatermNext<CR>',
+  \ 'h': ':FloatermPrev<CR>',
+  \ }, {})
+call Map('v', '<leader>Ts', ':FloatermSend<CR>', {})
 
 " --- vim-vsnip ---------------------------------------------------------------
 
@@ -900,6 +896,26 @@ call Augroup('IndentGuideColors', [
   \   . ' | highlight IndentGuidesEven ctermbg=236 guibg=#313244',
   \ ])
 
+" --- vim-asterisk ------------------------------------------------------------
+" z* / z# variants keep cursor position stable (no jump-then-search flicker).
+
+let g:asterisk#keeppos = 1
+map *  <Plug>(asterisk-z*)
+map #  <Plug>(asterisk-z#)
+map g* <Plug>(asterisk-gz*)
+map g# <Plug>(asterisk-gz#)
+
+" --- vim-visual-multi --------------------------------------------------------
+
+let g:VM_theme                      = 'ocean'
+let g:VM_highlight_matches          = 'underline'
+let g:VM_show_warnings              = 0
+let g:VM_maps                       = {}
+let g:VM_maps['Find Under']         = '<C-n>'
+let g:VM_maps['Find Subword Under'] = '<C-n>'
+let g:VM_maps['Select All']         = '<C-a>'
+let g:VM_maps['Skip Region']        = '<C-x>'
+
 " --- Gutentags ---------------------------------------------------------------
 
 let g:gutentags_cache_dir           = expand('~/.vim/tags')
@@ -915,7 +931,6 @@ let g:gutentags_ctags_extra_args    = [
   \ '--exclude=*.min.js', '--exclude=*.min.css',
   \ ]
 
-let g:gutentags_enabled = 1
 let g:gutentags_exclude_filetypes = [
   \ 'python', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact',
   \ 'go', 'rust', 'c', 'cpp', 'java', 'kotlin', 'ruby', 'json', 'yaml', 'graphql',
@@ -997,11 +1012,13 @@ let g:which_key_map = {
   \ 'f': { 'name': '+find/fzf' },
   \ 'g': { 'name': '+git' },
   \ 'h': { 'name': '+hunk' },
-  \ 't': { 'name': '+terminal/test' },
+  \ 't': { 'name': '+test' },
+  \ 'T': { 'name': '+terminal' },
   \ 'u': { 'name': '+toggle' },
   \ 's': { 'name': '+search' },
   \ 'y': { 'name': '+yank' },
   \ 'c': { 'name': '+lsp/coc' },
+  \ 'q': { 'name': '+quickfix' },
   \ 'l': { 'name': '+loclist' },
   \ 'r': { 'name': '+rename/rest' },
   \ 'd': { 'name': '+debug/diff' },
@@ -1172,10 +1189,6 @@ if g:vimide_diagnostics !=# 'coc'
 endif
 
 " --- Debug (vimspector) ------------------------------------------------------
-" lazy='buf': load on first buffer open. Previously used 'cmd' (CmdUndefined *)
-" which fired on ANY undefined command — too broad, a latent bug.
-" vimspector is loaded explicitly via plug#load inside init, so the plugin
-" payload remains deferred regardless.
 
 function! s:debug_init() abort
   call plug#load('vimspector')
@@ -1203,7 +1216,7 @@ endfunction
 call s:RegisterModule('debug', {
   \ 'init':     function('s:debug_init'),
   \ 'teardown': function('s:debug_teardown'),
-  \ 'lazy':     'buf',
+  \ 'lazy':     '',
   \ })
 
 " --- Test (vim-test) ---------------------------------------------------------
@@ -1317,7 +1330,6 @@ call RegisterRunner('crystal',    { 'run': 'crystal run {fp}',                'b
 call RegisterRunner('d',          { 'compile': 'dmd {fp} -of={bn}',           'run': './{bn}' })
 
 function! s:RunAction(action) abort
-  if &modified | write | endif
   let l:ft = &filetype
   let l:fp = expand('%:p')
   if !filereadable(l:fp)
@@ -1327,6 +1339,7 @@ function! s:RunAction(action) abort
   if empty(l:cmd)
     call Log('No ' . a:action . ' for filetype: ' . l:ft, 'warn') | return
   endif
+  if &modified | write | endif
   let l:subs = {
     \ 'fp': shellescape(l:fp),
     \ 'dn': shellescape(fnamemodify(l:fp, ':h')),
@@ -1505,7 +1518,10 @@ function! s:VimInfo() abort
   echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
   echo 'Lazy mode   : ' . (g:vimide_lazy_aggressive ? 'on' : 'off')
   echo 'Project root: ' . State('project_root')
-  echo 'Last task   : ' . get(State('last_task'), 'name', '(none)')
+  " FIX #2: State('last_task') returns '' when unset; get() on a string with a
+  " dict key is undefined behaviour. Guard with an explicit type check.
+  let l:lt = State('last_task')
+  echo 'Last task   : ' . (type(l:lt) == type({}) ? get(l:lt, 'name', '(none)') : '(none)')
   echo '--- modules ---'
   for [l:name, l:m] in items(s:modules)
     let l:status = !l:m.enabled        ? 'off'
