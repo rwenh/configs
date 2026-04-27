@@ -1,53 +1,104 @@
 ;;; lang-rust.el --- Rust Language Support -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: LSP vars moved from :init to :config (FIX #3)
+;;; Version: 3.3.0
+;;;
+;;;   Also: rust-ts-mode added to cargo-minor-mode hook and test runner.
+;;;         apheleia mapping extended to rust-ts-mode.
+;;;         Compile keybind added to rust-ts-mode-map.
+;;;
 ;;; Code:
 
 (require 'core-dev)
 
-(emacs-ide-dev-register "rust" :tier 1 :lsp-server "rust-analyzer"
-  :formatter "rustfmt" :test-cmd "cargo test" :repl "evcxr" :modes '(rust-mode rust-ts-mode))
+(emacs-ide-dev-register "rust"
+  :tier 1
+  :lsp-server "rust-analyzer"
+  :formatter  "rustfmt"
+  :test-cmd   "cargo test"
+  :repl       "evcxr"
+  :modes      '(rust-mode rust-ts-mode))
 
 (when (emacs-ide-dev-lang-enabled-p "rust")
+
+;;;; ── rust-mode ───────────────────────────────────────────────────────────────
 
 (use-package rust-mode
   :mode "\\.rs\\'"
   :config
+  ;; C-c C-c → cargo run for the current file's manifest
   (define-key rust-mode-map (kbd "C-c C-c")
-    (lambda () (interactive) (compile (format "cargo run --manifest-path %s"
-                                              (shell-quote-argument (buffer-file-name)))))))
+    (lambda ()
+      (interactive)
+      (compile "cargo run")))
+  ;; Propagate compile key to rust-ts-mode when available
+  (with-eval-after-load 'rust-ts-mode
+    (when (boundp 'rust-ts-mode-map)
+      (define-key rust-ts-mode-map (kbd "C-c C-c")
+        (lambda () (interactive) (compile "cargo run"))))))
+
+;;;; ── LSP (rust-analyzer) ─────────────────────────────────────────────────────
+;; Only cargo/clippy settings live here.
 
 (use-package lsp-rust
-  :after (rust-mode lsp-mode)
-  :if (and (bound-and-true-p emacs-ide-lsp-enable) (executable-find "rust-analyzer"))
-  :hook ((rust-mode rust-ts-mode) . lsp-deferred)
-  :init
-  ;; Nothing here — these need :config where lsp-rust is loaded
-  (message "")
+  :after  (rust-mode lsp-mode)
+  :if     (and (bound-and-true-p emacs-ide-lsp-enable)
+               (executable-find "rust-analyzer"))
+  :hook   ((rust-mode rust-ts-mode) . lsp-deferred)
   :config
-  ;; FIX #3: MOVED FROM :init — lsp-rust not loaded until :config
-  ;; Now these boundp checks actually work because the package is loaded
-  (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
-    (setq lsp-rust-analyzer-inlay-hints-mode t))
+  ;; Clippy on save — set here because these are Rust-specific and do not
+  ;; overlap with the inlay-hints concern owned by tools-lsp.el.
   (when (boundp 'lsp-rust-analyzer-cargo-watch-command)
     (setq lsp-rust-analyzer-cargo-watch-command "clippy"))
   (when (boundp 'lsp-rust-analyzer-checkOnSave-command)
-    (setq lsp-rust-analyzer-checkOnSave-command "clippy")))
+    (setq lsp-rust-analyzer-checkOnSave-command "clippy"))
+  ;; Proc-macro support
+  (when (boundp 'lsp-rust-analyzer-proc-macro-enable)
+    (setq lsp-rust-analyzer-proc-macro-enable t)))
+
+;;;; ── cargo ───────────────────────────────────────────────────────────────────
 
 (use-package cargo
   :after rust-mode
-  :hook (rust-mode . cargo-minor-mode))
+  :hook ((rust-mode rust-ts-mode) . cargo-minor-mode))
+
+;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (setf (alist-get 'rust-mode apheleia-mode-alist) 'rustfmt))
+  (setf (alist-get 'rust-mode    apheleia-mode-alist) 'rustfmt)
+  (setf (alist-get 'rust-ts-mode apheleia-mode-alist) 'rustfmt))
+
+;;;; ── Test runners ────────────────────────────────────────────────────────────
+
+(defun emacs-ide-rust-test-file ()
+  "Run cargo test for the library unit tests."
+  (interactive)
+  (compile "cargo test -- --lib"))
 
 (defun emacs-ide-rust-test-project ()
+  "Run all cargo tests in the project."
   (interactive)
   (compile "cargo test"))
 
 (with-eval-after-load 'tools-test
-  (emacs-ide-test-register-runner 'rust-mode
-    :file-fn (lambda () (compile "cargo test -- --lib"))
-    :project-fn #'emacs-ide-rust-test-project))
+  (when (fboundp 'emacs-ide-test-register-runner)
+    (dolist (mode '(rust-mode rust-ts-mode))
+      (emacs-ide-test-register-runner mode
+        :file-fn    #'emacs-ide-rust-test-file
+        :project-fn #'emacs-ide-rust-test-project))))
+
+;;;; ── DAP (CodeLLDB / LLDB) ──────────────────────────────────────────────────
+
+(with-eval-after-load 'dap-mode
+  (emacs-ide-dev-attach-dap "Rust :: CodeLLDB" 'dap-lldb)
+  (when (fboundp 'dap-register-debug-template)
+    (dap-register-debug-template "Rust :: cargo run"
+      (list :type    "lldb"
+            :request "launch"
+            :name    "Rust binary (cargo)"
+            :cargo   (list :args ["build"])
+            :cwd     (lambda ()
+                       (or (and (fboundp 'projectile-project-root)
+                                (ignore-errors (projectile-project-root)))
+                           default-directory))))))
 
 ) ;; end rust-enabled
 
