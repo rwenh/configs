@@ -1,21 +1,22 @@
--- ~/.config/nvim/init.lua  — v2.3.12 entry point
--- Load order: bootstrap → options → autocmds → keymaps → plugins → theme
+-- ~/.config/nvim/init.lua — v2.3.16 entry point
 --
--- FIX (v2.3.12):
---   • vim.g.nvim_ide_version moved to core/bootstrap.lua (step 1).
---     It was set here at step 10, AFTER require("plugins") at step 6.
---     ui.lua reads the version during plugin config() which runs at step 6,
---     so it always saw nil and fell back to the hardcoded "2.3.5" string.
---     bootstrap.lua runs before any plugin; the version is now always correct.
+-- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → hud
+--
+-- New modules added in the calibration pass:
+--   lua/core/util/buf_keymap.lua  — shared buffer-local keymap registration
+--   lua/core/util/mason.lua       — shared Mason path resolution
+--   lua/core/util/icons.lua       — shared Nerd Font icon constants
+--   lua/core/rain.lua             — Matrix rain engine (extracted from ui.lua)
+--   lua/plugins/specs/lang/shared.lua — shared web filetype lists
 
--- 1. Bootstrap lazy.nvim + set leader + version stamp (must be first)
+-- 1. Bootstrap lazy.nvim + leader keys + version stamp (must be first)
 require("core.bootstrap")
 
 -- 2. Vim options (no plugins needed)
 require("core.options")
 
--- 3. Autocommands — loaded synchronously so BufReadPre/BufRead fire for the
---    first file opened via CLI (e.g. `nvim myfile.lua`).
+-- 3. Autocommands — loaded synchronously so BufReadPre/BufRead fire for
+--    the first file opened via CLI (e.g. `nvim myfile.lua`).
 require("core.autocmds")
 
 -- 4. Global keymaps
@@ -41,11 +42,12 @@ end
 -- 7. Theme (after plugins so colorscheme plugins are available)
 require("core.theme").setup()
 
--- 8. HUD accent overrides (applied after colorscheme)
+-- 8. HUD accent overrides (applied after colorscheme; also auto-reapplied
+--    on every ColorScheme event via the autocmd in core/hud.lua)
 pcall(function() require("core.hud").apply() end)
 
 -- 9. Startup stats — hooked to LazyDone so it fires after all plugins are
---    fully initialised, not after a hardcoded timer.
+--    fully initialised.
 vim.api.nvim_create_autocmd("User", {
   pattern  = "LazyDone",
   once     = true,
@@ -61,6 +63,5 @@ vim.api.nvim_create_autocmd("User", {
   end,
 })
 
--- NOTE: vim.g.nvim_ide_version is now set in core/bootstrap.lua (step 1).
--- It must be set before plugins load so ui.lua's dashboard version string
--- displays correctly. Do not set it here.
+-- NOTE: vim.g.nvim_ide_version is set in core/bootstrap.lua (step 1).
+-- Do not set it here — it must be available before any plugin config() runs.

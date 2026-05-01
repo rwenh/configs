@@ -1,155 +1,154 @@
--- lua/plugins/specs/lang/python.lua - Python development
+-- lua/plugins/specs/lang/python.lua — Python language support
 --
--- OPT (v2.3.14):
---   • debugpy probe rewritten from async vim.system() recursion to a
---     synchronous vim.fn.executable() + path-existence chain. The async
---     approach was necessary if probing required importing the module, but
---     `debugpy` can be located by binary or by checking its package directory —
---     no subprocess import probe is needed. The synchronous version is simpler,
---     easier to read, and consistent with how every other DAP adapter in
---     dap.lua resolves its binary.
+-- LSP:    basedpyright via lsp.lua
+-- Format: black + isort via lsp.lua conform
+-- Lint:   ruff via lsp.lua nvim-lint
+-- DAP:    nvim-dap-python (this file)
+-- REPL:   iron.nvim (this file)
+-- Venv:   venv-selector.nvim (this file)
+-- Docs:   neogen optional spec (this file)
 --
--- FIX (v2.3.15):
---   • find_debugpy_python() was still spawning a subprocess via vim.fn.system()
---     to query site.getsitepackages()[0], directly contradicting the OPT (v2.3.14)
---     comment that claimed "no subprocess import probe is needed". The site-packages
---     path can be derived from the interpreter path without any subprocess:
---     the standard layout is <prefix>/lib/pythonX.Y/site-packages, where the
---     version is read from the interpreter name in the filesystem. As a simpler
---     and more portable guard we instead check for the `debugpy` binary itself
---     (installed into the same bin/ as the interpreter when pip install debugpy
---     is run in a venv or with --user) and for the debugpy package directory
---     under the standard site-packages siblings. Both checks use only
---     vim.fn.executable(), vim.fn.glob(), and vim.fn.isdirectory() — zero
---     subprocesses, zero blocking I/O beyond stat calls.
 
 return {
+  -- ── Venv selector ──────────────────────────────────────────────────────────
   {
     "linux-cultist/venv-selector.nvim",
     ft  = "python",
     cmd = "VenvSelect",
     opts = {
       name         = { "venv", ".venv", "env", ".env" },
-      auto_refresh = true,
+      auto_refresh = vim.g.python_venv_auto_refresh == true,
     },
     keys = {
       { "<leader>pyv", "<cmd>VenvSelect<cr>", desc = "Python Select Venv" },
     },
+    config = function(_, opts)
+      local ok, vs = pcall(require, "venv-selector")
+      if not ok then return end
+      opts.post_set_venv = function()
+        -- Re-initialise nvim-dap-python with the new interpreter.
+        local ok_dpy, dpy = pcall(require, "dap-python")
+        if ok_dpy then
+          local python = require("core.util.path") and
+            -- Re-probe with updated VIRTUAL_ENV env var.
+            (os.getenv("VIRTUAL_ENV") and os.getenv("VIRTUAL_ENV") .. "/bin/python")
+            or vim.fn.exepath("python3")
+          if python and python ~= "" then
+            pcall(dpy.setup, python)
+          end
+        end
+      end
+      vs.setup(opts)
+    end,
   },
 
+  -- ── DAP: nvim-dap-python ───────────────────────────────────────────────────
   {
     "mfussenegger/nvim-dap-python",
     ft           = "python",
     dependencies = "mfussenegger/nvim-dap",
     config = function()
-      -- FIX (v2.3.15): fully subprocess-free debugpy probe.
-      --
-      -- Strategy (no vim.fn.system() calls):
-      --   1. Active venv → check <venv>/bin/python is executable.
-      --      Venvs created with `pip install debugpy` put debugpy into the same
-      --      prefix, so finding the venv interpreter is sufficient.
-      --   2. PATH + system candidates → for each interpreter, look for a
-      --      `debugpy` directory alongside the interpreter's lib/ siblings via
-      --      glob patterns, and check for the `debugpy` executable in the same
-      --      bin/. Either presence is enough: nvim-dap-python only needs the
-      --      interpreter path, not the debugpy module path directly.
-      --   3. Fall back to python3 with a warning.
-      local function find_debugpy_python()
-        -- 1. Active virtual environment
+      local bkm = require("core.util.buf_keymap")
+
+      -- ── Debugpy probe strategies ────────────────────────────────────────
+
+      -- Strategy 1: active virtual environment.
+      local function check_venv()
         local venv = os.getenv("VIRTUAL_ENV")
-        if venv then
-          local p = venv .. "/bin/python"
-          if vim.fn.executable(p) == 1 then return p end
-        end
+        if not venv then return nil end
+        local p = venv .. "/bin/python"
+        return vim.fn.executable(p) == 1 and p or nil
+      end
 
-        -- 2. Candidates from PATH + common system paths
-        local candidates = {
-          vim.fn.exepath("python3"),
-          vim.fn.exepath("python"),
-          "/usr/bin/python3",
-          "/usr/bin/python",
-        }
-
-        for _, p in ipairs(candidates) do
-          if p and p ~= "" and vim.fn.executable(p) == 1 then
-            -- Derive the prefix directory (parent of bin/).
-            -- e.g. /usr/bin/python3 → prefix = /usr
-            -- e.g. /home/user/.venv/bin/python3 → prefix = /home/user/.venv
-            local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(p, ":h"), ":h")
-
-            -- Check 1: debugpy executable in the same bin/
-            local dbg_bin = prefix .. "/bin/debugpy"
-            if vim.fn.executable(dbg_bin) == 1 then return p end
-
-            -- Check 2: debugpy package directory under lib/pythonX.Y/site-packages
-            -- Use a glob so we don't need to know the exact Python version.
-            local pattern = prefix .. "/lib/python*/site-packages/debugpy"
-            if vim.fn.glob(pattern) ~= "" then return p end
-
-            -- Check 3: user site-packages (~/.local/lib/pythonX.Y/site-packages)
-            local home = os.getenv("HOME") or ""
-            if home ~= "" then
-              local user_pattern = home .. "/.local/lib/python*/site-packages/debugpy"
-              if vim.fn.glob(user_pattern) ~= "" then return p end
+      -- Strategy 2: PATH candidates + debugpy presence check.
+      local function check_path_candidates()
+        local candidates = {}
+        for _, name in ipairs({ "python3", "python" }) do
+          local p = vim.fn.exepath(name)
+          if p ~= "" then
+            if p:find("shims", 1, true) then
+              -- Try pyenv root resolution.
+              local pyenv_root = os.getenv("PYENV_ROOT")
+              if pyenv_root then
+                local ver_file = vim.fn.findfile(".python-version", ".;")
+                if ver_file ~= "" then
+                  local ver = vim.fn.readfile(ver_file)[1]
+                  if ver and ver ~= "" then
+                    local resolved = pyenv_root
+                      .. "/versions/" .. ver:gsub("%s+", "")
+                      .. "/bin/python3"
+                    if vim.fn.executable(resolved) == 1 then
+                      table.insert(candidates, resolved)
+                    end
+                  end
+                end
+              end
+            else
+              table.insert(candidates, p)
             end
           end
         end
+        -- Append common system paths as fallback.
+        vim.list_extend(candidates, { "/usr/bin/python3", "/usr/bin/python" })
 
-        -- 3. Fall back to python3 with a clear warning; user can fix later.
-        vim.schedule(function()
-          vim.notify(
-            "[python] debugpy not found in any interpreter.\n"
-            .. "Install with: pip install debugpy",
-            vim.log.levels.WARN
-          )
-        end)
-        return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or "python3"
-      end
-
-      local function register_dap_keymaps()
-        vim.api.nvim_create_autocmd("FileType", {
-          pattern  = "python",
-          group    = vim.api.nvim_create_augroup("PythonDapKeymaps", { clear = true }),
-          callback = function(e)
-            local buf = e.buf
-            -- FIX: guard against duplicate registration on :luafile reload.
-            if vim.b[buf].python_dap_keymaps_registered then return end
-            vim.b[buf].python_dap_keymaps_registered = true
-            vim.keymap.set("n", "<leader>pydm",
-              function() pcall(function() require("dap-python").test_method() end) end,
-              { buffer = buf, desc = "Python Debug Method" })
-            vim.keymap.set("n", "<leader>pydc",
-              function() pcall(function() require("dap-python").test_class() end) end,
-              { buffer = buf, desc = "Python Debug Class" })
-            vim.keymap.set({ "n", "v" }, "<leader>pyds",
-              function() pcall(function() require("dap-python").debug_selection() end) end,
-              { buffer = buf, desc = "Python Debug Selection" })
-          end,
-        })
-
-        -- Retroactively apply to already-open Python buffers.
-        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-          if vim.bo[buf].filetype == "python"
-          and not vim.b[buf].python_dap_keymaps_registered then
-            vim.b[buf].python_dap_keymaps_registered = true
-            vim.keymap.set("n", "<leader>pydm",
-              function() pcall(function() require("dap-python").test_method() end) end,
-              { buffer = buf, desc = "Python Debug Method" })
-            vim.keymap.set("n", "<leader>pydc",
-              function() pcall(function() require("dap-python").test_class() end) end,
-              { buffer = buf, desc = "Python Debug Class" })
-            vim.keymap.set({ "n", "v" }, "<leader>pyds",
-              function() pcall(function() require("dap-python").debug_selection() end) end,
-              { buffer = buf, desc = "Python Debug Selection" })
+        for _, p in ipairs(candidates) do
+          if vim.fn.executable(p) == 1 then
+            local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(p, ":h"), ":h")
+            if vim.fn.executable(prefix .. "/bin/debugpy") == 1 then return p end
+            if vim.fn.glob(prefix .. "/lib/python*/site-packages/debugpy") ~= "" then
+              return p
+            end
           end
         end
+        return nil
       end
+
+      -- Strategy 3: user site-packages.
+      local function check_user_sitepackages()
+        local home = os.getenv("HOME") or ""
+        if home == "" then return nil end
+        local pattern = home .. "/.local/lib/python*/site-packages/debugpy"
+        if vim.fn.glob(pattern) ~= "" then
+          return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or nil
+        end
+        return nil
+      end
+
+      local function find_debugpy_python()
+        return check_venv()
+          or check_path_candidates()
+          or check_user_sitepackages()
+          or (function()
+            vim.schedule(function()
+              vim.notify(
+                "[python] debugpy not found in any interpreter.\n"
+                .. "Install with: pip install debugpy",
+                vim.log.levels.WARN
+              )
+            end)
+            return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or "python3"
+          end)()
+      end
+
+      -- ── DAP keymaps ─────────────────────────────────────────────────────
+
+      local DAP_MAPS = {
+        { "n",        "<leader>pydm", function()
+            pcall(function() require("dap-python").test_method() end)
+          end, "Python Debug Method" },
+        { "n",        "<leader>pydc", function()
+            pcall(function() require("dap-python").test_class() end)
+          end, "Python Debug Class" },
+        { {"n","v"},  "<leader>pyds", function()
+            pcall(function() require("dap-python").debug_selection() end)
+          end, "Python Debug Selection" },
+      }
+
+      bkm.on_ft("python", DAP_MAPS, "python_dap_keymaps_registered")
 
       local python = find_debugpy_python()
       local ok = pcall(function() require("dap-python").setup(python) end)
-      if ok then
-        register_dap_keymaps()
-      else
+      if not ok then
         vim.notify(
           "[python] nvim-dap-python setup failed for: " .. python,
           vim.log.levels.WARN
@@ -158,16 +157,17 @@ return {
     end,
   },
 
-  -- optional=true — extends the primary neogen spec in advanced.lua.
+  -- ── Neogen docstrings ──────────────────────────────────────────────────────
+
   {
     "danymat/neogen",
     optional = true,
     ft       = "python",
-    opts = {
-      languages = {
-        python = { template = { annotation_convention = "google_docstrings" } },
-      },
-    },
+    opts = function(_, opts)
+      opts.languages = opts.languages or {}
+      local style = vim.g.python_docstring_style or "google_docstrings"
+      opts.languages.python = { template = { annotation_convention = style } }
+    end,
     keys = {
       {
         "<leader>pyg",
@@ -177,6 +177,7 @@ return {
     },
   },
 
+  -- ── iron.nvim REPL ─────────────────────────────────────────────────────────
   {
     "Vigemus/iron.nvim",
     ft = "python",
@@ -187,62 +188,67 @@ return {
             scratch_repl    = true,
             repl_definition = {
               python = {
-                command = { "ipython", "--no-autoindent" },
-                format  = require("iron.fts.common").bracketed_paste,
+                command = vim.fn.executable("ipython") == 1
+                  and { "ipython", "--no-autoindent" }
+                  or  { "python3" },
+                format = require("iron.fts.common").bracketed_paste,
               },
             },
             repl_open_cmd = function()
               return require("iron.view").bottom(20)
             end,
           },
-          -- Keymaps registered per-buffer in FileType autocmd below —
-          -- iron.core.setup() keymaps are GLOBAL and would leak to all buffers.
-          keymaps = {},
+          keymaps = {},   -- registered per-buffer below
         })
       end)
 
-      local function register_iron_keymaps(buf)
-        local function imap(lhs, fn, desc, mode)
-          vim.keymap.set(mode or "n", lhs, fn, { buffer = buf, desc = desc })
-        end
-        imap("<leader>pyrc", function()
-          pcall(function() require("iron.core").send_motion(vim.api.nvim_get_current_buf()) end)
-        end, "REPL send motion")
-        imap("<leader>pyrv", function()
-          pcall(function() require("iron.core").visual_send(vim.api.nvim_get_current_buf()) end)
-        end, "REPL send visual", "v")
-        imap("<leader>pyrl", function()
-          pcall(function() require("iron.core").send_line(vim.api.nvim_get_current_buf()) end)
-        end, "REPL send line")
-        imap("<leader>pyru", function()
-          pcall(function() require("iron.core").send_until_cursor(vim.api.nvim_get_current_buf()) end)
-        end, "REPL send until cursor")
-        imap("<leader>pyrq", function()
-          pcall(function() require("iron.core").close_repl(vim.api.nvim_get_current_buf()) end)
-        end, "REPL quit")
-        imap("<leader>pyrx", function()
-          pcall(function() require("iron.core").send(vim.api.nvim_get_current_buf(), string.char(12)) end)
-        end, "REPL clear")
-      end
+      local bkm = require("core.util.buf_keymap")
 
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = "python",
-        group    = vim.api.nvim_create_augroup("IronPythonKeymaps", { clear = true }),
-        callback = function(e) register_iron_keymaps(e.buf) end,
-      })
+      local IRON_MAPS = {
+        { "n", "<leader>pyrc", function()
+            local buf = vim.api.nvim_get_current_buf()
+            vim.opt.operatorfunc = "v:lua.require'iron.core'.send_motion"
+            vim.api.nvim_feedkeys("g@", "n", false)
+            _ = buf  -- suppress unused warning
+          end, "REPL send motion (operator)" },
+        { "v", "<leader>pyrv", function()
+            pcall(function()
+              require("iron.core").visual_send(vim.api.nvim_get_current_buf())
+            end)
+          end, "REPL send visual" },
+        { "n", "<leader>pyrl", function()
+            pcall(function()
+              require("iron.core").send_line(vim.api.nvim_get_current_buf())
+            end)
+          end, "REPL send line" },
+        { "n", "<leader>pyru", function()
+            pcall(function()
+              require("iron.core").send_until_cursor(vim.api.nvim_get_current_buf())
+            end)
+          end, "REPL send until cursor" },
+        { "n", "<leader>pyrq", function()
+            pcall(function()
+              require("iron.core").close_repl(vim.api.nvim_get_current_buf())
+            end)
+          end, "REPL quit" },
+        { "n", "<leader>pyrx", function()
+            pcall(function()
+              require("iron.core").send(
+                vim.api.nvim_get_current_buf(), string.char(12))
+            end)
+          end, "REPL clear" },
+      }
 
-      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.bo[buf].filetype == "python" then
-          register_iron_keymaps(buf)
-        end
-      end
+      bkm.on_ft("python", IRON_MAPS, "python_iron_keymaps_registered")
     end,
     keys = {
-      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start" },
-      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart" },
-      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt" },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"     },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"   },
+      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt"  },
     },
   },
 
+  -- ── PEP8 indent ────────────────────────────────────────────────────────────
+  -- If vim-python-pep8-indent is removed, re-enable treesitter Python indent.
   { "Vimjas/vim-python-pep8-indent", ft = "python" },
 }

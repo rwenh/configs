@@ -1,26 +1,22 @@
--- lua/plugins/specs/lang/cpp.lua - C++ development
+-- lua/plugins/specs/lang/cpp.lua — C++ / CMake development
 --
--- FIX (v2.3.1):
---   • neogen spec marked optional=true so it extends the primary spec in
---     advanced.lua rather than competing with it. With three non-optional
---     specs for the same plugin, the last one loaded silently dropped the
---     others' language opts. optional=true lets lazy merge opts tables.
---   • config() removed from the neogen spec — optional extension specs must
---     not call setup() themselves; the primary spec in advanced.lua owns
---     initialisation.
---   • Duplicate <leader>ccd key entry removed. The keys= table had two
---     identical entries (ft="cpp" and ft="c"). A single buffer-local keymap
---     via LspAttach or ft-scoped keys covers both; the second entry was a
---     no-op overwrite.
+-- NOTE: clangd_extensions (inlay hints, AST) is owned by c.lua which has
+--       ft = { "c", "cpp" } — C++ users get full clangd support from c.lua.
+--       This file adds CMake build tooling only.
+--
+
+local CMAKE_FT = { "cpp", "cmake" }
 
 return {
+  -- ── cmake-tools ────────────────────────────────────────────────────────────
+
   {
     "Civitasv/cmake-tools.nvim",
-    ft  = { "cpp", "cmake" },
-    dependencies = "nvim-lua/plenary.nvim",
+    ft           = CMAKE_FT,
+    dependencies = "nvim-lua/plenary.nvim",   -- used for cmake-tools async ops
     opts = {
       cmake_command         = "cmake",
-      cmake_build_directory = "build",
+      cmake_build_directory = vim.g.cmake_build_dir or "build",
       cmake_generate_options = { "-DCMAKE_EXPORT_COMPILE_COMMANDS=1" },
     },
     config = function(_, opts)
@@ -29,41 +25,48 @@ return {
         vim.notify("cmake-tools setup failed", vim.log.levels.WARN)
       end
     end,
-    keys = {
-      { "<leader>ccg", "<cmd>CMakeGenerate<cr>",     desc = "CMake Generate",       ft = { "cpp", "cmake" } },
-      { "<leader>ccb", "<cmd>CMakeBuild<cr>",        desc = "CMake Build",          ft = { "cpp", "cmake" } },
-      { "<leader>ccr", "<cmd>CMakeRun<cr>",          desc = "CMake Run",            ft = { "cpp", "cmake" } },
-      { "<leader>cct", "<cmd>CMakeRunTest<cr>",      desc = "CMake Test",           ft = { "cpp", "cmake" } },
-      { "<leader>ccc", "<cmd>CMakeClean<cr>",        desc = "CMake Clean",          ft = { "cpp", "cmake" } },
-      { "<leader>ccs", "<cmd>CMakeSelectTarget<cr>", desc = "CMake Select Target",  ft = { "cpp", "cmake" } },
-    },
+    keys = (function()
+      local entries = {
+        { "<leader>ccg", "CMakeGenerate",    "CMake Generate"       },
+        { "<leader>ccb", "CMakeBuild",       "CMake Build"          },
+        { "<leader>ccr", "CMakeRun",         "CMake Run"            },
+        { "<leader>cct", "CMakeRunTest",     "CMake Test"           },
+        { "<leader>ccc", "CMakeClean",       "CMake Clean"          },
+        { "<leader>ccs", "CMakeSelectTarget","CMake Select Target"  },
+      }
+      local keys = {}
+      for _, e in ipairs(entries) do
+        table.insert(keys, {
+          e[1], "<cmd>" .. e[2] .. "<cr>",
+          desc = e[3], ft = CMAKE_FT,
+        })
+      end
+      return keys
+    end)(),
   },
 
-  -- FIX: optional=true — extends the primary neogen spec in advanced.lua.
-  -- config() removed; advanced.lua's config() owns setup(). This spec only
-  -- contributes language opts (doxygen for C/C++) and the <leader>ccd keymap.
-  -- The duplicate ft="c" key entry has been collapsed into a single entry
-  -- with a mode-agnostic ft list; ft filtering is handled by lazy at load time.
+  -- ── Neogen docstrings ──────────────────────────────────────────────────────
+
   {
     "danymat/neogen",
     optional = true,
-    ft       = { "cpp", "c" },
+    ft       = { "cpp" },
     opts = {
       languages = {
         cpp = { template = { annotation_convention = "doxygen" } },
-        c   = { template = { annotation_convention = "doxygen" } },
       },
     },
     keys = {
       {
         "<leader>ccd",
         function() pcall(function() require("neogen").generate() end) end,
-        desc = "Generate Docstring",
-        ft   = { "cpp", "c" },
+        desc = "Generate Docstring (alias for <leader>xg)",
+        ft   = { "cpp" },
       },
     },
   },
 
+  -- ── Treesitter ─────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,

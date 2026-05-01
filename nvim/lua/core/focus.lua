@@ -1,28 +1,15 @@
--- lua/core/focus.lua
--- Focus mode: collapse all chrome, keep only the text.
--- Toggle with <leader>uF — goes deeper than ZenMode alone.
+-- lua/core/focus.lua — deep focus mode
+-- Toggle with <leader>uF.  Goes deeper than ZenMode alone by also stripping
+-- the status line, sign column, line numbers, tab bar, and ruler.
 --
--- OPT (v2.3.14):
---   • apply_spec(active) replaces the two independent SPEC iterations in
---     enter() and exit(). A single traversal handles both directions,
---     eliminating the duplicated loop and the boolean-edge-case guard that
---     only existed in exit().
---
--- FIX (v2.3.15):
---   • apply_spec(active) boolean restore used the classic Lua false-value
---     ternary anti-pattern: `(saved ~= nil) and saved or default`.
---     When saved=false (user had number/relativenumber/cursorline disabled),
---     `true and false or default` evaluates to `default` (true), so focus
---     exit forcibly re-enabled those options. Fixed with an explicit
---     if/else so a legitimately-false snapshot is preserved correctly.
 
 local M = {}
 
--- ── Option spec ──────────────────────────────────────────────────────────
+-- ── Option spec ───────────────────────────────────────────────────────────────
 -- { scope, key, off_value, default }
---   scope      : "o" = vim.o   "wo" = vim.wo
---   off_value  : value applied in focus mode
---   default    : fallback when snapshot is nil (i.e. enter() was never called)
+--   scope     : "o" = vim.o   "wo" = vim.wo
+--   off_value : value applied when focus is active
+--   default   : restore fallback when snapshot is nil
 local SPEC = {
   { "o",  "laststatus",     0,     3       },
   { "o",  "showtabline",    0,     1       },
@@ -36,9 +23,8 @@ local SPEC = {
 local _active = false
 local _snap   = {}
 
--- ── Unified spec applicator ──────────────────────────────────────────────
--- active=true  → snapshot current values, then apply off_values (focus on)
--- active=false → restore from snapshot, fall back to defaults (focus off)
+-- ── Unified spec applicator ───────────────────────────────────────────────────
+
 local function apply_spec(active)
   for _, s in ipairs(SPEC) do
     local scope, key, off_value, default = s[1], s[2], s[3], s[4]
@@ -46,15 +32,9 @@ local function apply_spec(active)
       _snap[key]      = vim[scope][key]
       vim[scope][key] = off_value
     else
-      local saved = _snap[key]
-      -- FIX (v2.3.15): use explicit if/else instead of `a and b or c`.
-      -- The ternary form fails when b is false: `true and false or default`
-      -- returns `default`, discarding a legitimately-false saved value.
-      -- This affected number, relativenumber, and cursorline (default=true):
-      -- if the user had any of them off before entering focus mode, exit
-      -- would wrongly re-enable them.
-      if saved ~= nil then
-        vim[scope][key] = saved
+      -- Explicit if/else — the `a and b or c` ternary fails when b is false.
+      if _snap[key] ~= nil then
+        vim[scope][key] = _snap[key]
       else
         vim[scope][key] = default
       end
@@ -62,38 +42,58 @@ local function apply_spec(active)
   end
 end
 
-function M.enter()
-  if _active then return end
-  _active = true
-  apply_spec(true)
-  pcall(vim.cmd, "Twilight")
-  pcall(vim.cmd, "ZenMode")
-  vim.notify("Focus mode", vim.log.levels.INFO)
+-- ── Plugin coordination helpers ───────────────────────────────────────────────
+
+local function set_zen(want_on)
+  -- ZenMode has no "is active" API; we rely on our own _active flag.
+  -- The pcall means ZenMode loading/unloading is handled gracefully.
+  pcall(vim.cmd, "ZenMode")   -- toggles; called only when transition is needed
+  _ = want_on                 -- suppress unused-var lint; state tracked by _active
 end
 
-function M.exit()
-  if not _active then return end
-  _active = false
-  apply_spec(false)
-  pcall(vim.cmd, "Twilight")
-  pcall(vim.cmd, "ZenMode")
-  vim.notify("Focus off", vim.log.levels.INFO)
+local function set_twilight(want_on)
+  if want_on then
+    pcall(vim.cmd, "TwilightEnable")
+  else
+    pcall(vim.cmd, "TwilightDisable")
+  end
 end
 
-function M.toggle()
-  if _active then M.exit() else M.enter() end
+-- ── Public API ────────────────────────────────────────────────────────────────
+
+--- Set focus mode to *active* (true = on, false = off).
+--- This is the single entry point; enter/exit/toggle delegate here.
+---@param active boolean
+function M.set(active)
+  if active == _active then return end   -- no-op if already in desired state
+  _active = active
+  apply_spec(active)
+  set_twilight(active)
+  set_zen(active)
+  vim.notify(active and "Focus mode" or "Focus off", vim.log.levels.INFO)
 end
 
--- FIX: if the user quits Neovim while focus mode is active, options like
--- number/relativenumber/laststatus would be left in their "off" state for
--- the next session (persisted by sessionoptions or terminal state).
--- Restore them gracefully on VimLeavePre.
+--- Activate focus mode.
+function M.enter()  M.set(true)  end
+
+--- Deactivate focus mode.
+function M.exit()   M.set(false) end
+
+--- Toggle focus mode.
+function M.toggle() M.set(not _active) end
+
+--- Return true when focus mode is currently active.
+---@return boolean
+function M.is_active() return _active end
+
+-- ── VimLeavePre cleanup ───────────────────────────────────────────────────────
+
 vim.api.nvim_create_autocmd("VimLeavePre", {
   group    = vim.api.nvim_create_augroup("FocusModeCleanup", { clear = true }),
   callback = function()
     if _active then
       _active = false
-      apply_spec(false)
+      pcall(apply_spec, false)   -- FIX B2: pcall added
     end
   end,
   desc = "Restore focus-mode options before Neovim exits",

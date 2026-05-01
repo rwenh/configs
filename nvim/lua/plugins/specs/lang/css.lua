@@ -1,46 +1,38 @@
--- lua/plugins/specs/lang/css.lua - CSS development
+-- lua/plugins/specs/lang/css.lua — CSS development
 --
--- FIX (v2.2.5):
---   • vim.lsp.config() + vim.lsp.enable() are Nvim 0.11-only API.
---     Guarded behind has("nvim-0.11"); falls back to lspconfig on 0.10.
---   • cssmodules binary check deferred to BufReadPost so it does not run
---     on startup for non-CSS projects.
+-- LSP:    cssls + cssmodules_ls via this file + lsp.lua
+-- Format: prettier via lsp.lua conform
+-- Lint:   stylelint via this file
+-- Tailwind: tailwind-tools (gated on tailwind.config.* presence)
 --
--- OPT (v2.3.13):
---   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
---     lsp.lua owns the single BufWritePost/InsertLeave lint trigger; lang
---     specs only need to populate lint.linters_by_ft, which can be done
---     directly in init() without an extra autocmd layer.
+
+local shared = require("plugins.specs.lang.shared")
 
 return {
-  -- ── cssmodules LSP (CSS Modules intellisense) ─────────────────────────
+  -- ── cssmodules LSP ──────────────────────────────────────────────────────────
+
   {
     "neovim/nvim-lspconfig",
     optional = true,
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
-        once     = true,
         group    = vim.api.nvim_create_augroup("CssModulesLsp", { clear = true }),
         callback = function()
           if vim.fn.executable("cssmodules-language-server") ~= 1 then return end
+          local cfg = {
+            init_options = { isCSSModules = true },
+            filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+          }
           if vim.fn.has("nvim-0.11") == 1 then
             pcall(function()
-              vim.lsp.config("cssmodules_ls", {
-                init_options = { isCSSModules = true },
-                filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
-              })
+              vim.lsp.config("cssmodules_ls", cfg)
               vim.lsp.enable("cssmodules_ls")
             end)
           else
             local ok, lspconfig = pcall(require, "lspconfig")
             if ok then
-              pcall(function()
-                lspconfig.cssmodules_ls.setup({
-                  init_options = { isCSSModules = true },
-                  filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
-                })
-              end)
+              pcall(function() lspconfig.cssmodules_ls.setup(cfg) end)
             end
           end
         end,
@@ -48,26 +40,29 @@ return {
     end,
   },
 
-  -- ── Tailwind CSS intellisense (canonical — server.override=false) ─────
+  -- ── Tailwind CSS ───────────────────────────────────────────────────────────
+
   {
-    "luckasRanarison/tailwind-tools.nvim",
-    ft = {
-      "html", "css", "javascript", "typescript",
-      "jsx", "tsx", "typescriptreact", "javascriptreact",
-      "svelte", "vue",
-    },
+    "luckasRanaringer/tailwind-tools.nvim",
+    cond = function()
+      return vim.fn.findfile("tailwind.config.js",  ".;") ~= ""
+          or vim.fn.findfile("tailwind.config.ts",  ".;") ~= ""
+          or vim.fn.findfile("tailwind.config.cjs", ".;") ~= ""
+    end,
+    ft = shared.WEB_FT,
     dependencies = { "nvim-treesitter/nvim-treesitter" },
     opts = {
       document_color = { enabled = true, kind = "inline" },
       conceal        = { enabled = false },
-      server         = { override = false },
+      -- server.override=false: tailwindcss LSP managed by lsp.lua servers table.
+      server = { override = false },
     },
     config = function(_, opts)
       pcall(function() require("tailwind-tools").setup(opts) end)
     end,
   },
 
-  -- ── Treesitter ────────────────────────────────────────────────────────
+  -- ── Treesitter ──────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -78,7 +73,7 @@ return {
     end,
   },
 
-  -- ── Conform ───────────────────────────────────────────────────────────
+  -- ── Conform ────────────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -90,14 +85,13 @@ return {
     end,
   },
 
-  -- ── nvim-lint ─────────────────────────────────────────────────────────
-  -- OPT: direct init() assignment — no autocmd wrapper needed.
-  -- lsp.lua's BufWritePost/InsertLeave autocmd drives try_lint(); lang specs
-  -- only need to populate linters_by_ft before that fires.
+  -- ── nvim-lint: stylelint ───────────────────────────────────────────────────
+
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
+      if vim.fn.executable("stylelint") ~= 1 then return end
       local ok, lint = pcall(require, "lint")
       if not ok then return end
       lint.linters_by_ft.css  = { "stylelint" }

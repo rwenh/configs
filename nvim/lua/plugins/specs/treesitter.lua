@@ -1,15 +1,41 @@
--- nvim/lua/plugins/specs/treesitter.lua
---
--- (all prior FIX entries preserved — see INSTALL.md for full history)
---
--- FIX (v2.3.12):
---   • "scala", "swift", "r", "perl", "php", "dart" removed from
---     ensure_installed. None of these have corresponding lang specs, LSP
---     configs, formatters, linters, or keymaps anywhere in the project.
---     They added compile time and disk usage on every fresh install for
---     zero functional benefit. auto_install=true means they will still be
---     fetched on-demand if the user opens a file of that type.
---   • highlight.disable threshold comment updated to reflect v2.3.12 change.
+-- lua/plugins/specs/treesitter.lua
+
+-- ── Shared capture names ──────────────────────────────────────────────────────
+
+local CAPTURES = {
+  func   = "@function.outer",
+  func_i = "@function.inner",
+  class  = "@class.outer",
+  class_i= "@class.inner",
+  loop   = "@loop.outer",
+  loop_i = "@loop.inner",
+  param  = "@parameter.outer",
+  param_i= "@parameter.inner",
+  cond   = "@conditional.outer",
+  cond_i = "@conditional.inner",
+}
+
+-- ── Parser categories ─────────────────────────────────────────────────────────
+
+local PARSERS = {
+  shell    = { "bash", "diff", "git_rebase", "gitcommit" },
+  systems  = { "c", "cmake", "cpp", "rust", "zig", "fortran", "vhdl" },
+  web      = { "css", "html", "http",
+               "javascript", "jsdoc", "json", "json5", "jsonc",
+               "typescript", "tsx", "vue", "svelte" },
+  lua      = { "lua", "luadoc", "luap" },
+  prose    = { "markdown", "markdown_inline" },
+  scripted = { "python", "ruby", "elixir", "heex", "eex" },
+  jvm      = { "java", "kotlin" },
+  data     = { "sql", "toml", "yaml", "query", "regex" },
+  misc     = { "julia", "vimdoc" },
+  -- comment: required by todo-comments.nvim (multiline) and noice.nvim.
+  meta     = { "comment" },
+}
+
+-- ── Neovim version helpers ────────────────────────────────────────────────────
+local nvim_011 = vim.fn.has("nvim-0.11") == 1
+local nvim_012 = vim.fn.has("nvim-0.12") == 1
 
 return {
   {
@@ -17,76 +43,51 @@ return {
     build    = ":TSUpdate",
     lazy     = false,
     priority = 100,
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter-textobjects",
-    },
+    dependencies = { "nvim-treesitter/nvim-treesitter-textobjects" },
+
     config = function(_, opts)
-      -- Suppress the broken vim highlights query on Neovim 0.11.x
-      pcall(vim.treesitter.query.set, "vim", "highlights", "")
+      if nvim_011 and not nvim_012 then
+        pcall(vim.treesitter.query.set, "vim", "highlights", "")
+      end
 
       local ok, ts_configs = pcall(require, "nvim-treesitter.configs")
       if not ok then
         vim.notify(
-          "nvim-treesitter not ready yet. Run :TSUpdate to install parsers.",
+          "nvim-treesitter not ready — run :TSUpdate to install parsers.",
           vim.log.levels.WARN
         )
         return
       end
       ts_configs.setup(opts)
     end,
-    opts = {
-      ensure_installed = {
-        -- Core systems / shell
-        "bash", "c", "cmake", "cpp", "diff",
-        "git_rebase", "gitcommit",
-        -- Web
-        "css", "html", "http",
-        "javascript", "jsdoc", "json", "json5", "jsonc",
-        "typescript", "tsx",
-        "vue", "svelte",
-        -- Lua
-        "lua", "luadoc", "luap",
-        -- Prose
-        "markdown", "markdown_inline",
-        -- Scripted languages with full lang specs
-        "python", "ruby", "elixir", "heex", "eex",
-        -- Systems languages with full lang specs
-        "rust", "go", "zig", "fortran", "vhdl",
-        -- JVM languages with full lang specs
-        "java", "kotlin",
-        -- Data / config
-        "sql", "toml", "yaml", "query", "regex",
-        -- Misc with lang specs
-        "julia",
-        -- Neovim docs
-        "vimdoc",
-        -- comment: required by todo-comments.nvim (multiline) and noice
-        "comment",
-        -- auto_install=true handles these on-demand if the user opens such files.
-      },
 
-      auto_install   = true,
+    opts = {
+      ensure_installed = vim.tbl_flatten(vim.tbl_values(PARSERS)),
+
+      auto_install   = vim.g.ts_auto_install ~= false
+                       and (vim.fn.executable("tree-sitter") == 1
+                            or vim.g.ts_auto_install == true),
       sync_install   = false,
-      ignore_install = { "vim" },
+
+      ignore_install = nvim_012 and {} or { "vim" },
 
       highlight = {
         enable  = true,
         disable = function(lang, buf)
+          -- Fast path: already determined to be large.
           if vim.b[buf] and vim.b[buf].large_file then return true end
-          -- FIX: vim.uv.fs_stat is synchronous here; on network-mounted paths
-          -- it blocks the main loop. Cache the result in a buffer variable so
-          -- the stat fires at most once per buffer lifetime, not on every
-          -- treesitter attach/re-check call.
+
           if vim.b[buf] ~= nil and vim.b[buf]._ts_size_checked then
             return (vim.b[buf]._ts_large == true) or lang == "vim"
           end
-          local max_filesize = 500 * 1024
+
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
-          local is_large = ok and stats and stats.size > max_filesize
-          pcall(function()
-            vim.b[buf]._ts_size_checked = true
-            vim.b[buf]._ts_large        = is_large and true or false
-          end)
+          local is_large  = ok and stats and stats.size > (500 * 1024)
+
+          -- Cache result: stat fires at most once per buffer lifetime.
+          vim.b[buf]._ts_size_checked = true
+          vim.b[buf]._ts_large        = is_large and true or false
+
           if is_large then return true end
           return lang == "vim"
         end,
@@ -95,12 +96,16 @@ return {
 
       indent = {
         enable  = true,
+        -- Python indent deferred to vim-python-pep8-indent (python.lua).
         disable = { "python", "yaml", "vue", "html" },
       },
 
       incremental_selection = {
         enable  = true,
         keymaps = {
+          -- In INSERT mode blink.cmp owns <C-space> (open menu).
+          -- In NORMAL mode nvim-treesitter owns it (init/expand selection).
+          -- There is no functional conflict because the modes are exclusive.
           init_selection    = "<C-space>",
           node_incremental  = "<C-space>",
           scope_incremental = false,
@@ -108,6 +113,8 @@ return {
         },
       },
 
+      -- (advanced.lua) is the canonical rainbow implementation.
+      -- Enabling it here too would cause double-highlighting.
       rainbow = { enable = false },
 
       textobjects = {
@@ -115,46 +122,41 @@ return {
           enable    = true,
           lookahead = true,
           keymaps   = {
-            ["af"] = "@function.outer",
-            ["if"] = "@function.inner",
-            ["ac"] = "@class.outer",
-            ["ic"] = "@class.inner",
-            ["al"] = "@loop.outer",
-            ["il"] = "@loop.inner",
-            ["aa"] = "@parameter.outer",
-            ["ia"] = "@parameter.inner",
-            ["ai"] = "@conditional.outer",
-            ["ii"] = "@conditional.inner",
+            ["af"] = CAPTURES.func,   ["if"] = CAPTURES.func_i,
+            ["ac"] = CAPTURES.class,  ["ic"] = CAPTURES.class_i,
+            ["al"] = CAPTURES.loop,   ["il"] = CAPTURES.loop_i,
+            ["aa"] = CAPTURES.param,  ["ia"] = CAPTURES.param_i,
+            ["ai"] = CAPTURES.cond,   ["ii"] = CAPTURES.cond_i,
           },
         },
         move = {
           enable    = true,
           set_jumps = true,
           goto_next_start = {
-            ["]f"] = "@function.outer",
-            ["]c"] = "@class.outer",
-            ["]a"] = "@parameter.outer",
+            ["]f"] = CAPTURES.func,
+            ["]c"] = CAPTURES.class,
+            ["]a"] = CAPTURES.param,
           },
           goto_next_end = {
-            ["]F"] = "@function.outer",
-            ["]C"] = "@class.outer",
-            ["]A"] = "@parameter.outer",
+            ["]F"] = CAPTURES.func,
+            ["]C"] = CAPTURES.class,
+            ["]A"] = CAPTURES.param,
           },
           goto_previous_start = {
-            ["[f"] = "@function.outer",
-            ["[c"] = "@class.outer",
-            ["[a"] = "@parameter.outer",
+            ["[f"] = CAPTURES.func,
+            ["[c"] = CAPTURES.class,
+            ["[a"] = CAPTURES.param,
           },
           goto_previous_end = {
-            ["[F"] = "@function.outer",
-            ["[C"] = "@class.outer",
-            ["[A"] = "@parameter.outer",
+            ["[F"] = CAPTURES.func,
+            ["[C"] = CAPTURES.class,
+            ["[A"] = CAPTURES.param,
           },
         },
         swap = {
           enable        = true,
-          swap_next     = { ["<leader>sa"] = "@parameter.inner" },
-          swap_previous = { ["<leader>sA"] = "@parameter.inner" },
+          swap_next     = { ["<leader>sa"] = CAPTURES.param_i },
+          swap_previous = { ["<leader>sA"] = CAPTURES.param_i },
         },
       },
     },
@@ -162,7 +164,7 @@ return {
 
   {
     "nvim-treesitter/nvim-treesitter-textobjects",
-    lazy = true,
+    lazy = false,
   },
 
   {

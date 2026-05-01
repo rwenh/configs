@@ -1,29 +1,5 @@
 -- lua/plugins/specs/lsp.lua
 --
--- OPT (v2.3.14):
---   • merge_linters(ft, linters) helper extracted. The manual
---     deduplication loop that existed in nvim-lint's config() is replaced
---     by a single reusable call, making the merge intent explicit and the
---     loop itself disappear from the reader's view.
---   • Optional server table call shape unified. Each entry now passes its
---     config directly to lsp_setup() the same way the primary `servers`
---     table does — no structural difference between the two paths.
---
--- FIX (v2.3.16):
---   • mason-lspconfig ensure_installed listed "elixir-ls" (the Mason package
---     name) instead of "elixirls" (the lspconfig server name). mason-lspconfig
---     validates entries against the lspconfig server registry and emits a
---     startup warning for any unrecognised name; the server was never queued
---     for auto-installation as a result. Corrected to "elixirls".
---
--- FIX (v2.3.15):
---   • shellcheck was unconditionally registered for "sh" (line outside the
---     executable guard) AND then registered again inside the guard — making
---     the guard's "sh" entry dead code and, more importantly, causing
---     nvim-lint to attempt invoking a missing shellcheck binary on every
---     sh-file write. The unconditional call is removed; both "bash" and "sh"
---     are now registered only when shellcheck is present, consistent with
---     every other binary-gated linter in this file.
 
 return {
   {
@@ -37,20 +13,17 @@ return {
     "williamboman/mason-lspconfig.nvim",
     dependencies = "mason.nvim",
     opts = {
+      -- Keep in sync with MASON_PACKAGES.lsp in commands.lua.
       ensure_installed = {
         "lua_ls", "basedpyright",
-        -- html kept here so Mason auto-installs the binary; config owned by html.lua
         "html", "cssls", "jsonls", "yamlls",
         "clangd", "gopls", "solargraph",
         "kotlin_language_server",
-        "zls",
-        "tailwindcss",
-        "elixirls",
-        "fortls",
-        "sqls",
-        "jdtls",
+        "zls", "tailwindcss", "elixirls",
+        "fortls", "sqls", "jdtls",
       },
       automatic_installation = true,
+      -- Suppress default handler to prevent double-attach on Nvim 0.11.
       handlers = { function() end },
     },
   },
@@ -79,24 +52,30 @@ return {
       "aznhe21/actions-preview.nvim",
     },
     config = function()
-      -- ── Capabilities helper ────────────────────────────────────────────
+      local nvim_011 = vim.fn.has("nvim-0.11") == 1
+
+      -- ── Capabilities ────────────────────────────────────────────────────────
+
       local function get_capabilities()
         local ok, blink = pcall(require, "blink.cmp")
         if ok then
-          -- FIX: blink may have loaded but failed setup (e.g. missing luasnip).
-          -- A second pcall around get_lsp_capabilities() prevents a hard error
-          -- in that case and falls back to the vanilla capabilities table.
           local ok2, caps = pcall(blink.get_lsp_capabilities)
-          if ok2 and caps then return caps end
+          if ok2 and type(caps) == "table" and caps.textDocument ~= nil then
+            return caps
+          end
         end
         return vim.lsp.protocol.make_client_capabilities()
       end
 
-      local nvim_011 = vim.fn.has("nvim-0.11") == 1
+      -- ── lsp_setup ───────────────────────────────────────────────────────────
 
       local function lsp_setup(server, config)
         config = config or {}
-        config.capabilities = get_capabilities()
+        config.capabilities = vim.tbl_deep_extend(
+          "force",
+          get_capabilities(),
+          config.capabilities or {}
+        )
         if nvim_011 then
           pcall(function()
             vim.lsp.config(server, config)
@@ -110,53 +89,71 @@ return {
         end
       end
 
-      -- ── Diagnostic jump helper ─────────────────────────────────────────
+      -- ── diag_jump ────────────────────────────────────────────────────────────
+
       local function diag_jump(count)
         if nvim_011 then
           pcall(function()
             vim.diagnostic.jump({ count = count, float = true })
           end)
         else
-          if count > 0 then
-            pcall(vim.diagnostic.goto_next, { float = true })
-          else
-            pcall(vim.diagnostic.goto_prev, { float = true })
+          local fn   = count > 0 and vim.diagnostic.goto_next or vim.diagnostic.goto_prev
+          local steps = math.abs(count)
+          for _ = 1, steps do
+            pcall(fn, { float = true })
           end
         end
       end
 
-      -- ── LspAttach keymaps ──────────────────────────────────────────────
+      -- ── cmd_or_fallback ──────────────────────────────────────────────────────
+
+      local function cmd_or_fallback(cmd_str, fallback_fn)
+        local ok = pcall(vim.cmd, cmd_str)
+        if not ok then pcall(fallback_fn) end
+      end
+
+      -- ── LspAttach keymaps ────────────────────────────────────────────────────
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
-          local map = function(keys, fn, desc, mode)
+          local function map(keys, fn, desc, mode)
             vim.keymap.set(mode or "n", keys, fn,
               { buffer = e.buf, desc = "LSP: " .. desc })
           end
 
-          map("gd",        vim.lsp.buf.definition,    "Go to Definition")
-          map("gD",        vim.lsp.buf.declaration,   "Go to Declaration")
-          map("gi",        vim.lsp.buf.implementation,"Go to Implementation")
-          map("gr",        vim.lsp.buf.references,    "References")
-          map("K",         vim.lsp.buf.hover,         "Hover Docs")
-          map("<leader>k", vim.lsp.buf.signature_help,"Signature Help")
+          map("gd",        vim.lsp.buf.definition,     "Go to Definition")
+          map("gD",        vim.lsp.buf.declaration,    "Go to Declaration")
+          map("gi",        vim.lsp.buf.implementation, "Go to Implementation")
+          map("gr",        vim.lsp.buf.references,     "References")
+          map("K",         vim.lsp.buf.hover,          "Hover Docs")
+          map("<leader>k", vim.lsp.buf.signature_help, "Signature Help")
 
+          -- Code action
           local function code_action()
-            local ok, ap = pcall(require, "actions-preview")
-            if ok then ap.code_actions() else vim.lsp.buf.code_action() end
+            cmd_or_fallback(
+              "ActionsPreview",
+              vim.lsp.buf.code_action
+            )
           end
           map("<leader>,a", code_action, "Code Action")
           map("<leader>,a", code_action, "Code Action", "v")
 
-          vim.keymap.set("n", "<leader>,r", function()
+          map("<leader>,r", function()
             local word = vim.fn.expand("<cword>")
-            local ok_cmd = pcall(vim.cmd, "IncRename " .. word)
-            if not ok_cmd then vim.lsp.buf.rename() end
-          end, { buffer = e.buf, desc = "LSP: Rename Symbol" })
+            cmd_or_fallback(
+              "IncRename " .. word,
+              vim.lsp.buf.rename
+            )
+          end, "Rename Symbol")
 
           local function fmt()
+            local timeout = (vim.g.format_timeout_ms or 500)
             pcall(function()
-              require("conform").format({ bufnr = e.buf, lsp_format = "fallback" })
+              require("conform").format({
+                bufnr      = e.buf,
+                timeout_ms = timeout,
+                lsp_format = "fallback",
+              })
             end)
           end
           map("<leader>,f", fmt, "Format")
@@ -166,10 +163,9 @@ return {
           map("<leader>,l", vim.diagnostic.setloclist, "Diagnostic List")
 
           map("<leader>,t", function()
-            local bufnr   = e.buf
-            local enabled = vim.diagnostic.is_enabled({ bufnr = bufnr })
-            vim.diagnostic.enable(not enabled, { bufnr = bufnr })
-            vim.notify("Diagnostics " .. (enabled and "disabled" or "enabled"))
+            local en = vim.diagnostic.is_enabled({ bufnr = e.buf })
+            vim.diagnostic.enable(not en, { bufnr = e.buf })
+            vim.notify("Diagnostics " .. (en and "disabled" or "enabled"))
           end, "Toggle Diagnostics")
 
           map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
@@ -178,11 +174,12 @@ return {
           map("[d", function() diag_jump(-1) end, "Prev Diagnostic")
 
           local client = vim.lsp.get_client_by_id(e.data.client_id)
+
           if client and client.server_capabilities.inlayHintProvider then
             map("<leader>,i", function()
-              local enabled = vim.lsp.inlay_hint.is_enabled({ bufnr = e.buf })
-              vim.lsp.inlay_hint.enable(not enabled, { bufnr = e.buf })
-              vim.notify("Inlay hints " .. (enabled and "off" or "on"))
+              local en = vim.lsp.inlay_hint.is_enabled({ bufnr = e.buf })
+              vim.lsp.inlay_hint.enable(not en, { bufnr = e.buf })
+              vim.notify("Inlay hints " .. (en and "off" or "on"))
             end, "Toggle Inlay Hints")
           end
 
@@ -194,13 +191,16 @@ return {
           end
 
           map("<leader>,o", function()
-            local ok_t = pcall(vim.cmd, "Trouble lsp_document_symbols toggle")
-            if not ok_t then pcall(vim.lsp.buf.document_symbol) end
+            cmd_or_fallback(
+              "Trouble lsp_document_symbols toggle",
+              vim.lsp.buf.document_symbol
+            )
           end, "Code Outline (Trouble symbols)")
         end,
       })
 
-      -- ── Server configurations ──────────────────────────────────────────
+      -- ── Server configurations ────────────────────────────────────────────────
+      -- Servers with non-trivial configuration.
       local servers = {
         lua_ls = {
           settings = {
@@ -230,10 +230,13 @@ return {
         },
         elixirls = {
           cmd = (function()
-            local ep = vim.fn.exepath("elixir-ls")
-            if ep ~= "" then return { ep } end
-            local mason_ep = vim.fn.stdpath("data") .. "/mason/bin/elixir-ls"
-            if vim.fn.filereadable(mason_ep) == 1 then return { mason_ep } end
+            local data = vim.fn.stdpath("data")
+            -- Mason package layout: packages/elixir-ls/language_server.sh
+            local mason_ls = data .. "/mason/packages/elixir-ls/language_server.sh"
+            if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
+            -- System install fallback
+            local sys = vim.fn.exepath("elixir-ls")
+            if sys ~= "" then return { sys } end
             return { "elixir-ls" }
           end)(),
           settings = {
@@ -245,33 +248,30 @@ return {
             },
           },
         },
-        tailwindcss            = {},
-        cssls                  = {},
-        jsonls                 = {},
-        yamlls                 = {},
-        clangd                 = {},
-        kotlin_language_server = {},
-        zls                    = {},
+      }
+
+      local DEFAULT_SERVERS = {
+        "tailwindcss", "cssls", "jsonls", "yamlls",
+        "clangd", "kotlin_language_server", "zls",
       }
 
       for server, config in pairs(servers) do
         lsp_setup(server, config)
       end
+      for _, server in ipairs(DEFAULT_SERVERS) do
+        lsp_setup(server, {})
+      end
 
-      -- ── Optional servers (binary-presence gated) ───────────────────────
-      -- OPT (v2.3.14): call shape now matches the primary `servers` table —
-      -- each entry's config is passed directly to lsp_setup() without any
-      -- intermediate reshaping. Previously each entry carried a redundant
-      -- `name` and `binary` key distinct from its `config` sub-table.
+      -- ── Optional servers (binary-gated) ─────────────────────────────────────
+
       local optional = {
         {
           server = "vhdl_ls",
-          binary = "vhdl_ls",
+          binary = "vhdl_ls",      -- differs from server name
           config = { filetypes = { "vhdl", "vhd" } },
         },
         {
           server = "fortls",
-          binary = "fortls",
           config = {
             filetypes = { "fortran" },
             settings  = {
@@ -286,7 +286,6 @@ return {
         },
         {
           server = "sqls",
-          binary = "sqls",
           config = {
             filetypes = { "sql", "mysql" },
             on_attach = function(client, _)
@@ -296,7 +295,7 @@ return {
         },
         {
           server = "cobol_ls",
-          binary = "cobol-language-server",
+          binary = "cobol-language-server",  -- differs from server name
           config = {
             filetypes = { "cobol" },
             settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
@@ -305,15 +304,22 @@ return {
       }
 
       for _, entry in ipairs(optional) do
-        if vim.fn.executable(entry.binary) == 1 then
+        local bin = entry.binary or entry.server
+        if vim.fn.executable(bin) == 1 then
           lsp_setup(entry.server, entry.config)
         end
       end
 
-      -- ── Diagnostics UI ─────────────────────────────────────────────────
+      -- ── Diagnostics UI ──────────────────────────────────────────────────────
+      local icons = require("core.util.icons")
       vim.diagnostic.config({
-        virtual_text     = { prefix = "●", spacing = 4 },
-        signs            = { text = { Error = " ", Warn = " ", Hint = " ", Info = " " } },
+        virtual_text  = { prefix = "●", spacing = 4 },
+        signs         = { text = {
+          Error = icons.diagnostics.Error,
+          Warn  = icons.diagnostics.Warn,
+          Hint  = icons.diagnostics.Hint,
+          Info  = icons.diagnostics.Info,
+        }},
         underline        = true,
         severity_sort    = true,
         float            = { border = "rounded", source = "always" },
@@ -327,6 +333,8 @@ return {
     event = "LspAttach",
     opts  = { notification = { window = { winblend = 0 } } },
   },
+
+  -- ── Conform (formatters) ────────────────────────────────────────────────────
 
   {
     "stevearc/conform.nvim",
@@ -349,21 +357,25 @@ return {
         c          = { "clang-format" },
         cpp        = { "clang-format" },
         fortran    = { "fprettify" },
-        -- NOTE: rust = { "rustfmt" } is owned by rust.lua (optional=true spec).
-        -- rustfmt ships with rustup and does not need a Mason entry.
+        -- rust  → owned by rust.lua  (rustfmt ships with rustup)
+        -- zig   → owned by zig.lua   (zigfmt ships with zig)
       },
       format_on_save = function(bufnr)
         if vim.g.disable_autoformat then return nil end
-        -- FIX: vim.b[bufnr] throws if bufnr is no longer valid (e.g. BufWritePre
-        -- fired for a buffer that was concurrently deleted). Guard with pcall.
         local ok_b, buf_disable = pcall(function()
           return vim.b[bufnr].disable_autoformat
         end)
         if ok_b and buf_disable then return nil end
-        return { timeout_ms = 500, lsp_format = "fallback" }
+        -- FIX B3: timeout respects vim.g.format_timeout_ms.
+        return {
+          timeout_ms = vim.g.format_timeout_ms or 500,
+          lsp_format = "fallback",
+        }
       end,
     },
   },
+
+  -- ── nvim-lint ───────────────────────────────────────────────────────────────
 
   {
     "mfussenegger/nvim-lint",
@@ -371,15 +383,16 @@ return {
     config = function()
       local lint = require("lint")
 
-      -- OPT (v2.3.14): merge_linters() replaces the hand-rolled nested loop.
-      -- Adds each linter to lint.linters_by_ft[ft] only if not already present,
-      -- preventing duplicates when lang specs also register linters.
       local function merge_linters(ft, linters)
         lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
-        local existing = lint.linters_by_ft[ft]
+        local existing_set = {}
+        for _, l in ipairs(lint.linters_by_ft[ft]) do
+          existing_set[l] = true
+        end
         for _, l in ipairs(linters) do
-          if not vim.tbl_contains(existing, l) then
-            table.insert(existing, l)
+          if not existing_set[l] then
+            table.insert(lint.linters_by_ft[ft], l)
+            existing_set[l] = true
           end
         end
       end
@@ -393,11 +406,16 @@ return {
         merge_linters("python", { "pylint" })
       end
 
-      -- FIX (v2.3.15): shellcheck is now registered for both "sh" and "bash"
-      -- only when the binary is present. The previous unconditional
-      -- merge_linters("sh", {"shellcheck"}) outside this guard meant nvim-lint
-      -- tried to invoke a missing binary on every sh-file write. The duplicate
-      -- guarded "sh" entry inside the block was dead code and is removed.
+      -- eslint_d guard: it is a persistent daemon process; if the binary is
+      -- absent nvim-lint logs a warning on every save and may leave orphaned
+      -- processes.  Guard is identical to the shellcheck pattern.
+      if vim.fn.executable("eslint_d") == 1 then
+        merge_linters("javascript",      { "eslint_d" })
+        merge_linters("typescript",      { "eslint_d" })
+        merge_linters("javascriptreact", { "eslint_d" })
+        merge_linters("typescriptreact", { "eslint_d" })
+      end
+
       if vim.fn.executable("shellcheck") == 1 then
         merge_linters("sh",   { "shellcheck" })
         merge_linters("bash", { "shellcheck" })

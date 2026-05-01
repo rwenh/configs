@@ -1,26 +1,5 @@
--- lua/plugins/specs/dap.lua - Debug Adapter Protocol
+-- lua/plugins/specs/dap.lua — Debug Adapter Protocol
 --
--- (all prior FIX entries preserved — see INSTALL.md for full history)
---
--- FIX (v2.3.12):
---   • Ruby DAP adapter: was hardcoded to "bundle exec rdbg ...". If the user
---     is not in a Bundler project (no Gemfile, or rdbg not in bundle) the
---     adapter silently fails to start. Fixed: resolve rdbg binary with a
---     fallback chain identical to the pattern used by every other adapter:
---       1. `bundle exec rdbg` if `bundle` is executable (Bundler project)
---       2. `rdbg` directly if it is in PATH (gem install ruby-debug-ide)
---       3. Mason bin path as last resort
---     The dap.configurations.ruby entry gains a second config for standalone
---     (non-Bundler) launch so the user sees both options in the picker.
---
--- FIX (v2.3.15):
---   • Python DAP section removed from dap.lua entirely.
---     dap.lua manually registered dap.adapters.python and
---     dap.configurations.python. python.lua's nvim-dap-python.setup()
---     overwrites both on ft=python — the dap.lua entries were dead code
---     that ran at startup for nothing and could diverge from the
---     nvim-dap-python implementation. python.lua is now the sole owner
---     of all Python DAP wiring.
 
 return {
   {
@@ -36,14 +15,15 @@ return {
       { "<leader>;c" }, { "<leader>;b" },
     },
     config = function()
-      local dap   = require("dap")
-      local dapui = require("dapui")
+      local dap    = require("dap")
+      local dapui  = require("dapui")
+      local mason  = require("core.util.mason")   -- FIX D1
 
-      -- ── DAP UI ────────────────────────────────────────────────────────
+      -- ── DAP UI ──────────────────────────────────────────────────────────────
       pcall(function()
         dapui.setup({
-          icons = { expanded = "▾", collapsed = "▸", current_frame = "▸" },
-          layouts = {
+          icons    = { expanded = "▾", collapsed = "▸", current_frame = "▸" },
+          layouts  = {
             {
               elements = {
                 { id = "scopes",      size = 0.25 },
@@ -64,7 +44,7 @@ return {
           controls = {
             enabled = true,
             element = "repl",
-            icons = {
+            icons   = {
               pause     = "",
               play      = "",
               step_into = "",
@@ -96,248 +76,283 @@ return {
       dap.listeners.before.event_terminated["dapui_config"]  = safe_close
       dap.listeners.before.event_exited["dapui_config"]      = safe_close
 
-      -- ── Shared helpers ────────────────────────────────────────────────
-      local function mason_bin(name)
-        local p = vim.fn.exepath(name)
-        if p ~= "" then return p end
-        return vim.fn.stdpath("data") .. "/mason/bin/" .. name
-      end
-
-      local function mason_pkg(rel)
-        return vim.fn.stdpath("data") .. "/mason/packages/" .. rel
-      end
-
-      -- NOTE: Python DAP (dap.adapters.python + dap.configurations.python)
-      -- is owned exclusively by python.lua via nvim-dap-python.setup().
-      -- Do not register it here — a second registration is overwritten on
-      -- ft=python and the two implementations can diverge silently.
-
-      -- ── Java ─────────────────────────────────────────────────────────
-      dap.configurations.java = {
-        { type = "java", request = "attach", name = "Debug (Attach) - Remote",
-          hostName = "127.0.0.1", port = 5005 },
-        { type = "java", request = "launch", name = "Debug (Launch) - Current File",
-          mainClass = "${file}" },
-      }
-
-      -- ── Kotlin (via jdtls + java-debug-adapter) ───────────────────
-      dap.configurations.kotlin = {
-        {
-          type      = "java",
-          request   = "attach",
-          name      = "Attach to Kotlin JVM",
-          hostName  = "127.0.0.1",
-          port      = function()
-            return tonumber(vim.fn.input("JDWP port [5005]: ")) or 5005
-          end,
-        },
-        {
-          type      = "java",
-          request   = "launch",
-          name      = "Launch Kotlin (current file)",
-          mainClass = "${file}",
-        },
-      }
-
-      -- ── C / C++ / Rust (codelldb) ─────────────────────────────────
-      -- FIX: resolve the path once and verify the binary is present before
-      -- registering the adapter. Without this guard a missing codelldb
-      -- produces a cryptic "failed to start debug server" DAP error rather
-      -- than a clear actionable message at startup.
-      local codelldb_cmd = mason_bin("codelldb")
-      local codelldb_ok  = vim.fn.executable(codelldb_cmd) == 1
-                        or vim.fn.filereadable(codelldb_cmd) == 1
-      if not codelldb_ok then
-        vim.schedule(function()
-          vim.notify(
-            "[dap] codelldb not found — C / C++ / Rust / Zig debug unavailable.\n"
-            .. "Run: :MasonInstall codelldb",
-            vim.log.levels.WARN
-          )
-        end)
-      end
-      -- Register unconditionally so the config table exists; nvim-dap's
-      -- lazy adapter-start will surface the missing-binary error at the
-      -- moment the user actually tries to start a session.
-      dap.adapters.codelldb = {
-        type = "server", port = "${port}",
-        executable = {
-          command = codelldb_cmd,
-          args    = { "--port", "${port}" },
-        },
-      }
-
-      local codelldb_launch = {
-        name    = "Launch file",
-        type    = "codelldb",
-        request = "launch",
-        program = function()
-          return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/", "file")
-        end,
-        cwd = "${workspaceFolder}", stopOnEntry = false,
-      }
-
-      dap.configurations.c   = { vim.deepcopy(codelldb_launch) }
-      dap.configurations.cpp = { vim.deepcopy(codelldb_launch) }
-      dap.configurations.rust = {
-        vim.tbl_extend("force", vim.deepcopy(codelldb_launch), {
-          name    = "Launch file",
-          program = function()
-            return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/target/debug/", "file")
-          end,
-        }),
-      }
-
-      -- ── Go (delve) ───────────────────────────────────────────────
-      dap.adapters.delve = {
-        type = "server", port = "${port}",
-        executable = {
-          command = mason_bin("dlv"),
-          args    = { "dap", "-l", "127.0.0.1:${port}" },
-        },
-      }
-      dap.configurations.go = {
-        { type = "delve", name = "Debug",               request = "launch", program = "${file}" },
-        { type = "delve", name = "Debug test",          request = "launch", mode = "test", program = "${file}" },
-        { type = "delve", name = "Debug test (go.mod)", request = "launch", mode = "test",
-          program = "./${relativeFileDirname}" },
-      }
-
-      -- ── JavaScript / TypeScript (pwa-node) ──────────────────────
-      local js_debug_script = mason_pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
-      local node_bin = vim.fn.exepath("node")
-
-      if node_bin ~= "" and vim.fn.filereadable(js_debug_script) == 1 then
-        dap.adapters["pwa-node"] = {
-          type = "server", host = "localhost", port = "${port}",
-          executable = {
-            command = node_bin,
-            args    = { js_debug_script, "${port}" },
-          },
-        }
-        dap.configurations.javascript = {
-          { type = "pwa-node", request = "launch", name = "Launch file",
-            program = "${file}", cwd = "${workspaceFolder}" },
-          { type = "pwa-node", request = "attach", name = "Attach",
-            processId = function()
-              return require("dap.utils").pick_process()
-            end,
-            cwd = "${workspaceFolder}" },
-        }
-        dap.configurations.typescript = {
-          { type = "pwa-node", request = "launch", name = "Launch file",
-            program = "${file}", cwd = "${workspaceFolder}",
-            runtimeExecutable = "ts-node" },
-        }
-        dap.configurations.javascriptreact = dap.configurations.javascript
-        dap.configurations.typescriptreact = dap.configurations.typescript
-      else
-        vim.schedule(function()
-          if node_bin == "" then
-            vim.notify("[dap] node not found — JS/TS debug unavailable", vim.log.levels.WARN)
-          else
-            vim.notify("[dap] js-debug-adapter not installed — run :MasonInstall js-debug-adapter",
-              vim.log.levels.WARN)
-          end
-        end)
-      end
-
-      -- ── Ruby (rdbg) ──────────────────────────────────────────────
-      -- FIX (v2.3.12): resolve rdbg with a proper fallback chain.
-      -- bundle exec rdbg is only valid inside a Bundler project. When bundle
-      -- is absent or rdbg is not in the bundle, the adapter silently fails.
-      -- Resolution order:
-      --   1. bundle exec rdbg  (Bundler project with rdbg in Gemfile)
-      --   2. rdbg directly     (gem install rdbg / ruby-debug-ide in PATH)
-      --   3. Mason bin         (last resort)
-      local rdbg_use_bundle = vim.fn.executable("bundle") == 1
-      local rdbg_bin = (function()
-        if vim.fn.executable("rdbg") == 1 then return vim.fn.exepath("rdbg") end
-        local mason_rdbg = vim.fn.stdpath("data") .. "/mason/bin/rdbg"
-        if vim.fn.filereadable(mason_rdbg) == 1 then return mason_rdbg end
-        return nil
-      end)()
-
-      if rdbg_use_bundle or rdbg_bin then
-        dap.adapters.ruby = function(callback, config)
-          if rdbg_use_bundle then
-            callback({
-              type = "server", host = "127.0.0.1", port = "${port}",
-              executable = {
-                command = "bundle",
-                args    = { "exec", "rdbg", "-n", "--open", "--port", "${port}",
-                            "-c", "--", "ruby", config.program },
-              },
-            })
-          else
-            callback({
-              type = "server", host = "127.0.0.1", port = "${port}",
-              executable = {
-                command = rdbg_bin,
-                args    = { "-n", "--open", "--port", "${port}",
-                            "-c", "--", "ruby", config.program },
-              },
-            })
-          end
+      -- ── register_adapter helper ──────────────────────────────────────────────
+      --
+      -- @param name        string    dap.adapters key
+      -- @param check_fn    function  returns adapter table or nil
+      -- @param configs     table     dap.configurations entries
+      -- @param warn_msg    string    shown when check_fn returns nil
+      local function register_adapter(name, check_fn, configs, warn_msg)
+        local adapter = check_fn()
+        if adapter then
+          dap.adapters[name]      = adapter
+          dap.configurations[name] = configs
+        else
+          vim.schedule(function()
+            vim.notify(warn_msg, vim.log.levels.WARN)
+          end)
         end
-
-        dap.configurations.ruby = {
-          { type = "ruby", name = "Debug current file (bundle)", request = "attach",
-            localfs = true, program = "${file}" },
-          { type = "ruby", name = "Debug current file (rdbg)",   request = "attach",
-            localfs = true, program = "${file}" },
-        }
-      else
-        vim.schedule(function()
-          vim.notify(
-            "[dap] Ruby debugger (rdbg) not found.\n"
-            .. "Run: gem install rdbg  OR  bundle add rdbg",
-            vim.log.levels.WARN
-          )
-        end)
       end
 
-      -- ── Elixir (ElixirLS debugger) ─────────────────────────────────
-      local elixir_dbg = (function()
-        local pkg_dbg = mason_pkg("elixir-ls/debugger.sh")
-        if vim.fn.filereadable(pkg_dbg) == 1 then return pkg_dbg end
-        local standalone = vim.fn.exepath("elixir-ls-debugger")
-        if standalone ~= "" then return standalone end
-        return nil
-      end)()
+      -- NOTE: Python DAP is owned exclusively by python.lua (nvim-dap-python).
+      -- Do NOT register dap.adapters.python or dap.configurations.python here.
 
-      if elixir_dbg then
-        dap.adapters.mix_task = {
-          type    = "executable",
-          command = elixir_dbg,
-          args    = {},
-        }
-        dap.configurations.elixir = {
-          { type = "mix_task", name = "mix test", task = "test",
-            taskArgs = { "--trace" }, request = "launch", startApps = true,
-            projectDir = "${workspaceFolder}",
-            requireFiles = { "test/**/test_helper.exs", "test/**/*_test.exs" } },
-          { type = "mix_task", name = "mix phx.server", task = "phx.server",
-            request = "launch", projectDir = "${workspaceFolder}" },
-        }
-      else
-        vim.schedule(function()
-          vim.notify(
-            "[dap] Elixir DAP debugger not found.\n"
-            .. "Run :MasonInstall elixir-ls to install it.",
-            vim.log.levels.WARN
+      -- ── Java (deferred) ──────────────────────────────────────────────────────
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "java",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapJavaDeferred", { clear = true }),
+        callback = function()
+          dap.configurations.java = {
+            { type = "java", request = "attach", name = "Debug (Attach) - Remote",
+              hostName = "127.0.0.1", port = 5005 },
+            { type = "java", request = "launch", name = "Debug (Launch) - Current File",
+              mainClass = "${file}" },
+          }
+        end,
+      })
+
+      -- ── Kotlin (deferred) ────────────────────────────────────────────────────
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "kotlin",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapKotlinDeferred", { clear = true }),
+        callback = function()
+          dap.configurations.kotlin = {
+            {
+              type     = "java", request = "attach",
+              name     = "Attach to Kotlin JVM",
+              hostName = "127.0.0.1",
+              port     = function()
+                return tonumber(vim.fn.input("JDWP port [5005]: ")) or 5005
+              end,
+            },
+            {
+              type      = "java", request = "launch",
+              name      = "Launch Kotlin (current file)",
+              mainClass = "${file}",
+            },
+          }
+        end,
+      })
+
+      -- ── C / C++ / Rust (codelldb, deferred) ──────────────────────────────────
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = { "c", "cpp", "rust" },
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapCodelldbDeferred", { clear = true }),
+        callback = function()
+          local codelldb_cmd = mason.bin("codelldb")
+          if vim.fn.executable(codelldb_cmd) ~= 1 then
+            vim.notify(
+              "[dap] codelldb not found — C / C++ / Rust debug unavailable.\n"
+              .. "Run: :MasonInstall codelldb",
+              vim.log.levels.WARN
+            )
+          end
+
+          dap.adapters.codelldb = {
+            type = "server", port = "${port}",
+            executable = { command = codelldb_cmd, args = { "--port", "${port}" } },
+          }
+
+          local base_launch = {
+            name    = "Launch file",
+            type    = "codelldb",
+            request = "launch",
+            program = function()
+              return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/", "file")
+            end,
+            cwd = "${workspaceFolder}", stopOnEntry = false,
+          }
+
+          dap.configurations.c   = { vim.deepcopy(base_launch) }
+          dap.configurations.cpp = { vim.deepcopy(base_launch) }
+          dap.configurations.rust = {
+            vim.tbl_extend("force", vim.deepcopy(base_launch), {
+              name    = "Launch Rust binary",
+              program = function()
+                return vim.fn.input("Path to executable: ",
+                  vim.fn.getcwd() .. "/target/debug/", "file")
+              end,
+            }),
+          }
+        end,
+      })
+
+      -- ── Go / delve (deferred) ────────────────────────────────────────────────
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "go",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapGoDeferred", { clear = true }),
+        callback = function()
+          register_adapter(
+            "delve",
+            function()
+              local dlv = mason.bin("dlv")
+              if vim.fn.executable(dlv) ~= 1 then return nil end
+              return {
+                type = "server", port = "${port}",
+                executable = {
+                  command = dlv,
+                  args    = { "dap", "-l", "127.0.0.1:${port}" },
+                },
+              }
+            end,
+            {
+              { type = "delve", name = "Debug",               request = "launch", program = "${file}" },
+              { type = "delve", name = "Debug test",          request = "launch", mode = "test", program = "${file}" },
+              { type = "delve", name = "Debug test (go.mod)", request = "launch", mode = "test",
+                program = "./${relativeFileDirname}" },
+            },
+            "[dap] delve not found — Go debug unavailable.\nRun: :MasonInstall delve"
           )
-        end)
-      end
+        end,
+      })
 
-      -- ── Persistent breakpoints ────────────────────────────────────
+      -- ── JavaScript / TypeScript / pwa-node (deferred) ────────────────────────
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = { "javascript", "typescript", "javascriptreact", "typescriptreact" },
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapJsDeferred", { clear = true }),
+        callback = function()
+          local js_debug_script = mason.pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
+          local node_bin        = vim.fn.exepath("node")
+
+          if node_bin == "" or vim.fn.filereadable(js_debug_script) ~= 1 then
+            vim.schedule(function()
+              local msg = node_bin == ""
+                and "[dap] node not found — JS/TS debug unavailable"
+                or  "[dap] js-debug-adapter not installed — run :MasonInstall js-debug-adapter"
+              vim.notify(msg, vim.log.levels.WARN)
+            end)
+            return
+          end
+
+          dap.adapters["pwa-node"] = {
+            type = "server", host = "localhost", port = "${port}",
+            executable = {
+              command = node_bin,
+              args    = { js_debug_script, "${port}" },
+            },
+          }
+
+          local js_launch = {
+            { type = "pwa-node", request = "launch", name = "Launch file",
+              program = "${file}", cwd = "${workspaceFolder}" },
+            { type = "pwa-node", request = "attach", name = "Attach",
+              processId = function()
+                return require("dap.utils").pick_process()
+              end,
+              cwd = "${workspaceFolder}" },
+          }
+
+          dap.configurations.javascript      = js_launch
+          dap.configurations.javascriptreact = js_launch
+
+          -- TS extends JS launch with ts-node runtime.
+          local ts_launch = vim.deepcopy(js_launch)
+          ts_launch[1] = vim.tbl_extend("force", ts_launch[1], {
+            name             = "Launch TS file",
+            runtimeExecutable = "ts-node",
+          })
+          dap.configurations.typescript      = ts_launch
+          dap.configurations.typescriptreact = ts_launch
+        end,
+      })
+
+      -- ── Ruby / rdbg (deferred) ───────────────────────────────────────────────
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "ruby",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapRubyDeferred", { clear = true }),
+        callback = function()
+          local use_bundle = vim.fn.executable("bundle") == 1
+
+          local rdbg_bin = (function()
+            if vim.fn.executable("rdbg") == 1 then return vim.fn.exepath("rdbg") end
+            local m = mason.bin("rdbg")
+            if vim.fn.filereadable(m) == 1 then return m end
+            return nil
+          end)()
+
+          if not use_bundle and not rdbg_bin then
+            vim.notify(
+              "[dap] Ruby debugger (rdbg) not found.\n"
+              .. "Run: gem install rdbg  OR  bundle add rdbg",
+              vim.log.levels.WARN
+            )
+            return
+          end
+
+          dap.adapters.ruby = function(callback, config)
+            if use_bundle then
+              callback({
+                type = "server", host = "127.0.0.1", port = "${port}",
+                executable = {
+                  command = "bundle",
+                  args    = { "exec", "rdbg", "-n", "--open", "--port", "${port}",
+                              "-c", "--", "ruby", config.program },
+                },
+              })
+            else
+              callback({
+                type = "server", host = "127.0.0.1", port = "${port}",
+                executable = {
+                  command = rdbg_bin,
+                  args    = { "-n", "--open", "--port", "${port}",
+                              "-c", "--", "ruby", config.program },
+                },
+              })
+            end
+          end
+
+          dap.configurations.ruby = {
+            { type = "ruby", name = "Debug current file (bundle)", request = "attach",
+              localfs = true, program = "${file}" },
+            { type = "ruby", name = "Debug current file (rdbg)",   request = "attach",
+              localfs = true, program = "${file}" },
+          }
+        end,
+      })
+
+      -- ── Elixir / ElixirLS debugger (deferred) ─────────────────────────────
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "elixir",
+        once     = true,
+        group    = vim.api.nvim_create_augroup("DapElixirDeferred", { clear = true }),
+        callback = function()
+          register_adapter(
+            "mix_task",
+            function()
+              local pkg_dbg    = mason.pkg("elixir-ls/debugger.sh")
+              local standalone = vim.fn.exepath("elixir-ls-debugger")
+              if vim.fn.filereadable(pkg_dbg) == 1    then return { type = "executable", command = pkg_dbg,    args = {} } end
+              if standalone ~= ""                      then return { type = "executable", command = standalone, args = {} } end
+              return nil
+            end,
+            {
+              { type = "mix_task", name = "mix test", task = "test",
+                taskArgs = { "--trace" }, request = "launch", startApps = true,
+                projectDir = "${workspaceFolder}",
+                requireFiles = { "test/**/test_helper.exs", "test/**/*_test.exs" } },
+              { type = "mix_task", name = "mix phx.server", task = "phx.server",
+                request = "launch", projectDir = "${workspaceFolder}" },
+            },
+            "[dap] Elixir DAP debugger not found.\nRun :MasonInstall elixir-ls"
+          )
+        end,
+      })
+
+      -- ── Persistent breakpoints ────────────────────────────────────────────────
       local bp_file = vim.fn.stdpath("data") .. "/dap-breakpoints.json"
 
-      local function save_breakpoints()
+      local function serialize_breakpoints(bp_data)
         local bps = {}
-        local ok_bp, bp_data = pcall(function() return require("dap.breakpoints").get() end)
-        if not ok_bp then return end
-
         for bufnr, buf_bps in pairs(bp_data) do
           local path = vim.api.nvim_buf_get_name(bufnr)
           if path ~= "" and #buf_bps > 0 then
@@ -350,24 +365,25 @@ return {
             end, buf_bps)
           end
         end
+        return bps
+      end
+
+      local function save_breakpoints()
+        local ok_bp, bp_data = pcall(function() return require("dap.breakpoints").get() end)
+        if not ok_bp then return end
+
+        local bps = serialize_breakpoints(bp_data)
         if next(bps) == nil then return end
 
-        local f = io.open(bp_file, "w")
-        if f then
-          f:write(vim.json.encode(bps))
-          f:close()
-        end
+        local json_str = vim.json.encode(bps)
+        pcall(vim.fn.writefile, { json_str }, bp_file)
       end
 
       local function set_bps_scheduled(bufnr, entries)
         vim.schedule(function()
           if vim.b[bufnr] and vim.b[bufnr].large_file then
             vim.notify(
-              string.format(
-                "[dap] Skipping breakpoint restore for large file buffer %d — "
-                .. "line mapping unreliable without treesitter.",
-                bufnr
-              ),
+              string.format("[dap] Skipping breakpoint restore for large file buffer %d", bufnr),
               vim.log.levels.WARN
             )
             return
@@ -376,18 +392,27 @@ return {
             pcall(function()
               require("dap.breakpoints").set(
                 { condition = bp.condition, log_message = bp.log_message },
-                bufnr, bp.line)
+                bufnr,
+                math.floor(bp.line)
+              )
             end)
           end
         end)
       end
 
       local function load_breakpoints()
-        local f = io.open(bp_file, "r")
-        if not f then return end
-        local ok_j, bps = pcall(vim.json.decode, f:read("*a"))
-        f:close()
-        if not ok_j or not bps then return end
+        local ok_read, lines = pcall(vim.fn.readfile, bp_file)
+        if not ok_read or not lines or #lines == 0 then return end
+
+        local ok_j, bps = pcall(vim.json.decode, table.concat(lines, "\n"))
+        if not ok_j or not bps then
+          vim.notify(
+            "[dap] Could not parse breakpoints file — it may be corrupt.\n"
+            .. "Delete it to start fresh: " .. bp_file,
+            vim.log.levels.WARN
+          )
+          return
+        end
 
         for path, entries in pairs(bps) do
           local bufnr = vim.fn.bufnr(path)
@@ -395,17 +420,14 @@ return {
             set_bps_scheduled(bufnr, entries)
           else
             local aug = vim.api.nvim_create_augroup(
-              "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 8), { clear = true }
+              "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 16), { clear = true }
             )
             vim.api.nvim_create_autocmd("BufReadPost", {
               pattern  = "*",
               group    = aug,
               callback = function(e)
-                local evfile = vim.api.nvim_buf_get_name(e.buf)
-                if evfile ~= path then return end
+                if vim.api.nvim_buf_get_name(e.buf) ~= path then return end
                 set_bps_scheduled(e.buf, entries)
-                -- FIX: delete the augroup after it fires so one-shot restore
-                -- augroups don't accumulate across the session lifetime.
                 pcall(vim.api.nvim_del_augroup_by_id, aug)
               end,
             })
@@ -418,10 +440,16 @@ return {
         callback = save_breakpoints,
       })
 
+      local load_group = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true })
       vim.api.nvim_create_autocmd("User", {
         pattern  = "LazyDone",
         once     = true,
-        group    = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true }),
+        group    = load_group,
+        callback = load_breakpoints,
+      })
+      vim.api.nvim_create_autocmd("SessionLoadPost", {
+        once     = true,
+        group    = load_group,
         callback = load_breakpoints,
       })
     end,
@@ -437,8 +465,7 @@ return {
         "elixir-ls",
       },
       automatic_installation = true,
-      -- handlers key intentionally absent — lets mason-nvim-dap run its
-      -- built-in default handler for every installed adapter.
+      -- handlers key absent: lets mason-nvim-dap run its default handler.
     },
   },
 
@@ -454,7 +481,7 @@ return {
       commented                   = false,
     },
     config = function(_, opts)
-      require("nvim-dap-virtual-text").setup(opts)
+      pcall(function() require("nvim-dap-virtual-text").setup(opts) end)
     end,
   },
 }

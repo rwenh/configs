@@ -1,12 +1,11 @@
 ;;; ui-theme.el --- Premium Theme System -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Smooth theme toggling, ambient palette hooks, and per-environment overrides.
-;;; Version: 3.1.0
+;;; Version: 3.3.0
+;;;
 ;;; Code:
 
 (require 'cl-lib)
 
-;;; ─── Theme registry ─────────────────────────────────────────────────────────
+;;;; ── Theme registry ──────────────────────────────────────────────────────────
 
 (defvar emacs-ide-theme--dark-themes
   '(ef-dark ef-night ef-duo-dark ef-trio-dark ef-cherie ef-winter
@@ -19,47 +18,55 @@
     ef-frost ef-elea-light ef-melissa-light ef-maris-light ef-arbutus)
   "Known light ef-themes variants.")
 
-;;; ─── After-load hooks ────────────────────────────────────────────────────────
+;;;; ── Post-theme hook ─────────────────────────────────────────────────────────
 
 (defvar emacs-ide-after-theme-hook nil
-  "Hook run after any theme is loaded.  Useful for per-theme tweaks.")
+  "Hook run after any theme is loaded via `load-theme'.
+Useful for per-theme face tweaks, modeline colour adjustments, etc.")
 
 (advice-add 'load-theme :after
             (lambda (&rest _) (run-hooks 'emacs-ide-after-theme-hook)))
 
-;;; ─── Apply environment theme override ───────────────────────────────────────
+;;;; ── Environment theme override ─────────────────────────────────────────────
 
 (defun emacs-ide-theme--apply-env-override ()
-  "Load the theme specified in config.yml for the current environment."
+  "Load the theme specified for the current environment in config.yml.
+Reads environments.<env>.theme and loads it if different from the
+currently active theme."
   (when (and (boundp 'emacs-ide-config-data) emacs-ide-config-data)
-    (let* ((env  (or (bound-and-true-p emacs-ide-config-environment) "default"))
+    (let* ((env  (or (bound-and-true-p emacs-ide-config-environment)
+                     "default"))
            (envs (cdr (assoc 'environments emacs-ide-config-data)))
            (ecfg (cdr (assoc (intern env) envs)))
            (raw  (and ecfg (cdr (assoc 'theme ecfg)))))
       (when raw
         (let ((theme (if (stringp raw) (intern raw) raw)))
           (unless (eq theme (car (custom-enabled-themes)))
-            (condition-case nil (load-theme theme t)
-              (error nil))))))))
+            (condition-case err
+                (load-theme theme t)
+              (error
+               (message "ui-theme: could not load env theme %s: %s"
+                        theme err)))))))))
 
 (with-eval-after-load 'emacs-ide-config
   (emacs-ide-theme--apply-env-override))
 
-(add-hook 'emacs-ide-config-reload-hook #'emacs-ide-theme--apply-env-override)
+(add-hook 'emacs-ide-config-reload-hook
+          #'emacs-ide-theme--apply-env-override)
 
-;;; ─── Toggle ──────────────────────────────────────────────────────────────────
+;;;; ── Toggle ─────────────────────────────────────────────────────────────────
 
 (defun emacs-ide-toggle-theme ()
-  "Toggle between the dark and light ef-theme configured in config.yml."
+  "Toggle between the dark and light ef-theme pair."
   (interactive)
   (if (fboundp 'ef-themes-toggle)
       (progn
         (ef-themes-toggle)
         (message "Theme: %s" (car (custom-enabled-themes))))
-    (let* ((current      (car (custom-enabled-themes)))
-           (load-fn      (if (fboundp 'ef-themes-load-theme)
-                             #'ef-themes-load-theme
-                           (lambda (theme) (load-theme theme t)))))
+    (let* ((current (car (custom-enabled-themes)))
+           (load-fn (if (fboundp 'ef-themes-load-theme)
+                        #'ef-themes-load-theme
+                      (lambda (theme) (load-theme theme t)))))
       (cond
        ((memq current emacs-ide-theme--dark-themes)
         (funcall load-fn 'ef-light)
@@ -69,12 +76,12 @@
         (message "Theme → ef-dark"))
        (t
         (funcall load-fn 'ef-dark)
-        (message "Theme → ef-dark"))))))
+        (message "Theme → ef-dark (fallback)"))))))
 
-;;; ─── Select ──────────────────────────────────────────────────────────────────
+;;;; ── Select ─────────────────────────────────────────────────────────────────
 
 (defun emacs-ide-select-theme ()
-  "Interactively select any ef-theme."
+  "Interactively select any known ef-theme by name."
   (interactive)
   (if (fboundp 'ef-themes-select)
       (call-interactively #'ef-themes-select)
@@ -86,35 +93,40 @@
         (load-theme (intern choice) t)
         (message "Theme → %s" choice)))))
 
-;;; ─── Modus migration ─────────────────────────────────────────────────────────
+;;;; ── Modus migration helper ──────────────────────────────────────────────────
 
 (defun emacs-ide-theme--migrate-modus (theme)
-  "Return ef equivalent for modus THEME, or THEME unchanged."
+  "Return the ef-themes equivalent for a modus THEME symbol, or THEME itself."
   (pcase theme
-    ((pred (lambda (t) (string-prefix-p "modus-operandi" (symbol-name t)))) 'ef-light)
-    ((pred (lambda (t) (string-prefix-p "modus-vivendi"  (symbol-name t)))) 'ef-dark)
+    ((pred (lambda (t)
+             (string-prefix-p "modus-operandi" (symbol-name t))))
+     'ef-light)
+    ((pred (lambda (t)
+             (string-prefix-p "modus-vivendi"  (symbol-name t))))
+     'ef-dark)
     (_ theme)))
 
-;;; ─── Convenience predicates ─────────────────────────────────────────────────
+;;;; ── Convenience predicates ─────────────────────────────────────────────────
 
 (defun emacs-ide-theme-dark-p ()
-  "Return non-nil if the current theme is dark."
+  "Return non-nil if the active theme is in the dark ef-themes set."
   (memq (car (custom-enabled-themes)) emacs-ide-theme--dark-themes))
 
 (defun emacs-ide-theme-light-p ()
-  "Return non-nil if the current theme is light."
+  "Return non-nil if the active theme is in the light ef-themes set."
   (memq (car (custom-enabled-themes)) emacs-ide-theme--light-themes))
 
-;;; ─── Auto dark/light by time ─────────────────────────────────────────────────
+;;;; ── Auto dark/light by time ─────────────────────────────────────────────────
 
 (defvar emacs-ide-theme-auto-dark-hour  19
-  "Hour (0–23) at which to switch to the dark theme automatically.")
+  "Hour (0–23) to switch to the dark theme.  Set by config.yml theme.dark-hour.")
 (defvar emacs-ide-theme-auto-light-hour  7
-  "Hour (0–23) at which to switch to the light theme automatically.")
-(defvar emacs-ide-theme--auto-timer nil)
+  "Hour (0–23) to switch to the light theme.  Set by config.yml theme.light-hour.")
+(defvar emacs-ide-theme--auto-timer nil
+  "Repeating wall-clock timer for automatic day/night switching.")
 
 (defun emacs-ide-theme--auto-switch ()
-  "Switch between dark/light based on time of day."
+  "Switch dark/light theme based on the current hour of day."
   (let ((hour (string-to-number (format-time-string "%H"))))
     (cond
      ((and (>= hour emacs-ide-theme-auto-dark-hour)
@@ -126,13 +138,19 @@
       (load-theme 'ef-light t)))))
 
 (defun emacs-ide-theme-enable-auto ()
-  "Enable automatic day/night theme switching."
+  "Enable automatic day/night theme switching based on config hours."
   (interactive)
   (when emacs-ide-theme--auto-timer
     (cancel-timer emacs-ide-theme--auto-timer))
+  ;; Run once immediately so the correct theme is applied right now
+  (emacs-ide-theme--auto-switch)
+  ;; Then repeat every 30 minutes
   (setq emacs-ide-theme--auto-timer
-        (run-with-timer 0 (* 30 60) #'emacs-ide-theme--auto-switch))
-  (message "Auto theme switching enabled (checks every 30 min)"))
+        (run-with-timer (* 30 60) (* 30 60)
+                        #'emacs-ide-theme--auto-switch))
+  (message "Auto theme switching enabled (dark at %02d:00, light at %02d:00)"
+           emacs-ide-theme-auto-dark-hour
+           emacs-ide-theme-auto-light-hour))
 
 (defun emacs-ide-theme-disable-auto ()
   "Disable automatic day/night theme switching."
@@ -141,6 +159,24 @@
     (cancel-timer emacs-ide-theme--auto-timer)
     (setq emacs-ide-theme--auto-timer nil))
   (message "Auto theme switching disabled"))
+
+(add-hook 'kill-emacs-hook
+          (lambda ()
+            (when emacs-ide-theme--auto-timer
+              (cancel-timer emacs-ide-theme--auto-timer)
+              (setq emacs-ide-theme--auto-timer nil))))
+
+(defun emacs-ide-theme--apply-auto-switch-config ()
+  "Read theme.auto-switch from config and activate/deactivate accordingly."
+  (if (bound-and-true-p emacs-ide-theme-auto-switch)
+      (emacs-ide-theme-enable-auto)
+    (emacs-ide-theme-disable-auto)))
+
+(with-eval-after-load 'emacs-ide-config
+  (emacs-ide-theme--apply-auto-switch-config))
+
+(add-hook 'emacs-ide-config-reload-hook
+          #'emacs-ide-theme--apply-auto-switch-config)
 
 (provide 'ui-theme)
 ;;; ui-theme.el ends here

@@ -1,11 +1,5 @@
--- lua/core/options.lua - Neovim options (Nvim 0.11+)
+-- lua/core/options.lua — Neovim options (Nvim 0.11+)
 --
--- FIX (v2.3.11):
---   • matchit comment corrected. matchit remains in the disabled list (it is a
---     separate builtin from matchparen and vim-matchup does NOT set
---     g:loaded_matchit). The v2.3.9b comment only described the matchparen
---     change but was positioned next to the matchit entry, implying matchit had
---     also been re-enabled. Clarified in-place to avoid confusion.
 
 local opt = vim.opt
 local g   = vim.g
@@ -24,9 +18,7 @@ opt.showbreak      = "↳ "
 opt.breakindentopt = "shift:2,min:40"
 opt.mouse          = "a"
 
-if vim.fn.has("clipboard") == 1 then
-  opt.clipboard = "unnamedplus"
-end
+opt.clipboard = "unnamedplus"
 
 opt.undofile = true
 opt.swapfile = false
@@ -85,7 +77,8 @@ opt.foldlevelstart = 99
 opt.foldenable     = true
 
 opt.foldmethod = "expr"
--- FIX (v2.3.1): replaces deprecated "nvim_treesitter#foldexpr()" shim.
+-- Uses the native Lua treesitter foldexpr introduced in Neovim 0.10+.
+-- (Replaced deprecated "nvim_treesitter#foldexpr()" shim in v2.3.1.)
 opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -99,7 +92,8 @@ opt.winminwidth = 10
 -- PERFORMANCE
 -- ═══════════════════════════════════════════════════════════════════════════
 
-opt.updatetime  = 200
+opt.updatetime = 200
+
 opt.timeoutlen  = 500
 opt.ttimeoutlen = 50
 
@@ -113,43 +107,53 @@ opt.spelllang = "en_us"
 -- SESSION
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- FIX (v2.3.3): "terminal" removed — persisting terminal buffers almost always
--- fails, leaving dead "[Process exited]" windows on every session restore.
--- "help" removed — help buffers are ephemeral and should not be persisted.
-opt.sessionoptions = "buffers,curdir,folds,tabpages,winsize,winpos,localoptions"
+-- Removed in v2.3.3:
+--   "terminal" — persisted terminal buffers fail on restore ("[Process exited]")
+--   "help"     — help buffers are ephemeral
+opt.sessionoptions = table.concat({
+  "buffers",       -- open buffers
+  "curdir",        -- current working directory
+  "folds",         -- fold state
+  "tabpages",      -- all tab pages
+  "winsize",       -- window sizes
+  "winpos",        -- window position on screen
+  "localoptions",  -- buffer-local and window-local options
+}, ",")
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- GLOBAL FLAGS
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- FIX (v2.3.2): auto_cd_root initialised to false (opt-in).
--- Toggle at runtime with :ToggleAutoCd
--- To enable by default on every startup, change false → true here.
+-- Opt-in: auto-cd to project root on BufEnter.
+-- Toggle at runtime with :ToggleAutoCd.
+-- Set to true here to enable for every session.
 g.auto_cd_root = false
+
+-- Opt-in: auto-save before running a file with runner.lua.
+-- Set to false to disable the silent pre-run write.
+g.runner_autosave = true
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISABLE BUILT-IN PLUGINS
 -- ═══════════════════════════════════════════════════════════════════════════
 
-local builtin_plugins = {
+local disabled_builtins = {
   "gzip", "zip", "zipPlugin", "tar", "tarPlugin",
   "getscript", "getscriptPlugin",
   "vimball", "vimballPlugin",
   "2html_plugin",
   "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
-  -- matchparen intentionally NOT in this list (FIX v2.3.9b):
+
+  -- matchparen intentionally NOT here (restored in v2.3.9b):
   --   vim-matchup (advanced.lua) supersedes the builtin and sets
-  --   g:loaded_matchparen itself, preventing double-loading. Disabling it
-  --   here blocked that hand-off and left bracket highlighting off since v2.0.
-  --
-  -- matchit IS still disabled here (FIX v2.3.11):
-  --   vim-matchup does NOT set g:loaded_matchit — these are two separate
-  --   builtins. matchit provides basic % motion; vim-matchup provides a
-  --   superior treesitter-aware replacement and works correctly without matchit
-  --   being active. Keeping matchit disabled avoids redundant % handling.
+  --   g:loaded_matchparen itself, preventing double-loading.
+
+  -- matchit IS disabled (v2.3.11):
+  --   vim-matchup does NOT set g:loaded_matchit — they are separate builtins.
+  --   vim-matchup provides a superior treesitter-aware replacement for % motion.
   "matchit",
 }
 
-for _, plugin in ipairs(builtin_plugins) do
+for _, plugin in ipairs(disabled_builtins) do
   g["loaded_" .. plugin] = 1
 end

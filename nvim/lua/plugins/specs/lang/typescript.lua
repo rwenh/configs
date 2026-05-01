@@ -1,19 +1,34 @@
--- lua/plugins/specs/lang/typescript.lua
+-- lua/plugins/specs/lang/typescript.lua — TypeScript development
 --
--- OPT (v2.3.13):
---   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
---     Direct init() assignment is sufficient (see css.lua note).
+-- LSP:    typescript-tools (this file — covers JS too; see javascript.lua)
+-- Format: prettier via lsp.lua conform (typescript + typescriptreact)
+-- Lint:   eslint_d via lsp.lua nvim-lint (guarded)
+-- DAP:    pwa-node via dap.lua
+-- Test:   neotest-jest/vitest via test.lua; runner.lua
+--
+-- Cross-reference: javascript.lua for package-info, eslint_d notes, JS parsers.
+-- Near-duplicate of javascript.lua — future merge candidate (see Batch 8 X1).
+--
+
+local shared = require("plugins.specs.lang.shared")
 
 return {
-  -- ── TypeScript LSP extras ─────────────────────────────────────────────
+  -- ── typescript-tools ───────────────────────────────────────────────────────
+  -- Covers both TypeScript AND JavaScript (ft includes all four variants).
+  -- typescript-tools manages its own tsserver instance; do NOT add tsserver
+  -- to lsp.lua's servers table — two tsserver processes would conflict.
   {
     "pmizio/typescript-tools.nvim",
-    ft           = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
+    ft           = vim.list_extend(
+      vim.deepcopy(shared.JS_FT),
+      vim.deepcopy(shared.TS_FT)
+    ),
     dependencies = { "nvim-lua/plenary.nvim", "neovim/nvim-lspconfig" },
     opts = {
       settings = {
         tsserver_file_preferences = {
-          importModuleSpecifierPreference         = "non-relative",
+          importModuleSpecifierPreference         = vim.g.ts_import_preference
+                                                    or "non-relative",
           includeInlayParameterNameHints          = "literals",
           includeInlayVariableTypeHints           = false,
           includeInlayFunctionLikeReturnTypeHints = true,
@@ -24,27 +39,21 @@ return {
       pcall(function() require("typescript-tools").setup(opts) end)
     end,
     keys = {
-      { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",      desc = "TS Organize Imports",   ft = { "typescript", "typescriptreact" } },
-      { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",    desc = "TS Add Missing Imports", ft = { "typescript", "typescriptreact" } },
-      { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>",  desc = "TS Remove Unused",       ft = { "typescript", "typescriptreact" } },
-      { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",               desc = "TS Fix All",             ft = { "typescript", "typescriptreact" } },
-      { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>", desc = "TS Source Definition",   ft = { "typescript", "typescriptreact" } },
+      { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",
+        desc = "TS Organize Imports",    ft = shared.TS_FT },
+      { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",
+        desc = "TS Add Missing Imports", ft = shared.TS_FT },
+      { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>",
+        desc = "TS Remove Unused",       ft = shared.TS_FT },
+      { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",
+        desc = "TS Fix All",             ft = shared.TS_FT },
+      { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>",
+        desc = "TS Go To Source Def (not .d.ts)", ft = shared.TS_FT },
     },
   },
 
-  -- ── nvim-lint ─────────────────────────────────────────────────────────
-  {
-    "mfussenegger/nvim-lint",
-    optional = true,
-    init = function()
-      local ok, lint = pcall(require, "lint")
-      if not ok then return end
-      lint.linters_by_ft.typescript      = { "eslint_d" }
-      lint.linters_by_ft.typescriptreact = { "eslint_d" }
-    end,
-  },
+  -- ── Conform: typescriptreact ───────────────────────────────────────────────
 
-  -- ── Conform ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -54,7 +63,30 @@ return {
     end,
   },
 
-  -- ── Treesitter ────────────────────────────────────────────────────────
+  -- ── nvim-lint: eslint_d ────────────────────────────────────────────────────
+
+  {
+    "mfussenegger/nvim-lint",
+    optional = true,
+    init = function()
+      if vim.fn.executable("eslint_d") ~= 1 then return end
+    end,
+  },
+
+  -- ── Neogen: JSDoc/TSDoc ────────────────────────────────────────────────────
+
+  {
+    "danymat/neogen",
+    optional = true,
+    ft       = { "typescript", "typescriptreact" },
+    opts = {
+      languages = {
+        typescript = { template = { annotation_convention = "tsdoc" } },
+      },
+    },
+  },
+
+  -- ── Treesitter ─────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,

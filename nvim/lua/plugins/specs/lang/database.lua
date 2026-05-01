@@ -1,12 +1,8 @@
--- lua/plugins/specs/lang/database.lua - Database tools
+-- lua/plugins/specs/lang/database.lua — database UI and SQL completion
 --
--- FIX (v2.2.3):
---   • vim-dadbod-completion ft trigger listed "psql" — Neovim's filetype for
---     PostgreSQL is "sql" (set via autocmd or ftdetect), never "psql".
---     The completion source never loaded for .sql files opened as PostgreSQL.
---     Fixed: "psql" removed; canonical filetypes are sql/mysql/plsql.
 
 return {
+  -- ── vim-dadbod-ui ──────────────────────────────────────────────────────────
   {
     "kristijanhusak/vim-dadbod-ui",
     dependencies = {
@@ -15,9 +11,9 @@ return {
     },
     cmd  = { "DBUI", "DBUIToggle", "DBUIAddConnection", "DBUIFindBuffer" },
     keys = {
-      { "<leader>dbu", "<cmd>DBUIToggle<cr>",        desc = "DB UI Toggle" },
-      { "<leader>dba", "<cmd>DBUIAddConnection<cr>", desc = "DB Add Connection" },
-      { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer" },
+      { "<leader>dbu", "<cmd>DBUIToggle<cr>",        desc = "DB UI Toggle"        },
+      { "<leader>dba", "<cmd>DBUIAddConnection<cr>", desc = "DB Add Connection"   },
+      { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer"      },
     },
     init = function()
       vim.g.db_ui_use_nerd_fonts           = 1
@@ -29,12 +25,13 @@ return {
     end,
   },
 
+  -- ── vim-dadbod-completion ──────────────────────────────────────────────────
+
   {
     "kristijanhusak/vim-dadbod-completion",
-    -- FIX: "psql" is not a Neovim filetype — removed.
-    -- Neovim detects PostgreSQL files as "sql". "plsql" covers PL/SQL (Oracle).
     ft     = { "sql", "mysql", "plsql" },
     config = function()
+      -- Omnifunc fallback for manual <C-x><C-o> completion.
       vim.api.nvim_create_autocmd("FileType", {
         group    = vim.api.nvim_create_augroup("DadbodCompletion", { clear = true }),
         pattern  = { "sql", "mysql", "plsql" },
@@ -44,15 +41,39 @@ return {
           end)
         end,
       })
+
+      pcall(function()
+        local ok, blink = pcall(require, "blink.cmp")
+        if ok and blink.add_source then
+          -- Future API: blink.cmp.add_source("dadbod", { … })
+        end
+      end)
     end,
   },
 
+  -- ── Treesitter ──────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
     opts = function(_, opts)
       if type(opts.ensure_installed) == "table" then
         vim.list_extend(opts.ensure_installed, { "sql" })
+      end
+    end,
+  },
+
+  -- ── Conform: sqlfmt (merged from sql.lua) ──────────────────────────────────
+
+  {
+    "stevearc/conform.nvim",
+    optional = true,
+    opts = function(_, opts)
+      if vim.fn.executable("sqlfmt") ~= 1 then
+        return
+      end
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      for _, ft in ipairs({ "sql", "mysql" }) do
+        opts.formatters_by_ft[ft] = { "sqlfmt" }
       end
     end,
   },

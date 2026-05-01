@@ -1,20 +1,24 @@
--- lua/plugins/specs/lang/vhdl.lua - VHDL hardware description language
+-- lua/plugins/specs/lang/vhdl.lua — VHDL hardware description language
 --
--- FIX (v2.2.3): vsg stdin workaround — file-based conform formatter.
+-- LSP:    vhdl_ls (rust_hdl) via lsp.lua optional servers
+-- Format: vsg via conform (this file)
+-- DAP:    none
+-- Test:   none (GHDL simulation via keymaps below)
 --
--- OPT (v2.3.13):
---   • Build keymaps use core.util.term.float() — 4 × boilerplate removed.
+-- vhdl_ls must be installed via: cargo install vhdl_ls
+-- OR: :MasonInstall rust_hdl
+--
 
 return {
-  -- ── Conform: vsg ─────────────────────────────────────────────────────
+  -- ── Conform: vsg ───────────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft      = opts.formatters_by_ft or {}
       opts.formatters_by_ft.vhdl = { "vsg" }
-      opts.formatters = opts.formatters or {}
-      opts.formatters.vsg = {
+      opts.formatters             = opts.formatters or {}
+      opts.formatters.vsg         = {
         command   = "vsg",
         args      = { "--output", "-", "$FILENAME" },
         stdin     = false,
@@ -26,7 +30,7 @@ return {
     end,
   },
 
-  -- ── Treesitter ────────────────────────────────────────────────────────
+  -- ── Treesitter ──────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -37,7 +41,7 @@ return {
     end,
   },
 
-  -- ── GHDL keymaps ─────────────────────────────────────────────────────
+  -- ── GHDL keymaps ────────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     optional = true,
@@ -45,6 +49,10 @@ return {
       {
         "<leader>vha",
         function()
+          if vim.fn.executable("ghdl") ~= 1 then
+            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
+            return
+          end
           require("core.util.term").float(
             "ghdl -a " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
@@ -55,6 +63,10 @@ return {
       {
         "<leader>vhe",
         function()
+          if vim.fn.executable("ghdl") ~= 1 then
+            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
+            return
+          end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
           require("core.util.term").float("ghdl -e " .. vim.fn.shellescape(entity))
@@ -65,6 +77,10 @@ return {
       {
         "<leader>vhr",
         function()
+          if vim.fn.executable("ghdl") ~= 1 then
+            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
+            return
+          end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
           require("core.util.term").float(string.format(
@@ -78,6 +94,10 @@ return {
       {
         "<leader>vhc",
         function()
+          if vim.fn.executable("ghdl") ~= 1 then
+            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
+            return
+          end
           require("core.util.term").float(
             "ghdl -s " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
@@ -88,7 +108,7 @@ return {
     },
   },
 
-  -- ── LuaSnip snippets ──────────────────────────────────────────────────
+  -- ── LuaSnip snippets ────────────────────────────────────────────────────────
   {
     "L3MON4D3/LuaSnip",
     optional = true,
@@ -96,45 +116,51 @@ return {
     config = function()
       local ok, ls = pcall(require, "luasnip")
       if not ok then return end
-
       local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
+
+      local function ref(n, default)
+        return f(function(args)
+          return (args[n] and args[n][1] ~= "") and args[n][1] or (default or "")
+        end, { n })
+      end
 
       pcall(function()
         ls.add_snippets("vhdl", {
           s("entity", {
             t("entity "), i(1, "entity_name"), t(" is"),
             t({ "", "  port (" }),
-            t({ "", "    " }), i(2, "signal_name"), t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
-            t({ "", "  );" }),
-            t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
+            t({ "", "    " }), i(2, "signal_name"),
+            t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
+            t({ "", "  );", "end entity " }), ref(1, "entity_name"), t(";"),
           }),
           s("arch", {
-            t("architecture "), i(1, "rtl"), t(" of "), i(2, "entity_name"), t(" is"),
-            t({ "", "begin" }),
-            t({ "", "  " }), i(0),
-            t({ "", "end architecture " }), f(function(args) return args[1] end, { 1 }), t(";"),
+            t("architecture "), i(1, "rtl"),
+            t(" of "), i(2, "entity_name"), t(" is"),
+            t({ "", "begin", "  " }), i(0),
+            t({ "", "end architecture " }), ref(1, "rtl"), t(";"),
           }),
           s("process", {
             t("process("), i(1, "clk"), t(")"),
-            t({ "", "begin" }),
-            t({ "", "  if rising_edge(" }), f(function(args) return args[1] end, { 1 }), t(") then"),
+            t({ "", "begin", "  if rising_edge(" }),
+            ref(1, "clk"), t(") then"),
             t({ "", "    " }), i(0),
-            t({ "", "  end if;" }),
-            t({ "", "end process;" }),
+            t({ "", "  end if;", "end process;" }),
           }),
           s("std", {
-            t({ "library ieee;", "use ieee.std_logic_1164.all;", "use ieee.numeric_std.all;", "" }),
+            t({
+              "library ieee;",
+              "use ieee.std_logic_1164.all;",
+              "use ieee.numeric_std.all;",
+              "",
+            }),
           }),
           s("tb", {
             t("entity "), i(1, "tb_name"), t(" is"),
-            t({ "", "end entity " }), f(function(args) return args[1] end, { 1 }), t(";"),
-            t({ "", "", "architecture sim of " }), f(function(args) return args[1] end, { 1 }), t(" is"),
-            t({ "", "begin" }),
-            t({ "", "  uut: entity work." }), i(2, "dut_name"),
-            t({ "", "    port map (" }),
-            t({ "", "      " }), i(0),
-            t({ "", "    );" }),
-            t({ "", "end architecture sim;" }),
+            t({ "", "end entity " }), ref(1, "tb_name"), t(";"),
+            t({ "", "", "architecture sim of " }), ref(1, "tb_name"), t(" is"),
+            t({ "", "begin", "  uut: entity work." }), i(2, "dut_name"),
+            t({ "", "    port map (", "      " }), i(0),
+            t({ "", "    );", "end architecture sim;" }),
           }),
         })
       end)

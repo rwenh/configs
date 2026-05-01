@@ -1,24 +1,22 @@
--- lua/core/bootstrap.lua - Bootstrap configuration (loads FIRST)
--- Responsibility: set leader keys + version stamp + clone lazy.nvim if missing.
--- rtp prepend happens in plugins/init.lua to avoid double-prepend.
+-- lua/core/bootstrap.lua — bootstrap configuration (loads FIRST)
 --
--- OPT (v2.3.14):
---   • This is now the SOLE lazy.nvim clone site. The duplicate clone block
---     in plugins/init.lua has been removed. Having two clone paths produced
---     two distinct error messages and two slightly different fallback paths
---     that could diverge silently. bootstrap.lua runs first (step 1 of
---     init.lua), so by the time plugins/init.lua runs, lazy.nvim is already
---     guaranteed to be present or the user has been notified of failure.
+-- Responsibilities:
+--   1. Set leader keys (must precede any plugin loading).
+--   2. Stamp vim.g.nvim_ide_version (must precede ui.lua dashboard read).
+--   3. Clone lazy.nvim if missing; clean up partial clones on failure.
+--
 
--- ── Version ───────────────────────────────────────────────────────────────
--- Set before any plugin loads so ui.lua's dashboard version string is correct.
-vim.g.nvim_ide_version = "2.3.14"
+local VERSION  = "2.3.16"
+local LAZY_URL = "https://github.com/folke/lazy.nvim.git"
 
--- ── Leader keys (must precede any plugin loading) ─────────────────────────
+-- ── Version stamp (must precede plugin config() calls) ───────────────────────
+vim.g.nvim_ide_version = VERSION
+
+-- ── Leader keys (must precede any plugin loading) ────────────────────────────
 vim.g.mapleader      = " "
 vim.g.maplocalleader = " "
 
--- ── Clone lazy.nvim if not present ────────────────────────────────────────
+-- ── Clone lazy.nvim if not present ───────────────────────────────────────────
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 if not vim.uv.fs_stat(lazypath) then
@@ -26,17 +24,12 @@ if not vim.uv.fs_stat(lazypath) then
 
   local out = vim.fn.system({
     "git", "clone", "--filter=blob:none",
-    "https://github.com/folke/lazy.nvim.git",
-    "--branch=stable", lazypath,
+    LAZY_URL, "--branch=stable", lazypath,
   })
 
   if vim.v.shell_error ~= 0 then
-    -- FIX: a failed clone leaves a partial directory at lazypath.
-    -- On the next launch vim.uv.fs_stat(lazypath) succeeds (directory exists)
-    -- so the clone block is skipped, lazy.nvim fails to require(), and the
-    -- error is confusing. Remove the partial directory so the next launch
-    -- retries the clone cleanly.
-    vim.fn.system({ "rm", "-rf", lazypath })
+    vim.fn.delete(lazypath, "rf")
+
     vim.notify(
       "Failed to clone lazy.nvim:\n" .. tostring(out)
         .. "\n\nTroubleshooting:\n"

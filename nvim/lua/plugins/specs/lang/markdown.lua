@@ -1,31 +1,31 @@
--- lua/plugins/specs/lang/markdown.lua
+-- lua/plugins/specs/lang/markdown.lua — Markdown development
 --
--- FIX (v2.2.3):
---   • render-markdown: render_modes = { "n", "c" } — "c" (command-line mode)
---     is not a valid render mode and produced a startup warning. Valid modes
---     are "n" (normal), "i" (insert), "v"/"V"/"" (visual variants).
---     Removed "c"; kept only "n" as the sane default.
+-- Architecture:
+--   render-markdown.nvim — in-editor rendered Markdown (concealment, icons)
+--   markdown-preview.nvim — browser preview (live HTML render)
+--   vim-markdown         — syntax, frontmatter, folding (disabled; treesitter owns it)
+--   vim-table-mode       — table editing helper
+-- All four cover different concerns; none are redundant.
+
+local icons = require("core.util.icons")
 
 return {
+  -- ── Markdown Preview (browser) ─────────────────────────────────────────────
   {
     "iamcco/markdown-preview.nvim",
-    cmd = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
-    ft = { "markdown" },
+    cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
+    ft    = { "markdown" },
     build = function(plugin)
       if vim.fn.executable("npm") == 1 then
-        vim.fn.system("cd " .. plugin.dir .. "/app && npm install --legacy-peer-deps 2>/dev/null")
+        vim.fn.system("cd " .. plugin.dir .. "/app && npm install --legacy-peer-deps")
       end
     end,
     init = function()
-      vim.g.mkdp_filetypes       = { "markdown" }
-      vim.g.mkdp_auto_start      = 0
-      vim.g.mkdp_auto_close      = 1
-      vim.g.mkdp_refresh_slow    = 0
-      vim.g.mkdp_combine_preview = 1
+      vim.g.mkdp_filetypes  = { "markdown" }
+      vim.g.mkdp_auto_start = 0   -- don't auto-open on buffer enter
+      vim.g.mkdp_auto_close = 1   -- auto-close when buffer changes
       vim.g.mkdp_preview_options = {
-        mkit = {}, katex = {}, uml = {}, maid = {},
-        disable_sync_scroll = 0,
-        sync_scroll_type    = "middle",
+        sync_scroll_type = "middle",
       }
     end,
     keys = {
@@ -33,9 +33,10 @@ return {
     },
   },
 
+  -- ── vim-markdown ───────────────────────────────────────────────────────────
   {
     "preservim/vim-markdown",
-    ft = { "markdown" },
+    ft   = { "markdown" },
     init = function()
       vim.g.vim_markdown_folding_disabled = 1
       vim.g.vim_markdown_frontmatter      = 1
@@ -43,14 +44,17 @@ return {
     end,
   },
 
+  -- ── Table mode ─────────────────────────────────────────────────────────────
   {
     "dhruvasagar/vim-table-mode",
-    ft  = { "markdown" },
-    cmd = "TableModeToggle",
+    ft   = { "markdown" },
+    cmd  = "TableModeToggle",
     keys = {
       { "<leader>tm", "<cmd>TableModeToggle<CR>", desc = "Table Mode Toggle" },
     },
   },
+
+  -- ── render-markdown.nvim ───────────────────────────────────────────────────
 
   {
     "MeanderingProgrammer/render-markdown.nvim",
@@ -61,16 +65,14 @@ return {
     },
     opts = {
       enabled      = true,
-      -- FIX: "c" removed — not a valid render mode; caused startup warning.
       render_modes = { "n" },
       anti_conceal = {
         enabled = true,
-        -- ignore code block backgrounds so they still render while cursor is inside
         ignore  = { code_background = true, sign = true },
       },
       heading = {
         enabled = true,
-        signs   = { "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 ", "󰫎 " },
+        signs   = icons.headings,
         width   = "block",
       },
       code = {
@@ -95,9 +97,6 @@ return {
         unchecked = { icon = "󰄱 " },
         checked   = { icon = "󰱒 " },
       },
-      quote  = { enabled = true },
-      table  = { enabled = true },
-      link   = { enabled = true },
     },
     config = function(_, opts)
       local ok = pcall(function() require("render-markdown").setup(opts) end)

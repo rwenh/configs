@@ -1,30 +1,28 @@
--- lua/plugins/specs/lang/html.lua - HTML development
+-- lua/plugins/specs/lang/html.lua — HTML development
 --
--- FIX (v2.2.5): vim.lsp.config() is Nvim 0.11-only; guarded + 0.10 fallback.
--- FIX (v2.3.11): html.lua is SOLE owner of html LSP config. BufReadPost in
---   init() fires after lsp.lua's config(), making this the reliable last writer.
---   "html" stays in mason-lspconfig ensure_installed for binary auto-install.
+-- LSP:    html-lsp (this file — sole owner, not lsp.lua)
+-- Format: prettier via lsp.lua conform
+-- Lint:   htmlhint via this file
+-- Deps:   web.lua must load before html.lua (autotag + emmet)
 --
--- OPT (v2.3.13):
---   • nvim-lint spec: BufReadPost + once=true autocmd wrapper removed.
---     Direct init() assignment is sufficient (see css.lua note).
---     IMPORTANT: the html LSP spec MUST keep its BufReadPost (0.10 path) and
---     direct init() call (0.11 path) — that is load-order logic, not lint
---     boilerplate, and cannot be simplified away.
+
+local shared = require("plugins.specs.lang.shared")
 
 return {
-  -- ── HTMLHint linting ──────────────────────────────────────────────────
+  -- ── HTMLHint linting ────────────────────────────────────────────────────────
   {
     "mfussenegger/nvim-lint",
     optional = true,
     init = function()
+      if vim.fn.executable("htmlhint") ~= 1 then return end
       local ok, lint = pcall(require, "lint")
       if not ok then return end
       lint.linters_by_ft.html = { "htmlhint" }
     end,
   },
 
-  -- ── Conform ───────────────────────────────────────────────────────────
+  -- ── Conform ────────────────────────────────────────────────────────────────
+
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -34,7 +32,7 @@ return {
     end,
   },
 
-  -- ── Treesitter ────────────────────────────────────────────────────────
+  -- ── Treesitter ──────────────────────────────────────────────────────────────
   {
     "nvim-treesitter/nvim-treesitter",
     optional = true,
@@ -45,24 +43,31 @@ return {
     end,
   },
 
-  -- ── LSP: html-lsp — SOLE owner of html server config ─────────────────
+  -- ── LSP: html-lsp — SOLE owner of html server config ──────────────────────
+
   {
     "neovim/nvim-lspconfig",
     optional = true,
     init = function()
       local cfg = {
         filetypes    = { "html", "htmldjango", "jinja.html" },
-        init_options = { provideFormatter = false },
+        init_options = {
+          provideFormatter = false,
+        },
       }
 
+      if vim.fn.executable("vscode-html-language-server") ~= 1 then
+        vim.notify("[html] html-lsp not found — run :MasonInstall html-lsp",
+          vim.log.levels.WARN)
+        return
+      end
+
       if vim.fn.has("nvim-0.11") == 1 then
-        -- init() runs after lsp.lua config() — guaranteed last writer on 0.11
         pcall(function()
           vim.lsp.config("html", cfg)
           vim.lsp.enable("html")
         end)
       else
-        -- 0.10: defer until lspconfig is loaded
         vim.api.nvim_create_autocmd("BufReadPost", {
           pattern  = { "*.html", "*.htmldjango" },
           once     = true,

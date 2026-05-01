@@ -1,26 +1,24 @@
--- lua/core/autocmds.lua - Autocommands with comprehensive error handling
+-- lua/core/autocmds.lua — autocommands
 --
--- FIX (v2.3.3):
---   • LargeFile: foldmethod=manual alone is insufficient when options.lua sets
---     foldmethod="expr" globally. The expr foldmethod re-activates on BufWinEnter
---     for large files because the global option is applied after BufReadPre.
---     Added a BufWinEnter autocmd that re-applies foldmethod=manual for any
---     buffer marked large_file=true so the override survives window enter.
---   • LargeFile: treesitter highlights were only disabled via syntax="off" which
---     has no effect on treesitter (it bypasses the syntax engine). Added an
---     explicit vim.treesitter.stop(e.buf) call so highlight parsing is actually
---     halted on large files.
---
--- FIX (v2.3.15):
---   • TrimWhitespace BufWritePre callback was missing a buftype guard. Every
---     other BufWritePre / BufEnter / BufReadPost callback in this file guards
---     with `if vim.bo[e.buf].buftype ~= "" then return end` to skip special
---     buffers (nofile, terminal, prompt, quickfix). TrimWhitespace only checked
---     filetype. Although BufWritePre does not fire for most special buftypes in
---     practice, the guard is added for consistency and forward safety.
 
 local au = vim.api.nvim_create_autocmd
 local ag = vim.api.nvim_create_augroup
+
+-- ── Shared helpers ─────────────────────────────────────────────────────────────
+
+---@param buf integer
+---@return boolean  true when buf is a normal editable file buffer
+local function is_real_buf(buf)
+  local ok, bt = pcall(function() return vim.bo[buf].buftype end)
+  return ok and bt == ""
+end
+
+-- ── Filetypes that should close with 'q' ──────────────────────────────────────
+
+local EPHEMERAL_FT = {
+  "help", "man", "qf", "lspinfo", "checkhealth",
+  "notify", "startuptime", "OverseerList",
+}
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- HIGHLIGHT ON YANK
@@ -29,7 +27,7 @@ local ag = vim.api.nvim_create_augroup
 au("TextYankPost", {
   group    = ag("HighlightYank", { clear = true }),
   callback = function()
-    pcall(function() vim.highlight.on_yank({ timeout = 200 }) end)
+    pcall(vim.highlight.on_yank, { timeout = 200 })
   end,
 })
 
@@ -40,18 +38,14 @@ au("TextYankPost", {
 au("BufReadPost", {
   group    = ag("RestoreCursor", { clear = true }),
   callback = function(e)
-    if vim.bo[e.buf].buftype ~= "" then return end
+    if not is_real_buf(e.buf) then return end
 
-    local ok, mark = pcall(function()
-      return vim.api.nvim_buf_get_mark(e.buf, '"')
-    end)
+    local ok, mark = pcall(vim.api.nvim_buf_get_mark, e.buf, '"')
     if not ok or not mark then return end
 
     local lcount = vim.api.nvim_buf_line_count(e.buf)
     if mark[1] and mark[1] > 0 and mark[1] <= lcount then
-      -- FIX: nvim_win_set_cursor(0, …) targets the *current* window which
-      -- may be a different split from e.buf. Find the first window that
-      -- actually shows e.buf and move its cursor there instead.
+      -- Target the window that actually shows this buffer, not window 0.
       local wins = vim.fn.win_findbuf(e.buf)
       if #wins > 0 then
         pcall(vim.api.nvim_win_set_cursor, wins[1], mark)
@@ -67,14 +61,15 @@ au("BufReadPost", {
 au("VimResized", {
   group    = ag("ResizeSplits", { clear = true }),
   callback = function()
-    local ok_tab, tab = pcall(function() return vim.fn.tabpagenr() end)
-    if not ok_tab then return end
+    local ok_before, tab_before = pcall(vim.fn.tabpagenr)
+    if not ok_before then return end
 
     pcall(function()
       vim.cmd("tabdo wincmd =")
-      local tab_count = vim.fn.tabpagenr("$")
-      if tab > tab_count then tab = tab_count end
-      if tab > 0 then vim.cmd("tabnext " .. tab) end
+      -- Re-query: tabdo may have closed or reordered tabs.
+      local total = vim.fn.tabpagenr("$")
+      local target = math.min(tab_before, total)
+      if target > 0 then vim.cmd("tabnext " .. target) end
     end)
   end,
 })
@@ -85,7 +80,7 @@ au("VimResized", {
 
 au("FileType", {
   group    = ag("CloseWithQ", { clear = true }),
-  pattern  = { "help", "man", "qf", "lspinfo", "checkhealth", "notify", "startuptime" },
+  pattern  = EPHEMERAL_FT,
   callback = function(e)
     pcall(function()
       vim.bo[e.buf].buflisted = false
@@ -101,17 +96,14 @@ au("FileType", {
 au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
-    -- FIX (v2.3.15): guard special buffers (nofile, terminal, prompt, quickfix).
-    -- Every other callback in this file that could affect special buffers already
-    -- has this guard; TrimWhitespace was the only one that did not.
-    if vim.bo[e.buf].buftype ~= "" then return end
+    if not is_real_buf(e.buf) then return end  -- FIX (v2.3.15 guard preserved)
 
     local ft = vim.bo[e.buf].filetype
     if vim.tbl_contains(
       { "markdown", "markdown_inline", "diff", "rst", "asciidoc", "mail" }, ft
-    ) then
-      return
-    end
+    ) then return end
+
+    if #vim.api.nvim_buf_get_lines(e.buf, 0, -1, false) == 0 then return end
 
     pcall(function()
       local lines   = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
@@ -137,10 +129,11 @@ au("BufWritePre", {
 
 au({ "FocusGained", "TermClose", "TermLeave" }, {
   group    = ag("Checktime", { clear = true }),
-  callback = function()
-    -- FIX (v2.3.2): vim.bo.buftype reads the buffer-local value (correct).
-    if vim.bo.buftype == "" then
-      pcall(function() vim.cmd("checktime") end)
+  callback = function(e)
+    local buf = e.buf or vim.api.nvim_get_current_buf()
+    local ok, bt = pcall(function() return vim.bo[buf].buftype end)
+    if ok and bt == "" then
+      pcall(vim.cmd, "checktime")
     end
   end,
 })
@@ -207,7 +200,7 @@ au("BufEnter", {
   group    = ag("AutoCdRoot", { clear = true }),
   callback = function(e)
     if not vim.g.auto_cd_root then return end
-    if vim.bo[e.buf].buftype ~= "" then return end
+    if not is_real_buf(e.buf) then return end
 
     local name = vim.api.nvim_buf_get_name(e.buf)
     if name == "" then return end
@@ -215,9 +208,11 @@ au("BufEnter", {
     local ok, path_util = pcall(require, "core.util.path")
     if not ok then return end
 
-    local root = path_util.find_root()
+    local buf_dir = vim.fn.fnamemodify(name, ":h")
+    local root    = path_util.find_root(buf_dir)
+
     if root and root ~= vim.fn.getcwd() then
-      pcall(function() vim.cmd.cd(root) end)
+      pcall(vim.cmd.cd, root)
     end
   end,
 })
@@ -229,24 +224,21 @@ au("BufEnter", {
 pcall(function()
   vim.filetype.add({
     extension = {
-      cob  = "cobol",
-      cbl  = "cobol",
-      cpy  = "cobol",
-      CBL  = "cobol",
-      COB  = "cobol",
-      vhd  = "vhdl",
-      vhdl = "vhdl",
-      vho  = "vhdl",
+      cob  = "cobol", cbl  = "cobol", cpy = "cobol",
+      CBL  = "cobol", COB  = "cobol",
+      vhd  = "vhdl",  vhdl = "vhdl",  vho = "vhdl",
     },
   })
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- LARGE FILE OPTIMIZATION
+-- LARGE FILE OPTIMISATION
 -- ═══════════════════════════════════════════════════════════════════════════
 
+local large_file_group = ag("LargeFile", { clear = true })
+
 au("BufReadPre", {
-  group    = ag("LargeFile", { clear = true }),
+  group    = large_file_group,
   callback = function(e)
     local ok, stat = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(e.buf))
     if ok and stat and stat.size > 500 * 1024 then
@@ -260,10 +252,6 @@ au("BufReadPre", {
         vim.opt_local.syntax     = "off"
       end)
 
-      -- FIX (v2.3.3): syntax="off" has no effect on treesitter-based
-      -- highlighting. Explicitly stop the treesitter parser for this buffer.
-      pcall(function() vim.treesitter.stop(e.buf) end)
-
       vim.schedule(function()
         vim.notify("Large file — some features disabled", vim.log.levels.WARN)
       end)
@@ -271,14 +259,20 @@ au("BufReadPre", {
   end,
 })
 
--- FIX (v2.3.3): Re-apply foldmethod=manual on BufWinEnter for large files.
--- options.lua sets foldmethod="expr" globally. That global default is
--- re-applied when a buffer enters a new window (BufWinEnter fires after
--- window-local options are reset), overriding the manual fold set in
--- BufReadPre above. This autocmd re-stamps the override every time the
--- large-file buffer enters any window.
+au("BufReadPost", {
+  group    = large_file_group,
+  callback = function(e)
+    if vim.b[e.buf] and vim.b[e.buf].large_file then
+      pcall(vim.treesitter.stop, e.buf)
+    end
+  end,
+})
+
+-- Re-stamp foldmethod=manual on BufWinEnter for large files.
+-- options.lua sets foldmethod="expr" globally; that default re-applies when
+-- a buffer enters a new window, overriding the manual fold set above.
 au("BufWinEnter", {
-  group    = ag("LargeFileFold", { clear = true }),
+  group    = large_file_group,
   callback = function(e)
     if vim.b[e.buf] and vim.b[e.buf].large_file then
       pcall(function() vim.opt_local.foldmethod = "manual" end)

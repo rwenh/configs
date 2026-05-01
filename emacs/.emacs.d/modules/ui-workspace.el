@@ -1,9 +1,14 @@
 ;;; ui-workspace.el --- Named Workspaces via perspective.el + tab-bar -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.3.0
+;;;
 ;;; Code:
+
+;;;; ── C-c W prefix map ────────────────────────────────────────────────────────
 
 (define-prefix-command 'emacs-ide-workspace-map)
 (global-set-key (kbd "C-c W") 'emacs-ide-workspace-map)
+
+;;;; ── perspective.el ─────────────────────────────────────────────────────────
 
 (use-package perspective
   :demand t
@@ -26,21 +31,26 @@
              "var/persp-state")
          user-emacs-directory)
         persp-suppress-no-prefix-key-warning t
-        persp-show-modestring        t
-        persp-modestring-short       t
-        persp-sort                   'created)
+        persp-show-modestring                t
+        persp-modestring-short               t
+        persp-sort                           'created)
   :config
   (persp-mode 1))
 
+;;;; ── Tab-bar perspective labels ─────────────────────────────────────────────
+
 (with-eval-after-load 'perspective
   (defun emacs-ide-workspace--tab-bar-perspectives ()
+    "Return a propertized string of workspace names for the tab-bar."
     (when (fboundp 'persp-names)
-      (let ((current (when (fboundp 'persp-current-name) (persp-current-name))))
+      (let ((current (when (fboundp 'persp-current-name)
+                       (persp-current-name))))
         (mapconcat
          (lambda (name)
-           (let* ((active (string= name current))
-                  (face   (if active 'tab-bar-tab 'tab-bar-tab-inactive)))
-             (propertize (format " %s " name) 'face face)))
+           (propertize (format " %s " name)
+                       'face (if (string= name current)
+                                 'tab-bar-tab
+                               'tab-bar-tab-inactive)))
          (persp-names) " "))))
 
   (setq tab-bar-format
@@ -50,30 +60,33 @@
           tab-bar-format-align-right
           tab-bar-format-global)))
 
+;;;; ── Default workspace setup ────────────────────────────────────────────────
+
 (defun emacs-ide-workspace-setup-defaults ()
+  "Create default workspaces from config.yml workspace.defaults.
+Run once after init via `after-init-hook'."
   (when (fboundp 'persp-switch)
-    (let* ((envs (condition-case nil
-                     (when (boundp 'emacs-ide-config-data)
-                       (mapcar #'car
-                               (cdr (assoc 'environments emacs-ide-config-data))))
-                   (error nil)))
-           (cfg-defaults (and (fboundp 'emacs-ide-config-get)
-                              (emacs-ide-config-get 'workspace 'defaults nil)))
-           (defaults (or (and (listp cfg-defaults) (mapcar (lambda (d)
-                                                             (if (symbolp d)
-                                                                 (symbol-name d)
-                                                               d))
-                                                           cfg-defaults))
-                         '("main" "debug" "scratch"))))
-      (dolist (env (or envs defaults))
-        (let ((name (if (symbolp env) (symbol-name env) env)))
-          (unless (and (fboundp 'persp-get-by-name)
-                       (persp-get-by-name name))
-            (persp-new name))))
+    (let* ((cfg-defaults
+            (and (fboundp 'emacs-ide-config-get)
+                 (emacs-ide-config-get 'workspace 'defaults nil)))
+           ;; workspace.defaults is now a properly parsed list (Session 1 #1A fix)
+           (defaults
+            (if (and (listp cfg-defaults) cfg-defaults)
+                (mapcar (lambda (d)
+                          (if (symbolp d) (symbol-name d) d))
+                        cfg-defaults)
+              '("main" "debug" "scratch"))))
+      ;; Create each configured workspace if it doesn't exist
+      (dolist (ws defaults)
+        (unless (and (fboundp 'persp-get-by-name)
+                     (persp-get-by-name ws))
+          (persp-new ws)))
+      ;; Always ensure debug and scratch exist as fallback workspaces
       (dolist (ws '("debug" "scratch"))
         (unless (and (fboundp 'persp-get-by-name)
                      (persp-get-by-name ws))
           (persp-new ws)))
+      ;; Switch to main unless restore-session is active
       (let ((restore (and (fboundp 'emacs-ide-config-get)
                           (emacs-ide-config-get 'general 'restore-session nil))))
         (unless restore
@@ -81,15 +94,20 @@
 
 (add-hook 'after-init-hook #'emacs-ide-workspace-setup-defaults)
 
+;;;; ── Burly (window layout bookmarks) ────────────────────────────────────────
+
 (use-package burly
   :defer t
   :bind (("C-c W S" . burly-bookmark-windows)
          ("C-c W R" . burly-open-bookmark)))
 
+;;;; ── Auto-switch workspace on project change ─────────────────────────────────
+
 (defvar emacs-ide-workspace-auto-switch t
-  "When non-nil, switching projects creates/switches a matching workspace.")
+  "When non-nil, switching Projectile projects creates/switches a workspace.")
 
 (defun emacs-ide-workspace--apply-auto-switch-config ()
+  "Read workspace.auto-switch from config and update the variable."
   (setq emacs-ide-workspace-auto-switch
         (if (fboundp 'emacs-ide-config-get)
             (emacs-ide-config-get 'workspace 'auto-switch t)
@@ -97,10 +115,12 @@
 
 (with-eval-after-load 'emacs-ide-config
   (emacs-ide-workspace--apply-auto-switch-config))
+
 (add-hook 'emacs-ide-config-reload-hook
           #'emacs-ide-workspace--apply-auto-switch-config)
 
 (defun emacs-ide-workspace-on-project-switch ()
+  "Switch to (or create) a workspace named after the Projectile project."
   (when (and emacs-ide-workspace-auto-switch
              (fboundp 'persp-switch)
              (fboundp 'projectile-project-name))
@@ -111,6 +131,8 @@
 (add-hook 'projectile-after-switch-project-hook
           #'emacs-ide-workspace-on-project-switch)
 
+;;;; ── Consult workspace buffer source ────────────────────────────────────────
+
 (with-eval-after-load 'consult
   (with-eval-after-load 'perspective
     (defvar emacs-ide-workspace--consult-source
@@ -119,25 +141,30 @@
         :category buffer
         :face     consult-buffer
         :history  buffer-name-history
-        :state    ,#'consult--buffer-state
         :default  t
         :items    ,(lambda ()
                      (when (fboundp 'persp-current-buffers)
-                       (mapcar #'buffer-name (persp-current-buffers)))))
-      "Consult source for current workspace buffers.")
-    (unless (member 'emacs-ide-workspace--consult-source consult-buffer-sources)
+                       (mapcar #'buffer-name
+                               (persp-current-buffers)))))
+      "Consult source listing buffers in the current perspective workspace.")
+    (unless (member 'emacs-ide-workspace--consult-source
+                    consult-buffer-sources)
       (add-to-list 'consult-buffer-sources
                    'emacs-ide-workspace--consult-source))))
+
+;;;; ── doom-modeline workspace segment ────────────────────────────────────────
 
 (with-eval-after-load 'doom-modeline
   (with-eval-after-load 'perspective
     (doom-modeline-def-segment emacs-ide-workspace
-      "Current workspace name."
+      "Current workspace name shown in the modeline."
       (when (and (eq (selected-window) (get-buffer-window))
                  (fboundp 'persp-current-name))
         (propertize (format " [%s]" (persp-current-name))
-                    'face 'doom-modeline-buffer-major-mode
-                    'help-echo "Current workspace")))))
+                    'face      'doom-modeline-buffer-major-mode
+                    'help-echo "Current workspace — click C-c W s to switch")))))
+
+;;;; ── Save on exit ────────────────────────────────────────────────────────────
 
 (add-hook 'kill-emacs-hook
           (lambda ()
@@ -147,36 +174,60 @@
                            (emacs-ide-config-get 'workspace 'save-on-exit t)))
               (ignore-errors (persp-state-save)))))
 
+;;;; ── Switch by index ─────────────────────────────────────────────────────────
+
 (defun emacs-ide-workspace-switch-by-index (n)
+  "Switch to the N-th workspace (1-based).
+Displays an error if fewer than N workspaces exist."
+  (interactive "nWorkspace index: ")
   (if (not (bound-and-true-p persp-mode))
       (message "workspace: persp-mode is not active")
     (when (fboundp 'persp-names)
       (let ((names (persp-names)))
         (if (> n (length names))
-            (message "workspace: only %d workspaces exist" (length names))
+            (message "workspace: only %d workspace%s exist"
+                     (length names)
+                     (if (= (length names) 1) "" "s"))
           (persp-switch (nth (1- n) names)))))))
 
 (dotimes (i 9)
   (let ((n (1+ i)))
     (global-set-key
-     (kbd (format "M-%d" n))
-     (lambda () (interactive) (emacs-ide-workspace-switch-by-index n)))))
+     (kbd (format "C-c W %d" n))
+     (lambda ()
+       (interactive)
+       (emacs-ide-workspace-switch-by-index n)))))
+
+;;;; ── Status ──────────────────────────────────────────────────────────────────
 
 (defun emacs-ide-workspace-status ()
+  "Display a buffer listing all workspaces and their buffer counts."
   (interactive)
   (with-output-to-temp-buffer "*Workspace Status*"
     (princ "=== WORKSPACE STATUS ===\n\n")
-    (when (fboundp 'persp-names)
-      (dolist (name (persp-names))
-        (let* ((current  (string= name (when (fboundp 'persp-current-name)
-                                         (persp-current-name))))
-               (persp    (when (fboundp 'persp-get-by-name) (persp-get-by-name name)))
-               (bufs     (when (fboundp 'persp-buffers) (length (persp-buffers persp)))))
-          (princ (format "%s %-20s %d buffer%s\n"
-                         (if current "→" " ")
-                         name
-                         (or bufs 0)
-                         (if (= (or bufs 0) 1) "" "s"))))))))
+    (princ (format "%-3s %-22s %s\n" "#" "Name" "Buffers"))
+    (princ (make-string 42 ?─))
+    (princ "\n")
+    (if (not (fboundp 'persp-names))
+        (princ "  persp-mode not active\n")
+      (let ((current (when (fboundp 'persp-current-name)
+                       (persp-current-name)))
+            (idx 1))
+        (dolist (name (persp-names))
+          (let* ((active (string= name current))
+                 (persp  (when (fboundp 'persp-get-by-name)
+                           (persp-get-by-name name)))
+                 (bufs   (if (and persp (fboundp 'persp-buffers))
+                             (length (persp-buffers persp))
+                           0)))
+            (princ (format "%s%d  %-22s %d buffer%s\n"
+                           (if active "→ " "  ")
+                           idx
+                           name
+                           bufs
+                           (if (= bufs 1) "" "s")))
+            (cl-incf idx)))))
+    (princ "\nSwitch: C-c W s  |  By index: C-c W 1..9\n")))
 
 (provide 'ui-workspace)
 ;;; ui-workspace.el ends here

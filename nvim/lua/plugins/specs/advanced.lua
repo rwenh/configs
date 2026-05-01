@@ -1,398 +1,291 @@
--- nvim/lua/plugins/specs/advanced.lua
--- Advanced features: escape handling, navigation, UI enhancements, motion, icons
+-- lua/plugins/specs/advanced.lua
 --
--- FIX (v2.3.10):
---   • vim-matchup config() was calling nvim-treesitter.configs.setup() directly
---     with a minimal { matchup = { enable = true } } table. nvim-treesitter
---     treats each setup() call as a full reconfiguration — the second call from
---     vim-matchup's config() silently overwrote treesitter.lua's complete opts
---     (highlight, indent, textobjects, incremental_selection, etc.) with a
---     near-empty table depending on lazy load order. Fixed: config() removed
---     from the vim-matchup spec entirely. Instead a companion optional=true
---     nvim-treesitter spec is added that contributes only the matchup key via
---     opts=function(), which lazy.nvim merges recursively into treesitter.lua's
---     primary opts table — the correct pattern used by every other lang spec.
+-- Editing enhancements, navigation, visual polish, folding, annotations.
+-- mini.* plugins are unified here (mini.move + mini.pairs moved from editor.lua).
 --
--- FIX (v2.3.15):
---   • neogen languages table was missing kotlin despite the header comment
---     claiming "ALL languages". kotlin has full LSP, formatter, linter, DAP
---     and neotest coverage in the project; neogen supports kotlin natively.
---     A v2.3.10 fix added java for the identical reason; kotlin was overlooked.
---     Added kotlin = { annotation_convention = "kotlin_doc" } and added the
---     corresponding optional=true ft="kotlin" extension spec so neogen loads
---     on Kotlin buffers and <leader>xg works correctly.
 
 return {
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │              ESCAPE & INPUT HANDLING                 │
-    -- └─────────────────────────────────────────────────────┘
 
-    {
-        "max397574/better-escape.nvim",
-        event = "InsertEnter",
-        opts = {
-            timeout          = 200,
-            default_mappings = false,
-            mappings = {
-                i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
-            },
-        },
+  -- ── Icons (loaded first — many plugins depend on this) ────────────────────
+
+  {
+    "nvim-tree/nvim-web-devicons",
+    lazy     = false,
+    priority = 950,
+    opts = {
+      default     = true,
+      color_icons = true,
+      variant     = "default",
+      strict      = true,
     },
+    config = function(_, opts)
+      require("nvim-web-devicons").setup(opts)
+    end,
+  },
 
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │        BRACKET MATCHING (replaces matchparen)        │
-    -- └─────────────────────────────────────────────────────┘
+  -- ── Escape handling ────────────────────────────────────────────────────────
+  {
+    "max397574/better-escape.nvim",
+    event = "InsertEnter",
+    opts  = {
+      timeout          = 200,
+      default_mappings = false,
+      mappings = {
+        i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } },
+      },
+    },
+  },
 
-    -- FIX (v2.3.9b): matchparen was disabled in options.lua since v2.0 with no
-    -- replacement. vim-matchup supersedes it: treesitter-aware multi-line match
-    -- highlighting, improved % motion, and it sets g:loaded_matchparen itself to
-    -- prevent the builtin from loading. options.lua no longer suppresses matchparen.
-    --
-    -- FIX (v2.3.10): config() removed. The previous config() called
-    -- nvim-treesitter.configs.setup({ matchup = { enable = true } }), which is a
-    -- full reconfiguration that overwrites treesitter.lua's opts. The companion
-    -- optional=true nvim-treesitter spec below correctly merges only the matchup
-    -- key via opts=function() — the same pattern used by all lang/* specs.
-    {
-        "andymass/vim-matchup",
-        event = { "BufReadPost", "BufNewFile" },
-        init = function()
-            -- Disable the status-line component (too noisy alongside lualine)
-            vim.g.matchup_matchparen_offscreen = { method = "popup" }
-            -- Defer highlight to avoid lag on large files
-            vim.g.matchup_matchparen_deferred   = 1
-            vim.g.matchup_matchparen_hi_surround_always = 0
-            -- Let treesitter handle where possible
-            vim.g.matchup_matchpref = { html = { tagnameonly = 1 } }
+  -- ── Bracket matching (replaces matchparen) ────────────────────────────────
+
+  {
+    "andymass/vim-matchup",
+    event = { "BufReadPost", "BufNewFile" },
+    init  = function()
+      -- Show match in a popup instead of the status line (less noisy).
+      vim.g.matchup_matchparen_offscreen = { method = "popup" }
+      -- Defer highlight computation to avoid lag on large files.
+      vim.g.matchup_matchparen_deferred  = 1
+      -- Disable surrounding-pair highlight (can be visually noisy).
+      vim.g.matchup_matchparen_hi_surround_always = 0
+      -- HTML: match only tag names, not attributes.
+      vim.g.matchup_matchpref = { html = { tagnameonly = 1 } }
+    end,
+    -- No config() here — treesitter integration wired via the companion spec.
+  },
+
+  {
+    "nvim-treesitter/nvim-treesitter",
+    optional = true,
+    opts = function(_, opts)
+      opts.matchup        = opts.matchup or {}
+      opts.matchup.enable = true
+    end,
+  },
+
+  -- ── Symbol navigation / breadcrumbs ───────────────────────────────────────
+  {
+    "SmiteshP/nvim-navic",
+    event = "LspAttach",
+    opts  = {
+      icons = require("core.util.icons").kinds,
+      lsp   = { auto_attach = false, preference = nil },
+      highlight             = true,
+      separator             = " > ",
+      depth_limit           = 5,
+      depth_limit_indicator = "..",
+      safe_output           = true,
+      lazy_update_context   = false,
+      click                 = false,
+      format_text           = function(text) return text end,
+    },
+  },
+
+  -- ── Color highlighting ─────────────────────────────────────────────────────
+
+  {
+    "NvChad/nvim-colorizer.lua",
+    event = "BufReadPost",
+    opts  = {
+      filetypes = { "*", "!lazy", "!lspinfo", "!snacks_dashboard" },
+      user_default_options = {
+        RGB      = true,  RRGGBB   = true,  RRGGBBAA = true,
+        AARRGGBB = false,
+        rgb_fn   = true,  hsl_fn   = true,
+        css      = true,  css_fn   = true,
+        mode     = "background",
+        tailwind = true,
+        sass     = { enable = true, parsers = { "css" } },
+        virtualtext        = "■",
+        virtualtext_inline = false,
+        always_update      = false,
+      },
+      buftypes = {},
+    },
+    config = function(_, opts)
+      pcall(function() require("colorizer").setup(opts) end)
+    end,
+  },
+
+  -- ── Rainbow delimiters ─────────────────────────────────────────────────────
+  {
+    "HiPhish/rainbow-delimiters.nvim",
+    event = { "BufReadPre", "BufNewFile" },
+    config = function()
+      local rd = require("rainbow-delimiters")
+      pcall(function()
+        require("rainbow-delimiters.setup").setup({
+          strategy = {
+            [""]  = rd.strategy["global"],
+            vim   = rd.strategy["local"],
+            latex = rd.strategy["local"],
+          },
+          query = {
+            [""]  = "rainbow-delimiters",
+            lua   = "rainbow-blocks",
+            latex = "rainbow-delimiters-latex",
+          },
+          priority  = { [""] = 110, lua = 210, latex = 210 },
+          highlight = {
+            "RainbowDelimiterRed", "RainbowDelimiterYellow", "RainbowDelimiterBlue",
+            "RainbowDelimiterOrange", "RainbowDelimiterGreen", "RainbowDelimiterViolet",
+            "RainbowDelimiterCyan",
+          },
+          blacklist = { "html", "markdown", "" },
+        })
+      end)
+    end,
+  },
+
+  -- ── Motion helpers ─────────────────────────────────────────────────────────
+  { "tpope/vim-repeat",  event = "VeryLazy" },
+  { "tpope/vim-abolish", event = "VeryLazy" },
+
+  {
+    "gbprod/stay-in-place.nvim",
+    event = "VeryLazy",
+    opts  = {},
+  },
+
+  -- ── mini.* editing enhancements (unified spec) ────────────────────────────
+
+  {
+    "echasnovski/mini.nvim",
+    -- Load on any of these events/keys — whichever fires first.
+    event = "VeryLazy",
+    keys  = {
+      { "gc",          mode = { "n", "v" } },   -- mini.comment
+      { "gcc" },                                 -- mini.comment line
+      { "ga",          mode = { "n", "v" } },   -- mini.align
+      { "gA",          mode = { "n", "v" } },   -- mini.align preview
+      { "gS" },                                  -- mini.splitjoin
+      { "gsa",         mode = "v"          },   -- mini.surround add
+      { "gsd" }, { "gsf" }, { "gsF" },          -- mini.surround ops
+      { "gsh" }, { "gsr" },
+      { "<A-h>", mode = { "n", "v", "i" } },   -- mini.move left
+      { "<A-j>", mode = { "n", "v", "i" } },   -- mini.move down
+      { "<A-k>", mode = { "n", "v", "i" } },   -- mini.move up
+      { "<A-l>", mode = { "n", "v", "i" } },   -- mini.move right
+    },
+    config = function()
+      -- Each setup() call is independent; failure of one doesn't block others.
+      for _, mod in ipairs({
+        "align", "comment", "move", "pairs", "splitjoin", "surround"
+      }) do
+        pcall(function() require("mini." .. mod).setup() end)
+      end
+    end,
+  },
+
+  -- ── Undo tree ──────────────────────────────────────────────────────────────
+  {
+    "mbbill/undotree",
+    cmd  = "UndotreeToggle",
+    keys = { { "<leader>xu", "<cmd>UndotreeToggle<CR>", desc = "Undo Tree" } },
+    init = function()
+      vim.g.undotree_SetFocusWhenToggle = 1
+      vim.g.undotree_ShortIndicators    = 1
+      vim.g.undotree_WindowLayout       = 2
+      vim.g.undotree_DiffpanelHeight    = 8
+    end,
+  },
+
+  -- ── Folding enhancement (nvim-ufo) ────────────────────────────────────────
+
+  {
+    "kevinhwang91/nvim-ufo",
+    event        = "VeryLazy",
+    dependencies = { "kevinhwang91/promise-async" },
+    opts = (function()
+      local function fold_text(virtText, lnum, endLnum, width, truncate)
+        local newVirtText = {}
+        local suffix      = ("  %d "):format(endLnum - lnum)
+        local sufWidth    = vim.fn.strdisplaywidth(suffix)
+        local targetWidth = width - sufWidth
+        local curWidth    = 0
+        for _, chunk in ipairs(virtText) do
+          local chunkText  = chunk[1]
+          local chunkWidth = vim.fn.strdisplaywidth(chunkText)
+          if targetWidth > curWidth + chunkWidth then
+            table.insert(newVirtText, chunk)
+          else
+            chunkText = truncate(chunkText, targetWidth - curWidth)
+            table.insert(newVirtText, { chunkText, chunk[2] })
+            break
+          end
+          curWidth = curWidth + chunkWidth
+        end
+        table.insert(newVirtText, { suffix, "MoreMsg" })
+        return newVirtText
+      end
+
+      return {
+        fold_virt_text_handler  = fold_text,
+        open_fold_hl_timeout    = 400,
+        close_fold_kinds_for_ft = { _ = { "imports", "comment" } },
+        preview = {
+          win_config = {
+            border      = { "", "─", "", "", "", "─", "", "" },
+            winhighlight = "Normal:Folded",
+            winblend    = 12,
+          },
+          mappings = {
+            scrollU = "<C-u>", scrollD = "<C-d>",
+            jumpTop = "[{",    jumpBot = "]}",
+          },
+        },
+        provider_selector = function(bufnr, _ft, _bt)
+          if vim.b[bufnr] and vim.b[bufnr].large_file then return "" end
+          return { "treesitter", "indent" }
         end,
-        -- No config() here: treesitter integration is wired through the
-        -- optional nvim-treesitter spec below, which lazy merges into the
-        -- primary treesitter.lua opts table without clobbering it.
+      }
+    end)(),
+
+    config = function(_, opts)
+      local ok, ufo = pcall(require, "ufo")
+      if not ok then
+        vim.notify("nvim-ufo failed to load", vim.log.levels.WARN)
+        return
+      end
+      local setup_ok = pcall(function() ufo.setup(opts) end)
+      if not setup_ok then
+        vim.notify("nvim-ufo setup failed", vim.log.levels.WARN)
+        return
+      end
+      vim.keymap.set("n", "zR", ufo.openAllFolds)
+      vim.keymap.set("n", "zM", ufo.closeAllFolds)
+      vim.keymap.set("n", "zr", ufo.openFoldsExceptKinds)
+      vim.keymap.set("n", "zm", ufo.closeFoldsWith)
+    end,
+  },
+
+  -- ── Annotations (neogen) ──────────────────────────────────────────────────
+
+  {
+    "danymat/neogen",
+    lazy = true,
+    cmd  = "Neogen",
+    keys = {
+      { "<leader>xg", "<cmd>Neogen<CR>", desc = "Generate docstring" },
     },
-
-    -- FIX (v2.3.10): companion optional spec — contributes only the matchup
-    -- enable key to the treesitter opts table via lazy's recursive merge.
-    -- This is the correct way to enable a treesitter module from an external
-    -- plugin spec without calling setup() a second time.
-    {
-        "nvim-treesitter/nvim-treesitter",
-        optional = true,
-        opts = function(_, opts)
-            opts.matchup = opts.matchup or {}
-            opts.matchup.enable = true
-        end,
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      "L3MON4D3/LuaSnip",
     },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │            SYMBOL NAVIGATION & BREADCRUMBS           │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "SmiteshP/nvim-navic",
-        event = "LspAttach",
-        opts = {
-            icons = {
-                File          = " ", Module        = " ", Namespace     = " ",
-                Package       = " ", Class         = " ", Method        = " ",
-                Property      = " ", Field         = " ", Constructor   = " ",
-                Enum          = " ", Interface     = " ", Function      = " ",
-                Variable      = " ", Constant      = " ", String        = " ",
-                Number        = " ", Boolean       = " ", Array         = " ",
-                Object        = " ", Key           = " ", Null          = " ",
-                EnumMember    = " ", Struct        = " ", Event         = " ",
-                Operator      = " ", TypeParameter = " ",
-            },
-            lsp = {
-                auto_attach = false,
-                preference  = nil,
-            },
-            highlight             = true,
-            separator             = " > ",
-            depth_limit           = 5,
-            depth_limit_indicator = "..",
-            safe_output           = true,
-            lazy_update_context   = false,
-            click                 = false,
-            format_text           = function(text) return text end,
-        },
+    opts = {
+      snippet_engine = "luasnip",
+      languages = {
+        lua        = { template = { annotation_convention = "emmylua"           } },
+        typescript = { template = { annotation_convention = "tsdoc"             } },
+        javascript = { template = { annotation_convention = "jsdoc"             } },
+        rust       = { template = { annotation_convention = "nightly"           } },
+        go         = { template = { annotation_convention = "go"                } },
+        cpp        = { template = { annotation_convention = "doxygen"           } },
+        c          = { template = { annotation_convention = "doxygen"           } },
+        python     = { template = { annotation_convention = "google_docstrings" } },
+        java       = { template = { annotation_convention = "javadoc"           } },
+        kotlin     = { template = { annotation_convention = "kdoc"              } },
+      },
     },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │              COLOR & SYNTAX HIGHLIGHTING             │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "NvChad/nvim-colorizer.lua",
-        event = "BufReadPost",
-        opts = {
-            filetypes = { "*", "!lazy", "!lspinfo" },
-            user_default_options = {
-                RGB              = true,
-                RRGGBB           = true,
-                RRGGBBAA         = true,
-                AARRGGBB         = false,
-                rgb_fn           = true,
-                hsl_fn           = true,
-                css              = true,
-                css_fn           = true,
-                mode             = "background",
-                tailwind         = true,
-                sass             = { enable = true, parsers = { "css" } },
-                virtualtext      = "■",
-                virtualtext_inline = false,
-                always_update    = false,
-            },
-            buftypes = {},
-        },
-        config = function(_, opts)
-            require("colorizer").setup(opts)
-            vim.cmd("ColorizerAttachToBuffer")
-        end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │            BRACKET & DELIMITER HIGHLIGHTING          │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "HiPhish/rainbow-delimiters.nvim",
-        event = { "BufReadPre", "BufNewFile" },
-        config = function()
-            local rainbow_delimiters = require("rainbow-delimiters")
-            require("rainbow-delimiters.setup").setup({
-                strategy = {
-                    [""]  = rainbow_delimiters.strategy["global"],
-                    vim   = rainbow_delimiters.strategy["local"],
-                    latex = rainbow_delimiters.strategy["local"],
-                },
-                query = {
-                    [""]  = "rainbow-delimiters",
-                    lua   = "rainbow-blocks",
-                    latex = "rainbow-delimiters-latex",
-                },
-                priority = {
-                    [""]  = 110,
-                    lua   = 210,
-                    latex = 210,
-                },
-                highlight = {
-                    "RainbowDelimiterRed", "RainbowDelimiterYellow", "RainbowDelimiterBlue",
-                    "RainbowDelimiterOrange", "RainbowDelimiterGreen", "RainbowDelimiterViolet",
-                    "RainbowDelimiterCyan",
-                },
-                blacklist = { "html", "markdown", "text" },
-            })
-        end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                MOTION & REPETITION                   │
-    -- └─────────────────────────────────────────────────────┘
-
-    { "tpope/vim-repeat", event = "VeryLazy" },
-
-    {
-        "gbprod/stay-in-place.nvim",
-        event = "VeryLazy",
-        opts  = {},
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                 EDITING ENHANCEMENTS                 │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "echasnovski/mini.align",
-        lazy = true,
-        keys = {
-            { "ga", mode = { "n", "v" }, desc = "Align with Lua patterns" },
-            { "gA", mode = { "n", "v" }, desc = "Align with Vim regex" },
-        },
-        config = function() require("mini.align").setup() end,
-    },
-
-    {
-        "echasnovski/mini.splitjoin",
-        lazy = true,
-        keys = { { "gS", desc = "Toggle split/join" } },
-        config = function() require("mini.splitjoin").setup() end,
-    },
-
-    {
-        "echasnovski/mini.comment",
-        event  = "VeryLazy",
-        config = function() require("mini.comment").setup() end,
-    },
-
-    {
-        "echasnovski/mini.surround",
-        lazy = true,
-        keys = function()
-            return {
-                { "gsa", desc = "Add surrounding",       mode = "v" },
-                { "gsd", desc = "Delete surrounding" },
-                { "gsf", desc = "Find left surrounding" },
-                { "gsF", desc = "Find right surrounding" },
-                { "gsh", desc = "Highlight surrounding" },
-                { "gsr", desc = "Replace surrounding" },
-            }
-        end,
-        config = function() require("mini.surround").setup() end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                    UNDO TREE                         │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "mbbill/undotree",
-        cmd  = "UndotreeToggle",
-        keys = { { "<leader>xu", "<cmd>UndotreeToggle<CR>", desc = "Undo Tree" } },
-        init = function()
-            vim.g.undotree_SetFocusWhenToggle = 1
-            vim.g.undotree_ShortIndicators    = 1
-            vim.g.undotree_WindowLayout       = 2
-            vim.g.undotree_DiffpanelHeight    = 8
-        end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                  ICONS & DEVICONS                    │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "nvim-tree/nvim-web-devicons",
-        lazy = true,
-        opts = {
-            default     = true,
-            color_icons = true,
-            variant     = "default",
-            strict      = true,
-        },
-        config = function(_, opts)
-            require("nvim-web-devicons").setup(opts)
-        end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │              WORD CASE OPERATORS                     │
-    -- └─────────────────────────────────────────────────────┘
-
-    { "tpope/vim-abolish", event = "VeryLazy" },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                 FOLDING ENHANCEMENT                  │
-    -- └─────────────────────────────────────────────────────┘
-
-    {
-        "kevinhwang91/nvim-ufo",
-        event        = "VeryLazy",
-        dependencies = { "kevinhwang91/promise-async" },
-        opts = {
-            fold_virt_text_handler = function(virtText, lnum, endLnum, width, truncate)
-                local newVirtText = {}
-                local suffix      = ("  %d "):format(endLnum - lnum)
-                local sufWidth    = vim.fn.strdisplaywidth(suffix)
-                local targetWidth = width - sufWidth
-                local curWidth    = 0
-                for _, chunk in ipairs(virtText) do
-                    local chunkText  = chunk[1]
-                    local chunkWidth = vim.fn.strdisplaywidth(chunkText)
-                    if targetWidth > curWidth + chunkWidth then
-                        table.insert(newVirtText, chunk)
-                    else
-                        chunkText = truncate(chunkText, targetWidth - curWidth)
-                        table.insert(newVirtText, { chunkText, chunk[2] })
-                        break
-                    end
-                    curWidth = curWidth + chunkWidth
-                end
-                table.insert(newVirtText, { suffix, "MoreMsg" })
-                return newVirtText
-            end,
-            preview = {
-                win_config = {
-                    border      = { "", "─", "", "", "", "─", "", "" },
-                    winhighlight = "Normal:Folded",
-                    winblend    = 12,
-                },
-                mappings = {
-                    scrollU = "<C-u>", scrollD = "<C-d>",
-                    jumpTop = "[{",    jumpBot = "]}",
-                },
-            },
-            open_fold_hl_timeout = 400,
-            -- FIX (v2.3.1): close_fold_kinds renamed to close_fold_kinds_for_ft.
-            close_fold_kinds_for_ft = { _ = { "imports", "comment" } },
-            -- FIX (v2.2.4): guard large_file buffers.
-            provider_selector = function(bufnr, _filetype, _buftype)
-                if vim.b[bufnr] and vim.b[bufnr].large_file then
-                    return ""
-                end
-                return { "treesitter", "indent" }
-            end,
-        },
-        config = function(_, opts)
-            require("ufo").setup(opts)
-            vim.keymap.set("n", "zR", require("ufo").openAllFolds)
-            vim.keymap.set("n", "zM", require("ufo").closeAllFolds)
-            vim.keymap.set("n", "zr", require("ufo").openFoldsExceptKinds)
-            vim.keymap.set("n", "zm", require("ufo").closeFoldsWith)
-        end,
-    },
-
-    -- ┌─────────────────────────────────────────────────────┐
-    -- │                   ANNOTATIONS                        │
-    -- └─────────────────────────────────────────────────────┘
-
-    -- FIX (v2.3.1b): PRIMARY owner of neogen. cpp.lua and python.lua extend
-    -- this spec via optional=true. The languages table here covers ALL languages
-    -- so setup() always runs with a complete config regardless of load order.
-    -- <leader>xg lives here only — the duplicate in keymaps.lua was removed.
-    --
-    -- FIX (v2.3.15): kotlin added. The project has full kotlin coverage (LSP,
-    -- formatter, linter, DAP, neotest) and neogen supports kotlin natively.
-    -- A v2.3.10 fix added java for the identical reason; kotlin was overlooked.
-    {
-        "danymat/neogen",
-        lazy = true,
-        cmd  = "Neogen",
-        keys = {
-            { "<leader>xg", "<cmd>Neogen<CR>", desc = "Generate docstring" },
-        },
-        dependencies = { "nvim-treesitter/nvim-treesitter" },
-        opts = {
-            snippet_engine = "luasnip",
-            languages = {
-                lua        = { template = { annotation_convention = "emmylua"           } },
-                typescript = { template = { annotation_convention = "tsdoc"             } },
-                javascript = { template = { annotation_convention = "jsdoc"             } },
-                rust       = { template = { annotation_convention = "nightly"           } },
-                go         = { template = { annotation_convention = "go"                } },
-                cpp        = { template = { annotation_convention = "doxygen"           } },
-                c          = { template = { annotation_convention = "doxygen"           } },
-                python     = { template = { annotation_convention = "google_docstrings" } },
-                -- FIX (v2.3.10): java added. java.lua is a full lang spec with
-                -- neotest-java registered in test.lua, yet java was absent from
-                -- the "ALL supported languages" table claimed by the header comment.
-                java       = { template = { annotation_convention = "javadoc"           } },
-                -- FIX (v2.3.15): kotlin added for the same reason as java above.
-                kotlin     = { template = { annotation_convention = "kdoc"              } },
-            },
-        },
-    },
-
-    -- FIX (v2.3.15): optional=true ft trigger for kotlin so neogen lazy-loads
-    -- when a Kotlin buffer is opened and <leader>xg fires correctly.
-    -- Pattern is identical to cpp.lua and python.lua optional neogen specs.
-    {
-        "danymat/neogen",
-        optional = true,
-        ft       = "kotlin",
-        opts = {
-            languages = {
-                kotlin = { template = { annotation_convention = "kdoc" } },
-            },
-        },
-    },
+  },
 }

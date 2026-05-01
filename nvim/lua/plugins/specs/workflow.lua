@@ -1,49 +1,47 @@
--- lua/plugins/specs/workflow.lua
+-- lua/plugins/specs/workflow.lua — Overseer task runner
 --
--- FIX (v2.3.1):
---   • overseer.run_template({ name = "build" }) throws an unhandled error when
---     no template matching "build" exists in the current project (e.g. a plain
---     Python project with no Makefile or CMakeLists.txt). The error propagated
---     to the user as a red stacktrace. Fixed: wrapped in pcall; on failure
---     falls back to OverseerRun (the full picker) with a brief notify so the
---     user understands why the direct build shortcut didn't fire.
---     Same fix applied to the shell template shortcut for consistency.
+
+-- ── Shared win opts ────────────────────────────────────────────────────────
+
+local WIN_OPTS = { border = "rounded", win_opts = { winblend = 5 } }
 
 return {
-
   {
     "stevearc/overseer.nvim",
     cmd  = { "OverseerRun", "OverseerToggle", "OverseerTaskAction", "OverseerClearCache" },
     keys = {
-      { "<leader>ot", "<cmd>OverseerToggle<cr>",     desc = "Overseer: task list" },
-      { "<leader>or", "<cmd>OverseerRun<cr>",        desc = "Overseer: run task" },
+      { "<leader>ot", "<cmd>OverseerToggle<cr>",     desc = "Overseer: task list"   },
+      { "<leader>or", "<cmd>OverseerRun<cr>",        desc = "Overseer: run task"    },
+      { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
+      { "<leader>oc", "<cmd>OverseerClearCache<cr>", desc = "Overseer: clear cache" },
       {
         "<leader>ob",
         function()
-          -- FIX: pcall + fallback — run_template throws if no "build" template
-          -- matches the current project. Fall back to the full picker.
-          local ok = pcall(function()
-            require("overseer").run_template({ name = "build" })
-          end)
+          local ok_ov, overseer = pcall(require, "overseer")
+          if not ok_ov then
+            vim.notify("[overseer] plugin not loaded", vim.log.levels.WARN)
+            return
+          end
+          local ok = pcall(function() overseer.run_template({ name = "build" }) end)
           if not ok then
-            vim.notify("[overseer] No 'build' template found — opening task picker",
+            vim.notify("[overseer] No 'build' template — opening task picker",
               vim.log.levels.INFO)
             vim.cmd("OverseerRun")
           end
         end,
         desc = "Overseer: build",
       },
-      { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
-      { "<leader>oc", "<cmd>OverseerClearCache<cr>", desc = "Overseer: clear cache" },
       {
         "<leader>os",
         function()
-          -- FIX: same pcall guard for shell template
-          local ok = pcall(function()
-            require("overseer").run_template({ name = "shell" })
-          end)
+          local ok_ov, overseer = pcall(require, "overseer")
+          if not ok_ov then
+            vim.notify("[overseer] plugin not loaded", vim.log.levels.WARN)
+            return
+          end
+          local ok = pcall(function() overseer.run_template({ name = "shell" }) end)
           if not ok then
-            vim.notify("[overseer] No 'shell' template found — opening task picker",
+            vim.notify("[overseer] No 'shell' template — opening task picker",
               vim.log.levels.INFO)
             vim.cmd("OverseerRun")
           end
@@ -53,13 +51,19 @@ return {
     },
     opts = {
       strategy = {
-        "toggleterm",
+        (function()
+          local ok = pcall(require, "toggleterm")
+          return ok and "toggleterm" or "terminal"
+        end)(),
         direction     = "float",
         close_on_exit = false,
         open_on_start = true,
       },
-      templates  = { "builtin" },
-      auto_scroll = true,
+
+      templates   = { "builtin" },
+
+      auto_scroll = vim.g.overseer_auto_scroll ~= false,
+
       task_list = {
         direction      = "bottom",
         min_height     = 10,
@@ -76,13 +80,12 @@ return {
           ["<leader>ot"] = "Close",
         },
       },
-      form     = { border = "rounded", zindex = 40, min_width = 80,
-                   win_opts = { winblend = 5 } },
-      confirm  = { border = "rounded", zindex = 40, min_width = 80,
-                   win_opts = { winblend = 5 } },
-      task_win = { border = "rounded", padding = 2,
-                   win_opts = { winblend = 5 } },
-      log      = { { type = "echo", level = vim.log.levels.WARN } },
+
+      form     = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
+      confirm  = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
+      task_win = vim.tbl_extend("keep", { padding = 2               }, WIN_OPTS),
+
+      log = { { type = "echo", level = vim.log.levels.WARN } },
     },
     config = function(_, opts)
       local ok = pcall(function() require("overseer").setup(opts) end)
@@ -92,18 +95,6 @@ return {
     end,
   },
 
-  {
-    "nvim-neotest/neotest",
-    optional = true,
-    keys = {
-      { "<leader>'w", function()
-          pcall(function()
-            require("neotest").watch.toggle(vim.fn.expand("%"))
-          end)
-        end, desc = "Neotest: watch file" },
-      { "<leader>'W", function()
-          pcall(function() require("neotest").watch.toggle() end)
-        end, desc = "Neotest: watch nearest" },
-    },
-  },
+  -- ── Neotest watch keys ─────────────────────────────────────────────────────
+  -- (Keys are registered in test.lua keys= to keep all neotest keys together.)
 }

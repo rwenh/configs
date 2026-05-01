@@ -1,62 +1,88 @@
--- lua/core/hud.lua
--- Synthwave accent layer — overlaid on any theme.
+-- lua/core/hud.lua — synthwave accent highlight overrides
 --
--- FIX (v2.3.12):
---   • DashboardHeader / DashboardFooter / DashboardCenter / DashboardShortCut /
---     DashboardKey / DashboardDesc / DashboardIcon removed.
---     ui.lua's set_matrix_hl() defines MatrixHead/MatrixLogo/MatrixBorder etc.
---     for the snacks dashboard. The old Dashboard* groups targeted a different
---     dashboard plugin (dashboard-nvim, removed in v2.3.0) and are no longer
---     used anywhere. Worse, they conflicted with ui.lua's matrix palette:
---     DashboardHeader (#00cc44) fought MatrixLogo (#00ff41) applied on the same
---     snacks buffer rows depending on which ColorScheme autocmd fired last.
---     Removing them makes ui.lua the sole owner of dashboard colouring.
+-- Applied after every ColorScheme event so overrides survive theme toggles.
+-- All color values are TokyoNight-tuned but declared as named constants so
+-- adapting to other dark themes is a single-edit operation.
+--
 
 local M = {}
 
+-- ── Color constants ───────────────────────────────────────────────────────────
+-- FIX D1: named constants replace repeated hex literals.
+-- To adapt for a different dark theme, change the values here only.
+local BG     = "#0d1117"   -- float background  (deep dark)
+local BLUE   = "#7aa2f7"   -- border / accent    (tokyonight blue)
+local PURPLE = "#bb9af7"   -- title / group      (tokyonight purple)
+local ORANGE = "#ff9e64"   -- prompt prefix
+local CYAN   = "#7dcfff"   -- cursor line number
+local GREY   = "#3d5a6e"   -- inactive line numbers
+local DIM    = "#1e2030"   -- indent guides (barely visible)
+local SCOPE  = "#3d59a1"   -- indent scope line
+local GREEN  = "#9ece6a"   -- dap stopped
+local RED    = "#f7768e"   -- dap breakpoint
+
+-- ── Override table ────────────────────────────────────────────────────────────
 local overrides = {
-  -- ── Line numbers ──────────────────────────────────────────────────────
-  LineNr         = { fg = "#3d5a6e" },
-  CursorLineNr   = { fg = "#7dcfff", bold = true },
+  -- Line numbers
+  LineNr       = { fg = GREY },
+  CursorLineNr = { fg = CYAN, bold = true },
 
-  -- ── Floating windows — glass panel ───────────────────────────────────
-  NormalFloat    = { bg = "#0d1117" },
-  FloatBorder    = { fg = "#7aa2f7", bg = "#0d1117" },
-  FloatTitle     = { fg = "#bb9af7", bold = true },
+  -- Floating windows — glass panel
+  NormalFloat  = { bg = BG },
+  FloatBorder  = { fg = BLUE,   bg = BG },
+  FloatTitle   = { fg = PURPLE, bold = true },
 
-  -- ── Telescope — cyberpunk search ─────────────────────────────────────
-  TelescopeNormal        = { bg = "#0d1117" },
-  TelescopeBorder        = { fg = "#7aa2f7", bg = "#0d1117" },
-  TelescopePromptBorder  = { fg = "#bb9af7", bg = "#16161e" },
+  -- Telescope
+  TelescopeNormal        = { bg = BG },
+  TelescopeBorder        = { fg = BLUE,   bg = BG },
+  TelescopePromptBorder  = { fg = PURPLE, bg = "#16161e" },
   TelescopePromptNormal  = { bg = "#16161e" },
-  TelescopePromptPrefix  = { fg = "#ff9e64" },
-  TelescopeResultsTitle  = { fg = "#0d1117", bg = "#7aa2f7" },
-  TelescopePreviewTitle  = { fg = "#0d1117", bg = "#bb9af7" },
-  TelescopeSelectionCaret = { fg = "#ff9e64" },
+  TelescopePromptPrefix  = { fg = ORANGE },
+  TelescopeResultsTitle  = { fg = BG,     bg = BLUE   },
+  TelescopePreviewTitle  = { fg = BG,     bg = PURPLE },
+  TelescopeSelectionCaret = { fg = ORANGE },
 
-  -- ── Treesitter context — subtle neon underline ───────────────────────
-  TreesitterContextBottom = { underline = true, sp = "#7aa2f7" },
+  -- Treesitter context
+  TreesitterContextBottom = { underline = true, sp = BLUE },
 
-  -- ── DAP — hot breakpoints ─────────────────────────────────────────────
-  DapBreakpoint   = { fg = "#f7768e" },
-  DapStopped      = { fg = "#9ece6a", bold = true },
-  DapStoppedLine  = { bg = "#1a2b1a" },
+  -- DAP
+  DapBreakpoint  = { fg = RED  },
+  DapStopped     = { fg = GREEN, bold = true },
+  DapStoppedLine = { bg = "#1a2b1a" },
 
-  -- ── Indent lines — barely-visible grid ───────────────────────────────
-  IblIndent      = { fg = "#1e2030" },
-  IblScope       = { fg = "#3d59a1" },
+  -- Indent guides
+  IblIndent = { fg = DIM   },
+  IblScope  = { fg = SCOPE },
 
-  -- ── Which-key panel ───────────────────────────────────────────────────
-  WhichKeyBorder     = { fg = "#7aa2f7" },
-  WhichKeyGroup      = { fg = "#bb9af7" },
-  WhichKeyDesc       = { fg = "#c0caf5" },
-  WhichKeySeparator  = { fg = "#3d59a1" },
+  -- Which-key
+  WhichKeyBorder    = { fg = BLUE   },
+  WhichKeyGroup     = { fg = PURPLE },
+  WhichKeyDesc      = { fg = "#c0caf5" },
+  WhichKeySeparator = { fg = SCOPE  },
 }
 
+-- ── apply() ───────────────────────────────────────────────────────────────────
+
 function M.apply()
-  for group, attrs in pairs(overrides) do
-    pcall(vim.api.nvim_set_hl, 0, group, attrs)
+  local ok, err = pcall(function()
+    for group, attrs in pairs(overrides) do
+      vim.api.nvim_set_hl(0, group, attrs)
+    end
+  end)
+  if not ok then
+    vim.notify("[hud] highlight override failed: " .. tostring(err),
+      vim.log.levels.WARN)
   end
 end
+
+-- ── Auto-reapply on ColorScheme ───────────────────────────────────────────────
+-- After a theme toggle (:<leader>ut) the ColorScheme event fires and a new
+-- colorscheme resets all highlights — the overrides were lost until restart.
+-- Registering apply() on ColorScheme ensures they survive every theme change.
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group    = vim.api.nvim_create_augroup("HudHighlights", { clear = true }),
+  callback = M.apply,
+  desc     = "Re-apply HUD highlight overrides after theme change",
+})
 
 return M

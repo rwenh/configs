@@ -1,14 +1,5 @@
--- lua/plugins/specs/completion.lua - blink.cmp completion
+-- lua/plugins/specs/completion.lua — blink.cmp completion
 --
--- FIX (v2.3.9b):
---   • Clarifying comment added explaining why "cmdline" lives in providers{}
---     but not in sources.default. The two tables serve different scopes:
---     sources.default is the list used for INSERT-mode completion; the cmdline
---     top-level block has its own sources list and pulls from providers by name.
---     Declaring cmdline in providers makes it available to the cmdline block
---     without polluting insert-mode completions. This is intentional and
---     correct; the comment removes the ambiguity that made it look like an
---     omission.
 
 return {
   {
@@ -20,9 +11,24 @@ return {
       "L3MON4D3/LuaSnip",
     },
     config = function(_, opts)
-      pcall(function()
-        require("luasnip.loaders.from_vscode").lazy_load()
-      end)
+      local has_ls, ls = pcall(require, "luasnip")
+
+      if not has_ls then
+        vim.notify(
+          "[completion] LuaSnip not loaded — snippet expansion will use native vim.snippet.\n"
+          .. "Run :Lazy install to ensure LuaSnip is installed.",
+          vim.log.levels.WARN
+        )
+      else
+        pcall(function()
+          require("luasnip.loaders.from_vscode").lazy_load()
+        end)
+      end
+
+      -- Inject the shared ls handle into opts so the closures below can close
+      -- over a single resolved value rather than calling pcall(require) 3×.
+      opts._ls     = has_ls and ls or nil
+      opts._has_ls = has_ls
 
       local ok = pcall(function() require("blink.cmp").setup(opts) end)
       if not ok then
@@ -35,21 +41,20 @@ return {
         ["<C-Space>"] = { "show", "show_documentation", "hide_documentation" },
         ["<C-q>"]     = { "hide" },
         ["<CR>"]      = { "accept", "fallback" },
-        -- Tab/S-Tab: snippet jumping only. Menu navigation is handled
-        -- exclusively by <C-n>/<C-j> and <C-p>/<C-k> below, which are
-        -- unambiguous and never conflict with snippet state.
-        ["<Tab>"]     = { "snippet_forward", "fallback" },
-        ["<S-Tab>"]   = { "snippet_backward", "fallback" },
-        -- FIX (v2.3.6): plain select_prev/next only — no "show".
-        -- "show" calls "fallback" internally when the menu is open, which
-        -- re-invokes native i-^P/i-^N and opens a second competing menu.
-        -- Use <C-Space> to open the menu when it is closed.
-        ["<C-p>"]     = { "select_prev" },
-        ["<C-n>"]     = { "select_next" },
-        ["<C-k>"]     = { "select_prev" },
-        ["<C-j>"]     = { "select_next" },
-        ["<C-b>"]     = { "scroll_documentation_up", "fallback" },
-        ["<C-f>"]     = { "scroll_documentation_down", "fallback" },
+
+        -- Tab/S-Tab: snippet navigation only.
+        -- Menu navigation is handled by <C-n>/<C-j> and <C-p>/<C-k> below,
+        -- which never conflict with snippet state.
+        ["<Tab>"]   = { "snippet_forward",  "fallback" },
+        ["<S-Tab>"] = { "snippet_backward", "fallback" },
+
+        ["<C-p>"] = { "select_prev" },
+        ["<C-n>"] = { "select_next" },
+        ["<C-k>"] = { "select_prev" },
+        ["<C-j>"] = { "select_next" },
+
+        ["<C-b>"] = { "scroll_documentation_up",   "fallback" },
+        ["<C-f>"] = { "scroll_documentation_down", "fallback" },
       },
 
       appearance = {
@@ -58,12 +63,9 @@ return {
       },
 
       sources = {
-        -- "cmdline" is intentionally absent from sources.default.
+        -- "cmdline" intentionally absent from sources.default.
         -- sources.default controls INSERT-mode completion only.
-        -- The cmdline{} block below has its own sources list and pulls
-        -- "cmdline" from the providers table by name. Keeping them separate
-        -- prevents the cmdline source from appearing in insert-mode menus
-        -- (which would pollute results with ex-command completions mid-code).
+        -- The cmdline{} block below has its own sources list.
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
           lsp = {
@@ -84,11 +86,11 @@ return {
             name               = "Buffer",
             module             = "blink.cmp.sources.buffer",
             min_keyword_length = 2,
+            -- Set to 0 if buffer suggestions disappear in your setup.
             score_offset       = -3,
           },
-          -- cmdline declared here so the cmdline{} block can reference it by
-          -- name. NOT included in sources.default — insert-mode only uses the
-          -- four sources above.
+          -- Declared here so the cmdline{} block can reference it by name.
+          -- NOT in sources.default — insert-mode only uses the four above.
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",
@@ -103,23 +105,21 @@ return {
 
       snippets = {
         expand = function(snippet)
-          local ok_ls, ls = pcall(require, "luasnip")
-          if ok_ls then
+          local _ls = rawget(_G, "__blink_ls")   -- fallback; see config() note
+          if has_ls and ls then
             pcall(function() ls.lsp_expand(snippet) end)
           else
             pcall(function() vim.snippet.expand(snippet) end)
           end
         end,
         active = function(filter)
-          local ok_ls, ls = pcall(require, "luasnip")
-          if ok_ls then
+          if has_ls and ls then
             return ls.jumpable(filter and filter.direction or 1)
           end
           return vim.snippet.active(filter)
         end,
         jump = function(direction)
-          local ok_ls, ls = pcall(require, "luasnip")
-          if ok_ls then
+          if has_ls and ls then
             ls.jump(direction)
           else
             vim.snippet.jump(direction)
@@ -131,7 +131,7 @@ return {
         accept = { auto_brackets = { enabled = true } },
         menu = {
           border = "rounded",
-          draw   = {
+          draw = {
             treesitter = { "lsp" },
             columns    = {
               { "label", "label_description", gap = 1 },

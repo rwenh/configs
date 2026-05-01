@@ -1,42 +1,39 @@
 -- lua/plugins/specs/editor.lua
 --
--- FIX (v2.2.4):
---   • telescope-fzf-native: build command is a cmake pipeline. When cmake is
---     absent the build step fails silently (lazy swallows build errors), fzf
---     native never compiles, and telescope falls back to the slow Lua sorter
---     with no warning. Added cond guard: if cmake is unavailable, fall back to
---     the pure-make build (which only needs a C compiler and make, available
---     on almost all systems). If neither is present the plugin loads without
---     native sorting — better than a silent half-broken state.
---   • persistence.nvim: options evaluated lazily via config function so
---     sessionoptions reflects the value set in options.lua (unchanged).
 
 return {
 
+  -- ── Harpoon ────────────────────────────────────────────────────────────────
   {
     "ThePrimeagen/harpoon",
-    branch = "harpoon2",
+    branch       = "harpoon2",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-telescope/telescope.nvim" },
-    event = "VeryLazy",
+    event        = "VeryLazy",
     opts = {
       settings = {
         save_on_toggle  = true,
         save_on_change  = true,
         enter_on_select = false,
-        key = function() return vim.uv.cwd() end,
+        key = function()
+          local ok, path = pcall(require, "core.util.path")
+          if ok then
+            local root = path.find_root()
+            if root and root ~= "" then return root end
+          end
+          return vim.uv.cwd() or ""
+        end,
       },
     },
     config = function(_, opts)
       local ok = pcall(function() require("harpoon").setup(opts) end)
-      if not ok then
-        vim.notify("harpoon setup failed", vim.log.levels.WARN)
-      end
+      if not ok then vim.notify("harpoon setup failed", vim.log.levels.WARN) end
     end,
   },
 
+  -- ── Telescope ──────────────────────────────────────────────────────────────
   {
     "nvim-telescope/telescope.nvim",
-    cmd = "Telescope",
+    cmd          = "Telescope",
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope-fzf-native.nvim",
@@ -46,15 +43,20 @@ return {
       local ok = pcall(function()
         require("telescope").setup({
           defaults = {
-            layout_strategy = "horizontal",
-            layout_config = {
+            layout_strategy  = "horizontal",
+            layout_config    = {
               height          = 0.9,
               preview_cutoff  = 120,
               prompt_position = "bottom",
             },
             sorting_strategy = "ascending",
             file_ignore_patterns = {
-              "node_modules", ".git", "dist", "build", ".venv", "__pycache__",
+              "/node_modules/",
+              "/.git/",
+              "/dist/",
+              "/build/",
+              "/.venv/",
+              "/__pycache__/",
             },
           },
           extensions = {
@@ -66,48 +68,35 @@ return {
             },
           },
         })
-        -- fzf extension load is a no-op if native build didn't compile
         pcall(function() require("telescope").load_extension("fzf") end)
       end)
-      if not ok then
-        vim.notify("telescope setup failed", vim.log.levels.WARN)
-      end
+      if not ok then vim.notify("telescope setup failed", vim.log.levels.WARN) end
     end,
   },
 
   {
     "nvim-telescope/telescope-fzf-native.nvim",
-    lazy = true,
-    -- FIX: cmake build fails silently when cmake is absent, leaving telescope
-    -- without native sorting and no user-visible warning. Strategy:
-    --   1. If cmake exists → use the full cmake pipeline (best performance).
-    --   2. If only make/cc exist → use the simple `make` build.
-    --   3. If neither → skip build entirely; telescope still works, just slower.
-    build = (function()
+    lazy  = true,
+    build = function()
       if vim.fn.executable("cmake") == 1 then
-        return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build"
+        return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release "
+          .. "&& cmake --build build --config Release "
+          .. "&& cmake --install build --prefix build"
       elseif vim.fn.executable("make") == 1 then
         return "make"
+      else
+        vim.notify(
+          "[telescope-fzf-native] cmake and make both unavailable — "
+          .. "using slow Lua sorter. Install cmake or make for native sorting.",
+          vim.log.levels.WARN
+        )
+        return ""
       end
-      -- No suitable build tool — return empty string, lazy skips the step.
-      return ""
-    end)(),
-    cond = function()
-      -- Load the plugin even if the native build failed — telescope degrades
-      -- gracefully to the Lua sorter. We just notify the user once.
-      if vim.fn.executable("cmake") == 0 and vim.fn.executable("make") == 0 then
-        vim.schedule(function()
-          vim.notify(
-            "[telescope-fzf-native] cmake and make both unavailable — using slow Lua sorter.\n"
-            .. "Install cmake or make for native sorting performance.",
-            vim.log.levels.WARN
-          )
-        end)
-      end
-      return true
     end,
+    cond = function() return true end,   -- load regardless; telescope degrades gracefully
   },
 
+  -- ── Spectre ────────────────────────────────────────────────────────────────
   {
     "nvim-pack/nvim-spectre",
     cmd          = "Spectre",
@@ -115,7 +104,7 @@ return {
     opts = {
       color_devicons = true,
       open_cmd       = "noswapfile vnew",
-      find_engine = {
+      find_engine    = {
         rg = {
           cmd  = "rg",
           args = { "--color=never", "--no-heading", "--with-filename",
@@ -126,10 +115,11 @@ return {
     },
   },
 
+  -- ── Todo comments ──────────────────────────────────────────────────────────
+  -- The <leader>xT key is registered in hud.lua's optional=true extension.
   {
     "folke/todo-comments.nvim",
     cmd          = { "TodoTelescope" },
-    event        = "VeryLazy",
     dependencies = "nvim-lua/plenary.nvim",
     opts = {
       signs     = false,
@@ -154,12 +144,14 @@ return {
         TODO = { icon = " ", color = "info" },
         HACK = { icon = " ", color = "warning" },
         WARN = { icon = " ", color = "warning", alt = { "WARNING", "XXX" } },
-        PERF = { icon = " ", alt = { "OPTIM", "PERFORMANCE", "OPTIMIZE" } },
+        PERF = { icon = " ", alt  = { "OPTIM", "PERFORMANCE", "OPTIMIZE" } },
         NOTE = { icon = " ", color = "hint",    alt = { "INFO" } },
         TEST = { icon = "⚙ ", color = "test",   alt = { "TESTING", "PASSED", "FAILED" } },
       },
     },
   },
+
+  -- ── Neo-tree ───────────────────────────────────────────────────────────────
 
   {
     "nvim-neo-tree/neo-tree.nvim",
@@ -171,9 +163,9 @@ return {
       "MunifTanjim/nui.nvim",
     },
     keys = {
-      { "<leader>ee", "<cmd>Neotree reveal<cr>",  desc = "Toggle explorer" },
-      { "<leader>ef", "<cmd>Neotree focus<cr>",   desc = "Focus explorer" },
-      { "<leader>ec", "<cmd>Neotree close<cr>",   desc = "Close explorer" },
+      { "<leader>ee", "<cmd>Neotree reveal<cr>",  desc = "Toggle explorer"  },
+      { "<leader>ef", "<cmd>Neotree focus<cr>",   desc = "Focus explorer"   },
+      { "<leader>ec", "<cmd>Neotree close<cr>",   desc = "Close explorer"   },
       { "<leader>er", "<cmd>Neotree refresh<cr>", desc = "Refresh explorer" },
     },
     opts = {
@@ -184,20 +176,20 @@ return {
       default_component_configs = {
         container = { enable_character_fade = false },
         indent = {
-          indent_size = 2, padding = 1, with_markers = true,
-          indent_marker = "│", last_indent_marker = "└",
-          highlight = "NeoTreeIndentMarker",
-          with_expanders = nil,
-          expander_collapsed = "", expander_expanded = "",
-          expander_highlight = "NeoTreeExpander",
+          indent_size         = 2,   padding = 1, with_markers = true,
+          indent_marker       = "│", last_indent_marker = "└",
+          highlight           = "NeoTreeIndentMarker",
+          with_expanders      = nil,
+          expander_collapsed  = "", expander_expanded = "",
+          expander_highlight  = "NeoTreeExpander",
         },
         icon = {
           folder_closed = "", folder_open = "", folder_empty = "󰜌",
-          default = "*", highlight = "NeoTreeFileIcon",
+          default       = "*", highlight = "NeoTreeFileIcon",
         },
-        modified = { symbol = "[+]", highlight = "NeoTreeModified" },
-        name     = { trailing_slash = false, use_git_status_colors = true,
-                     highlight = "NeoTreeFileName" },
+        modified   = { symbol = "[+]", highlight = "NeoTreeModified" },
+        name       = { trailing_slash = false, use_git_status_colors = true,
+                       highlight = "NeoTreeFileName" },
         git_status = {
           symbols = {
             added = "", deleted = "", modified = "", renamed = "",
@@ -207,7 +199,8 @@ return {
         },
       },
       window = {
-        position = "left", width = 30,
+        position        = "left",
+        width           = 30,
         mapping_options = { noremap = true, nowait = true },
         mappings = {
           ["<space>"]       = { "toggle_node", nowait = false },
@@ -240,18 +233,18 @@ return {
       },
       filesystem = {
         filtered_items = {
-          visible        = false,
-          hide_dotfiles  = true,
-          hide_gitignored = true,
-          hide_hidden    = true,
-          hide_by_name   = { ".DS_Store", "thumbs.db", "node_modules" },
-          hide_by_pattern = { "*.swp", "*.swo", "*~" },
-          always_show    = { ".env", ".gitignore" },
-          never_show     = { ".DS_Store", "thumbs.db" },
+          visible          = false,
+          hide_dotfiles    = true,
+          hide_gitignored  = true,
+          hide_hidden      = true,
+          hide_by_name     = { ".DS_Store", "thumbs.db", "node_modules" },
+          hide_by_pattern  = { "*.swp", "*.swo", "*~" },
+          always_show      = { ".env", ".gitignore" },
+          never_show       = { ".DS_Store", "thumbs.db" },
         },
-        follow_current_file    = { enabled = true, leave_dirs_open = false },
-        hijack_netrw_behavior  = "open_current",
-        use_libuv              = true,
+        follow_current_file   = { enabled = true, leave_dirs_open = false },
+        hijack_netrw_behavior = "open_current",
+        use_libuv             = true,
         window = {
           mappings = {
             ["<bs>"]  = "navigate_up",
@@ -289,16 +282,17 @@ return {
     },
   },
 
-  -- FIX: flash.nvim spec added. keymaps.lua maps `s` to flash.jump() but the
-  -- plugin was never specced — require("flash") always failed in pcall.
-  -- event=VeryLazy ensures it loads before any `s` keypress in normal use.
+  -- ── Flash ──────────────────────────────────────────────────────────────────
+
+  -- This spec registers flash without a keys= table because the keymap is
+  -- managed centrally; event=VeryLazy ensures it loads before any 's' press.
   {
     "folke/flash.nvim",
     event = "VeryLazy",
     opts  = {
       modes = {
-        search = { enabled = false }, -- don't hijack /
-        char   = { enabled = false }, -- don't hijack f/t/F/T
+        search = { enabled = false },   -- don't hijack /
+        char   = { enabled = false },   -- don't hijack f/t/F/T
       },
     },
     config = function(_, opts)
@@ -306,11 +300,32 @@ return {
     end,
   },
 
-  { "echasnovski/mini.move",   version = false, event = "VeryLazy",
-    config = function() require("mini.move").setup() end },
+  -- ── mini.move + mini.pairs ─────────────────────────────────────────────────
+  -- See advanced.lua for mini.move, mini.pairs, mini.align, mini.splitjoin,
+  -- mini.comment, mini.surround.
 
-  { "echasnovski/mini.pairs",  version = false, event = "VeryLazy",
-    config = function() require("mini.pairs").setup() end },
+  -- ── Sessions ───────────────────────────────────────────────────────────────
+  {
+    "folke/persistence.nvim",
+    event = "BufReadPre",
+    config = function()
+      require("persistence").setup({
+        dir     = vim.fn.stdpath("state") .. "/sessions/",
+        options = vim.opt.sessionoptions:get(),
+        pre_save = nil,
+      })
+    end,
+    keys = {
+      { "<leader>qs", function() require("persistence").load()              end,
+        desc = "Restore session (cwd)" },
+      { "<leader>ql", function() require("persistence").load({ last = true }) end,
+        desc = "Restore last session"  },
+      { "<leader>qd", function() require("persistence").stop()              end,
+        desc = "Don't save session on exit" },
+    },
+  },
+
+  -- ── Template ───────────────────────────────────────────────────────────────
 
   {
     "nvimdev/template.nvim",
@@ -321,36 +336,21 @@ return {
         vim.notify("template.nvim setup failed", vim.log.levels.WARN)
         return
       end
+
+      local function git_cfg(key)
+        local val = vim.fn.system("git config " .. key):gsub("\n", "")
+        return (val ~= "" and not val:find("^fatal")) and val or nil
+      end
+
       pcall(function()
         template.setup({
           temp_dir     = vim.fn.stdpath("config") .. "/templates",
           auto_name    = false,
-          author_name  = "Your Name",
-          author_email = "your.email@example.com",
+          author_name  = git_cfg("user.name")  or "Your Name",
+          author_email = git_cfg("user.email") or "your.email@example.com",
           web_devicons = true,
         })
       end)
     end,
-  },
-
-  {
-    "folke/persistence.nvim",
-    event = "BufReadPre",
-    opts  = {},
-    config = function()
-      require("persistence").setup({
-        dir     = vim.fn.stdpath("state") .. "/sessions/",
-        options = vim.opt.sessionoptions:get(),
-        pre_save = nil,
-      })
-    end,
-    keys = {
-      { "<leader>qs", function() require("persistence").load() end,
-        desc = "Restore session (cwd)" },
-      { "<leader>ql", function() require("persistence").load({ last = true }) end,
-        desc = "Restore last session" },
-      { "<leader>qd", function() require("persistence").stop() end,
-        desc = "Don't save session on exit" },
-    },
   },
 }
