@@ -3,46 +3,25 @@
 
 local M = {}
 
--- ── Lazy-cached term module ────────────────────────────────────────────────────
--- FIX D1: created once, reused across all three public functions.
+-- ── Lazy-cached module handles ─────────────────────────────────────────────────
 local _term = nil
 local function term()
   if _term then return _term end
   local ok, t = pcall(require, "core.util.term")
-  if ok then
-    _term = t
-    return _term
-  end
+  if ok then _term = t; return _term end
   vim.notify("[runner] core.util.term not available — falling back to split terminal",
     vim.log.levels.WARN)
   return nil
 end
 
--- ── Shared helpers ─────────────────────────────────────────────────────────────
-
---- Walk up from *dir* looking for *marker* (file or directory).
---- Returns the first ancestor path that contains it, or nil.
----@param dir    string
----@param marker string
----@param levels integer?  max levels (default 5)
----@return string|nil
-local function find_ancestor_with(dir, marker, levels)
-  levels = levels or 5
-  local current = dir
-  for _ = 1, levels do
-    if vim.fn.filereadable(current .. "/" .. marker) == 1
-    or vim.fn.isdirectory(current .. "/" .. marker) == 1 then
-      return current
-    end
-    local parent = vim.fn.fnamemodify(current, ":h")
-    if parent == current then break end
-    current = parent
-  end
+local _path = nil
+local function path()
+  if _path then return _path end
+  local ok, p = pcall(require, "core.util.path")
+  if ok then _path = p; return _path end
   return nil
 end
 
---- Used by run_tests() and may be called from kotlin.lua to avoid duplication.
----
 ---@param root string   project root directory
 ---@param task string   gradle/maven task name (e.g. "test", "build")
 ---@return string|nil
@@ -73,8 +52,10 @@ local runners = {
 
   rust = function(file)
     local dir        = vim.fn.fnamemodify(file, ":h")
-    local cargo_root = find_ancestor_with(dir, "Cargo.toml", 5)
-    if cargo_root then
+    local p          = path()
+    local cargo_root = p and p.find_root(dir)
+    -- Verify the detected root actually contains Cargo.toml before using it.
+    if cargo_root and vim.fn.filereadable(cargo_root .. "/Cargo.toml") == 1 then
       return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
     end
     local exe = vim.fn.fnamemodify(file, ":r")
@@ -108,7 +89,6 @@ local runners = {
     return "lua " .. vim.fn.shellescape(file)
   end,
 
-  -- FIX (v2.3.16 guard preserved): executable checks for compiled runners.
   c = function(file)
     if vim.fn.executable("gcc") ~= 1 then return nil end
     local exe = vim.fn.fnamemodify(file, ":r")
@@ -311,7 +291,15 @@ function M.run_selection(start_line, end_line)
     return
   end
 
-  local tmpfile = vim.fn.tempname() .. "." .. ft
+  -- Map Neovim filetypes to file extensions that the runtime actually accepts.
+  local EXT_MAP = {
+    javascriptreact  = "js",
+    typescriptreact  = "ts",
+    sh               = "sh",
+    bash             = "sh",
+  }
+  local ext      = EXT_MAP[ft] or ft
+  local tmpfile  = vim.fn.tempname() .. "." .. ext
 
   local write_ok = pcall(vim.fn.writefile, vim.split(code, "\n"), tmpfile)
   if not write_ok then
@@ -339,7 +327,6 @@ function M.run_selection(start_line, end_line)
 end
 
 -- ── Public: detect_js_test_cmd ────────────────────────────────────────────────
--- Promoted to public in v2.3.11; used by test.lua.
 
 ---@param root string  project root directory
 ---@return string      bare package-manager test command (no cd prefix)

@@ -12,29 +12,15 @@
 --   <leader>'t    → runner.lua (gradle_or_maven test)
 --   For interactive TDD use neotest; for full builds use <leader>ktt.
 --
--- Kotlin DAP depends on java.lua:
---   jdtls.setup_dap() in java.lua's on_attach registers the adapter that
---   Kotlin DAP configurations reference (type = "java"). Open a Java buffer
---   first if Kotlin debugging does not work on a fresh session.
---
 
+local shared = require("plugins.specs.lang.shared")
 return {
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "kotlin" })
-      end
-    end,
-  },
+  shared.treesitter({ "kotlin" }),
 
   -- ── Build keymaps ──────────────────────────────────────────────────────────
 
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = {
       {
         "<leader>ktb",

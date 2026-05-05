@@ -4,16 +4,14 @@
 -- toggleterm, and snacks dashboard.
 --
 
-local function get_active()
+local _active_theme = (function()
   local ok, t = pcall(function() return require("core.theme").config.theme end)
   return ok and t or "tokyonight"
-end
+end)()
 
--- FIX D1: proper local function before return table.
 local function theme_spec(plugin_name, name, extra)
-  local active    = get_active()
-  local is_active = (name == active)
-    or (active == "tokyonight" and name and vim.startswith(name, "tokyonight"))
+  local is_active = (name == _active_theme)
+    or (_active_theme == "tokyonight" and name and vim.startswith(name, "tokyonight"))
   return vim.tbl_extend("force", {
     plugin_name,
     name     = name or nil,
@@ -339,7 +337,6 @@ return {
         { "<leader>'",  group = "run/test"     },
         { "<leader>/",  group = "search"       },
         { "<leader>\\", group = "terminal"     },
-        -- FIX X4: single keymap registered as desc, not group.
         { "<leader>uF", desc  = "Deep focus mode" },
         -- Language groups — keep in sync with lang specs
         { "<leader>py", group = "python"       },

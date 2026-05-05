@@ -57,7 +57,13 @@ return {
           local workspace = data_dir .. "/jdtls-workspace/"
             .. vim.fn.sha256(hash_src):sub(1, 16)
 
-          local config_dir = mason_root .. "/config_linux"
+          local config_dir = (function()
+            local sysname = (vim.uv.os_uname() or {}).sysname or "Linux"
+            if sysname:find("Windows") then return mason_root .. "/config_win"
+            elseif sysname == "Darwin"  then return mason_root .. "/config_mac"
+            else                             return mason_root .. "/config_linux"
+            end
+          end)()
 
           local bundles = vim.split(
             vim.fn.glob(mason_root:gsub("jdtls$", "java-debug-adapter")

@@ -18,6 +18,7 @@
 --         lint.linters_by_ft.elixir = { "credo" }
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── elixir-tools ─────────────────────────────────────────────────────────
   {
@@ -43,7 +44,6 @@ return {
 
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = {
       {
         "<leader>ext",
@@ -79,18 +79,6 @@ return {
 
   -- ── Treesitter ─────────────────────────────────────────────────────────────
 
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "elixir", "heex", "eex" })
-      end
-    end,
-  },
+  shared.treesitter({ "elixir", "heex", "eex" }),
 
-  -- NOTE: elixirls LSP is in lsp.lua servers table.
-  -- mix format conform is in lsp.lua formatters_by_ft.
-  -- elixir-ls DAP debugger is in dap.lua.
-  -- neotest-elixir adapter is in test.lua.
 }

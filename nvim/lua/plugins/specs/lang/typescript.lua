@@ -6,8 +6,6 @@
 -- DAP:    pwa-node via dap.lua
 -- Test:   neotest-jest/vitest via test.lua; runner.lua
 --
--- Cross-reference: javascript.lua for package-info, eslint_d notes, JS parsers.
--- Near-duplicate of javascript.lua — future merge candidate (see Batch 8 X1).
 --
 
 local shared = require("plugins.specs.lang.shared")
@@ -19,10 +17,7 @@ return {
   -- to lsp.lua's servers table — two tsserver processes would conflict.
   {
     "pmizio/typescript-tools.nvim",
-    ft           = vim.list_extend(
-      vim.deepcopy(shared.JS_FT),
-      vim.deepcopy(shared.TS_FT)
-    ),
+    ft           = shared.JS_TS_FT,
     dependencies = { "nvim-lua/plenary.nvim", "neovim/nvim-lspconfig" },
     opts = {
       settings = {
@@ -86,14 +81,5 @@ return {
     },
   },
 
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "typescript", "tsx" })
-      end
-    end,
-  },
+  shared.treesitter({ "typescript", "tsx" }),
 }

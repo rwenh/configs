@@ -116,11 +116,13 @@ return {
   },
 
   -- ── Todo comments ──────────────────────────────────────────────────────────
-  -- The <leader>xT key is registered in hud.lua's optional=true extension.
   {
     "folke/todo-comments.nvim",
     cmd          = { "TodoTelescope" },
     dependencies = "nvim-lua/plenary.nvim",
+    keys = {
+      { "<leader>xT", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" },
+    },
     opts = {
       signs     = false,
       highlight = {

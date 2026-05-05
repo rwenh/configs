@@ -7,37 +7,9 @@ local cmd = vim.api.nvim_create_user_command
 
 if vim.g.disable_autoformat == nil then vim.g.disable_autoformat = false end
 
--- ── Mason package list (single source of truth) ───────────────────────────────
+-- ── Mason package list (sourced from core/util/packages.lua) ─────────────────
 
-local MASON_PACKAGES = {
-  lsp = {
-    "lua-language-server", "basedpyright",
-    "html-lsp", "css-lsp", "json-lsp", "yaml-language-server",
-    "clangd", "gopls", "solargraph", "elixir-ls",
-    "kotlin-language-server",
-    "tailwindcss-language-server",
-    "zls", "fortls", "sqls", "jdtls", "rust_hdl",
-    -- cobol-language-server: NOT in Mason registry.
-    --   Install manually: npm i -g @broadcommfd/cobol-language-support
-    -- vhdl_ls: also installable via  cargo install vhdl_ls
-  },
-  dap = {
-    "debugpy", "codelldb", "delve",
-    "js-debug-adapter", "java-debug-adapter", "java-test",
-    -- elixir-ls includes the DAP debugger — no separate package needed.
-    "elixir-ls",
-  },
-  formatters = {
-    "stylua", "prettier", "shfmt",
-    "black", "isort",
-    "goimports", "gofumpt",
-    "ktlint", "rubocop",
-    "clang-format", "fprettify",
-  },
-  linters = {
-    "ruff", "eslint_d", "shellcheck", "htmlhint", "stylelint",
-  },
-}
+local MASON_PACKAGES = require("core.util.packages").mason
 
 -- ── Factories ─────────────────────────────────────────────────────────────────
 
@@ -132,13 +104,13 @@ cmd("ProjectRoot", function()
     return
   end
   pcall(function()
-    vim.cmd.lcd(root)   -- FIX X2: window-local cd
+    vim.cmd.lcd(root)
     vim.notify("Project root: " .. root)
   end)
 end, { desc = "LCD to project root (window-local)" })
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- COPY PATH  (FIX D1: factory)
+-- COPY PATH
 -- ═══════════════════════════════════════════════════════════════════════════
 
 cmd("CopyPath",    copy_path("%:p", "CopyPath"),    { desc = "Copy absolute file path" })
@@ -191,7 +163,7 @@ cmd("CleanUp", function()
 end, { desc = "Run Lua garbage collection" })
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- TOGGLE OPTIONS  (FIX D2: factories)
+-- TOGGLE OPTIONS
 -- ═══════════════════════════════════════════════════════════════════════════
 
 cmd("ToggleWrap",  make_toggle("wrap",  "Wrap"),  { desc = "Toggle line wrap"    })

@@ -1,15 +1,24 @@
 ;;; lang-functional.el --- Functional Languages IDE layer -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.3.0
+;;;
+;;; Code:
 
 (require 'core-dev)
 
-(emacs-ide-dev-register "haskell" :tier 3 :lsp-server "haskell-language-server"
-  :formatter "ormolu" :test-cmd "cabal test" :repl "ghci" :modes '(haskell-mode))
-(emacs-ide-dev-register "clojure" :tier 3 :lsp-server "clojure-lsp"
+(emacs-ide-dev-register "haskell"
+  :tier 3 :lsp-server "haskell-language-server"
+  :formatter "ormolu" :test-cmd "cabal test" :repl "ghci"
+  :modes '(haskell-mode))
+
+(emacs-ide-dev-register "clojure"
+  :tier 3 :lsp-server "clojure-lsp"
   :formatter "cljfmt" :test-cmd "clj -M:test" :repl "cider"
   :modes '(clojure-mode clojurescript-mode))
-(emacs-ide-dev-register "erlang" :tier 3 :lsp-server nil
-  :formatter nil :test-cmd "rebar3 eunit" :repl "erl" :modes '(erlang-mode))
+
+(emacs-ide-dev-register "erlang"
+  :tier 3 :lsp-server nil
+  :formatter nil :test-cmd "rebar3 eunit" :repl "erl"
+  :modes '(erlang-mode))
 
 (when (or (emacs-ide-dev-lang-enabled-p "haskell")
           (emacs-ide-dev-lang-enabled-p "clojure")
@@ -17,24 +26,28 @@
           (emacs-ide-dev-lang-enabled-p "ocaml")
           (emacs-ide-dev-lang-enabled-p "erlang"))
 
+;;;; ── Haskell ─────────────────────────────────────────────────────────────────
+
 (use-package haskell-mode
-  :if (and (emacs-ide-dev-lang-enabled-p "haskell") (executable-find "runhaskell"))
+  :if (and (emacs-ide-dev-lang-enabled-p "haskell")
+           (executable-find "runhaskell"))
   :defer t
   :mode "\\.hs\\'"
   :interpreter "runhaskell"
   :init
-  (setq haskell-process-type            'cabal-repl
-        haskell-interactive-popup-errors nil)
+  (setq haskell-process-type             'cabal-repl
+        haskell-interactive-popup-errors  nil)
   :config
   (emacs-ide-dev-bind-compile haskell-mode-map
-    (lambda () (interactive)
+    (lambda ()
+      (interactive)
       (compile (format "runhaskell %s"
                        (shell-quote-argument (buffer-file-name))))))
   (when (fboundp 'emacs-ide-repl-register)
     (emacs-ide-repl-register 'haskell-mode
-      :launch         (lambda ()
-                        (when (fboundp 'haskell-interactive-switch)
-                          (haskell-interactive-switch)))
+      :launch (lambda ()
+                (when (fboundp 'haskell-interactive-switch)
+                  (haskell-interactive-switch)))
       :buffer-name    "*haskell*"
       :send-region-fn (lambda (beg end)
                         (cond
@@ -49,18 +62,19 @@
                     (cond
                      ((executable-find "cabal") (compile "cabal test"))
                      ((executable-find "stack") (compile "stack test"))
-                     (t (message "lang-functional: no haskell test runner found")))))))
+                     (t (message "lang-functional: no Haskell test runner found")))))))
 
 (use-package lsp-haskell
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
            (emacs-ide-dev-lang-enabled-p "haskell"))
   :hook (haskell-mode . lsp-deferred)
-  :init
-  (setq lsp-haskell-formatting-provider "ormolu"))
+  :init (setq lsp-haskell-formatting-provider "ormolu"))
 
 (with-eval-after-load 'apheleia
   (when (emacs-ide-dev-lang-enabled-p "haskell")
     (emacs-ide-dev-attach-formatter 'ormolu 'haskell-mode)))
+
+;;;; ── Clojure ─────────────────────────────────────────────────────────────────
 
 (use-package clojure-mode
   :if (emacs-ide-dev-lang-enabled-p "clojure")
@@ -74,7 +88,6 @@
   :if (emacs-ide-dev-lang-enabled-p "clojure")
   :after clojure-mode
   :bind (:map clojure-mode-map
-              ("C-c x r" . cider-jack-in)
               ("C-c C-c" . cider-eval-defun-at-point)
               ("C-c C-b" . cider-eval-buffer))
   :init
@@ -95,15 +108,15 @@
                     (interactive)
                     (if (executable-find "clj")
                         (compile "clj -M:test")
-                      (message "lang-functional: clj not found")))
-      :file-fn (lambda ()
-                 (interactive)
-                 (when (fboundp 'cider-test-run-ns-tests)
-                   (cider-test-run-ns-tests nil)))
-      :point-fn (lambda ()
-                  (interactive)
-                  (when (fboundp 'cider-test-run-test)
-                    (cider-test-run-test))))))
+                      (message "lang-functional: clj not found on PATH")))
+      :file-fn    (lambda ()
+                    (interactive)
+                    (when (fboundp 'cider-test-run-ns-tests)
+                      (cider-test-run-ns-tests nil)))
+      :point-fn   (lambda ()
+                    (interactive)
+                    (when (fboundp 'cider-test-run-test)
+                      (cider-test-run-test))))))
 
 (use-package clj-refactor
   :after clojure-mode
@@ -115,8 +128,11 @@
            (executable-find "clojure-lsp"))
   :hook (clojure-mode . lsp-deferred))
 
+;;;; ── Elixir ──────────────────────────────────────────────────────────────────
+
 (use-package elixir-mode
-  :if (and (emacs-ide-dev-lang-enabled-p "elixir") (executable-find "elixir"))
+  :if (and (emacs-ide-dev-lang-enabled-p "elixir")
+           (executable-find "elixir"))
   :defer t
   :mode (("\\.ex\\'"  . elixir-mode)
          ("\\.exs\\'" . elixir-mode))
@@ -127,13 +143,13 @@
                     (interactive)
                     (if (executable-find "mix")
                         (compile "mix test")
-                      (message "lang-functional: mix not found")))
-      :file-fn (lambda ()
-                 (interactive)
-                 (if (and (executable-find "mix") (buffer-file-name))
-                     (compile (format "mix test %s"
-                                      (shell-quote-argument (buffer-file-name))))
-                   (message "lang-functional: mix not found or no file"))))))
+                      (message "lang-functional: mix not found on PATH")))
+      :file-fn    (lambda ()
+                    (interactive)
+                    (if (and (executable-find "mix") (buffer-file-name))
+                        (compile (format "mix test %s"
+                                         (shell-quote-argument (buffer-file-name))))
+                      (message "lang-functional: mix not found or no file"))))))
 
 (use-package lsp-mode
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
@@ -142,11 +158,15 @@
   :hook (elixir-mode . lsp-deferred))
 
 (use-package alchemist
-  :if (emacs-ide-dev-lang-enabled-p "elixir")
+  :if (and (emacs-ide-dev-lang-enabled-p "elixir")
+           (executable-find "elixir"))
   :after elixir-mode)
 
+;;;; ── OCaml ───────────────────────────────────────────────────────────────────
+
 (use-package tuareg
-  :if (and (emacs-ide-dev-lang-enabled-p "ocaml") (executable-find "ocaml"))
+  :if (and (emacs-ide-dev-lang-enabled-p "ocaml")
+           (executable-find "ocaml"))
   :defer t
   :mode (("\\.ml\\'"  . tuareg-mode)
          ("\\.mli\\'" . tuareg-mode)))
@@ -157,12 +177,15 @@
            (executable-find "ocamllsp"))
   :hook (tuareg-mode . lsp-deferred))
 
+;;;; ── Erlang ──────────────────────────────────────────────────────────────────
+
 (use-package erlang
-  :if (and (emacs-ide-dev-lang-enabled-p "erlang") (executable-find "erl"))
+  :if (and (emacs-ide-dev-lang-enabled-p "erlang")
+           (executable-find "erl"))
   :defer t
   :mode "\\.erl\\'")
 
-)
+) ;; end functional-enabled
 
 (provide 'lang-functional)
 ;;; lang-functional.el ends here

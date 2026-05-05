@@ -1,11 +1,13 @@
 -- lua/plugins/specs/hud.lua — visual enhancement plugins
 --
--- Organised into clearly labelled sections:
---   1. Editor chrome       (indent guides, scrollview, tint, smear cursor)
---   2. Overlay / popups    (noice, barbecue, symbol-usage, inc-rename)
---   3. Navigation helpers  (oil, neoscroll, mini.animate)
---   4. Focus tools         (zen-mode, twilight)
---   5. Misc               (blame — belongs in git.lua architecturally)
+-- 1. Editor chrome       indent guides, scrollview, tint, smear cursor
+-- 2. Overlay / popups    noice, barbecue, symbol-usage, inc-rename
+-- 3. Navigation helpers  oil, neoscroll, mini.animate
+-- 4. Focus tools         zen-mode, twilight
+-- 5. Misc               (blame.nvim moved to git.lua; TodoTelescope key in editor.lua)
+--
+-- NOTE: nvim-notify is owned by ui.lua (single authoritative spec).
+--       This file only lists it as a dependency where required by noice.
 --
 
 return {
@@ -13,8 +15,6 @@ return {
   -- ═══════════════════════════════════════════════════════════════════════════
   -- 1. EDITOR CHROME
   -- ═══════════════════════════════════════════════════════════════════════════
-
-  -- ── Indent guides ──────────────────────────────────────────────────────────
 
   {
     "lukas-reineke/indent-blankline.nvim",
@@ -31,15 +31,11 @@ return {
       exclude = {
         filetypes = {
           "help", "dashboard", "lazy", "mason", "notify",
-          "toggleterm", "lazyterm",
-          "neo-tree",
-          "snacks_dashboard",
+          "toggleterm", "lazyterm", "neo-tree", "snacks_dashboard",
         },
       },
     },
   },
-
-  -- ── Scroll minimap ─────────────────────────────────────────────────────────
 
   {
     "dstein64/nvim-scrollview",
@@ -56,7 +52,6 @@ return {
     },
   },
 
-  -- ── Window dimmer ──────────────────────────────────────────────────────────
   {
     "levouh/tint.nvim",
     event = "VeryLazy",
@@ -70,7 +65,6 @@ return {
     },
   },
 
-  -- ── Cursor smear ───────────────────────────────────────────────────────────
   {
     "sphamba/smear-cursor.nvim",
     event = "VeryLazy",
@@ -85,8 +79,6 @@ return {
   -- ═══════════════════════════════════════════════════════════════════════════
   -- 2. OVERLAY / POPUPS
   -- ═══════════════════════════════════════════════════════════════════════════
-
-  -- ── Noice ──────────────────────────────────────────────────────────────────
 
   {
     "folke/noice.nvim",
@@ -111,12 +103,12 @@ return {
         lsp_doc_border        = true,
       },
       routes = {
-        { filter = { event = "msg_show", kind = "",    find = "written"          }, opts = { skip = true } },
-        { filter = { event = "msg_show", kind = "",    find = "%d+ lines"        }, opts = { skip = true } },
-        { filter = { event = "msg_show",               find = "Query error"      }, opts = { skip = true } },
-        { filter = { event = "msg_show",               find = "Impossible pattern"}, opts = { skip = true } },
-        { filter = { event = "msg_show",               find = "Invalid node type"}, opts = { skip = true } },
-        { filter = { event = "msg_show",               find = "Invalid syntax"   }, opts = { skip = true } },
+        { filter = { event = "msg_show", kind = "", find = "written"           }, opts = { skip = true } },
+        { filter = { event = "msg_show", kind = "", find = "%d+ lines"         }, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Query error"      }, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Impossible pattern"}, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Invalid node type"}, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Invalid syntax"   }, opts = { skip = true } },
       },
       views = {
         cmdline_popup = {
@@ -134,49 +126,41 @@ return {
     },
   },
 
-  -- ── Breadcrumb bar ─────────────────────────────────────────────────────────
   {
     "utilyre/barbecue.nvim",
     event        = "LspAttach",
     dependencies = { "SmiteshP/nvim-navic", "nvim-tree/nvim-web-devicons" },
     opts = {
-      -- attach_navic=false: navic is attached in lsp.lua's LspAttach callback.
-      attach_navic = false,
+      attach_navic  = false,   -- navic attached in lsp.lua LspAttach
       show_modified = true,
     },
   },
-
-  -- ── Symbol usage (reference counts) ───────────────────────────────────────
 
   {
     "Wansmer/symbol-usage.nvim",
     event = "LspAttach",
     config = function()
-      local function format_symbol(symbol)
+      local function fmt(symbol)
         local parts = {}
         if symbol.references then
-          local n     = symbol.references
-          local label = n <= 1 and "1 use" or (n .. " uses")
-          table.insert(parts, ("󰌹 %s"):format(label))
+          local n = symbol.references
+          table.insert(parts, ("󰌹 %s"):format(n <= 1 and "1 use" or (n .. " uses")))
         end
         if symbol.definition and symbol.definition > 0 then
           table.insert(parts, ("󰳽 %s"):format(symbol.definition))
         end
         return table.concat(parts, " │ ")
       end
-
       pcall(function()
         require("symbol-usage").setup({
           hl          = { link = "Comment" },
           vt_position = "end_of_line",
           request_pending_text = false,
-          text_format = format_symbol,
+          text_format = fmt,
         })
       end)
     end,
   },
-
-  -- ── inc-rename ─────────────────────────────────────────────────────────────
 
   {
     "smjonas/inc-rename.nvim",
@@ -188,22 +172,18 @@ return {
   -- 3. NAVIGATION HELPERS
   -- ═══════════════════════════════════════════════════════════════════════════
 
-  -- ── Smooth scroll ──────────────────────────────────────────────────────────
-
   {
     "karb94/neoscroll.nvim",
     event = "VeryLazy",
     opts  = {
-      mappings            = { "<C-u>", "<C-d>", "zt", "zz", "zb" },
-      hide_cursor         = true,
-      stop_eof            = true,
-      respect_scrolloff   = true,
-      easing_function     = "sine",
+      mappings             = { "<C-u>", "<C-d>", "zt", "zz", "zb" },
+      hide_cursor          = true,
+      stop_eof             = true,
+      respect_scrolloff    = true,
+      easing_function      = "sine",
       cursor_scrolls_alone = true,
     },
   },
-
-  -- ── File manager inline (oil) ──────────────────────────────────────────────
 
   {
     "stevearc/oil.nvim",
@@ -212,7 +192,7 @@ return {
       { "<leader>eo", "<cmd>Oil<cr>", desc = "Oil file editor" },
     },
     opts = {
-      default_file_explorer = false,   -- netrw already disabled in options.lua
+      default_file_explorer = false,
       view_options          = { show_hidden = true },
       float = {
         padding     = 2,
@@ -235,11 +215,6 @@ return {
     },
   },
 
-  -- ── mini.animate ───────────────────────────────────────────────────────────
-
-  -- The flag is set before the scroll event processes and reset in predicate.
-  -- Rapid trackpad scrolls may cause the second event to animate unexpectedly;
-  -- this is a cosmetic limitation of the flag approach, not a data hazard.
   {
     "echasnovski/mini.animate",
     event = "VeryLazy",
@@ -250,12 +225,9 @@ return {
         return
       end
 
-      -- Mouse scroll flag: prevents animating mouse-wheel scrolls.
-      -- Note: rapid trackpad scrolls may occasionally animate due to the
-      -- single-flag approach.
       local mouse_scrolled = false
-      for _, direction in ipairs({ "Up", "Down" }) do
-        local key = "<ScrollWheel" .. direction .. ">"
+      for _, dir in ipairs({ "Up", "Down" }) do
+        local key = "<ScrollWheel" .. dir .. ">"
         vim.keymap.set({ "", "i" }, key, function()
           mouse_scrolled = true
           return key
@@ -284,11 +256,8 @@ return {
   -- 4. FOCUS TOOLS
   -- ═══════════════════════════════════════════════════════════════════════════
 
-  -- ── Zen mode ───────────────────────────────────────────────────────────────
-  -- When using <leader>uz directly (without focus.lua), twilight does NOT
-  -- activate — this is intentional asymmetry documented here.
-  -- To always activate twilight with zen, enable it here AND remove the
-  -- focus.lua manual calls.
+  -- focus.lua drives twilight manually when using <leader>uF.
+  -- Using <leader>uz directly activates zen without twilight — intentional.
   {
     "folke/zen-mode.nvim",
     cmd  = "ZenMode",
@@ -299,26 +268,24 @@ return {
         width     = 0.75,
         height    = 1,
         options   = {
-          signcolumn    = "no",
-          number        = false,
+          signcolumn     = "no",
+          number         = false,
           relativenumber = false,
-          cursorline    = false,
-          cursorcolumn  = false,
-          foldcolumn    = "0",
-          list          = false,
+          cursorline     = false,
+          cursorcolumn   = false,
+          foldcolumn     = "0",
+          list           = false,
         },
       },
       plugins = {
         options  = { enabled = true, ruler = false, showcmd = false },
-        -- FIX B7: disabled here; focus.lua drives twilight manually.
-        twilight = { enabled = false },
+        twilight = { enabled = false },   -- focus.lua drives twilight manually
         gitsigns = { enabled = false },
         tmux     = { enabled = false },
       },
     },
   },
 
-  -- ── Twilight ───────────────────────────────────────────────────────────────
   {
     "folke/twilight.nvim",
     cmd  = "Twilight",
@@ -335,54 +302,6 @@ return {
   -- 5. MISC
   -- ═══════════════════════════════════════════════════════════════════════════
 
-  -- ── Git blame virtual text ─────────────────────────────────────────────────
-  -- The <leader>.B keymap is documented in
-  -- KEYMAP_REFERENCE.md under the Git section.
-  -- TODO: move to git.lua in a future consolidation pass.
-  {
-    "FabijanZulj/blame.nvim",
-    cmd  = "BlameToggle",
-    keys = { { "<leader>.B", "<cmd>BlameToggle<cr>", desc = "Toggle git blame" } },
-    opts = {
-      date_format       = "%Y-%m-%d",
-      virtual_style     = "right_align",
-      focus_blame       = true,
-      merge_consecutive = false,
-      max_summary_width = 30,
-    },
-  },
-
-  -- ── TodoTelescope key extension ────────────────────────────────────────────
-  -- This optional=true spec adds only the <leader>xT key; the key could live
-  -- in editor.lua's primary spec keys= table but is kept here to avoid making
-  -- editor.lua depend on the xT prefix being free.
-  {
-    "folke/todo-comments.nvim",
-    optional = true,
-    keys = {
-      { "<leader>xT", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" },
-    },
-  },
-
-  -- ── Notifications backend ──────────────────────────────────────────────────
-  {
-    "rcarriga/nvim-notify",
-    event = "VeryLazy",
-    opts  = {
-      timeout    = 3000,
-      max_height = function() return math.floor(vim.o.lines   * 0.75) end,
-      max_width  = function() return math.floor(vim.o.columns * 0.75) end,
-      on_open    = function(win)
-        vim.api.nvim_win_set_config(win, { zindex = 100 })
-      end,
-      render   = "default",
-      stages   = "fade_in_slide_out",
-      top_down = true,
-    },
-    config = function(_, opts)
-      local notify = require("notify")
-      notify.setup(opts)
-      vim.notify = notify
-    end,
-  },
+  -- TodoTelescope key owned by editor.lua primary todo-comments spec.
+  -- blame.nvim owned by git.lua.
 }

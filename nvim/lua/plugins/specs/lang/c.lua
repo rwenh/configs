@@ -4,6 +4,7 @@
 --       C++ users: see cpp.lua for CMake tooling.
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── clangd extensions (AST / inlay hints) — covers C and C++ ─────────────
 
@@ -59,21 +60,11 @@ return {
     end,
   },
 
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "c" })
-      end
-    end,
-  },
+  shared.treesitter({ "c" }),
 
   -- ── Build keymaps ──────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = {
       {
         "<leader>cb",

@@ -32,16 +32,7 @@ return {
     end,
   },
 
-  -- ── Treesitter ──────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "html" })
-      end
-    end,
-  },
+  shared.treesitter({ "html" }),
 
   -- ── LSP: html-lsp — SOLE owner of html server config ──────────────────────
 

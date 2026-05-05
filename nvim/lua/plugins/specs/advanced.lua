@@ -196,7 +196,7 @@ return {
     "kevinhwang91/nvim-ufo",
     event        = "VeryLazy",
     dependencies = { "kevinhwang91/promise-async" },
-    opts = (function()
+    opts = function()
       local function fold_text(virtText, lnum, endLnum, width, truncate)
         local newVirtText = {}
         local suffix      = ("  %d "):format(endLnum - lnum)
@@ -239,7 +239,7 @@ return {
           return { "treesitter", "indent" }
         end,
       }
-    end)(),
+    end,
 
     config = function(_, opts)
       local ok, ufo = pcall(require, "ufo")

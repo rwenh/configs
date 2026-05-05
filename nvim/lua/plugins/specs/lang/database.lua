@@ -1,6 +1,7 @@
 -- lua/plugins/specs/lang/database.lua — database UI and SQL completion
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── vim-dadbod-ui ──────────────────────────────────────────────────────────
   {
@@ -45,22 +46,12 @@ return {
       pcall(function()
         local ok, blink = pcall(require, "blink.cmp")
         if ok and blink.add_source then
-          -- Future API: blink.cmp.add_source("dadbod", { … })
         end
       end)
     end,
   },
 
-  -- ── Treesitter ──────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "sql" })
-      end
-    end,
-  },
+  shared.treesitter({ "sql" }),
 
   -- ── Conform: sqlfmt (merged from sql.lua) ──────────────────────────────────
 

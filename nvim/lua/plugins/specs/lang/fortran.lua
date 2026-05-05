@@ -7,6 +7,7 @@
 -- Test:   none — no standard Fortran unit-test framework; see runner.lua info.
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── Conform: fprettify ─────────────────────────────────────────────────────
 
@@ -28,20 +29,11 @@ return {
 
   -- ── Treesitter ─────────────────────────────────────────────────────────────
 
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "fortran" })
-      end
-    end,
-  },
+  shared.treesitter({ "fortran" }),
 
   -- ── Build keymaps ──────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = (function()
       local function build_and_run(file)
         if vim.fn.executable("gfortran") ~= 1 then

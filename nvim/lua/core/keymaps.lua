@@ -30,17 +30,6 @@ local todo_call    = lazy("todo-comments",  "[todo-comments]")
 local flash_call   = lazy("flash",          "[flash] not loaded — run :Lazy install and restart")
 local focus_call   = lazy("core.focus",     "[focus]")
 
--- ── Family lookup for DAP table-driven maps ───────────────────────────────────
-
-local _family = { d = dap_call, u = dapui_call, w = widget_call }
-local function family(key)
-  local f = _family[key]
-  if not f then
-    error("[keymaps] unknown DAP family key: '" .. tostring(key) .. "'", 2)
-  end
-  return f
-end
-
 -- ── Basic editing ──────────────────────────────────────────────────────────────
 
 map("v", "<", "<gv", opts)
@@ -141,7 +130,7 @@ map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
 
 -- ── Git ───────────────────────────────────────────────────────────────────────
 -- NOTE: <leader>.p/.r/.S are buffer-local in git.lua (gitsigns on_attach).
---       <leader>.B is owned by blame.nvim keys= in hud.lua.
+--       <leader>.B is owned by blame.nvim keys= in git.lua.
 
 map("n", "<leader>.g", "<cmd>LazyGit<cr>",                { desc = "LazyGit"       })
 map("n", "<leader>.b", "<cmd>Telescope git_branches<cr>", { desc = "Git branches"  })
@@ -152,23 +141,16 @@ map("n", "<leader>.h", "<cmd>DiffviewFileHistory<cr>",    { desc = "File history
 
 -- ── Debug (DAP) ───────────────────────────────────────────────────────────────
 
-local _dap_maps = {
-  { "<leader>;b", "d", function(d) d.toggle_breakpoint() end, "Toggle breakpoint" },
-  { "<leader>;c", "d", function(d) d.continue()          end, "Continue/Start"    },
-  { "<leader>;i", "d", function(d) d.step_into()         end, "Step into"         },
-  { "<leader>;o", "d", function(d) d.step_over()         end, "Step over"         },
-  { "<leader>;O", "d", function(d) d.step_out()          end, "Step out"          },
-  { "<leader>;L", "d", function(d) d.run_last()          end, "Run last"          },
-  { "<leader>;x", "d", function(d) d.terminate()         end, "Terminate debug"   },
-  { "<leader>;t", "u", function(u) u.toggle()            end, "Toggle debug UI"   },
-  { "<leader>;h", "w", function(w) w.hover()             end, "Debug hover"       },
-  { "<leader>;p", "w", function(w) w.preview()           end, "Debug preview"     },
-}
-
-for _, spec in ipairs(_dap_maps) do
-  local lhs, fam, fn, desc = spec[1], spec[2], spec[3], spec[4]
-  map("n", lhs, family(fam)(fn), { desc = desc })
-end
+map("n", "<leader>;b", dap_call(function(d)  d.toggle_breakpoint() end), { desc = "Toggle breakpoint" })
+map("n", "<leader>;c", dap_call(function(d)  d.continue()          end), { desc = "Continue/Start"    })
+map("n", "<leader>;i", dap_call(function(d)  d.step_into()         end), { desc = "Step into"         })
+map("n", "<leader>;o", dap_call(function(d)  d.step_over()         end), { desc = "Step over"         })
+map("n", "<leader>;O", dap_call(function(d)  d.step_out()          end), { desc = "Step out"          })
+map("n", "<leader>;L", dap_call(function(d)  d.run_last()          end), { desc = "Run last"          })
+map("n", "<leader>;x", dap_call(function(d)  d.terminate()         end), { desc = "Terminate debug"   })
+map("n", "<leader>;t", dapui_call(function(u) u.toggle()           end), { desc = "Toggle debug UI"   })
+map("n", "<leader>;h", widget_call(function(w) w.hover()           end), { desc = "Debug hover"       })
+map("n", "<leader>;p", widget_call(function(w) w.preview()         end), { desc = "Debug preview"     })
 
 map("n", "<leader>;B", function()
   local ok, d = pcall(require, "dap")
@@ -188,19 +170,13 @@ map("n", "<leader>;r", function()
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Toggle REPL" })
 
-local _fkey_maps = {
-  { "<F5>",  "continue",          "Continue / Start"    },
-  { "<F6>",  "toggle_breakpoint", "Toggle Breakpoint"   },
-  { "<F7>",  "step_into",         "Step Into"           },
-  { "<F8>",  "step_over",         "Step Over"           },
-  { "<F9>",  "step_out",          "Step Out"            },
-  { "<F10>", "run_to_cursor",     "Run To Cursor"       },
-  { "<F11>", "terminate",         "Terminate"           },
-}
-for _, spec in ipairs(_fkey_maps) do
-  local lhs, method, desc = spec[1], spec[2], spec[3]
-  map("n", lhs, dap_call(function(d) d[method]() end), { desc = desc })
-end
+map("n", "<F5>",  dap_call(function(d) d.continue()          end), { desc = "Continue / Start"  })
+map("n", "<F6>",  dap_call(function(d) d.toggle_breakpoint() end), { desc = "Toggle Breakpoint" })
+map("n", "<F7>",  dap_call(function(d) d.step_into()         end), { desc = "Step Into"         })
+map("n", "<F8>",  dap_call(function(d) d.step_over()         end), { desc = "Step Over"         })
+map("n", "<F9>",  dap_call(function(d) d.step_out()          end), { desc = "Step Out"          })
+map("n", "<F10>", dap_call(function(d) d.run_to_cursor()     end), { desc = "Run To Cursor"     })
+map("n", "<F11>", dap_call(function(d) d.terminate()         end), { desc = "Terminate"         })
 
 -- ── Run & test ────────────────────────────────────────────────────────────────
 
@@ -233,8 +209,8 @@ map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
 
 -- ── UI toggles ────────────────────────────────────────────────────────────────
--- NOTE: <leader>uz (ZenMode)  owned by hud.lua zen-mode.nvim keys=.
---       <leader>uT (Twilight) owned by hud.lua twilight.nvim keys=.
+-- NOTE: <leader>uz (ZenMode)  owned by specs/hud.lua zen-mode.nvim keys=.
+--       <leader>uT (Twilight) owned by specs/hud.lua twilight.nvim keys=.
 
 map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>", { desc = "Toggle theme"        })
 map("n", "<leader>uw", "<cmd>ToggleWrap<cr>",                          { desc = "Toggle wrap"         })

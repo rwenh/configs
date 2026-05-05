@@ -13,7 +13,6 @@ return {
     "williamboman/mason-lspconfig.nvim",
     dependencies = "mason.nvim",
     opts = {
-      -- Keep in sync with MASON_PACKAGES.lsp in commands.lua.
       ensure_installed = {
         "lua_ls", "basedpyright",
         "html", "cssls", "jsonls", "yamlls",
@@ -23,7 +22,6 @@ return {
         "fortls", "sqls", "jdtls",
       },
       automatic_installation = true,
-      -- Suppress default handler to prevent double-attach on Nvim 0.11.
       handlers = { function() end },
     },
   },
@@ -56,15 +54,19 @@ return {
 
       -- ── Capabilities ────────────────────────────────────────────────────────
 
+      local _caps = nil
       local function get_capabilities()
+        if _caps then return _caps end
         local ok, blink = pcall(require, "blink.cmp")
         if ok then
           local ok2, caps = pcall(blink.get_lsp_capabilities)
           if ok2 and type(caps) == "table" and caps.textDocument ~= nil then
-            return caps
+            _caps = caps
+            return _caps
           end
         end
-        return vim.lsp.protocol.make_client_capabilities()
+        _caps = vim.lsp.protocol.make_client_capabilities()
+        return _caps
       end
 
       -- ── lsp_setup ───────────────────────────────────────────────────────────
@@ -231,10 +233,8 @@ return {
         elixirls = {
           cmd = (function()
             local data = vim.fn.stdpath("data")
-            -- Mason package layout: packages/elixir-ls/language_server.sh
             local mason_ls = data .. "/mason/packages/elixir-ls/language_server.sh"
             if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
-            -- System install fallback
             local sys = vim.fn.exepath("elixir-ls")
             if sys ~= "" then return { sys } end
             return { "elixir-ls" }
@@ -267,7 +267,7 @@ return {
       local optional = {
         {
           server = "vhdl_ls",
-          binary = "vhdl_ls",      -- differs from server name
+          binary = "vhdl_ls",
           config = { filetypes = { "vhdl", "vhd" } },
         },
         {
@@ -295,7 +295,7 @@ return {
         },
         {
           server = "cobol_ls",
-          binary = "cobol-language-server",  -- differs from server name
+          binary = "cobol-language-server",
           config = {
             filetypes = { "cobol" },
             settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
@@ -357,8 +357,6 @@ return {
         c          = { "clang-format" },
         cpp        = { "clang-format" },
         fortran    = { "fprettify" },
-        -- rust  → owned by rust.lua  (rustfmt ships with rustup)
-        -- zig   → owned by zig.lua   (zigfmt ships with zig)
       },
       format_on_save = function(bufnr)
         if vim.g.disable_autoformat then return nil end
@@ -366,7 +364,6 @@ return {
           return vim.b[bufnr].disable_autoformat
         end)
         if ok_b and buf_disable then return nil end
-        -- FIX B3: timeout respects vim.g.format_timeout_ms.
         return {
           timeout_ms = vim.g.format_timeout_ms or 500,
           lsp_format = "fallback",
@@ -406,9 +403,6 @@ return {
         merge_linters("python", { "pylint" })
       end
 
-      -- eslint_d guard: it is a persistent daemon process; if the binary is
-      -- absent nvim-lint logs a warning on every save and may leave orphaned
-      -- processes.  Guard is identical to the shellcheck pattern.
       if vim.fn.executable("eslint_d") == 1 then
         merge_linters("javascript",      { "eslint_d" })
         merge_linters("typescript",      { "eslint_d" })

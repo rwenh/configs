@@ -14,6 +14,7 @@
 --   runner for full CI-style suite execution.
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── vim-test ───────────────────────────────────────────────────────────────
 
@@ -67,15 +68,7 @@ return {
 
   -- ── Treesitter (cross-ref) ─────────────────────────────────────────────────
 
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "ruby" })
-      end
-    end,
-  },
+  shared.treesitter({ "ruby" }),
 
   -- NOTE: rubocop formatter/linter and solargraph LSP are in lsp.lua.
   -- rdbg DAP adapter is in dap.lua.

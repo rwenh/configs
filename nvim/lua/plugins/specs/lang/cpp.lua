@@ -5,6 +5,7 @@
 --       This file adds CMake build tooling only.
 --
 
+local shared = require("plugins.specs.lang.shared")
 local CMAKE_FT = { "cpp", "cmake" }
 
 return {
@@ -66,14 +67,5 @@ return {
     },
   },
 
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "cpp", "cmake" })
-      end
-    end,
-  },
+  shared.treesitter({ "cpp", "cmake" }),
 }

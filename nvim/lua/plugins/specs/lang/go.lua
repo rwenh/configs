@@ -13,6 +13,7 @@
 --   Use neotest for interactive development; runner for CI-style full runs.
 --
 
+local shared = require("plugins.specs.lang.shared")
 local GO_FT = { "go", "gomod" }
 
 return {
@@ -23,9 +24,7 @@ return {
     build = false,
     config = function()
       local ok = pcall(function()
-        require("go").setup({
-          lsp_cfg = false,
-        })
+        require("go").setup({ lsp_cfg = false })
       end)
       if not ok then
         vim.notify("go.nvim setup failed", vim.log.levels.WARN)
@@ -43,27 +42,6 @@ return {
     },
   },
 
-  -- This optional spec is a no-op marker that makes go.lua the canonical
-  -- reference for Go formatting — lsp.lua remains the actual owner.
-  -- Uncomment and populate if Go formatting is ever moved here:
-  -- {
-  --   "stevearc/conform.nvim",
-  --   optional = true,
-  --   opts = function(_, opts)
-  --     opts.formatters_by_ft = opts.formatters_by_ft or {}
-  --     opts.formatters_by_ft.go = { "goimports", "gofumpt" }
-  --   end,
-  -- },
-
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "go", "gomod", "gowork", "gosum" })
-      end
-    end,
-  },
+  -- Go formatting (goimports + gofumpt) is owned by lsp.lua conform config.
+  shared.treesitter({ "go", "gomod", "gowork", "gosum" }),
 }

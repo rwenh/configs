@@ -1,4 +1,4 @@
--- lua/core/hud.lua — synthwave accent highlight overrides
+-- lua/core/highlights.lua — synthwave accent highlight overrides
 --
 -- Applied after every ColorScheme event so overrides survive theme toggles.
 -- All color values are TokyoNight-tuned but declared as named constants so
@@ -80,9 +80,9 @@ end
 -- colorscheme resets all highlights — the overrides were lost until restart.
 -- Registering apply() on ColorScheme ensures they survive every theme change.
 vim.api.nvim_create_autocmd("ColorScheme", {
-  group    = vim.api.nvim_create_augroup("HudHighlights", { clear = true }),
+  group    = vim.api.nvim_create_augroup("HighlightOverrides", { clear = true }),
   callback = M.apply,
-  desc     = "Re-apply HUD highlight overrides after theme change",
+  desc     = "Re-apply highlight overrides after theme change",
 })
 
 return M

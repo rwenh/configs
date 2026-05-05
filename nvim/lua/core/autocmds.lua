@@ -61,13 +61,11 @@ au("BufReadPost", {
 au("VimResized", {
   group    = ag("ResizeSplits", { clear = true }),
   callback = function()
-    local ok_before, tab_before = pcall(vim.fn.tabpagenr)
-    if not ok_before then return end
-
+    local tab_before = vim.fn.tabpagenr()
     pcall(function()
       vim.cmd("tabdo wincmd =")
       -- Re-query: tabdo may have closed or reordered tabs.
-      local total = vim.fn.tabpagenr("$")
+      local total  = vim.fn.tabpagenr("$")
       local target = math.min(tab_before, total)
       if target > 0 then vim.cmd("tabnext " .. target) end
     end)
@@ -96,7 +94,7 @@ au("FileType", {
 au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
-    if not is_real_buf(e.buf) then return end  -- FIX (v2.3.15 guard preserved)
+    if not is_real_buf(e.buf) then return end
 
     local ft = vim.bo[e.buf].filetype
     if vim.tbl_contains(

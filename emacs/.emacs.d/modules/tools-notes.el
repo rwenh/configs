@@ -1,13 +1,19 @@
 ;;; tools-notes.el --- Linked Developer Notes with org-roam -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.3.0
+;;;
 ;;; Code:
 
 (require 'cl-lib)
 
-(defvar emacs-ide-notes-directory (expand-file-name "~/notes")
-  "Root directory for org-roam notes.")
+;;;; ── Notes directory management ─────────────────────────────────────────────
+
+(defvar emacs-ide-notes-directory
+  (expand-file-name "~/notes")
+  "Root directory for org-roam notes.
+Updated by `emacs-ide-notes--update-directory' from config.yml.")
 
 (defun emacs-ide-notes--resolve-directory ()
+  "Return the notes directory from config.yml, or ~/notes as default."
   (expand-file-name
    (or (and (boundp 'emacs-ide-config-data)
             (let ((gen (cdr (assoc 'general emacs-ide-config-data))))
@@ -15,9 +21,12 @@
        "~/notes")))
 
 (defun emacs-ide-notes--update-directory ()
+  "Re-read notes directory from config.yml and propagate to org-roam."
   (setq emacs-ide-notes-directory (emacs-ide-notes--resolve-directory))
+  ;; Create the directory if it does not exist
   (unless (file-directory-p emacs-ide-notes-directory)
     (make-directory emacs-ide-notes-directory t))
+  ;; Propagate to org-roam if it is already loaded
   (when (boundp 'org-roam-directory)
     (setq org-roam-directory emacs-ide-notes-directory)))
 
@@ -25,6 +34,8 @@
   (emacs-ide-notes--update-directory))
 
 (add-hook 'emacs-ide-config-reload-hook #'emacs-ide-notes--update-directory)
+
+;;;; ── org-roam ────────────────────────────────────────────────────────────────
 
 (use-package org-roam
   :after org
@@ -36,13 +47,14 @@
              org-roam-dailies-goto-date
              org-roam-capture)
   :init
-  (setq org-roam-directory         emacs-ide-notes-directory
+  (setq org-roam-directory            emacs-ide-notes-directory
         org-roam-db-location
         (expand-file-name "var/org-roam.db" user-emacs-directory)
         org-roam-completion-everywhere t
         org-roam-node-display-template
         (concat "${title:*} "
                 (propertize "${tags:20}" 'face 'org-tag)))
+  ;; These bindings register under C-c n f / i / b / d / D / g / p / c.
   :bind (("C-c n f" . org-roam-node-find)
          ("C-c n i" . org-roam-node-insert)
          ("C-c n b" . org-roam-buffer-toggle)
@@ -54,10 +66,16 @@
          :map org-mode-map
          ("C-M-i"   . completion-at-point))
   :config
-  (run-with-idle-timer 3 nil
-                       (lambda ()
-                         (when (fboundp 'org-roam-db-autosync-mode)
-                           (org-roam-db-autosync-mode))))
+  (run-with-idle-timer
+   3 nil
+   (lambda ()
+     (when (and (fboundp 'org-roam-db-autosync-mode)
+                ;; FIX #62: only start if the notes directory actually exists
+                (let ((dir (or (bound-and-true-p org-roam-directory)
+                               emacs-ide-notes-directory)))
+                  (and (stringp dir)
+                       (file-directory-p dir))))
+       (org-roam-db-autosync-mode))))
 
   (setq org-roam-capture-templates
         '(("d" "default" plain
@@ -93,6 +111,8 @@
            :target (file+head "%<%Y-%m-%d>.org"
                                "#+title: %<%Y-%m-%d>\n#+filetags: :daily:\n\n")))))
 
+;;;; ── org-roam-ui ─────────────────────────────────────────────────────────────
+
 (use-package org-roam-ui
   :after org-roam
   :defer t
@@ -102,6 +122,8 @@
         org-roam-ui-follow         t
         org-roam-ui-update-on-save t
         org-roam-ui-open-on-start  nil))
+
+;;;; ── consult-org-roam ────────────────────────────────────────────────────────
 
 (use-package consult-org-roam
   :after org-roam
@@ -117,7 +139,10 @@
          ("C-c n B" . consult-org-roam-backlinks)
          ("C-c n F" . consult-org-roam-forward-links)))
 
+;;;; ── Interactive commands ────────────────────────────────────────────────────
+
 (defun emacs-ide-notes-capture-project ()
+  "Find or create an org-roam note for the current Projectile project."
   (interactive)
   (let* ((root (or (and (fboundp 'projectile-project-root)
                         (ignore-errors (projectile-project-root)))
@@ -125,15 +150,17 @@
          (name (file-name-nondirectory (directory-file-name root))))
     (if (fboundp 'org-roam-node-find)
         (org-roam-node-find nil name)
-      (message "⚠️  org-roam not available"))))
+      (message "⚠️  org-roam not available — open a .org file first"))))
 
 (defun emacs-ide-notes-graph ()
+  "Open the org-roam graph in a browser via org-roam-ui."
   (interactive)
   (if (fboundp 'org-roam-ui-open)
       (org-roam-ui-open)
-    (message "⚠️  org-roam-ui not loaded — use C-c n g after opening a roam note")))
+    (message "⚠️  org-roam-ui not loaded — open a roam note first (C-c n f)")))
 
 (defun emacs-ide-notes-search ()
+  "Full-text search across the notes directory using ripgrep or grep."
   (interactive)
   (if (fboundp 'consult-ripgrep)
       (consult-ripgrep emacs-ide-notes-directory)
@@ -142,7 +169,6 @@
                          (shell-quote-argument query)
                          (shell-quote-argument emacs-ide-notes-directory))))))
 
-;; C-c n / binding is set in keybindings.el
 
 (provide 'tools-notes)
 ;;; tools-notes.el ends here

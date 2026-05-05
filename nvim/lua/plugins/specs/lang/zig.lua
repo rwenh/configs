@@ -6,6 +6,7 @@
 -- Test:   zig build test via runner.lua + build keymaps here
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- If vim.g.zig_fmt_autosave causes issues with a future zig.vim install,
   -- add it back here; for now the setting is meaningless without the plugin.
@@ -27,16 +28,7 @@ return {
     end,
   },
 
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "zig" })
-      end
-    end,
-  },
+  shared.treesitter({ "zig" }),
 
   -- ── DAP: codelldb / lldb ───────────────────────────────────────────────────
 
@@ -90,7 +82,6 @@ return {
   -- ── Build & test keymaps ───────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = {
       {
         "<leader>zb",

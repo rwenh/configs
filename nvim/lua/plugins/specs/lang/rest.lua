@@ -1,6 +1,7 @@
 -- lua/plugins/specs/lang/rest.lua — REST client (rest.nvim v3)
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   {
     "rest-nvim/rest.nvim",
@@ -90,13 +91,5 @@ return {
 
   -- ── Treesitter ──────────────────────────────────────────────────────────────
 
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "http", "json" })
-      end
-    end,
-  },
+  shared.treesitter({ "http", "json" }),
 }

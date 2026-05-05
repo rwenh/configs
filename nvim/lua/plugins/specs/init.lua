@@ -4,7 +4,7 @@
 --   completion  before lsp      (blink capabilities injected in lsp.lua)
 --   lsp         before lang/*   (lang specs extend lsp servers/parsers)
 --   web         before html/css (autotag + emmet consumed by html/css)
---   database    before sql      (dadbod owner; sql.lua is now a stub)
+--   database    owns SQL config  (sql.lua removed — was an empty stub)
 --
 -- lang/shared.lua is a pure Lua module (no plugin specs); it is required
 -- directly by lang specs at their module level — no import entry needed here.
@@ -41,8 +41,7 @@ return {
   { import = "plugins.specs.lang.css"        },
 
   -- Data / markup
-  { import = "plugins.specs.lang.database"   },   -- dadbod owner; BEFORE sql
-  { import = "plugins.specs.lang.sql"        },   -- stub; real config in database.lua
+  { import = "plugins.specs.lang.database"   },   -- dadbod + SQL config owner
   { import = "plugins.specs.lang.markdown"   },
   { import = "plugins.specs.lang.rest"       },
 

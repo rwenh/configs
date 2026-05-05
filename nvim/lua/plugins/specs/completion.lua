@@ -10,12 +10,13 @@ return {
       "rafamadriz/friendly-snippets",
       "L3MON4D3/LuaSnip",
     },
+
     config = function(_, opts)
       local has_ls, ls = pcall(require, "luasnip")
 
       if not has_ls then
         vim.notify(
-          "[completion] LuaSnip not loaded — snippet expansion will use native vim.snippet.\n"
+          "[completion] LuaSnip not loaded — snippets will use native vim.snippet.\n"
           .. "Run :Lazy install to ensure LuaSnip is installed.",
           vim.log.levels.WARN
         )
@@ -25,16 +26,35 @@ return {
         end)
       end
 
-      -- Inject the shared ls handle into opts so the closures below can close
-      -- over a single resolved value rather than calling pcall(require) 3×.
-      opts._ls     = has_ls and ls or nil
-      opts._has_ls = has_ls
+      opts.snippets = {
+        expand = function(snippet)
+          if has_ls and ls then
+            pcall(function() ls.lsp_expand(snippet) end)
+          else
+            pcall(function() vim.snippet.expand(snippet) end)
+          end
+        end,
+        active = function(filter)
+          if has_ls and ls then
+            return ls.jumpable(filter and filter.direction or 1)
+          end
+          return vim.snippet.active(filter)
+        end,
+        jump = function(direction)
+          if has_ls and ls then
+            ls.jump(direction)
+          else
+            vim.snippet.jump(direction)
+          end
+        end,
+      }
 
       local ok = pcall(function() require("blink.cmp").setup(opts) end)
       if not ok then
         vim.notify("blink.cmp setup failed", vim.log.levels.ERROR)
       end
     end,
+
     opts = {
       keymap = {
         preset        = "default",
@@ -43,8 +63,6 @@ return {
         ["<CR>"]      = { "accept", "fallback" },
 
         -- Tab/S-Tab: snippet navigation only.
-        -- Menu navigation is handled by <C-n>/<C-j> and <C-p>/<C-k> below,
-        -- which never conflict with snippet state.
         ["<Tab>"]   = { "snippet_forward",  "fallback" },
         ["<S-Tab>"] = { "snippet_backward", "fallback" },
 
@@ -63,9 +81,6 @@ return {
       },
 
       sources = {
-        -- "cmdline" intentionally absent from sources.default.
-        -- sources.default controls INSERT-mode completion only.
-        -- The cmdline{} block below has its own sources list.
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
           lsp = {
@@ -86,11 +101,8 @@ return {
             name               = "Buffer",
             module             = "blink.cmp.sources.buffer",
             min_keyword_length = 2,
-            -- Set to 0 if buffer suggestions disappear in your setup.
             score_offset       = -3,
           },
-          -- Declared here so the cmdline{} block can reference it by name.
-          -- NOT in sources.default — insert-mode only uses the four above.
           cmdline = {
             name   = "cmdline",
             module = "blink.cmp.sources.cmdline",
@@ -103,29 +115,10 @@ return {
         sources = { "cmdline" },
       },
 
-      snippets = {
-        expand = function(snippet)
-          local _ls = rawget(_G, "__blink_ls")   -- fallback; see config() note
-          if has_ls and ls then
-            pcall(function() ls.lsp_expand(snippet) end)
-          else
-            pcall(function() vim.snippet.expand(snippet) end)
-          end
-        end,
-        active = function(filter)
-          if has_ls and ls then
-            return ls.jumpable(filter and filter.direction or 1)
-          end
-          return vim.snippet.active(filter)
-        end,
-        jump = function(direction)
-          if has_ls and ls then
-            ls.jump(direction)
-          else
-            vim.snippet.jump(direction)
-          end
-        end,
-      },
+      -- NOTE: snippets.expand/active/jump are overridden in config() above
+      -- where has_ls and ls are in scope.  This placeholder is replaced before
+      -- blink.cmp.setup() is called, so blink never sees an empty table here.
+      snippets = {},
 
       completion = {
         accept = { auto_brackets = { enabled = true } },

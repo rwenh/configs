@@ -13,7 +13,6 @@ return {
   -- ── Build keymaps ──────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = (function()
       local function compile_and_run(file)
         if vim.fn.executable("cobc") ~= 1 then

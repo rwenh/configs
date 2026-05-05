@@ -83,7 +83,6 @@ return {
 
             local added = false
             pcall(function()
-              -- neotest >= 5.x exposes neotest.adapters.add()
               if type(neotest.adapters) == "table"
               and type(neotest.adapters.add) == "function" then
                 neotest.adapters.add(rust_adapter)
@@ -92,11 +91,7 @@ return {
             end)
 
             if not added then
-              local ok_state, live = pcall(function()
-                -- neotest.client.get_adapters() is internal; may change.
-                return require("neotest.client").get_adapters()
-              end)
-              local base = (ok_state and live) or vim.deepcopy(opts.adapters or {})
+              local base = vim.deepcopy(opts.adapters or {})
               table.insert(base, rust_adapter)
               pcall(function()
                 neotest.setup(vim.tbl_extend("force", opts, { adapters = base }))

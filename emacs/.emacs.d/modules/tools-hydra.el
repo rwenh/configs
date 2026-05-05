@@ -1,12 +1,15 @@
 ;;; tools-hydra.el --- Hydra Menus for Discoverable Commands -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Added cl-lib require (FIX #11)
+;;; Version: 3.3.0
+;;;
 ;;; Code:
 
-(require 'cl-lib)  ;; FIX #11: Explicit require
+(require 'cl-lib)
 
 (use-package hydra :demand t)
 
 (with-eval-after-load 'hydra
+
+;;;; ── Window hydra ────────────────────────────────────────────────────────────
 
 (defhydra hydra-window (:hint nil :color pink)
   "
@@ -36,12 +39,14 @@
   ("k" windmove-up)
   ("l" windmove-right)
   ("o" ace-window)
-  ("x" ace-swap-window)
+  ("x" (when (fboundp 'ace-swap-window)        (ace-swap-window)))
   ("m" (when (fboundp 'ace-delete-other-windows) (ace-delete-other-windows)))
   ("n" tab-bar-new-tab)
   ("N" tab-bar-switch-to-next-tab)
   ("P" tab-bar-switch-to-prev-tab)
   ("q" nil :color blue))
+
+;;;; ── Buffer hydra ────────────────────────────────────────────────────────────
 
 (defhydra hydra-buffer (:hint nil :color blue)
   "
@@ -58,9 +63,10 @@
   ("B" ibuffer)
   ("r" consult-recent-file)
   ("k" kill-this-buffer)
-  ("K" (mapc #'kill-buffer
-             (cl-remove-if (lambda (b) (eq b (current-buffer)))
-                           (buffer-list))))
+  ("K" (when (yes-or-no-p "Kill all buffers except current? ")
+         (mapc #'kill-buffer
+               (cl-remove-if (lambda (b) (eq b (current-buffer)))
+                             (buffer-list)))))
   ("R" revert-buffer)
   ("s" (if (fboundp 'scratch-buffer)
            (scratch-buffer)
@@ -71,6 +77,8 @@
   ("f" next-buffer)
   ("i" consult-imenu)
   ("q" nil))
+
+;;;; ── Git hydra ───────────────────────────────────────────────────────────────
 
 (defhydra hydra-git (:hint nil :color blue)
   "
@@ -100,6 +108,8 @@
   ("F" magit-pull-from-upstream)
   ("q" nil))
 
+;;;; ── LSP hydra ───────────────────────────────────────────────────────────────
+
 (defhydra hydra-lsp (:hint nil :color blue)
   "
   lsp
@@ -112,23 +122,27 @@
   ────────────────────────────────────────────────
   _q_ quit
 "
-  ("d" (when (fboundp 'lsp-find-definition)      (lsp-find-definition)))
-  ("r" (when (fboundp 'lsp-find-references)      (lsp-find-references)))
-  ("i" (when (fboundp 'lsp-find-implementation)  (lsp-find-implementation)))
-  ("t" (when (fboundp 'lsp-find-type-definition) (lsp-find-type-definition)))
-  ("o" (when (fboundp 'lsp-ui-imenu)             (lsp-ui-imenu)))
-  ("s" (when (fboundp 'consult-lsp-symbols)      (consult-lsp-symbols)))
-  ("R" (when (fboundp 'lsp-rename)               (call-interactively #'lsp-rename)))
-  ("a" (when (fboundp 'lsp-execute-code-action)  (lsp-execute-code-action)))
-  ("f" (when (fboundp 'lsp-format-buffer)        (lsp-format-buffer)))
+  ("d" (when (fboundp 'lsp-find-definition)         (lsp-find-definition)))
+  ("r" (when (fboundp 'lsp-find-references)         (lsp-find-references)))
+  ("i" (when (fboundp 'lsp-find-implementation)     (lsp-find-implementation)))
+  ("t" (when (fboundp 'lsp-find-type-definition)    (lsp-find-type-definition)))
+  ("o" (when (fboundp 'lsp-ui-imenu)                (lsp-ui-imenu)))
+  ("s" (when (fboundp 'consult-lsp-symbols)         (consult-lsp-symbols)))
+  ("R" (when (fboundp 'lsp-rename)                  (call-interactively #'lsp-rename)))
+  ("a" (when (fboundp 'lsp-execute-code-action)     (lsp-execute-code-action)))
+  ("f" (when (fboundp 'lsp-format-buffer)           (lsp-format-buffer)))
   ("h" (when (fboundp 'lsp-describe-thing-at-point) (lsp-describe-thing-at-point)))
-  ("u" (when (fboundp 'lsp-ui-doc-toggle)        (lsp-ui-doc-toggle)))
-  ("k" (when (fboundp 'lsp-signature-activate)   (lsp-signature-activate)))
-  ("e" (when (fboundp 'flycheck-list-errors)     (flycheck-list-errors)))
+  ("u" (when (fboundp 'lsp-ui-doc-toggle)           (lsp-ui-doc-toggle)))
+  ("k" (when (fboundp 'lsp-signature-activate)      (lsp-signature-activate)))
+  ("e" (when (fboundp 'flycheck-list-errors)        (flycheck-list-errors)))
   ("l" (when (fboundp 'lsp-lens-mode)
-         (if (bound-and-true-p lsp-lens-mode) (lsp-lens-mode -1) (lsp-lens-mode 1))))
-  ("w" (when (fboundp 'lsp-describe-session)     (lsp-describe-session)))
+         (if (bound-and-true-p lsp-lens-mode)
+             (lsp-lens-mode -1)
+           (lsp-lens-mode 1))))
+  ("w" (when (fboundp 'lsp-describe-session)        (lsp-describe-session)))
   ("q" nil))
+
+;;;; ── Project hydra ───────────────────────────────────────────────────────────
 
 (defhydra hydra-project (:hint nil :color blue)
   "
@@ -150,17 +164,19 @@
   ("o" consult-line)
   ("p" projectile-switch-project)
   ("b" (cond
-        ((fboundp 'consult-projectile)        (consult-projectile))
+        ((fboundp 'consult-projectile)          (consult-projectile))
         ((fboundp 'projectile-switch-to-buffer) (projectile-switch-to-buffer))
-        (t (consult-buffer))))
+        (t                                       (consult-buffer))))
   ("k" projectile-kill-buffers)
   ("c" projectile-compile-project)
   ("C" recompile)
   ("R" projectile-run-project)
-  ("t" treemacs)
-  ("n" neotree-toggle)
+  ("t" (when (fboundp 'treemacs)        (treemacs)))
+  ("n" (when (fboundp 'neotree-toggle)  (neotree-toggle)))
   ("i" ibuffer)
   ("q" nil))
+
+;;;; ── Test hydra ──────────────────────────────────────────────────────────────
 
 (defhydra hydra-test (:hint nil :color blue)
   "
@@ -182,6 +198,8 @@
   ("s" emacs-ide-test-runner-status)
   ("q" nil))
 
+;;;; ── Debug hydra ─────────────────────────────────────────────────────────────
+
 (defhydra hydra-debug (:hint nil :color pink)
   "
   debug
@@ -196,25 +214,27 @@
   ────────────────────────────────────────────────────────
   _ESC_ close
 "
-  ("s" (when (fboundp 'dap-step-in)              (dap-step-in)))
-  ("n" (when (fboundp 'dap-next)                 (dap-next)))
-  ("o" (when (fboundp 'dap-step-out)             (dap-step-out)))
-  ("c" (when (fboundp 'dap-continue)             (dap-continue)))
-  ("r" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
-  ("q" (when (fboundp 'dap-disconnect)           (dap-disconnect)) :color blue)
-  ("b" (when (fboundp 'dap-breakpoint-toggle)    (dap-breakpoint-toggle)) :color red)
-  ("B" (when (fboundp 'dap-breakpoint-condition) (dap-breakpoint-condition)))
+  ("s" (when (fboundp 'dap-step-in)               (dap-step-in)))
+  ("n" (when (fboundp 'dap-next)                  (dap-next)))
+  ("o" (when (fboundp 'dap-step-out)              (dap-step-out)))
+  ("c" (when (fboundp 'dap-continue)              (dap-continue)))
+  ("r" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
+  ("q" (when (fboundp 'dap-disconnect)            (dap-disconnect)) :color blue)
+  ("b" (when (fboundp 'dap-breakpoint-toggle)     (dap-breakpoint-toggle)) :color red)
+  ("B" (when (fboundp 'dap-breakpoint-condition)  (dap-breakpoint-condition)))
   ("L" (when (fboundp 'dap-breakpoint-log-message) (dap-breakpoint-log-message)))
   ("D" (when (fboundp 'dap-breakpoint-delete-all) (dap-breakpoint-delete-all)))
-  ("l" (when (fboundp 'dap-ui-locals)            (dap-ui-locals)))
-  ("e" (when (fboundp 'dap-eval-thing-at-point)  (dap-eval-thing-at-point)))
-  ("w" (when (fboundp 'dap-ui-expressions)       (dap-ui-expressions)))
-  ("u" (when (fboundp 'dap-up-stack-frame)       (dap-up-stack-frame)))
-  ("d" (when (fboundp 'dap-down-stack-frame)     (dap-down-stack-frame)))
-  ("R" (when (fboundp 'dap-ui-repl)              (dap-ui-repl)))
-  ("5" (when (fboundp 'dap-debug)                (call-interactively #'dap-debug)))
-  ("6" (when (fboundp 'dap-debug-restart)        (dap-debug-restart)))
+  ("l" (when (fboundp 'dap-ui-locals)             (dap-ui-locals)))
+  ("e" (when (fboundp 'dap-eval-thing-at-point)   (dap-eval-thing-at-point)))
+  ("w" (when (fboundp 'dap-ui-expressions)        (dap-ui-expressions)))
+  ("u" (when (fboundp 'dap-up-stack-frame)        (dap-up-stack-frame)))
+  ("d" (when (fboundp 'dap-down-stack-frame)      (dap-down-stack-frame)))
+  ("R" (when (fboundp 'dap-ui-repl)               (dap-ui-repl)))
+  ("5" (when (fboundp 'dap-debug)                 (call-interactively #'dap-debug)))
+  ("6" (when (fboundp 'dap-debug-restart)         (dap-debug-restart)))
   ("ESC" nil :color blue))
+
+;;;; ── Toggle hydra ────────────────────────────────────────────────────────────
 
 (defhydra hydra-toggle (:hint nil :color blue)
   "
@@ -244,12 +264,15 @@
   ("d" (when (fboundp 'dimmer-mode)        (call-interactively #'dimmer-mode)))
   ("b" (when (fboundp 'beacon-mode)        (call-interactively #'beacon-mode)))
   ("p" (when (fboundp 'pulsar-global-mode) (call-interactively #'pulsar-global-mode)))
-  ("T" treemacs)
-  ("n" neotree-toggle)
+  ;; FIX #72: treemacs and neotree-toggle guarded with fboundp
+  ("T" (when (fboundp 'treemacs)       (treemacs)))
+  ("n" (when (fboundp 'neotree-toggle) (neotree-toggle)))
   ("P" emacs-ide-presentation-mode)
-  ("z" (when (fboundp 'olivetti-mode)      (call-interactively #'olivetti-mode)))
+  ("z" (when (fboundp 'olivetti-mode)  (call-interactively #'olivetti-mode)))
   ("v" visual-fill-column-mode)
   ("q" nil))
+
+;;;; ── REPL hydra ──────────────────────────────────────────────────────────────
 
 (defhydra hydra-repl (:hint nil :color blue)
   "
@@ -257,7 +280,8 @@
   ────────────────────────────────────
   _r_ launch / switch   _t_ toggle window
   _s_ send region       _b_ send buffer
-  _d_ send defun        _S_ status
+  _d_ send defun        _l_ send line
+  _S_ status
   ────────────────────────────────────
   _q_ quit
 "
@@ -266,8 +290,11 @@
   ("s" emacs-ide-repl-send-region)
   ("b" emacs-ide-repl-send-buffer)
   ("d" emacs-ide-repl-send-defun)
+  ("l" emacs-ide-repl-send-line)
   ("S" emacs-ide-repl-status)
   ("q" nil))
+
+;;;; ── Search hydra ────────────────────────────────────────────────────────────
 
 (defhydra hydra-search (:hint nil :color blue)
   "
@@ -297,6 +324,8 @@
   ("u" consult-focus-lines)
   ("q" nil))
 
+;;;; ── Global bindings ─────────────────────────────────────────────────────────
+
 (global-set-key (kbd "C-c h w") #'hydra-window/body)
 (global-set-key (kbd "C-c h b") #'hydra-buffer/body)
 (global-set-key (kbd "C-c h g") #'hydra-git/body)
@@ -309,7 +338,8 @@
 (global-set-key (kbd "C-c h s") #'hydra-search/body)
 (global-set-key (kbd "C-c h h")
                 (lambda () (interactive)
-                  (message "Hydras: w)indow b)uffer g)it l)sp p)roject t)est d)ebug u)toggle r)epl s)earch")))
+                  (message
+                   "Hydras: w)indow b)uffer g)it l)sp p)roject t)est d)ebug u)toggle r)epl s)earch")))
 
 ) ;; end with-eval-after-load 'hydra
 

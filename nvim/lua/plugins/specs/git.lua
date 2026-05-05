@@ -1,18 +1,15 @@
 -- lua/plugins/specs/git.lua
 --
 -- Architecture:
---   gitsigns   — inline hunk signs, buffer-local hunk navigation/staging
+--   gitsigns     — inline hunk signs, buffer-local hunk navigation/staging
 --   vim-fugitive — low-level Git commands (:Gdiffsplit, :Gread, etc.)
---   lazygit    — full-screen interactive Git TUI
---   diffview   — side-by-side diff + file history viewer
---   neogit     — Magit-style commit/rebase/branch UI (uses diffview + telescope)
+--   lazygit      — full-screen interactive Git TUI
+--   diffview     — side-by-side diff + file history viewer
+--   neogit       — Magit-style commit/rebase/branch UI (uses diffview + telescope)
 --   git-conflict — 3-way conflict resolution with choose-ours/theirs/both
---   gv.vim     — commit graph browser (lightweight; uses fugitive)
---   octo.nvim  — GitHub PR / issue / review workflow directly in Neovim
---   blame.nvim — per-line git blame virtual text (key in hud.lua)
---
--- NOTE: blame.nvim is specced in hud.lua for historical reasons; its <leader>.B
--- key is documented here for discoverability.
+--   gv.vim       — commit graph browser (lightweight; uses fugitive)
+--   octo.nvim    — GitHub PR / issue / review workflow directly in Neovim
+--   blame.nvim   — per-line git blame virtual text (<leader>.B)
 --
 
 return {
@@ -173,5 +170,19 @@ return {
     config = function(_, opts)
       pcall(function() require("octo").setup(opts) end)
     end,
+  },
+
+  -- ── blame.nvim ─────────────────────────────────────────────────────────────
+  {
+    "FabijanZulj/blame.nvim",
+    cmd  = "BlameToggle",
+    keys = { { "<leader>.B", "<cmd>BlameToggle<cr>", desc = "Toggle git blame" } },
+    opts = {
+      date_format       = "%Y-%m-%d",
+      virtual_style     = "right_align",
+      focus_blame       = true,
+      merge_consecutive = false,
+      max_summary_width = 30,
+    },
   },
 }

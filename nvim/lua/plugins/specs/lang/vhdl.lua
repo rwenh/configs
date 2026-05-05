@@ -9,6 +9,7 @@
 -- OR: :MasonInstall rust_hdl
 --
 
+local shared = require("plugins.specs.lang.shared")
 return {
   -- ── Conform: vsg ───────────────────────────────────────────────────────────
   {
@@ -30,21 +31,11 @@ return {
     end,
   },
 
-  -- ── Treesitter ──────────────────────────────────────────────────────────────
-  {
-    "nvim-treesitter/nvim-treesitter",
-    optional = true,
-    opts = function(_, opts)
-      if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, { "vhdl" })
-      end
-    end,
-  },
+  shared.treesitter({ "vhdl" }),
 
   -- ── GHDL keymaps ────────────────────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    optional = true,
     keys = {
       {
         "<leader>vha",

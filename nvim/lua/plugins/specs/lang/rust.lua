@@ -92,7 +92,6 @@ return {
 
   -- ── Conform: rustfmt ───────────────────────────────────────────────────────
   -- rustfmt ships with the Rust toolchain (rustup component add rustfmt).
-  -- No Mason installation needed.
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -101,14 +100,20 @@ return {
       opts.formatters_by_ft.rust  = { "rustfmt" }
       opts.formatters             = opts.formatters or {}
 
-      -- Detect Rust edition from Cargo.toml to ensure correct formatting.
+      local _edition_cache = {}
       local function detect_edition()
         local cargo = vim.fn.findfile("Cargo.toml", ".;")
         if cargo == "" then return "2021" end
-        for _, line in ipairs(vim.fn.readfile(cargo)) do
+        local abs = vim.fn.fnamemodify(cargo, ":p")
+        if _edition_cache[abs] then return _edition_cache[abs] end
+        for _, line in ipairs(vim.fn.readfile(abs)) do
           local ed = line:match('^edition%s*=%s*"(%d+)"')
-          if ed then return ed end
+          if ed then
+            _edition_cache[abs] = ed
+            return ed
+          end
         end
+        _edition_cache[abs] = "2021"
         return "2021"
       end
 
@@ -122,5 +127,4 @@ return {
     end,
   },
 
-  -- NOTE: nvim-coverage intentionally absent — test.lua is the sole owner.
 }
