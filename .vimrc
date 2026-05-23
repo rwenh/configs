@@ -1,5 +1,5 @@
 " =============================================================================
-" VIM IDE
+" VIMSPIRE
 " =============================================================================
 
 set nocompatible
@@ -25,7 +25,7 @@ let g:module_lsp_enabled     = 1
 let g:module_test_enabled    = 1
 let g:module_db_enabled      = 1
 let g:module_rest_enabled    = 1
-let g:module_debug_enabled   = 0   " FIX #7: opt-in; heavy plugin — set 1 in ~/.vimrc.local
+let g:module_debug_enabled   = 0   " opt-in; heavy plugin — set 1 in ~/.vimrc.local
 let g:module_ale_enabled     = (g:vimide_diagnostics !=# 'coc')
 
 if g:vimide_minimal
@@ -101,6 +101,9 @@ endfunction
 " --- Map() -------------------------------------------------------------------
 
 function! Map(mode, lhs, rhs, opts) abort
+  if index(['n','v','i','x','s','o','c','t','!'], a:mode) < 0
+    call Log('Map: invalid mode "' . a:mode . '" for ' . a:lhs, 'error') | return
+  endif
   let l:silent = get(a:opts, 'silent', 1) ? '<silent>' : ''
   let l:expr   = get(a:opts, 'expr',   0) ? '<expr>'   : ''
   let l:buf    = get(a:opts, 'buffer', 0) ? '<buffer>'  : ''
@@ -110,11 +113,11 @@ function! Map(mode, lhs, rhs, opts) abort
 endfunction
 
 " --- MapGroup() --------------------------------------------------------------
-" Batch normal-mode mappings under a common prefix.
 
-function! MapGroup(prefix, maps, opts) abort
+function! MapGroup(prefix, maps, opts, ...) abort
+  let l:mode = get(a:000, 0, 'n')
   for [l:key, l:rhs] in items(a:maps)
-    call Map('n', a:prefix . l:key, l:rhs, get(a:opts, l:key, {}))
+    call Map(l:mode, a:prefix . l:key, l:rhs, get(a:opts, l:key, {}))
   endfor
 endfunction
 
@@ -131,17 +134,17 @@ endfunction
 
 " --- CreateCommand() ---------------------------------------------------------
 
-let g:vimide_cmdfns = {}
+let s:cmdfns = {}
 
 function! CreateCommand(name, Fn, opts) abort
   let l:nargs    = get(a:opts, 'nargs',    0)
   let l:complete = get(a:opts, 'complete', '')
   let l:nargs_s  = l:nargs > 0 ? ('-nargs=' . l:nargs . ' ') : ''
   let l:comp_s   = !empty(l:complete) ? ('-complete=' . l:complete . ' ') : ''
-  let g:vimide_cmdfns[a:name] = a:Fn
+  let s:cmdfns[a:name] = a:Fn
   let l:invoke = l:nargs > 0
-    \ ? 'call call(g:vimide_cmdfns["' . a:name . '"], [<q-args>])'
-    \ : 'call call(g:vimide_cmdfns["' . a:name . '"], [])'
+    \ ? 'call call(s:cmdfns["' . a:name . '"], [<q-args>])'
+    \ : 'call call(s:cmdfns["' . a:name . '"], [])'
   execute 'command! ' . l:nargs_s . l:comp_s . a:name . ' ' . l:invoke
 endfunction
 
@@ -156,6 +159,7 @@ endfunction
 " --- Task system -------------------------------------------------------------
 
 let s:tasks = {}
+let s:running = {}
 
 function! RegisterTask(name, config) abort
   let s:tasks[a:name] = a:config
@@ -165,6 +169,10 @@ function! RunTask(name) abort
   if !has_key(s:tasks, a:name)
     call Log('Task not found: ' . a:name, 'error') | return
   endif
+  if has_key(s:running, a:name)
+    call Log('Circular task dependency: ' . a:name, 'error') | return
+  endif
+  let s:running[a:name] = 1
   let l:task = s:tasks[a:name]
   for l:dep in get(l:task, 'deps', [])
     call RunTask(l:dep)
@@ -172,6 +180,7 @@ function! RunTask(name) abort
   if has_key(l:task, 'run')
     call call(l:task.run, [])
   endif
+  unlet s:running[a:name]
   call SetState('last_task', { 'name': a:name, 'time': localtime() })
 endfunction
 
@@ -183,7 +192,7 @@ endfunction
 "   - Features load once per session (immutable session model)
 "   - Teardown/reload are debug tools; disabled when g:vimide_debug=0
 "   - <Plug> maps and inoremap definitions persist for the session;
-"     teardown clears augroups and g: vars only
+"     teardown clears augroups only
 "
 " Spec keys:
 "   init     funcref  — required
@@ -192,15 +201,17 @@ endfunction
 "   lazy     string   — '' (eager) | 'buf' (BufReadPost) | 'cmd' (CmdUndefined)
 
 let s:modules = {}
+" FIX: s:loading is a visited-set for cycle detection in s:LoadModule().
+let s:loading = {}
 
 function! s:ValidateModule(name, spec) abort
   if !has_key(a:spec, 'init') || get(a:spec, 'init') is v:null
     throw 'Module ' . a:name . ': init is required'
   endif
-  if type(get(a:spec, 'init')) != type(function('tr'))
+  if type(get(a:spec, 'init')) != v:t_func
     throw 'Module ' . a:name . ': init must be a funcref'
   endif
-  if type(get(a:spec, 'deps', [])) != type([])
+  if type(get(a:spec, 'deps', [])) != v:t_list
     throw 'Module ' . a:name . ': deps must be a list'
   endif
   if index(['', 'buf', 'cmd'], get(a:spec, 'lazy', '')) < 0
@@ -211,13 +222,13 @@ endfunction
 function! s:RegisterModule(name, spec) abort
   call s:ValidateModule(a:name, a:spec)
   let s:modules[a:name] = extend({
-    \ 'enabled':  FeatureEnabled(a:name),
-    \ 'loaded':   0,
     \ 'init':     v:null,
     \ 'teardown': v:null,
     \ 'deps':     [],
     \ 'lazy':     '',
     \ }, a:spec)
+  let s:modules[a:name].enabled = FeatureEnabled(a:name)
+  let s:modules[a:name].loaded  = 0
 endfunction
 
 function! s:LoadModule(name) abort
@@ -226,6 +237,10 @@ function! s:LoadModule(name) abort
   endif
   let l:m = s:modules[a:name]
   if !l:m.enabled || l:m.loaded | return | endif
+  if has_key(s:loading, a:name)
+    call Log('Circular dependency: ' . a:name, 'error') | return
+  endif
+  let s:loading[a:name] = 1
   for l:dep in l:m.deps
     call s:LoadModule(l:dep)
   endfor
@@ -235,6 +250,7 @@ function! s:LoadModule(name) abort
     let l:ok = s:Safe(a:name . ':init', l:m.init)
     call s:Mark(a:name . ' init done')
   endif
+  unlet s:loading[a:name]
   if l:ok
     let s:modules[a:name].loaded = 1
   endif
@@ -286,7 +302,7 @@ endfunction
 " LAYER 2: PERFORMANCE & CORE SETTINGS
 " =============================================================================
 
-set regexpengine=0 synmaxcol=300 lazyredraw
+set regexpengine=0 synmaxcol=300
 set updatetime=250 redrawtime=1500
 set ttimeoutlen=10 timeoutlen=500
 
@@ -300,13 +316,15 @@ endif
 filetype plugin indent on
 syntax enable
 
-set fileencodings=utf-8,ucs-bom,latin1
+set fileencodings=ucs-bom,utf-8,latin1
+
 set backspace=indent,eol,start history=5000 undolevels=2000 undoreload=10000
 set nrformats-=octal virtualedit=block nojoinspaces
 
 set number relativenumber cursorline laststatus=2 scrolloff=8 sidescrolloff=5
 set showcmd ruler showmatch matchtime=2 display+=lastline
-set signcolumn=yes pumheight=14 cmdheight=1 noshowmode shortmess+=acFI
+set signcolumn=yes pumheight=14 cmdheight=1 noshowmode
+set shortmess+=acIT
 
 set incsearch hlsearch ignorecase smartcase wrapscan
 if executable('rg')
@@ -322,11 +340,14 @@ set wildignore+=*.DS_Store,*.log,*.tmp
 
 set completeopt=menuone,noselect
 
-for s:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui']
-  if !isdirectory(expand('~/.vim/' . s:d))
-    call mkdir(expand('~/.vim/' . s:d), 'p', 0700)
-  endif
-endfor
+function! s:EnsureVimDirs() abort
+  for l:d in ['swap', 'backup', 'undo', 'tags', 'sessions', 'fzf-history', 'db_ui']
+    if !isdirectory(expand('~/.vim/' . l:d))
+      call mkdir(expand('~/.vim/' . l:d), 'p', 0700)
+    endif
+  endfor
+endfunction
+call s:EnsureVimDirs()
 
 set swapfile   directory=~/.vim/swap//
 set nobackup   nowritebackup backupdir=~/.vim/backup//
@@ -336,7 +357,7 @@ if has('persistent_undo')
   set undofile undodir=~/.vim/undo
 endif
 
-set foldmethod=indent foldlevelstart=99
+set foldmethod=manual foldlevelstart=99
 set list listchars=tab:▸\ ,trail:·,extends:→,precedes:←,nbsp:⦸
 set fillchars=vert:│,fold:─
 set spelllang=en_us
@@ -375,7 +396,7 @@ call Augroup('FormatOptions', [
 
 function! s:EnsureVimPlug() abort
   let l:path = expand('~/.vim/autoload/plug.vim')
-  if !empty(glob(l:path)) | return 1 | endif
+  if filereadable(l:path) | return 1 | endif
   try
     let l:url = 'https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
     if executable('curl')
@@ -481,7 +502,7 @@ Plug 'udalov/kotlin-vim', { 'for': 'kotlin' }
 Plug 'vim-scripts/fortran.vim', { 'for': 'fortran' }
 Plug 'suoto/vim-hdl', { 'for': ['vhdl', 'verilog'] }
 Plug 'hashivim/vim-terraform', { 'for': 'terraform' }
-Plug 'pearofducks/ansible-vim', { 'for': ['yaml.ansible', 'yaml'] }
+Plug 'pearofducks/ansible-vim', { 'for': 'yaml.ansible' }
 Plug 'chr4/nginx.vim', { 'for': 'nginx' }
 Plug 'ekalinin/Dockerfile.vim', { 'for': 'Dockerfile' }
 Plug 'towolf/vim-helm', { 'for': 'helm' }
@@ -525,13 +546,22 @@ let g:coc_global_extensions = [
   \ 'coc-rust-analyzer',
   \ 'coc-go',
   \ 'coc-tsserver',
-  \ 'coc-eslint',
+  \ 'coc-snippets',
   \ ]
+if g:vimide_diagnostics ==# 'coc'
+  call add(g:coc_global_extensions, 'coc-eslint')
+endif
+
+let g:coc_user_config = {
+  \ 'snippets.ultisnips.enable': v:false,
+  \ 'snippets.snipmate.enable':  v:true,
+  \ 'snippets.vsnip.enable':     v:true,
+  \ }
 
 call plug#end()
 
 function! s:CheckMissingPlugins() abort
-  let l:missing = filter(values(g:plugs), '!isdirectory(v:val.dir)')
+  let l:missing = filter(values(g:plugs), '!isdirectory(get(v:val, "dir", ""))')
   if !empty(l:missing)
     echom len(l:missing) . ' plugin(s) missing — run :PlugInstall'
   endif
@@ -557,11 +587,17 @@ let s:lightline_theme_map = {
   \ }
 let s:lightline_theme = get(s:lightline_theme_map, s:theme, 'catppuccin_mocha')
 
+let s:dark_themes = [
+  \ 'catppuccin_mocha', 'catppuccin_frappe', 'catppuccin_macchiato',
+  \ 'gruvbox', 'onedark',
+  \ ]
+
 function! s:ApplyTheme() abort
-  set background=dark
+  let &background = index(s:dark_themes, s:theme) >= 0 ? 'dark' : 'light'
   try
     execute 'colorscheme ' . s:theme
   catch
+    set background=dark
     colorscheme desert
     call Log('Theme "' . s:theme . '" not found, using desert', 'warn')
   endtry
@@ -573,6 +609,7 @@ call Augroup('ThemeInit', [
 
 function! ToggleBackground() abort
   let &background = (&background ==# 'dark') ? 'light' : 'dark'
+  if exists('*lightline#update') | call lightline#update() | endif
 endfunction
 
 " =============================================================================
@@ -581,7 +618,7 @@ endfunction
 
 function! s:IsSpecialBuffer() abort
   return &buftype !=# '' ||
-    \ &filetype =~# '\v^(fern|floaterm|fugitive|dbui|qf|help)$'
+    \ &filetype =~# '\v^(fern|floaterm|fugitive|dbui|help)$'
 endfunction
 
 function! s:SafeBnext() abort
@@ -607,26 +644,25 @@ call Map('n', '<C-j>', '<C-w>j', {})
 call Map('n', '<C-k>', '<C-w>k', {})
 call Map('n', '<C-l>', '<C-w>l', {})
 
-call Map('n', '<Tab>',   ':call <SID>SafeBnext()<CR>', {})
-call Map('n', '<S-Tab>', ':call <SID>SafeBprev()<CR>', {})
+call Map('n', ']b', ':call <SID>SafeBnext()<CR>', {})
+call Map('n', '[b', ':call <SID>SafeBprev()<CR>', {})
 
 call Map('n', 'j', 'gj', {})
 call Map('n', 'k', 'gk', {})
-call Map('v', 'j', 'gj', {})
-call Map('v', 'k', 'gk', {})
+call Map('x', 'j', 'gj', {})
+call Map('x', 'k', 'gk', {})
 
 call Map('n', 'n', 'nzzzv', {})
 call Map('n', 'N', 'Nzzzv', {})
 
-" Config
-call Map('n', '<leader><CR>', ':source $MYVIMRC \| echom "reloaded"<CR>', {})
-call Map('n', '<leader>ec',   ':edit $MYVIMRC<CR>', {})
+" Config — all vim-meta under <leader>v
+call Map('n', '<leader>ve', ':edit $MYVIMRC<CR>', {})
+call Map('n', '<leader>vr', ':source $MYVIMRC \| call Log("reloaded", "info")<CR>', {})
+call Map('n', '<leader>vp', ':FindProjectRoot<CR>', {})
 
-" Save / quit
+" Save
 call Map('n', '<C-s>', ':write<CR>', {})
 call Map('i', '<C-s>', '<C-o>:write<CR>', {})
-call Map('n', '<leader>q', ':quit<CR>', {})
-call Map('n', '<leader>Q', ':quit!<CR>', {})
 
 " Window management
 call MapGroup('<leader>w', {
@@ -636,34 +672,37 @@ call MapGroup('<leader>w', {
   \ 'o': ':only<CR>',
   \ '=': '<C-w>=',
   \ 'z': ':MaximizerToggle<CR>',
+  \ 'q': ':quit<CR>',
+  \ 'Q': ':quit!<CR>',
   \ }, {})
 
-call Map('n', '<M-Up>',    ':resize +2<CR>', {})
-call Map('n', '<M-Down>',  ':resize -2<CR>', {})
-call Map('n', '<M-Left>',  ':vertical resize -2<CR>', {})
-call Map('n', '<M-Right>', ':vertical resize +2<CR>', {})
+call Map('n', '<leader>w+', ':resize +2<CR>', {})
+call Map('n', '<leader>w-', ':resize -2<CR>', {})
+call Map('n', '<leader>w[', ':vertical resize -2<CR>', {})
+call Map('n', '<leader>w]', ':vertical resize +2<CR>', {})
 
 " Buffer management
+" ]b / [b  — cycle buffers (defined above, preserves <C-i> jumplist)
 call Map('n', '<leader><Tab>', '<C-^>', {})
 call MapGroup('<leader>b', {
   \ 'd': ':bdelete<CR>',
   \ 'D': ':bdelete!<CR>',
-  \ 'n': ':bnext<CR>',
-  \ 'p': ':bprevious<CR>',
   \ 'C': ':CleanBuffers<CR>',
   \ }, {})
 
 " Search
 call Map('n', '<leader>sc', ':nohlsearch<CR>', {})
 call Map('n', '<leader>sr', ':%s/\<<C-r><C-w>\>//gc<Left><Left><Left>', { 'silent': 0 })
-call Map('v', '<leader>sr', '"hy:%s/<C-r>h//gc<Left><Left><Left>', { 'silent': 0 })
+call Map('x', '<leader>sr', '"hy:%s/<C-r>h//gc<Left><Left><Left>', { 'silent': 0 })
 
-" FIX #10: Quickfix under <leader>q — <leader>c is now exclusively LSP/CoC.
+" Quickfix
 call MapGroup('<leader>q', {
   \ 'o': ':copen<CR>',
   \ 'c': ':cclose<CR>',
   \ 'n': ':cnext<CR>',
   \ 'p': ':cprevious<CR>',
+  \ 'q': ':qa<CR>',
+  \ 'Q': ':qa!<CR>',
   \ }, {})
 
 " Location list
@@ -698,10 +737,10 @@ call Augroup('DiffMappings', [
   \ ])
 
 " File explorer
-call Map('n', '<leader>e', ':Fern . -drawer -reveal=% -toggle<CR>', {})
-call Map('n', '<leader>E', ':Fern . -drawer -reveal=%<CR>', {})
+call Map('n', '<leader>e',  ':Fern . -drawer -reveal=% -toggle<CR>', {})
+call Map('n', '<leader>er', ':Fern . -drawer -reveal=%<CR>', {})
 
-" Terminal — core toggle only; <leader>T group lives in Layer 7 with floaterm config.
+" Terminal
 call Map('n', '<C-\>', ':FloatermToggle<CR>', {})
 call Map('t', '<C-\>', '<C-\><C-n>:FloatermToggle<CR>', {})
 
@@ -721,11 +760,11 @@ call MapGroup('<leader>u', {
   \ 'l': ':set list!<CR>',
   \ 'i': ':IndentGuidesToggle<CR>',
   \ 'x': ':ContextToggle<CR>',
+  \ 'u': ':UndotreeToggle<CR>',
+  \ 't': ':TagbarToggle<CR>',
   \ }, {})
 
-" Tools
-call Map('n', '<F8>',      ':TagbarToggle<CR>', {})
-call Map('n', '<leader>U', ':UndotreeToggle<CR>', {})
+" (tagbar → <leader>ut | undotree → <leader>uu — both in the toggle group above)
 
 " Session
 call MapGroup('<leader>S', {
@@ -733,21 +772,26 @@ call MapGroup('<leader>S', {
   \ 'L': ':SLoad<CR>',
   \ 'd': ':SDelete<CR>',
   \ 'c': ':SClose<CR>',
+  \ 'o': ':Obsession<CR>',
+  \ 't': ':Startify<CR>',
+  \ 'q': ':qa<CR>',
+  \ 'Q': ':qa!<CR>',
   \ }, {})
-call Map('n', '<leader>st', ':Startify<CR>', {})
 
-" Misc
+" Vim / meta
 call Map('n', '<leader>vi', ':VimInfo<CR>', {})
-call Map('n', '<leader>PR', ':FindProjectRoot<CR>', {})
-call Map('n', '<leader>yp', '"+p', {})
-call Map('n', '<leader>yy', '"+yy', {})
-call Map('v', '<leader>y',  '"+y', {})
 
-" F5-F9 runners
+" Clipboard
+call Map('n', '<leader>yp', '"+p', {})
+call Map('n', '<leader>yP', '"+P', {})
+call Map('n', '<leader>yy', '"+yy', {})
+call Map('x', '<leader>y',  '"+y', {})
+
+" F5-F8 runners: run / compile / build / test  (F1-F4, F10-F12 reserved for debug module)
 call Map('n', '<F5>', ':call <SID>RunAction("run")<CR>', {})
 call Map('n', '<F6>', ':call <SID>RunAction("compile")<CR>', {})
 call Map('n', '<F7>', ':call <SID>RunAction("build")<CR>', {})
-call Map('n', '<F9>', ':call <SID>RunAction("test")<CR>', {})
+call Map('n', '<F8>', ':call <SID>RunAction("test")<CR>', {})
 
 call Map('n', '<leader>', ":<C-u>WhichKey '<Space>'<CR>", {})
 
@@ -832,14 +876,18 @@ call Augroup('FernEvents', [
 let g:fzf_layout      = { 'window': { 'width': 0.92, 'height': 0.88, 'border': 'rounded' } }
 let g:fzf_history_dir = expand('~/.vim/fzf-history')
 
-let $FZF_DEFAULT_OPTS =
-  \ '--layout=reverse --border=rounded --info=inline ' .
-  \ '--color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8 ' .
-  \ '--color=fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc ' .
-  \ '--color=marker:#f5e0dc,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8'
+let $FZF_DEFAULT_OPTS = '--layout=reverse --border=rounded --info=inline'
+if s:theme =~# '^catppuccin'
+  let $FZF_DEFAULT_OPTS .=
+    \ ' --color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8' .
+    \ ' --color=fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc' .
+    \ ' --color=marker:#f5e0dc,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8'
+endif
 
 if executable('bat')
   let g:fzf_preview_window = ['right:50%:hidden', 'ctrl-/']
+else
+  let g:fzf_preview_window = ['right:50%:hidden']
 endif
 
 " --- Floaterm ----------------------------------------------------------------
@@ -852,16 +900,17 @@ let g:floaterm_borderchars = ['─', '│', '─', '│', '╭', '╮', '╯', '
 let g:floaterm_title       = '  terminal ($1/$2) '
 let g:floaterm_wintype     = 'float'
 
-" <leader>t). FloatermSend also lives here — not in core Layer 6.
 call MapGroup('<leader>T', {
   \ 'n': ':FloatermNew<CR>',
   \ 'k': ':FloatermKill<CR>',
   \ 'l': ':FloatermNext<CR>',
   \ 'h': ':FloatermPrev<CR>',
   \ }, {})
-call Map('v', '<leader>Ts', ':FloatermSend<CR>', {})
+call Map('x', '<leader>Ts', ':FloatermSend<CR>', {})
 
 " --- vim-vsnip ---------------------------------------------------------------
+" These use <expr> + imap/smap; complex nested quotes make Map() unwieldy.
+" Kept as raw imap/smap intentionally.
 
 imap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
 smap <expr> <C-e> vsnip#expandable() ? '<Plug>(vsnip-expand)'    : '<C-e>'
@@ -887,17 +936,12 @@ let g:matchup_text_obj_enabled              = 1
 let g:indent_guides_enable_on_vim_startup = 1
 let g:indent_guides_start_level           = 2
 let g:indent_guides_guide_size            = 1
-let g:indent_guides_auto_colors           = 0
+let g:indent_guides_auto_colors           = 1
 let g:indent_guides_exclude_filetypes     = ['startify', 'help', 'fern', 'dbui', 'json', 'terminal']
-
-call Augroup('IndentGuideColors', [
-  \ 'VimEnter,Colorscheme *'
-  \   . ' highlight IndentGuidesOdd  ctermbg=235 guibg=#2a2a37'
-  \   . ' | highlight IndentGuidesEven ctermbg=236 guibg=#313244',
-  \ ])
 
 " --- vim-asterisk ------------------------------------------------------------
 " z* / z# variants keep cursor position stable (no jump-then-search flicker).
+" map (not noremap) covers n/v/o simultaneously; Map() is single-mode only.
 
 let g:asterisk#keeppos = 1
 map *  <Plug>(asterisk-z*)
@@ -913,7 +957,7 @@ let g:VM_show_warnings              = 0
 let g:VM_maps                       = {}
 let g:VM_maps['Find Under']         = '<C-n>'
 let g:VM_maps['Find Subword Under'] = '<C-n>'
-let g:VM_maps['Select All']         = '<C-a>'
+let g:VM_maps['Select All']         = '<M-a>'
 let g:VM_maps['Skip Region']        = '<C-x>'
 
 " --- Gutentags ---------------------------------------------------------------
@@ -939,22 +983,29 @@ let g:gutentags_exclude_filetypes = [
 if executable('rg')
   let g:gutentags_file_list_command = 'rg --files --follow'
 endif
+
 let g:gutentags_add_default_project_roots = 0
-let g:gutentags_project_root =
-  \ ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml']
+let s:root_markers = [
+  \ '.git', '.svn', '.hg', 'package.json', 'Cargo.toml',
+  \ 'go.mod', 'Makefile', 'pyproject.toml', 'build.gradle', 'build.zig',
+  \ ]
+let g:gutentags_project_root = copy(s:root_markers)
 
 " --- vim-easy-align ----------------------------------------------------------
 
-xmap ga <Plug>(EasyAlign)
-nmap ga <Plug>(EasyAlign)
+call Map('x', 'ga', '<Plug>(EasyAlign)', { 'noremap': 0 })
+call Map('n', 'ga', '<Plug>(EasyAlign)', { 'noremap': 0 })
 
 " --- vim-go ------------------------------------------------------------------
 
-let g:go_fmt_command            = 'goimports'
-let g:go_highlight_types        = 1
-let g:go_highlight_fields       = 1
-let g:go_highlight_functions    = 1
-let g:go_highlight_operators    = 1
+let g:go_fmt_command              = 'goimports'
+let g:go_highlight_types          = 1
+let g:go_highlight_fields         = 1
+let g:go_highlight_functions      = 1
+let g:go_highlight_function_calls = 1
+let g:go_highlight_extra_types          = 1
+let g:go_highlight_variable_declarations = 1
+let g:go_highlight_variable_assignments  = 1
 let g:go_def_mapping_enabled    = 0
 let g:go_doc_keywordprg_enabled = 0
 let g:go_gopls_enabled          = 0
@@ -1002,33 +1053,82 @@ let g:startify_custom_header = [
 
 call which_key#register('<Space>', "g:which_key_map")
 let g:which_key_map = {
-  \ '<CR>': 'reload config',
   \ '<Tab>': 'last buffer',
-  \ 'e': 'file explorer',
-  \ 'E': 'reveal in tree',
-  \ 'U': 'undo tree',
-  \ 'w': { 'name': '+window' },
-  \ 'b': { 'name': '+buffer' },
-  \ 'f': { 'name': '+find/fzf' },
-  \ 'g': { 'name': '+git' },
-  \ 'h': { 'name': '+hunk' },
-  \ 't': { 'name': '+test' },
-  \ 'T': { 'name': '+terminal' },
-  \ 'u': { 'name': '+toggle' },
-  \ 's': { 'name': '+search' },
-  \ 'y': { 'name': '+yank' },
-  \ 'c': { 'name': '+lsp/coc' },
-  \ 'q': { 'name': '+quickfix' },
-  \ 'l': { 'name': '+loclist' },
-  \ 'r': { 'name': '+rename/rest' },
-  \ 'd': { 'name': '+debug/diff' },
-  \ 'D': { 'name': '+database' },
-  \ 'S': { 'name': '+session' },
-  \ 'm': { 'name': '+markdown' },
+  \ 'e': {
+  \   'name': '+explorer',
+  \   'r': 'reveal in tree',
+  \ },
+  \ 'v': {
+  \   'name': '+vim',
+  \   'e': 'edit config',
+  \   'r': 'reload config',
+  \   'p': 'find project root',
+  \   'i': 'viminfo',
+  \ },
+  \ 'w': {
+  \   'name': '+window',
+  \   'v': 'vsplit', 's': 'split', 'c': 'close', 'o': 'only',
+  \   '=': 'equalize', 'z': 'maximize',
+  \   'q': 'quit', 'Q': 'force quit',
+  \   '+': 'height +2', '-': 'height -2',
+  \   '[': 'width -2',  ']': 'width +2',
+  \ },
+  \ 'b': {
+  \   'name': '+buffer',
+  \   'd': 'delete', 'D': 'force delete', 'C': 'clean all',
+  \ },
+  \ 'f': {
+  \   'name': '+find/fzf',
+  \   'f': 'files', 'g': 'git files', 'b': 'buffers', 'h': 'history',
+  \   'r': 'rg search', 'l': 'lines', 't': 'tags', 'c': 'commands',
+  \   'k': 'keymaps', 'm': 'marks', 'p': 'files in dir',
+  \ },
+  \ 'g': {
+  \   'name': '+git',
+  \   'g': 'status', 'c': 'commit', 'p': 'push', 'l': 'log', 'L': 'log file',
+  \   'd': 'diff split', 'b': 'blame', 'B': 'browse', 'f': 'fetch',
+  \   'm': 'merge', 'R': 'rebase', 'A': 'add file', 'S': 'stash', 'P': 'stash pop',
+  \ },
+  \ 'h': { 'name': '+hunk', 's': 'stage', 'u': 'undo', 'p': 'preview' },
+  \ 't': { 'name': '+test', 't': 'nearest', 'T': 'file', 'a': 'suite', 'R': 'last', 'v': 'visit' },
+  \ 'T': { 'name': '+terminal', 'n': 'new', 'k': 'kill', 'l': 'next', 'h': 'prev', 's': 'send' },
+  \ 'u': {
+  \   'name': '+toggle',
+  \   'n': 'numbers', 'r': 'rel numbers', 'w': 'wrap', 's': 'spell',
+  \   'h': 'hlsearch', 'b': 'background', 'c': 'cursorline', 'l': 'listchars',
+  \   'i': 'indent guides', 'x': 'context',
+  \   'u': 'undotree', 't': 'tagbar',
+  \ },
+  \ 's': { 'name': '+search', 'c': 'clear hl', 'r': 'replace word' },
+  \ 'y': {
+  \   'name': '+yank/clipboard',
+  \   'y': 'yank line', 'p': 'paste after', 'P': 'paste before',
+  \ },
+  \ 'c': {
+  \   'name': '+lsp/coc',
+  \   'n': 'rename symbol',
+  \   'a': 'code action',
+  \   'f': 'format',
+  \   's': 'outline',
+  \   'S': 'symbols',
+  \   'd': 'diagnostics',
+  \ },
+  \ 'r': { 'name': '+rest', 'r': 'rest query' },
+  \ 'q': { 'name': '+quickfix/quit', 'o': 'open', 'c': 'close', 'n': 'next', 'p': 'prev', 'q': 'quit all', 'Q': 'force quit all' },
+  \ 'l': { 'name': '+loclist',  'o': 'open', 'c': 'close', 'n': 'next', 'p': 'prev' },
+  \ 'd': { 'name': '+diff', 'g': 'diffget (diff mode)', 'p': 'diffput (diff mode)' },
+  \ 'x': { 'name': '+debug', 'x': 'reset', 'X': 'clear breakpoints', 'i': 'inspect', 'w': 'add watch' },
+  \ 'D': { 'name': '+database', 'u': 'toggle UI', 'f': 'find buffer' },
+  \ 'S': {
+  \   'name': '+session',
+  \   'S': 'save', 'L': 'load', 'd': 'delete', 'c': 'close', 'o': 'obsession', 't': 'startify',
+  \   'q': 'quit all', 'Q': 'force quit all',
+  \ },
+  \ 'm': { 'name': '+markdown', 'p': 'preview', 's': 'stop preview' },
   \ }
 
 if g:vimide_diagnostics !=# 'coc'
-  let g:which_key_map['a'] = { 'name': '+ale' }
+  let g:which_key_map['a'] = { 'name': '+ale', 'n': 'next', 'p': 'prev', 'f': 'fix', 'd': 'detail' }
 endif
 
 " =============================================================================
@@ -1036,8 +1136,8 @@ endif
 "
 " Teardown functions exist but are gated behind g:vimide_debug.
 " Limitation: <Plug>, inoremap, and nmap definitions cannot be removed at
-" runtime in Vim; teardown clears augroups and g: vars only. This is
-" intentional — Vim config is write-once, not transactional.
+" runtime in Vim; teardown clears augroups only. This is intentional —
+" Vim config is write-once, not transactional.
 " =============================================================================
 
 " --- Git ---------------------------------------------------------------------
@@ -1088,7 +1188,7 @@ endfunction
 call s:RegisterModule('git', {
   \ 'init':     function('s:git_init'),
   \ 'teardown': function('s:git_teardown'),
-  \ 'lazy':     '',
+  \ 'lazy':     'buf',
   \ })
 
 " --- LSP (coc.nvim) ----------------------------------------------------------
@@ -1105,18 +1205,19 @@ function! s:lsp_init() abort
   inoremap <silent><expr> <CR>
     \ coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<C-r>=coc#on_enter()\<CR>"
   inoremap <silent><expr> <C-Space> coc#refresh()
-  inoremap <silent> <M-k> <C-r>=CocActionAsync('showSignatureHelp')<CR>
+  inoremap <silent> <M-k> <C-\><C-o>:call CocActionAsync('showSignatureHelp')<CR>
 
-  nmap <silent> gd <Plug>(coc-definition)
-  nmap <silent> gD <Plug>(coc-declaration)
-  nmap <silent> gy <Plug>(coc-type-definition)
-  nmap <silent> gi <Plug>(coc-implementation)
-  nmap <silent> gr <Plug>(coc-references)
-  nnoremap <silent> K :call CocActionAsync('doHover')<CR>
+  call Map('n', 'gd', '<Plug>(coc-definition)',        { 'noremap': 0 })
+  call Map('n', 'gD', '<Plug>(coc-declaration)',       { 'noremap': 0 })
+  call Map('n', 'gy', '<Plug>(coc-type-definition)',   { 'noremap': 0 })
+  call Map('n', 'gi', '<Plug>(coc-implementation)',    { 'noremap': 0 })
+  call Map('n', 'gr', '<Plug>(coc-references)',        { 'noremap': 0 })
+  call Map('n', 'K',  ':call CocActionAsync("doHover")<CR>', {})
 
-  nmap <silent> <leader>rn <Plug>(coc-rename)
-  nmap <silent> <leader>ca <Plug>(coc-codeaction-cursor)
-  nmap <silent> <leader>cf <Plug>(coc-format)
+  call Map('n', '<leader>cn', '<Plug>(coc-rename)',            { 'noremap': 0 })
+  call Map('n', '<leader>ca', '<Plug>(coc-codeaction-cursor)', { 'noremap': 0 })
+  call Map('n', '<leader>cf', ':call CocAction("format")<CR>', {})
+  call Map('x', '<leader>cf', '<Plug>(coc-format-selected)',   { 'noremap': 0 })
 
   call MapGroup('<leader>c', {
     \ 's': ':CocList outline<CR>',
@@ -1124,10 +1225,10 @@ function! s:lsp_init() abort
     \ 'd': ':CocList diagnostics<CR>',
     \ }, {})
 
-  nmap <silent> ]g <Plug>(coc-diagnostic-next)
-  nmap <silent> [g <Plug>(coc-diagnostic-prev)
-  nmap <silent> ]e <Plug>(coc-diagnostic-next-error)
-  nmap <silent> [e <Plug>(coc-diagnostic-prev-error)
+  call Map('n', ']g', '<Plug>(coc-diagnostic-next)',       { 'noremap': 0 })
+  call Map('n', '[g', '<Plug>(coc-diagnostic-prev)',       { 'noremap': 0 })
+  call Map('n', ']e', '<Plug>(coc-diagnostic-next-error)', { 'noremap': 0 })
+  call Map('n', '[e', '<Plug>(coc-diagnostic-prev-error)', { 'noremap': 0 })
 
   call Augroup('LightlineCoc', [
     \ 'User CocStatusChange,CocDiagnosticChange silent call lightline#update()',
@@ -1136,13 +1237,12 @@ endfunction
 
 function! s:lsp_teardown() abort
   call Augroup('LightlineCoc', [])
-  if exists(':CocRestart') | silent! CocRestart | endif
 endfunction
 
 call s:RegisterModule('lsp', {
   \ 'init':     function('s:lsp_init'),
   \ 'teardown': function('s:lsp_teardown'),
-  \ 'lazy':     '',
+  \ 'lazy':     'buf',
   \ })
 
 " --- ALE (non-coc diagnostics) -----------------------------------------------
@@ -1178,8 +1278,8 @@ if g:vimide_diagnostics !=# 'coc'
       \ 'f': ':ALEFix<CR>',
       \ 'd': ':ALEDetail<CR>',
       \ }, {})
-    nmap <silent> ]a <Plug>(ale_next_wrap)
-    nmap <silent> [a <Plug>(ale_prev_wrap)
+    call Map('n', ']a', '<Plug>(ale_next_wrap)', { 'noremap': 0 })
+    call Map('n', '[a', '<Plug>(ale_prev_wrap)', { 'noremap': 0 })
   endfunction
 
   call s:RegisterModule('ale', {
@@ -1192,8 +1292,11 @@ endif
 
 function! s:debug_init() abort
   call plug#load('vimspector')
+  if !exists('*vimspector#Reset')
+    call Log('vimspector not available — run :PlugInstall', 'error') | return
+  endif
 
-  call MapGroup('<leader>d', {
+  call MapGroup('<leader>x', {
     \ 'x': ':call vimspector#Reset()<CR>',
     \ 'X': ':call vimspector#ClearBreakpoints()<CR>',
     \ 'i': ':call vimspector#BalloonEval()<CR>',
@@ -1343,8 +1446,8 @@ function! s:RunAction(action) abort
   let l:subs = {
     \ 'fp': shellescape(l:fp),
     \ 'dn': shellescape(fnamemodify(l:fp, ':h')),
-    \ 'fn': shellescape(expand('%:t')),
-    \ 'bn': shellescape(expand('%:t:r')),
+    \ 'fn': expand('%:t'),
+    \ 'bn': expand('%:t:r'),
     \ }
   let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:subs, submatch(1), submatch(0))', 'g')
   execute 'FloatermNew --autoclose=0 ' . l:cmd
@@ -1356,6 +1459,7 @@ endfunction
 
 function! s:HandleLargeFile() abort
   let l:size = getfsize(expand('<afile>:p'))
+  if l:size < 0 | return | endif
   if l:size > 10485760
     setlocal eventignore+=FileType bufhidden=unload undolevels=-1
     setlocal noundofile noswapfile syntax=off nowrap nocursorline norelativenumber
@@ -1394,7 +1498,8 @@ function! s:FlashYank() abort
   let l:vend   = getpos("']")
   if l:vstart[1] <= 0 || l:vend[1] <= 0 | return | endif
   if (l:vend[1] - l:vstart[1]) > 50 | return | endif
-  if v:event.regtype ==# 'V' || l:vend[2] >= 2147483647
+  " FIX: Use v:maxcol instead of the magic number 2147483647.
+  if v:event.regtype ==# 'V' || l:vend[2] >= v:maxcol
     let l:pat = '\%>' . (l:vstart[1] - 1) . 'l\%<' . (l:vend[1] + 1) . 'l'
   else
     let l:pat = '\%' . l:vstart[1] . 'l\%' . l:vstart[2] . 'c\_.*\%'
@@ -1409,17 +1514,15 @@ function! s:DoFlash(pat) abort
   call timer_start(250, {-> execute('silent! call matchdelete(' . l:id . ')', '')})
 endfunction
 
-" All event callbacks go through s:Safe() so one handler failure cannot
-" silently corrupt editor state or prevent other handlers from running.
 call Augroup('VimrcEvents', [
-  \ 'BufReadPre           * call s:Safe("HandleLargeFile", function("s:HandleLargeFile"))',
-  \ 'BufWritePre          * call s:Safe("StripTrailing",   function("s:StripTrailing"))',
-  \ 'BufWritePre          * call s:Safe("MkdirOnSave",     function("s:MkdirOnSave"))',
-  \ 'BufReadPost          * call s:Safe("RestoreCursor",   function("s:RestoreCursor"))',
-  \ 'TextYankPost         * call s:Safe("FlashYank",       function("s:FlashYank"))',
-  \ 'FocusGained,BufEnter * silent! checktime',
-  \ 'VimResized           * wincmd =',
-  \ 'TerminalOpen         * setlocal nonumber norelativenumber signcolumn=no',
+  \ 'BufReadPre  *             call s:Safe("HandleLargeFile", function("s:HandleLargeFile"))',
+  \ 'BufWritePre *             call s:Safe("StripTrailing",   function("s:StripTrailing"))',
+  \ 'BufWritePre *             call s:Safe("MkdirOnSave",     function("s:MkdirOnSave"))',
+  \ 'BufReadPost *             call s:Safe("RestoreCursor",   function("s:RestoreCursor"))',
+  \ 'TextYankPost *            call s:Safe("FlashYank",       function("s:FlashYank"))',
+  \ 'VimResized  *             wincmd =',
+  \ 'TerminalOpen *            setlocal nonumber norelativenumber signcolumn=no nospell',
+  \ 'FocusGained,BufEnter *   if !s:IsSpecialBuffer() | silent checktime | endif',
   \ ])
 
 " =============================================================================
@@ -1454,8 +1557,7 @@ call Augroup('FileTypeIndent', [
   \ 'FileType fortran                          setlocal ts=3 sw=3 expandtab',
   \ 'FileType cobol                            setlocal ts=4 sw=4 noexpandtab',
   \ 'FileType vhdl,verilog                     setlocal ts=2 sw=2 expandtab',
-  \ 'FileType markdown,text'
-  \   . ' setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak foldmethod=expr foldexpr=0',
+  \ 'FileType markdown,text    setlocal ts=4 sw=4 expandtab spell textwidth=80 wrap linebreak foldmethod=manual',
   \ 'FileType gitcommit                        setlocal spell textwidth=72',
   \ 'FileType tex                              setlocal ts=2 sw=2 expandtab spell',
   \ 'FileType rst                              setlocal ts=3 sw=3 expandtab spell',
@@ -1473,12 +1575,11 @@ call Augroup('FileTypeIndent', [
 " =============================================================================
 
 function! s:InitProjectRoot() abort
-  let l:markers = ['.git', '.svn', '.hg', 'package.json', 'Cargo.toml',
-    \ 'go.mod', 'Makefile', 'pyproject.toml', 'build.gradle', 'build.zig']
+  if empty(expand('%')) | return | endif
   let l:dir  = expand('%:p:h')
   let l:prev = ''
   while l:dir !=# l:prev
-    for l:m in l:markers
+    for l:m in s:root_markers
       if isdirectory(l:dir . '/' . l:m) || filereadable(l:dir . '/' . l:m)
         call SetState('project_root', l:dir)
         if haslocaldir() && getcwd(winnr()) ==# l:dir | return | endif
@@ -1503,11 +1604,11 @@ endfunction
 
 call RegisterTask('project:root', { 'run': function('s:InitProjectRoot') })
 call RegisterTask('lsp:restart',  { 'run': function('s:LspRestart') })
-call RegisterTask('project:init', { 'deps': ['project:root'] })
 
 function! s:VimInfo() abort
   echo '========== Vim IDE Info =========='
-  echo 'Version     : Vim ' . v:version/100 . '.' . v:version%100
+  echo printf('Version     : Vim %d.%d (v:version=%d)',
+    \ v:version/100, v:version%100, v:version)
   echo 'Config      : ' . $MYVIMRC
   echo 'Filetype    : ' . &filetype
   echo 'Theme       : ' . (exists('g:colors_name') ? g:colors_name : 'none') . ' (' . &background . ')'
@@ -1518,8 +1619,6 @@ function! s:VimInfo() abort
   echo 'smoothscroll: ' . (has('patch-9.0.0640') ? 'native' : 'unavailable')
   echo 'Lazy mode   : ' . (g:vimide_lazy_aggressive ? 'on' : 'off')
   echo 'Project root: ' . State('project_root')
-  " FIX #2: State('last_task') returns '' when unset; get() on a string with a
-  " dict key is undefined behaviour. Guard with an explicit type check.
   let l:lt = State('last_task')
   echo 'Last task   : ' . (type(l:lt) == type({}) ? get(l:lt, 'name', '(none)') : '(none)')
   echo '--- modules ---'
@@ -1559,11 +1658,12 @@ function! s:RenameFile(new) abort
   if l:old ==# l:new_abs
     call Log('Source and destination are the same', 'warn') | return
   endif
-  if rename(l:old, a:new) != 0
-    call Log('Rename failed: ' . a:new, 'error') | return
+  if rename(l:old, l:new_abs) != 0
+    call Log('Rename failed: ' . l:new_abs, 'error') | return
   endif
-  execute 'edit ' . fnameescape(a:new)
-  silent! execute 'bwipeout ' . fnameescape(l:old)
+  execute 'edit ' . fnameescape(l:new_abs)
+  let l:old_nr = bufnr(l:old)
+  if l:old_nr > 0 | silent! execute 'bwipeout ' . l:old_nr | endif
   call Log('Renamed to ' . a:new, 'info')
 endfunction
 
@@ -1583,7 +1683,7 @@ function! s:CheckCocSettings() abort
     \ 'diagnostic.virtualText', 'signature.enable', 'hover.autoHide',
     \ 'snippets.enable', 'coc.preferences.formatOnSaveFiletypes'
     \ ]
-  let l:missing = filter(copy(l:required), '!has_key(l:cfg, v:val)')
+  let l:missing = filter(copy(l:required), {_, v -> !has_key(l:cfg, v)})
   if empty(l:missing)
     call Log('coc-settings.json looks complete', 'info')
   else
@@ -1597,7 +1697,7 @@ call CreateCommand('FindProjectRoot',  function('s:InitProjectRoot'),  {})
 call CreateCommand('CheckCocSettings', function('s:CheckCocSettings'), {})
 call CreateCommand('Rename',           function('s:RenameFile'),       { 'nargs': 1, 'complete': 'file' })
 
-command! ReloadConfig source $MYVIMRC | call Log('Config reloaded', 'info')
+command! ReloadConfig source $MYVIMRC <bar> call Log('Config reloaded', 'info')
 
 if g:vimide_debug
   command! -nargs=1 ReloadModule   call s:ReloadModule(<q-args>)
@@ -1619,7 +1719,7 @@ if exists('$TMUX') && has('job')
 
   call Augroup('TmuxRename', [
     \ 'BufEnter * call s:TmuxRenameAsync()',
-    \ 'VimLeave * call job_start(["tmux", "set-window-option", "automatic-rename", "on"])',
+    \ 'VimLeave * call system("tmux set-window-option automatic-rename on")',
     \ ])
 endif
 
