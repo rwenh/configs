@@ -188,7 +188,7 @@ not follow the standard lang-LANG-KEY.el naming convention.")
                  (message "project-detect: pre-warmed %s" lang-key))
              (error
               (warn "project-detect: failed to pre-warm %s: %s"
-                    lang-key (error-message-string err)))))))))
+                    lang-key (error-message-string err))))))))))
 
 ;;;; ── Event hooks ─────────────────────────────────────────────────────────────
 (defun emacs-ide-detect-on-project-switch ()

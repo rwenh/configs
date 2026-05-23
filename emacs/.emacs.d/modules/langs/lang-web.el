@@ -1,10 +1,4 @@
 ;;; lang-web.el --- JavaScript / TypeScript IDE layer -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
-;;;   Also: tsx-ts-mode added to LSP hook and test runner registration.
-;;;         Node REPL registered with the REPL hub so C-c x r / s / b / d
-;;;         work in JS buffers.
-;;;         js-ts-mode file-fn added to test runner (was missing).
 ;;;
 ;;; Code:
 
@@ -54,7 +48,6 @@
   (setq typescript-indent-level 2))
 
 ;;;; ── REPL (Node) ─────────────────────────────────────────────────────────────
-;; Register with the REPL hub so C-c x r / s / b / d work uniformly.
 
 (defun emacs-ide-web-node-repl ()
   "Open a Node.js REPL."

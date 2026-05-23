@@ -1,7 +1,4 @@
 ;;; lang-lua.el --- Lua Language Support -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
-;;;   Also: lua-ts-mode added to LSP hook and REPL registration.
 ;;;
 ;;; Code:
 
@@ -13,7 +10,7 @@
   :formatter  "stylua"
   :test-cmd   "busted"
   :repl       "lua"
-  :modes      '(lua-mode))
+  :modes      '(lua-mode lua-ts-mode))
 
 (when (emacs-ide-dev-lang-enabled-p "lua")
 
@@ -32,7 +29,7 @@
   :after (lua-mode lsp-mode)
   :if    (and (bound-and-true-p emacs-ide-lsp-enable)
               (executable-find "lua-language-server"))
-  :hook  (lua-mode . lsp-deferred)
+  :hook  ((lua-mode lua-ts-mode) . lsp-deferred)
   :config
   ;; ── Hover display limits ─────────────────────────────────────────────────
   (when (boundp 'lsp-lua-hover-enumsLimit)
@@ -42,7 +39,6 @@
   (when (boundp 'lsp-lua-hover-viewStringMax)
     (setq lsp-lua-hover-viewStringMax 1000))
   ;; ── Runtime version ──────────────────────────────────────────────────────
-  ;; Read from lang-settings.lua.runtime-version if available; fall back to 5.4.
   (when (boundp 'lsp-lua-runtime-version)
     (setq lsp-lua-runtime-version
           (let* ((settings (and (fboundp 'emacs-ide-dev--config-lang-settings)
@@ -61,7 +57,8 @@
   (when (executable-find "stylua")
     (unless (assq 'stylua apheleia-formatters)
       (push '(stylua "stylua" "-") apheleia-formatters))
-    (setf (alist-get 'lua-mode apheleia-mode-alist) 'stylua)))
+    (setf (alist-get 'lua-mode apheleia-mode-alist) 'stylua)
+    (setf (alist-get 'lua-ts-mode apheleia-mode-alist) 'stylua)))
 
 ;;;; ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -77,10 +74,11 @@
 
 (with-eval-after-load 'tools-repl
   (when (fboundp 'emacs-ide-repl-register)
-    (emacs-ide-repl-register 'lua-mode
-      :launch         #'emacs-ide-lua-repl
-      :buffer-name    "*lua-repl*"
-      :send-region-fn nil)))
+    (dolist (mode '(lua-mode lua-ts-mode))
+      (emacs-ide-repl-register mode
+        :launch         #'emacs-ide-lua-repl
+        :buffer-name    "*lua-repl*"
+        :send-region-fn nil))))
 
 ;;;; ── DAP ─────────────────────────────────────────────────────────────────────
 
@@ -107,9 +105,10 @@
 
 (with-eval-after-load 'tools-test-runner-registry
   (when (fboundp 'emacs-ide-test-register-runner)
-    (emacs-ide-test-register-runner 'lua-mode
-      :file-fn    #'emacs-ide-lua-test-file
-      :project-fn #'emacs-ide-lua-test-project)))
+    (dolist (mode '(lua-mode lua-ts-mode))
+      (emacs-ide-test-register-runner mode
+        :file-fn    #'emacs-ide-lua-test-file
+        :project-fn #'emacs-ide-lua-test-project))))
 
 ) ;; end lua-enabled
 

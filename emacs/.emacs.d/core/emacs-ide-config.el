@@ -75,7 +75,6 @@ runtime config changes should register handlers here.")
 
     (debug    (enable . t))
 
-    ;; FIX #28: sections previously absent from defaults
     (git
      (enable . t) (auto-revert . t) (gutter . t)
      (gutter-update-interval . 0.3) (fill-column . 72)
@@ -240,10 +239,6 @@ Conversion rules (in order):
                ((and (= indent 4) sec sub)
                 (cond
 
-                 ;; FIX #1A ── "- value": list item appended to sub's list.
-                 ;; This was the missing branch that caused workspace.defaults,
-                 ;; security.auth-sources, and project.search-paths to be
-                 ;; silently dropped on every startup.
                  ((string-prefix-p "- " trim)
                   (let* ((v   (emacs-ide-config-parse-value
                                (string-trim (substring trim 2))))
@@ -253,7 +248,6 @@ Conversion rules (in order):
                       (setcdr sbe (append (cdr sbe) (list v))))))
 
                  ;; "key:" with nothing after → 3rd-level subsection (subsub).
-                 ;; FIX #1B: track subsub so indent-6 items land correctly.
                  ((string-match
                    "^\\([a-z][a-z0-9_-]*\\):[ \t]*$" trim)
                   (setq subsub (intern (match-string 1 trim)))
@@ -282,9 +276,6 @@ Conversion rules (in order):
                ((and (= indent 6) sec sub)
                 (cond
 
-                 ;; FIX #1B ── "- value" under subsub.
-                 ;; Old code appended directly to sub, orphaning the values.
-                 ;; Now resolves the correct subsub alist entry.
                  ((and subsub (string-prefix-p "- " trim))
                   (let* ((v    (emacs-ide-config-parse-value
                                 (string-trim (substring trim 2))))
@@ -310,7 +301,7 @@ Conversion rules (in order):
                                       (list (cons k v)))))))))))
 
           (forward-line 1))
-        (nreverse data)))))
+        (nreverse data))))))
 
 ;;;; ── Variable declarations ───────────────────────────────────────────────────
 
@@ -394,8 +385,6 @@ git.enable: false, etc. had no effect."
                             lsp 'enable       t)
     (emacs-ide-config--set 'emacs-ide-lsp-enable-inlay-hints
                             lsp 'inlay-hints  t)
-    ;; FIX #6 (partial): idle-delay, semantic-tokens, lens, sideline,
-    ;; breadcrumb were parsed but never applied before this version.
     (emacs-ide-config--set 'emacs-ide-lsp-idle-delay
                             lsp 'idle-delay   0.3)
     (emacs-ide-config--set 'emacs-ide-lsp-semantic-tokens
@@ -422,7 +411,6 @@ git.enable: false, etc. had no effect."
                             perf 'gc-threshold 16777216))
 
   ;; ── features ─────────────────────────────────────────────────────────────
-  ;; FIX #6 (partial): which-key and modeline-height added.
   (when-let ((features (alist-get 'features cfg)))
     (emacs-ide-config--set 'emacs-ide-feature-dashboard
                             features 'dashboard      t)
@@ -441,7 +429,6 @@ git.enable: false, etc. had no effect."
                             theme 'light-hour  7))
 
   ;; ── git ──────────────────────────────────────────────────────────────────
-  ;; FIX #6 (partial): gutter and auto-revert added.
   (when-let ((git (alist-get 'git cfg)))
     (emacs-ide-config--set 'emacs-ide-git-enable
                             git 'enable      t)
@@ -451,9 +438,6 @@ git.enable: false, etc. had no effect."
                             git 'auto-revert t))
 
   ;; ── telemetry ────────────────────────────────────────────────────────────
-  ;; FIX #45: config.yml uses `enabled' (with -d) while every other section
-  ;; uses `enable'.  Both are accepted here for backward compatibility.
-  ;; `enabled' takes precedence when both are present.
   (when-let ((telemetry (alist-get 'telemetry cfg)))
     (let* ((with-d    (assoc 'enabled telemetry))  ;; enabled (legacy)
            (without-d (assoc 'enable  telemetry))  ;; enable  (preferred)
@@ -509,6 +493,9 @@ This is the ONLY code path that fires the reload hook."
   (when (emacs-ide-config-load)
     (run-hooks 'emacs-ide-config-reload-hook))
   (message "✓ Config reloaded (cache cleared, hooks fired)"))
+
+(defalias 'emacs-ide-reload-config #'emacs-ide-config-reload
+  "Safe config-reload alias used by keybindings.el C-c R.")
 
 ;;;; ── Public accessors ────────────────────────────────────────────────────────
 

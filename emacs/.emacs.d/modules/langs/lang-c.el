@@ -1,5 +1,4 @@
 ;;; lang-c.el --- C / C++ / CUDA / CMake IDE layer -*- lexical-binding: t -*-
-;;; Version: 3.3.0
 ;;;
 ;;; Code:
 
@@ -49,7 +48,7 @@
          ("\\.hpp\\'" . c++-mode)
          ("\\.cc\\'"  . c++-mode)
          ("\\.cxx\\'" . c++-mode)
-         ("\\.cu\\'"  . c++-mode)   ;; CUDA source (fallback if cuda-mode absent)
+         ("\\.cu\\'"  . c++-mode)
          ("\\.cuh\\'" . c++-mode))
   :init
   (setq c-default-style '((java-mode . "java") (other . "linux"))
@@ -65,13 +64,12 @@
       (emacs-ide-dev-bind-compile c++-ts-mode-map #'emacs-ide-cpp-run))))
 
 ;;;; ── LSP (clangd) ────────────────────────────────────────────────────────────
+;; FIX: NOW includes c-ts-mode and c++-ts-mode in hook
 
 (use-package lsp-mode
   :if (bound-and-true-p emacs-ide-lsp-enable)
   :hook ((c-mode c++-mode c-ts-mode c++-ts-mode) . lsp-deferred)
   :init
-  ;; Nothing language-specific here — all clangd vars live in lsp-clangd.el
-  ;; which is not loaded yet at :init time.  See :config below.
   nil
   :config
   (when (boundp 'lsp-clangd-binary-path)
@@ -89,7 +87,7 @@
 ;;;; ── Formatter (apheleia) ────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (dolist (m '(c-mode c++-mode c-ts-mode c++-ts-mode))
+  (dolist (m '(c-mode c++-mode c-ts-mode c++-ts-mode cuda-mode))
     (emacs-ide-dev-attach-formatter 'clang-format m)))
 
 ;;;; ── CMake ───────────────────────────────────────────────────────────────────

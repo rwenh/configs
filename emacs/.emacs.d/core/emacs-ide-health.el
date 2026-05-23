@@ -1,6 +1,4 @@
 ;;; emacs-ide-health.el --- Fast Health Checks -*- lexical-binding: t -*-
-;;; Version: 3.2.2 | FIX: Added emacs-ide-health-status defalias — was
-;;;           referenced in README, spot-check, and all docs but never defined.
 ;;; Code:
 
 (require 'cl-lib)
@@ -104,7 +102,7 @@ This is the singular form referenced by the ERT test suite."
              (status (plist-get plist :status))
              (msg    (plist-get plist :message))
              (icon   (pcase status ('ok "✓") ('warning "⚠") ('error "✗") (_ "?"))))
-        (princ (format "%s %-20s %s\n" icon key (or msg ""))))))
+        (princ (format "%s %-20s %s\n" icon key (or msg "")))))))
 
 ;; Alias: emacs-ide-health-status is the public-facing name documented
 ;; in the README, spot-check, and all user-visible help text.
