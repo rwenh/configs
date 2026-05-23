@@ -1,12 +1,13 @@
 -- lua/core/util/mason.lua — Mason path resolution helpers
 --
--- Eliminates the local mason_bin() / mason_pkg() helpers that were
--- independently defined inside dap.lua's config() closure and referenced
--- implicitly in several lang specs.
---
 
 local M = {}
 
+--- Resolve a binary to its absolute path.
+-- Resolution order:
+--   1. PATH (via exepath) — honours system-wide installs and symlinks.
+--   2. mason/bin/<name>   — fallback for Mason-installed binaries.
+--
 ---@param name string  binary name (e.g. "codelldb", "dlv", "debugpy")
 ---@return string      absolute path (may not exist — callers must check)
 function M.bin(name)
@@ -15,7 +16,8 @@ function M.bin(name)
   return vim.fn.stdpath("data") .. "/mason/bin/" .. name
 end
 
----@param rel string  path relative to mason/packages/ (e.g. "js-debug-adapter/js-debug/src/dapDebugServer.js")
+---@param rel string  path relative to mason/packages/
+---                   (e.g. "js-debug-adapter/js-debug/src/dapDebugServer.js")
 ---@return string
 function M.pkg(rel)
   return vim.fn.stdpath("data") .. "/mason/packages/" .. rel
@@ -27,16 +29,28 @@ function M.packages_root()
   return vim.fn.stdpath("data") .. "/mason/packages"
 end
 
---- Uses executable() only — filereadable() without the executable bit
---- can match non-runnable files and produce a silent adapter failure.
---- For shell scripts (e.g. debugger.sh) callers should use
---- vim.fn.filereadable() directly and check the path themselves.
----
----@param name string
+--- Check whether a Mason-installed binary is present and executable.
+--
+-- Uses executable() only — NOT filereadable().
+---@param name string  binary name passed to M.bin()
 ---@return boolean
 function M.bin_ok(name)
   local p = M.bin(name)
   return vim.fn.executable(p) == 1
+end
+
+--- Check whether a Mason-installed shell script exists and is readable.
+--
+-- filereadable() is intentionally used here because the script is invoked
+-- by its absolute path from an adapter config, not run directly from a
+-- shell; the caller is responsible for ensuring the correct interpreter
+-- is prepended to the command when needed.
+--
+---@param rel string  path relative to mason/packages/
+---                   (e.g. "elixir-ls/debugger.sh")
+---@return boolean
+function M.script_ok(rel)
+  return vim.fn.filereadable(M.pkg(rel)) == 1
 end
 
 return M

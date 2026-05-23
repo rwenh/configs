@@ -219,8 +219,7 @@ M.quotes = {
 }
 
 -- ── Weights ───────────────────────────────────────────────────────────────────
--- craft and debug are the most immediately relevant while coding.
--- They appear twice as often in weighted selection.
+
 M._weights = {
   craft      = 2,
   debug      = 2,
@@ -230,11 +229,15 @@ M._weights = {
   systems    = 1,
 }
 
--- ── Helpers ───────────────────────────────────────────────────────────────────
--- Seed once at module load.  Calling math.randomseed() before every random()
--- call was redundant and counter-productive: multiple calls within the same
--- second share an identical seed, reducing effective randomness.
-math.randomseed(os.time() + (vim.fn.getpid and vim.fn.getpid() or 0))
+-- ── RNG seed ──────────────────────────────────────────────────────────────────
+-- Fallback: headless / embedded environments where vim.uv is unavailable.
+--   Multiply os.time() by 1000 and add pid for slightly better spread than
+--   the original bare os.time() + pid.
+do
+  local seed = (vim.uv and vim.uv.hrtime and vim.uv.hrtime())
+    or (os.time() * 1000 + (vim.fn.getpid and vim.fn.getpid() or 0))
+  math.randomseed(seed)
+end
 
 --- Return a random quote, optionally filtered by category.
 ---@param category string?
@@ -291,7 +294,7 @@ function M.session()
   end
 
   local q = M.weighted()
-  -- vim.g cannot store tables; store fields separately
+  -- vim.g cannot store tables; store fields separately.
   vim.g.nvim_session_quote_text     = q.text
   vim.g.nvim_session_quote_author   = q.author
   vim.g.nvim_session_quote_category = q.category

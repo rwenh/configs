@@ -15,11 +15,32 @@ return {
     "iamcco/markdown-preview.nvim",
     cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
     ft    = { "markdown" },
+
     build = function(plugin)
-      if vim.fn.executable("npm") == 1 then
-        vim.fn.system("cd " .. plugin.dir .. "/app && npm install --legacy-peer-deps")
+      if vim.fn.executable("npm") ~= 1 then
+        vim.notify(
+          "[markdown-preview] npm not found — browser preview will not work.\n"
+          .. "Install npm (nodejs) and run :Lazy build markdown-preview.nvim.",
+          vim.log.levels.WARN
+        )
+        return
+      end
+
+      local out = vim.fn.system(
+        "cd " .. vim.fn.shellescape(plugin.dir) .. "/app"
+        .. " && npm install --legacy-peer-deps"
+      )
+
+      if vim.v.shell_error ~= 0 then
+        vim.notify(
+          "[markdown-preview] npm install failed — browser preview will not work.\n"
+          .. "Run :Lazy build markdown-preview.nvim to retry.\n"
+          .. "npm output:\n" .. vim.trim(out),
+          vim.log.levels.WARN
+        )
       end
     end,
+
     init = function()
       vim.g.mkdp_filetypes  = { "markdown" }
       vim.g.mkdp_auto_start = 0   -- don't auto-open on buffer enter

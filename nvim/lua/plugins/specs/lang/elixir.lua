@@ -1,6 +1,6 @@
 -- lua/plugins/specs/lang/elixir.lua — Elixir development
 --
--- LSP:    elixirls via lsp.lua (canonical; elixir-tools disabled below)
+-- LSP:    elixirls via lsp.lua (canonical)
 -- Format: mix format via lsp.lua conform
 -- Lint:   none configured (credo is a popular linter — see note below)
 -- DAP:    elixir-ls debugger via dap.lua
@@ -12,19 +12,20 @@
 --   <leader>'t    → runner.lua (mix test from project root)
 --   Use neotest for interactive TDD; <leader>ext for quick full runs.
 --
--- NOTE: credo linting is not configured.
---       To add it: install credo (mix escript.install hex credo), then add
---       an nvim-lint optional spec here:
---         lint.linters_by_ft.elixir = { "credo" }
---
 
 local shared = require("plugins.specs.lang.shared")
+
 return {
   -- ── elixir-tools ─────────────────────────────────────────────────────────
   {
     "elixir-tools/elixir-tools.nvim",
     ft           = { "elixir", "eex", "heex", "surface" },
     dependencies = { "nvim-lua/plenary.nvim" },
+
+    cond = function()
+      return vim.g.elixir_use_nextls == true
+    end,
+
     config = function()
       local ok, elixir = pcall(require, "elixir")
       if not ok then
@@ -33,14 +34,18 @@ return {
       end
       pcall(function()
         elixir.setup({
-          nextls   = { enable = vim.g.elixir_use_nextls == true },
+          -- elixir-ls is managed by lsp.lua; disable it here to avoid
+          -- double-attachment when elixir-tools is active.
           elixirls = { enable = false },
+          nextls   = { enable = true },
         })
       end)
     end,
   },
 
   -- ── Keymaps ────────────────────────────────────────────────────────────────
+  -- These keymaps use toggleterm directly and do not depend on elixir-tools,
+  -- so they are available in the default setup regardless of the nextls flag.
 
   {
     "akinsho/toggleterm.nvim",

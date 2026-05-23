@@ -69,16 +69,22 @@ return {
                             or vim.g.ts_auto_install == true),
       sync_install   = false,
 
+      --
+      -- The three vim-parser guards now form a consistent policy:
+      --   config()           clears the highlights query  on 0.11 only
+      --   ignore_install     blocks auto_install           on < 0.12 only
+      --   highlight.disable  suppresses highlighting       on < 0.12 only
       ignore_install = nvim_012 and {} or { "vim" },
 
       highlight = {
         enable  = true,
         disable = function(lang, buf)
-          -- Fast path: already determined to be large.
+          -- Fast path: already determined to be a large file.
           if vim.b[buf] and vim.b[buf].large_file then return true end
 
           if vim.b[buf] ~= nil and vim.b[buf]._ts_size_checked then
-            return (vim.b[buf]._ts_large == true) or lang == "vim"
+            return (vim.b[buf]._ts_large == true)
+              or (not nvim_012 and lang == "vim")
           end
 
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
@@ -89,7 +95,7 @@ return {
           vim.b[buf]._ts_large        = is_large and true or false
 
           if is_large then return true end
-          return lang == "vim"
+          return not nvim_012 and lang == "vim"
         end,
         additional_vim_regex_highlighting = false,
       },
@@ -113,7 +119,7 @@ return {
         },
       },
 
-      -- (advanced.lua) is the canonical rainbow implementation.
+      -- advanced.lua is the canonical rainbow implementation.
       -- Enabling it here too would cause double-highlighting.
       rainbow = { enable = false },
 
