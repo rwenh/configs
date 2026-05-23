@@ -1,13 +1,7 @@
--- ~/.config/nvim/init.lua — v2.3.16 entry point
+-- ~/.config/nvim/init.lua — v2.4.1 entry point
 --
--- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → hud
+-- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → highlights
 --
--- New modules added in the calibration pass:
---   lua/core/util/buf_keymap.lua  — shared buffer-local keymap registration
---   lua/core/util/mason.lua       — shared Mason path resolution
---   lua/core/util/icons.lua       — shared Nerd Font icon constants
---   lua/core/rain.lua             — Matrix rain engine (extracted from ui.lua)
---   lua/plugins/specs/lang/shared.lua — shared web filetype lists
 
 -- 1. Bootstrap lazy.nvim + leader keys + version stamp (must be first)
 require("core.bootstrap")
@@ -42,9 +36,9 @@ end
 -- 7. Theme (after plugins so colorscheme plugins are available)
 require("core.theme").setup()
 
--- 8. HUD accent overrides (applied after colorscheme; also auto-reapplied
---    on every ColorScheme event via the autocmd in core/hud.lua)
-pcall(function() require("core.hud").apply() end)
+-- 8. Highlight overrides — applied after colorscheme; also auto-reapplied
+--    on every ColorScheme event via the autocmd in core/highlights.lua.
+pcall(function() require("core.highlights").apply() end)
 
 -- 9. Startup stats — hooked to LazyDone so it fires after all plugins are
 --    fully initialised.

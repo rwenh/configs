@@ -1,26 +1,17 @@
 -- lua/plugins/specs/lang/zig.lua — Zig language support
 --
--- LSP:    zls via lsp.lua
--- Format: zigfmt via conform (this file)
--- DAP:    codelldb/lldb — references dap.lua's registered adapter
--- Test:   zig build test via runner.lua + build keymaps here
---
 
 local shared = require("plugins.specs.lang.shared")
-return {
-  -- If vim.g.zig_fmt_autosave causes issues with a future zig.vim install,
-  -- add it back here; for now the setting is meaningless without the plugin.
 
-  -- ── Conform: zigfmt ────────────────────────────────────────────────────────
+return {
+  -- ── Conform: zigfmt custom config ──────────────────────────────────────────
 
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters_by_ft     = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.zig = { "zigfmt" }
-      opts.formatters            = opts.formatters or {}
-      opts.formatters.zigfmt     = {
+      opts.formatters        = opts.formatters or {}
+      opts.formatters.zigfmt = {
         command = "zig",
         args    = { "fmt", "--stdin" },
         stdin   = true,
@@ -110,8 +101,8 @@ return {
       {
         "<leader>zc",
         function()
-          if vim.fn.executable("zig") ~= 1 then
-            vim.notify("[zig] zig not found in PATH", vim.log.levels.ERROR)
+          local exec = require("core.util.exec")
+          if not exec.require_bin("zig", "See https://ziglang.org/download/") then
             return
           end
           require("core.util.term").float(

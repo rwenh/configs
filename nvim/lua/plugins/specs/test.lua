@@ -7,9 +7,6 @@ return {
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-treesitter/nvim-treesitter",
-      -- Core adapters with no dedicated lang spec kept as hard deps.
-      -- Adapters owned by lang specs (rust, go, rspec, elixir, vitest,
-      -- jest, java) are listed here for installation but loaded optionally.
       "nvim-neotest/neotest-python",
       "rouge8/neotest-rust",
       "nvim-neotest/neotest-go",
@@ -66,7 +63,7 @@ return {
         callback = function(e)
           if _rust_registered then return end
           local client = vim.lsp.get_client_by_id(e.data.client_id)
-          if not client or client.name ~= "rust_analyzer" then return end
+          if not client or client.name ~= "rust-analyzer" then return end
 
           vim.schedule(function()
             local ok, rust_adapter = pcall(function()
@@ -74,7 +71,7 @@ return {
             end)
 
             if not ok or not rust_adapter then
-              vim.notify("[neotest] rust adapter failed to load after rust_analyzer attach",
+              vim.notify("[neotest] rust adapter failed to load after rust-analyzer attach",
                 vim.log.levels.WARN)
               return
             end
@@ -113,11 +110,9 @@ return {
             vim.log.levels.WARN)
           return "npm test --"
         end
-        -- Use current buffer's directory for root resolution.
         local buf_dir = vim.fn.expand("%:p:h")
         local root    = (ok_path and path.find_root(buf_dir)) or vim.fn.getcwd()
         local cmd     = runner.detect_js_test_cmd(root)
-        -- bun invokes its test runner directly; no "--" separator needed.
         return cmd == "bun test" and cmd or (cmd .. " --")
       end
 
@@ -129,13 +124,11 @@ return {
         if ok and adapter then
           table.insert(adapters, adapter)
         else
-          vim.schedule(function()
-            vim.notify(
-              "[neotest] adapter not loaded: " .. name
+          vim.notify(
+            "[neotest] adapter not loaded: " .. name
               .. "\nRun :Lazy install to ensure the adapter plugin is installed.",
-              vim.log.levels.WARN
-            )
-          end)
+            vim.log.levels.WARN
+          )
         end
       end
 

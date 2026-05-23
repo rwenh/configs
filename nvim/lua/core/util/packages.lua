@@ -20,11 +20,7 @@ M.lspconfig = {
   "clangd", "gopls", "solargraph",
   "kotlin_language_server",
   "zls", "tailwindcss", "elixirls",
-  "fortls", "sqls", "jdtls",
-  -- rust_analyzer: managed by rustaceanvim — do NOT add here.
-  -- typescript-language-server: managed by typescript-tools — do NOT add here.
-  -- cobol_ls: not in Mason registry; binary-checked at runtime in lsp.lua.
-  -- vhdl_ls:  not in Mason registry; binary-checked at runtime in lsp.lua.
+  "fortls", "sqls",
 }
 
 -- ── Mason registry package names ─────────────────────────────────────────────
@@ -37,14 +33,11 @@ M.mason = {
     "kotlin-language-server",
     "tailwindcss-language-server",
     "zls", "fortls", "sqls", "jdtls",
-    -- "rust_hdl": vhdl_ls; also: cargo install vhdl_ls
-    -- cobol-language-server: NOT in Mason registry.
-    --   Install manually: npm i -g @broadcommfd/cobol-language-support
   },
   dap = {
     "debugpy", "codelldb", "delve",
     "js-debug-adapter", "java-debug-adapter", "java-test",
-    "elixir-ls",   -- elixir-ls includes the DAP debugger
+    "elixir-ls",
   },
   formatters = {
     "stylua", "prettier", "shfmt",

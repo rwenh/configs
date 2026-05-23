@@ -1,13 +1,7 @@
 -- lua/plugins/specs/lang/cobol.lua — COBOL development
 --
--- LSP:    cobol-language-server (binary check in lsp.lua optional servers)
--- Format: none (no standard COBOL formatter available via Mason)
--- DAP:    none (no COBOL debugger support in this config)
--- Test:   none (no standard COBOL unit-test framework; see runner.lua INFO)
---
--- cobol-language-server is NOT in the Mason registry.
--- Install manually: npm i -g @broadcommfd/cobol-language-support
---
+
+local shared = require("plugins.specs.lang.shared")
 
 return {
   -- ── Build keymaps ──────────────────────────────────────────────────────────
@@ -56,38 +50,42 @@ return {
   },
 
   -- ── LuaSnip snippets ────────────────────────────────────────────────────────
+
   {
     "L3MON4D3/LuaSnip",
     optional = true,
-    ft = "cobol",
-    config = function()
-      local ok, ls = pcall(require, "luasnip")
-      if not ok then return end
-      local s, t, i = ls.snippet, ls.text_node, ls.insert_node
-      ls.add_snippets("cobol", {
-        s("skeleton", {
-          t({ "       IDENTIFICATION DIVISION.", "       PROGRAM-ID. " }),
-          i(1, "PROGRAM-NAME"), t("."),
-          t({ "", "       ENVIRONMENT DIVISION.", "",
-              "       DATA DIVISION.", "       WORKING-STORAGE SECTION.", "       01  " }),
-          i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
-          t({ "", "", "       PROCEDURE DIVISION.", "       MAIN-PARA.", "           " }),
-          i(0),
-          t({ "", "           STOP RUN." }),
-        }),
-        s("if", {
-          t("           IF "), i(1, "CONDITION"),
-          t({ "", "               " }), i(2, "CONTINUE"),
-          t({ "", "           END-IF" }),
-        }),
-        s("perform", {
-          t("           PERFORM "), i(1, "PARA-NAME"),
-          t(" UNTIL "), i(0, "CONDITION"),
-        }),
-        s("display", {
-          t('           DISPLAY "'), i(1, "message"), t('"'),
-        }),
-      })
+    ft       = "cobol",
+    config   = function()
+      require("core.util.snippets").load("cobol", function(s, t, i, _, _ref)
+        return {
+          s("skeleton", {
+            t({ "       IDENTIFICATION DIVISION.", "       PROGRAM-ID. " }),
+            i(1, "PROGRAM-NAME"), t("."),
+            t({ "", "       ENVIRONMENT DIVISION.", "",
+                "       DATA DIVISION.", "       WORKING-STORAGE SECTION.", "       01  " }),
+            i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
+            t({ "", "", "       PROCEDURE DIVISION.", "       MAIN-PARA.", "           " }),
+            i(0),
+            t({ "", "           STOP RUN." }),
+          }),
+          s("if", {
+            t("           IF "), i(1, "CONDITION"),
+            t({ "", "               " }), i(2, "CONTINUE"),
+            t({ "", "           END-IF" }),
+          }),
+          s("perform", {
+            t("           PERFORM "), i(1, "PARA-NAME"),
+            t(" UNTIL "), i(0, "CONDITION"),
+          }),
+          s("display", {
+            t('           DISPLAY "'), i(1, "message"), t('"'),
+          }),
+        }
+      end)
     end,
   },
+
+  -- ── Treesitter ─────────────────────────────────────────────────────────────
+
+  shared.treesitter({ "cobol" }),
 }

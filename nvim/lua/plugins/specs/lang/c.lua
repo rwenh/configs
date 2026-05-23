@@ -1,10 +1,8 @@
 -- lua/plugins/specs/lang/c.lua — C language support
 --
--- NOTE: clangd_extensions covers both C and C++ (ft = { "c", "cpp" }).
---       C++ users: see cpp.lua for CMake tooling.
---
 
 local shared = require("plugins.specs.lang.shared")
+
 return {
   -- ── clangd extensions (AST / inlay hints) — covers C and C++ ─────────────
 
@@ -38,28 +36,6 @@ return {
     end,
   },
 
-  -- ── Conform ────────────────────────────────────────────────────────────────
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = function(_, opts)
-      opts.formatters_by_ft     = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.c   = { "clang-format" }
-    end,
-  },
-
-  -- ── nvim-lint ──────────────────────────────────────────────────────────────
-  {
-    "mfussenegger/nvim-lint",
-    optional = true,
-    init = function()
-      if vim.fn.executable("clang-tidy") ~= 1 then return end
-      local ok, lint = pcall(require, "lint")
-      if not ok then return end
-      lint.linters_by_ft.c = { "clang-tidy" }
-    end,
-  },
-
   shared.treesitter({ "c" }),
 
   -- ── Build keymaps ──────────────────────────────────────────────────────────
@@ -69,11 +45,8 @@ return {
       {
         "<leader>cb",
         function()
-          if vim.fn.executable("gcc") ~= 1 then
-            vim.notify("[c] gcc not found — install gcc to build C files",
-              vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("gcc", "sudo zypper in gcc") then return end
           local file  = vim.fn.expand("%:p")
           local exe   = vim.fn.expand("%:p:r")
           local flags = vim.g.c_build_flags or "-Wall -Wextra -g"
@@ -97,10 +70,8 @@ return {
       {
         "<leader>csy",
         function()
-          if vim.fn.executable("gcc") ~= 1 then
-            vim.notify("[c] gcc not found", vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("gcc", "sudo zypper in gcc") then return end
           require("core.util.term").float(
             "gcc -Wall -Wextra -fsyntax-only "
             .. vim.fn.shellescape(vim.fn.expand("%:p"))
@@ -125,24 +96,14 @@ return {
   },
 
   -- ── LuaSnip snippets ───────────────────────────────────────────────────────
+
   {
     "L3MON4D3/LuaSnip",
     optional = true,
     ft       = "c",
     config   = function()
-      local ok, ls = pcall(require, "luasnip")
-      if not ok then return end
-
-      local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
-
-      local function ref(n, default)
-        return f(function(args)
-          return (args[n] and args[n][1] ~= "") and args[n][1] or (default or "")
-        end, { n })
-      end
-
-      pcall(function()
-        ls.add_snippets("c", {
+      require("core.util.snippets").load("c", function(s, t, i, _, ref)
+        return {
           s("main", {
             t({ "#include <stdio.h>", "#include <stdlib.h>", "",
                 "int main(int argc, char *argv[]) {", "    " }),
@@ -171,8 +132,9 @@ return {
             t({ ") {", '    fprintf(stderr, "malloc failed\\n");',
                 "    return NULL;", "}" }),
           }),
-        })
+        }
       end)
     end,
   },
+
 }

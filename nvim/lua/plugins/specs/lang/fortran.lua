@@ -1,26 +1,19 @@
 -- lua/plugins/specs/lang/fortran.lua — Fortran development
 --
--- LSP:    fortls via lsp.lua optional servers table
--- Format: fprettify via conform (this file)
--- DAP:    none configured — gdb/codelldb for gfortran binaries is a future
---         enhancement. Use <leader>ftb to build and run interactively.
--- Test:   none — no standard Fortran unit-test framework; see runner.lua info.
---
 
 local shared = require("plugins.specs.lang.shared")
+
 return {
-  -- ── Conform: fprettify ─────────────────────────────────────────────────────
+  -- ── Conform: fprettify custom config ──────────────────────────────────────
+  -- This spec only provides the custom formatter invocation arguments.
 
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters_by_ft         = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.fortran = { "fprettify" }
-      opts.formatters               = opts.formatters or {}
-      opts.formatters.fprettify     = {
+      opts.formatters           = opts.formatters or {}
+      opts.formatters.fprettify = {
         command = "fprettify",
-        -- --stdout (>= 0.3.7) writes result to stdout; stdin provides input.
         args    = { "--indent", "2", "--stdout", "-" },
         stdin   = true,
       }
@@ -36,8 +29,8 @@ return {
     "akinsho/toggleterm.nvim",
     keys = (function()
       local function build_and_run(file)
-        if vim.fn.executable("gfortran") ~= 1 then
-          vim.notify("[fortran] gfortran not found", vim.log.levels.ERROR)
+        local exec = require("core.util.exec")
+        if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
           return
         end
         local exe = vim.fn.tempname()
@@ -60,8 +53,8 @@ return {
         {
           "<leader>ftc",
           function()
-            if vim.fn.executable("gfortran") ~= 1 then
-              vim.notify("[fortran] gfortran not found", vim.log.levels.ERROR)
+            local exec = require("core.util.exec")
+            if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
               return
             end
             require("core.util.term").float(
@@ -83,24 +76,14 @@ return {
   },
 
   -- ── LuaSnip snippets ───────────────────────────────────────────────────────
+
   {
     "L3MON4D3/LuaSnip",
     optional = true,
     ft       = "fortran",
     config   = function()
-      local ok, ls = pcall(require, "luasnip")
-      if not ok then return end
-
-      local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
-
-      local function ref(n, default)
-        return f(function(args)
-          return (args[n] and args[n][1] ~= "") and args[n][1] or (default or "")
-        end, { n })
-      end
-
-      pcall(function()
-        ls.add_snippets("fortran", {
+      require("core.util.snippets").load("fortran", function(s, t, i, _, ref)
+        return {
           s("program", {
             t("program "), i(1, "name"),
             t({ "", "  implicit none", "  " }), i(2),
@@ -128,7 +111,7 @@ return {
             t({ "", "  implicit none", "  " }), i(0),
             t({ "", "end module " }), ref(1, "name"),
           }),
-        })
+        }
       end)
     end,
   },

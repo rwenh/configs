@@ -258,10 +258,10 @@ return {
     "folke/trouble.nvim",
     cmd  = { "Trouble" },
     keys = {
-      { "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>",            desc = "Diagnostics (Trouble)"  },
-      { "<leader>xX", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "Buffer Diagnostics"  },
-      { "<leader>xL", "<cmd>Trouble loclist toggle<cr>",                desc = "Location List"          },
-      { "<leader>xQ", "<cmd>Trouble qflist toggle<cr>",                 desc = "Quickfix List"          },
+      { "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>",              desc = "Diagnostics (Trouble)" },
+      { "<leader>xX", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "Buffer Diagnostics"   },
+      { "<leader>xL", "<cmd>Trouble loclist toggle<cr>",                  desc = "Location List"         },
+      { "<leader>xQ", "<cmd>Trouble qflist toggle<cr>",                   desc = "Quickfix List"         },
     },
     opts = {
       auto_close   = false,
@@ -358,6 +358,7 @@ return {
         { "<leader>r",  group = "rust"         },
         { "<leader>c",  group = "c/code"       },
         { "<leader>gc", group = "git-conflict" },
+        { "<leader>m",  group = "markdown"     },
       },
     },
   },
@@ -404,7 +405,8 @@ return {
   },
 
   -- ═══════════════════════════════════════════════════════════════════════════
-  -- DASHBOARD — snacks.nvim + Matrix rain (engine in core/rain.lua)
+  -- DASHBOARD — snacks.nvim
+  -- Quote displayed statically in the header (no animation overlay).
   -- ═══════════════════════════════════════════════════════════════════════════
 
   {
@@ -413,34 +415,39 @@ return {
     priority = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      -- ── Highlight groups ──────────────────────────────────────────────────
-      local function set_matrix_hl()
-        vim.api.nvim_set_hl(0, "MatrixHead",   { fg = "#00ff41", bold = true })
-        vim.api.nvim_set_hl(0, "MatrixGlow",   { fg = "#ccffe0", bold = true })
-        vim.api.nvim_set_hl(0, "MatrixTrail",  { fg = "#00cc33" })
-        vim.api.nvim_set_hl(0, "MatrixMid",    { fg = "#008822" })
-        vim.api.nvim_set_hl(0, "MatrixDim",    { fg = "#003311" })
-        vim.api.nvim_set_hl(0, "MatrixFlick",  { fg = "#88ffaa", bold = true })
-        vim.api.nvim_set_hl(0, "MatrixLogo",   { fg = "#00ff41", bold = true })
-        vim.api.nvim_set_hl(0, "MatrixBorder", { fg = "#00aa2a" })
-        vim.api.nvim_set_hl(0, "MatrixWake",   { fg = "#ffffff", bold = true })
-        vim.api.nvim_set_hl(0, "MatrixQuote",  { fg = "#00aa2a", italic = true })
-        vim.api.nvim_set_hl(0, "MatrixRefl",   { fg = "#005518" })
-        vim.api.nvim_set_hl(0, "MatrixRainBg", { bg = "#0a0f0a" })
+      -- ── Header: logo + version stamp + session quote ──────────────────────
+      -- The quote is appended directly to the logo string so it appears
+      -- immediately when the dashboard renders — no timer, no float window,
+      -- no race conditions.
+      local function build_header()
+        local ver = tostring(vim.g.nvim_ide_version or "?")
+        local logo = {
+          "╔══════════════════════════════════════════════════════════════╗",
+          "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",
+          "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║",
+          "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║",
+          "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║",
+          "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║",
+          "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║",
+          "║                                                              ║",
+          string.format("║  [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v%-5s║", ver),
+          "╚══════════════════════════════════════════════════════════════╝",
+        }
+        local header = table.concat(logo, "\n")
+        -- Append the session quote (one per Neovim session via quotes.lua cache).
+        local ok, Q = pcall(require, "core.util.quotes")
+        if ok then
+          local q   = Q.session()
+          local fmt = Q.formatted(q)
+          -- Indent each line of the quote slightly for visual breathing room.
+          local indented = vim.tbl_map(
+            function(l) return "  " .. l end,
+            vim.split(fmt, "\n", { plain = true })
+          )
+          header = header .. "\n\n" .. table.concat(indented, "\n")
+        end
+        return header
       end
-      set_matrix_hl()
-      vim.api.nvim_create_autocmd("ColorScheme", {
-        group    = vim.api.nvim_create_augroup("MatrixHl", { clear = true }),
-        callback = set_matrix_hl,
-      })
-
-      -- ── Rain engine ───────────────────────────────────────────────────────
-
-      local rain = require("core.rain")
-
-      -- ── Logo and quote ────────────────────────────────────────────────────
-      local ver     = tostring(vim.g.nvim_ide_version or "unknown")
-      local HEADER  = rain.logo_header(ver) .. "\n\n  " .. rain.random_quote()
 
       -- ── snacks setup ──────────────────────────────────────────────────────
       local ok_snacks, snacks = pcall(require, "snacks")
@@ -458,19 +465,19 @@ return {
           pane_gap = 4,
           autokeys = "1234567890abcdefghijklmnopqrstuvwxyz",
           preset = {
-            header = HEADER,
+            header = build_header(),
             keys   = {
-              { icon = " ", key = "n", desc = "New Buffer",      action = ":enew"                                      },
-              { icon = " ", key = "f", desc = "Find Files",      action = ":Telescope find_files"                      },
-              { icon = " ", key = "r", desc = "Recent Files",    action = ":Telescope oldfiles"                        },
-              { icon = " ", key = "g", desc = "Live Search",     action = ":Telescope live_grep"                       },
-              { icon = " ", key = "s", desc = "Restore Session", action = ":lua require('persistence').load()"         },
-              { icon = " ", key = "G", desc = "Git Status",      action = ":LazyGit"                                   },
-              { icon = " ", key = "c", desc = "Config",          action = ":edit ~/.config/nvim/init.lua"              },
-              { icon = " ", key = "m", desc = "Mason",           action = ":Mason"                                     },
-              { icon = " ", key = "l", desc = "Lazy",            action = ":Lazy"                                      },
-              { icon = " ", key = "h", desc = "Health",          action = ":checkhealth"                               },
-              { icon = " ", key = "q", desc = "Quit",            action = ":qa"                                        },
+              { icon = " ", key = "n", desc = "New Buffer",      action = ":enew"                               },
+              { icon = " ", key = "f", desc = "Find Files",      action = ":Telescope find_files"               },
+              { icon = " ", key = "r", desc = "Recent Files",    action = ":Telescope oldfiles"                 },
+              { icon = " ", key = "g", desc = "Live Search",     action = ":Telescope live_grep"                },
+              { icon = " ", key = "s", desc = "Restore Session", action = ":lua require('persistence').load()"  },
+              { icon = " ", key = "G", desc = "Git Status",      action = ":LazyGit"                            },
+              { icon = " ", key = "c", desc = "Config",          action = ":edit ~/.config/nvim/init.lua"       },
+              { icon = " ", key = "m", desc = "Mason",           action = ":Mason"                              },
+              { icon = " ", key = "l", desc = "Lazy",            action = ":Lazy"                               },
+              { icon = " ", key = "h", desc = "Health",          action = ":checkhealth"                        },
+              { icon = " ", key = "q", desc = "Quit",            action = ":qa"                                 },
             },
           },
           sections = {
@@ -489,48 +496,6 @@ return {
         zen          = { enabled = false }, image        = { enabled = false },
       })
 
-      -- ── Lifecycle hooks ───────────────────────────────────────────────────
-
-      vim.api.nvim_create_autocmd("User", {
-        pattern  = "SnacksDashboardOpened",
-        group    = vim.api.nvim_create_augroup("MatrixRainOpen", { clear = true }),
-        callback = function()
-          vim.defer_fn(function() rain.open() end, 30)
-        end,
-      })
-
-      vim.api.nvim_create_autocmd("User", {
-        pattern  = "SnacksDashboardOpened",
-        group    = vim.api.nvim_create_augroup("MatrixRainDrainKey", { clear = true }),
-        callback = function(e)
-          vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
-            buffer   = e.buf,
-            once     = true,
-            callback = function() rain.trigger_drain() end,
-          })
-          vim.api.nvim_create_autocmd("BufLeave", {
-            buffer   = e.buf,
-            once     = true,
-            callback = function() rain.trigger_drain() end,
-          })
-        end,
-      })
-
-      vim.api.nvim_create_autocmd("User", {
-        pattern  = "SnacksDashboardClosed",
-        group    = vim.api.nvim_create_augroup("MatrixRainClose", { clear = true }),
-        callback = function() rain.close() end,
-      })
-
-      vim.api.nvim_create_autocmd("BufEnter", {
-        group    = vim.api.nvim_create_augroup("MatrixRainBufEnter", { clear = true }),
-        callback = function()
-          local ft = vim.bo.filetype
-          if ft ~= "snacks_dashboard" and ft ~= "" then
-            rain.trigger_drain()
-          end
-        end,
-      })
     end,
   },
 }

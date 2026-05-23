@@ -62,7 +62,7 @@ return {
     end,
 
     opts = {
-      ensure_installed = vim.tbl_flatten(vim.tbl_values(PARSERS)),
+      ensure_installed = vim.iter(vim.tbl_values(PARSERS)):flatten():totable(),
 
       auto_install   = vim.g.ts_auto_install ~= false
                        and (vim.fn.executable("tree-sitter") == 1

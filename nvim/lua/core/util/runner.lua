@@ -54,7 +54,6 @@ local runners = {
     local dir        = vim.fn.fnamemodify(file, ":h")
     local p          = path()
     local cargo_root = p and p.find_root(dir)
-    -- Verify the detected root actually contains Cargo.toml before using it.
     if cargo_root and vim.fn.filereadable(cargo_root .. "/Cargo.toml") == 1 then
       return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
     end
@@ -76,6 +75,23 @@ local runners = {
   end,
 
   typescript = function(file)
+    if vim.fn.executable("tsx") == 1 then
+      return "tsx " .. vim.fn.shellescape(file)
+    elseif vim.fn.executable("ts-node") == 1 then
+      return "ts-node " .. vim.fn.shellescape(file)
+    end
+    return nil
+  end,
+
+  javascriptreact = function(file)
+    if vim.fn.executable("tsx") == 1 then
+      return "tsx " .. vim.fn.shellescape(file)
+    end
+    return vim.fn.executable("node") == 1
+      and "node " .. vim.fn.shellescape(file) or nil
+  end,
+
+  typescriptreact = function(file)
     if vim.fn.executable("tsx") == 1 then
       return "tsx " .. vim.fn.shellescape(file)
     elseif vim.fn.executable("ts-node") == 1 then
@@ -160,6 +176,7 @@ local runners = {
 
   vhdl = function(file)
     if vim.fn.executable("ghdl") ~= 1 then return nil end
+
     local entity = nil
     local ok_rf, lines = pcall(vim.fn.readfile, file, "", 200)
     if ok_rf and lines then
@@ -168,12 +185,22 @@ local runners = {
         if entity then break end
       end
     end
+
     if entity then
       return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s",
         vim.fn.shellescape(file),
         vim.fn.shellescape(entity),
         vim.fn.shellescape(entity))
     end
+
+    vim.notify(
+      "[runner] VHDL: entity declaration not found in the first 200 lines of\n"
+      .. vim.fn.fnamemodify(file, ":t") .. "\n"
+      .. "Falling back to syntax check only (ghdl -s).\n"
+      .. "Move the entity declaration closer to the top, or use <leader>vha to\n"
+      .. "analyze and <leader>vhe to elaborate manually.",
+      vim.log.levels.WARN
+    )
     return "ghdl -s " .. vim.fn.shellescape(file)
   end,
 
@@ -198,6 +225,15 @@ local selection_interpreters = {
     return vim.fn.executable("node") == 1 and "node" or nil
   end,
   typescript = function()
+    if vim.fn.executable("tsx")     == 1 then return "tsx"     end
+    if vim.fn.executable("ts-node") == 1 then return "ts-node" end
+    return nil
+  end,
+  javascriptreact = function()
+    if vim.fn.executable("tsx")  == 1 then return "tsx"  end
+    return vim.fn.executable("node") == 1 and "node" or nil
+  end,
+  typescriptreact = function()
     if vim.fn.executable("tsx")     == 1 then return "tsx"     end
     if vim.fn.executable("ts-node") == 1 then return "ts-node" end
     return nil
@@ -271,7 +307,6 @@ function M.run_selection(start_line, end_line)
     return
   end
 
-  -- Clamp inverted marks (selecting upward).
   if start_line > end_line then
     start_line, end_line = end_line, start_line
   end
@@ -291,7 +326,6 @@ function M.run_selection(start_line, end_line)
     return
   end
 
-  -- Map Neovim filetypes to file extensions that the runtime actually accepts.
   local EXT_MAP = {
     javascriptreact  = "js",
     typescriptreact  = "ts",
@@ -351,8 +385,6 @@ function M.run_tests()
   local root          = (ok_path and path.find_root()) or vim.fn.getcwd()
   local er            = vim.fn.shellescape(root)
 
-  -- ── Informational messages for languages with no generic test runner ────────
-  -- Listed before the dispatch table so we return early cleanly.
   local info_msgs = {
     fortran = "Fortran has no standard unit-test runner.\n"
       .. "Use <leader>ftb to build & run, or <leader>ftm for make.",
@@ -366,35 +398,35 @@ function M.run_tests()
     return
   end
 
+  local function ctest_thunk()
+    if vim.fn.executable("ctest") ~= 1 then
+      vim.notify(
+        "C/C++ tests use CTest but `ctest` was not found.\n"
+          .. "Install CMake (which ships ctest) and build first: <leader>ccb.",
+        vim.log.levels.INFO
+      )
+      return nil
+    end
+    return "cd " .. er .. " && ctest --test-dir build --output-on-failure"
+  end
+
+  local js_test = function() return "cd " .. er .. " && " .. M.detect_js_test_cmd(root) end
+
   local dispatch = {
-    python     = function() return "cd " .. er .. " && pytest" end,
-    rust       = function() return "cd " .. er .. " && cargo test" end,
-    go         = function() return "cd " .. er .. " && go test ./..." end,
-    javascript = function() return "cd " .. er .. " && " .. M.detect_js_test_cmd(root) end,
-    typescript = function() return "cd " .. er .. " && " .. M.detect_js_test_cmd(root) end,
-    ruby       = function() return "cd " .. er .. " && bundle exec rspec" end,
-    elixir     = function() return "cd " .. er .. " && mix test" end,
-    kotlin     = function() return M.gradle_or_maven(root, "test") end,
-    java       = function() return M.gradle_or_maven(root, "test") end,
-    zig        = function() return "cd " .. er .. " && zig build test" end,
-    c = function()
-      if vim.fn.executable("ctest") ~= 1 then
-        vim.notify("C/C++ tests use CTest but `ctest` was not found.\n"
-          .. "Install CMake (which ships ctest) and build first: <leader>ccb.",
-          vim.log.levels.INFO)
-        return nil
-      end
-      return "cd " .. er .. " && ctest --test-dir build --output-on-failure"
-    end,
-    cpp = function()
-      if vim.fn.executable("ctest") ~= 1 then
-        vim.notify("C/C++ tests use CTest but `ctest` was not found.\n"
-          .. "Install CMake (which ships ctest) and build first: <leader>ccb.",
-          vim.log.levels.INFO)
-        return nil
-      end
-      return "cd " .. er .. " && ctest --test-dir build --output-on-failure"
-    end,
+    python          = function() return "cd " .. er .. " && pytest" end,
+    rust            = function() return "cd " .. er .. " && cargo test" end,
+    go              = function() return "cd " .. er .. " && go test ./..." end,
+    javascript      = js_test,
+    typescript      = js_test,
+    javascriptreact = js_test,
+    typescriptreact = js_test,
+    ruby            = function() return "cd " .. er .. " && bundle exec rspec" end,
+    elixir          = function() return "cd " .. er .. " && mix test" end,
+    kotlin          = function() return M.gradle_or_maven(root, "test") end,
+    java            = function() return M.gradle_or_maven(root, "test") end,
+    zig             = function() return "cd " .. er .. " && zig build test" end,
+    c               = ctest_thunk,
+    cpp             = ctest_thunk,
   }
 
   local thunk = dispatch[ft]
@@ -404,7 +436,7 @@ function M.run_tests()
   end
 
   local cmd = thunk()
-  if not cmd then return end   -- thunk already notified the user
+  if not cmd then return end
 
   local t = term()
   if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end

@@ -12,8 +12,6 @@ local M = {}
 
 -- ── Filetype lists ─────────────────────────────────────────────────────────
 
--- Standard Neovim filetypes for JSX/TSX are "javascriptreact" / "typescriptreact".
--- "jsx" and "tsx" are NOT valid Neovim filetypes.
 M.JS_FT    = { "javascript", "javascriptreact" }
 M.TS_FT    = { "typescript", "typescriptreact" }
 M.JS_TS_FT = { "javascript", "javascriptreact", "typescript", "typescriptreact" }
@@ -35,14 +33,6 @@ M.TAILWIND_FT = {
 
 -- ── Spec helpers ───────────────────────────────────────────────────────────
 
---- Return a lazy.nvim optional spec that extends treesitter's ensure_installed
---- with the given parsers. Use in lang spec return tables:
----
----   return {
----     { ... },  -- primary plugin spec
----     shared.treesitter({ "go", "gomod", "gowork", "gosum" }),
----   }
----
 ---@param parsers string[]
 ---@return table  lazy.nvim plugin spec
 function M.treesitter(parsers)
@@ -51,7 +41,14 @@ function M.treesitter(parsers)
     optional = true,
     opts = function(_, opts)
       if type(opts.ensure_installed) == "table" then
-        vim.list_extend(opts.ensure_installed, parsers)
+        local seen = {}
+        for _, p in ipairs(opts.ensure_installed) do seen[p] = true end
+        for _, p in ipairs(parsers) do
+          if not seen[p] then
+            table.insert(opts.ensure_installed, p)
+            seen[p] = true
+          end
+        end
       end
     end,
   }

@@ -1,10 +1,5 @@
 -- lua/plugins/specs/lang/css.lua — CSS development
 --
--- LSP:    cssls + cssmodules_ls via this file + lsp.lua
--- Format: prettier via lsp.lua conform
--- Lint:   stylelint via this file
--- Tailwind: tailwind-tools (gated on tailwind.config.* presence)
---
 
 local shared = require("plugins.specs.lang.shared")
 
@@ -64,29 +59,4 @@ return {
 
   shared.treesitter({ "css", "scss" }),
 
-  -- ── Conform ────────────────────────────────────────────────────────────────
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = function(_, opts)
-      opts.formatters_by_ft = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.css  = { "prettier" }
-      opts.formatters_by_ft.scss = { "prettier" }
-      opts.formatters_by_ft.less = { "prettier" }
-    end,
-  },
-
-  -- ── nvim-lint: stylelint ───────────────────────────────────────────────────
-
-  {
-    "mfussenegger/nvim-lint",
-    optional = true,
-    init = function()
-      if vim.fn.executable("stylelint") ~= 1 then return end
-      local ok, lint = pcall(require, "lint")
-      if not ok then return end
-      lint.linters_by_ft.css  = { "stylelint" }
-      lint.linters_by_ft.scss = { "stylelint" }
-    end,
-  },
 }

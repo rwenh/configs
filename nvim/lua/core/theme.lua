@@ -110,6 +110,11 @@ function M.switch(theme_name)
     return
   end
   M.config.theme = theme_name
+
+  _cache.manual_override = nil
+  _cache.hour            = nil
+  _cache.value           = nil
+
   apply(resolve_background())
   vim.notify(string.format("[theme] switched to %s", theme_name), vim.log.levels.INFO)
 end

@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/rust.lua — Rust language support
 --
--- LSP:      rustaceanvim (manages rust-analyzer internally — NOT in lsp.lua)
--- Format:   rustfmt via conform (optional=true spec below)
--- DAP:      codelldb via dap.lua (deferred FileType autocmd)
--- Test:     neotest-rust via test.lua (deferred LspAttach)
--- Keymaps:  <leader>r* here + generic LSP maps from lsp.lua LspAttach
---
 
 return {
   {
@@ -40,7 +34,6 @@ return {
                 command    = "clippy",
                 extraArgs  = { "--all-targets", "--all-features" },
               },
-              -- Full default list: https://rust-analyzer.github.io/manual.html
               inlayHints = {
                 parameterHints      = { enable = true },
                 typeHints           = { enable = true },
@@ -74,10 +67,10 @@ return {
 
     keys = (function()
       local entries = {
-        { "<leader>rh", "RustLsp hover",        "Rust Hover Actions" },
-        { "<leader>ra", "RustLsp codeAction",   "Rust Code Action"   },
-        { "<leader>rd", "RustLsp debuggables",  "Rust Debuggables"   },
-        { "<leader>rt", "RustLsp testables",    "Rust Testables"     },
+        { "<leader>rh", "RustLsp hover",       "Rust Hover Actions" },
+        { "<leader>ra", "RustLsp codeAction",  "Rust Code Action"   },
+        { "<leader>rd", "RustLsp debuggables", "Rust Debuggables"   },
+        { "<leader>rt", "RustLsp testables",   "Rust Testables"     },
       }
       local keys = {}
       for _, e in ipairs(entries) do
@@ -90,15 +83,13 @@ return {
     end)(),
   },
 
-  -- ── Conform: rustfmt ───────────────────────────────────────────────────────
-  -- rustfmt ships with the Rust toolchain (rustup component add rustfmt).
+  -- ── Conform: rustfmt custom config ─────────────────────────────────────────
+
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters_by_ft       = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.rust  = { "rustfmt" }
-      opts.formatters             = opts.formatters or {}
+      opts.formatters = opts.formatters or {}
 
       local _edition_cache = {}
       local function detect_edition()
@@ -108,23 +99,19 @@ return {
         if _edition_cache[abs] then return _edition_cache[abs] end
         for _, line in ipairs(vim.fn.readfile(abs)) do
           local ed = line:match('^edition%s*=%s*"(%d+)"')
-          if ed then
-            _edition_cache[abs] = ed
-            return ed
-          end
+          if ed then _edition_cache[abs] = ed; return ed end
         end
         _edition_cache[abs] = "2021"
         return "2021"
       end
 
       opts.formatters.rustfmt = {
-        command    = "rustfmt",
-        args       = function()
+        command = "rustfmt",
+        args    = function()
           return { "--edition", detect_edition(), "--emit=stdout" }
         end,
-        stdin      = true,
+        stdin   = true,
       }
     end,
   },
-
 }

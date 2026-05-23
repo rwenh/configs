@@ -6,7 +6,7 @@
 --   3. Clone lazy.nvim if missing; clean up partial clones on failure.
 --
 
-local VERSION  = "2.3.16"
+local VERSION  = "2.4.1"
 local LAZY_URL = "https://github.com/folke/lazy.nvim.git"
 
 -- ── Version stamp (must precede plugin config() calls) ───────────────────────

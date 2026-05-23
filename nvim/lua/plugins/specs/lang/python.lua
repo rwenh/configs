@@ -29,10 +29,9 @@ return {
         -- Re-initialise nvim-dap-python with the new interpreter.
         local ok_dpy, dpy = pcall(require, "dap-python")
         if ok_dpy then
-          local python = require("core.util.path") and
-            -- Re-probe with updated VIRTUAL_ENV env var.
-            (os.getenv("VIRTUAL_ENV") and os.getenv("VIRTUAL_ENV") .. "/bin/python")
-            or vim.fn.exepath("python3")
+          local venv   = os.getenv("VIRTUAL_ENV")
+          local python = (venv and venv ~= "") and (venv .. "/bin/python")
+                         or vim.fn.exepath("python3")
           if python and python ~= "" then
             pcall(dpy.setup, python)
           end
@@ -52,7 +51,6 @@ return {
 
       -- ── Debugpy probe strategies ────────────────────────────────────────
 
-      -- Strategy 1: active virtual environment.
       local function check_venv()
         local venv = os.getenv("VIRTUAL_ENV")
         if not venv then return nil end
@@ -60,14 +58,12 @@ return {
         return vim.fn.executable(p) == 1 and p or nil
       end
 
-      -- Strategy 2: PATH candidates + debugpy presence check.
       local function check_path_candidates()
         local candidates = {}
         for _, name in ipairs({ "python3", "python" }) do
           local p = vim.fn.exepath(name)
           if p ~= "" then
             if p:find("shims", 1, true) then
-              -- Try pyenv root resolution.
               local pyenv_root = os.getenv("PYENV_ROOT")
               if pyenv_root then
                 local ver_file = vim.fn.findfile(".python-version", ".;")
@@ -88,7 +84,6 @@ return {
             end
           end
         end
-        -- Append common system paths as fallback.
         vim.list_extend(candidates, { "/usr/bin/python3", "/usr/bin/python" })
 
         for _, p in ipairs(candidates) do
@@ -103,7 +98,6 @@ return {
         return nil
       end
 
-      -- Strategy 3: user site-packages.
       local function check_user_sitepackages()
         local home = os.getenv("HOME") or ""
         if home == "" then return nil end
@@ -130,16 +124,16 @@ return {
           end)()
       end
 
-      -- ── DAP keymaps ─────────────────────────────────────────────────────
+      -- ── DAP keymaps — owned by nvim-dap-python ──────────────────────────
 
       local DAP_MAPS = {
-        { "n",        "<leader>pydm", function()
+        { "n",       "<leader>pydm", function()
             pcall(function() require("dap-python").test_method() end)
           end, "Python Debug Method" },
-        { "n",        "<leader>pydc", function()
+        { "n",       "<leader>pydc", function()
             pcall(function() require("dap-python").test_class() end)
           end, "Python Debug Class" },
-        { {"n","v"},  "<leader>pyds", function()
+        { {"n","v"}, "<leader>pyds", function()
             pcall(function() require("dap-python").debug_selection() end)
           end, "Python Debug Selection" },
       }
@@ -198,18 +192,20 @@ return {
               return require("iron.view").bottom(20)
             end,
           },
-          keymaps = {},   -- registered per-buffer below
+          keymaps = {},
         })
       end)
 
       local bkm = require("core.util.buf_keymap")
 
+      -- ── REPL keymaps — owned by iron.nvim ───────────────────────────────
+
       local IRON_MAPS = {
         { "n", "<leader>pyrc", function()
-            local buf = vim.api.nvim_get_current_buf()
-            vim.opt.operatorfunc = "v:lua.require'iron.core'.send_motion"
+            local prev = vim.o.operatorfunc
+            vim.o.operatorfunc = "v:lua.require'iron.core'.send_motion"
             vim.api.nvim_feedkeys("g@", "n", false)
-            _ = buf  -- suppress unused warning
+            vim.defer_fn(function() vim.o.operatorfunc = prev end, 0)
           end, "REPL send motion (operator)" },
         { "v", "<leader>pyrv", function()
             pcall(function()
@@ -242,13 +238,13 @@ return {
       bkm.on_ft("python", IRON_MAPS, "python_iron_keymaps_registered")
     end,
     keys = {
-      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"     },
-      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"   },
-      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt"  },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"    },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"  },
+      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt" },
     },
   },
 
   -- ── PEP8 indent ────────────────────────────────────────────────────────────
-  -- If vim-python-pep8-indent is removed, re-enable treesitter Python indent.
+
   { "Vimjas/vim-python-pep8-indent", ft = "python" },
 }

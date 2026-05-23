@@ -1,11 +1,10 @@
 -- lua/core/focus.lua — deep focus mode
--- Toggle with <leader>uF.  Goes deeper than ZenMode alone by also stripping
--- the status line, sign column, line numbers, tab bar, and ruler.
 --
 
 local M = {}
 
 -- ── Option spec ───────────────────────────────────────────────────────────────
+
 -- { scope, key, off_value, default }
 --   scope     : "o" = vim.o   "wo" = vim.wo
 --   off_value : value applied when focus is active
@@ -20,8 +19,9 @@ local SPEC = {
   { "wo", "cursorline",     false, true    },
 }
 
-local _active = false
-local _snap   = {}
+local _active     = false
+local _snap       = {}
+local _zen_active = false
 
 -- ── Unified spec applicator ───────────────────────────────────────────────────
 
@@ -32,7 +32,6 @@ local function apply_spec(active)
       _snap[key]      = vim[scope][key]
       vim[scope][key] = off_value
     else
-      -- Explicit if/else — the `a and b or c` ternary fails when b is false.
       if _snap[key] ~= nil then
         vim[scope][key] = _snap[key]
       else
@@ -45,10 +44,17 @@ end
 -- ── Plugin coordination helpers ───────────────────────────────────────────────
 
 local function set_zen(want_on)
-  -- ZenMode has no "is active" API; we rely on our own _active flag.
-  -- The pcall means ZenMode loading/unloading is handled gracefully.
-  pcall(vim.cmd, "ZenMode")   -- toggles; called only when transition is needed
-  _ = want_on                 -- suppress unused-var lint; state tracked by _active
+  if want_on == _zen_active then return end
+  _zen_active = want_on
+
+  local ok, zm = pcall(require, "zen-mode")
+  if not ok then return end
+
+  if want_on then
+    pcall(function() zm.open() end)
+  else
+    pcall(function() zm.close() end)
+  end
 end
 
 local function set_twilight(want_on)
@@ -61,11 +67,9 @@ end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
 
---- Set focus mode to *active* (true = on, false = off).
---- This is the single entry point; enter/exit/toggle delegate here.
 ---@param active boolean
 function M.set(active)
-  if active == _active then return end   -- no-op if already in desired state
+  if active == _active then return end
   _active = active
   apply_spec(active)
   set_twilight(active)
@@ -92,8 +96,9 @@ vim.api.nvim_create_autocmd("VimLeavePre", {
   group    = vim.api.nvim_create_augroup("FocusModeCleanup", { clear = true }),
   callback = function()
     if _active then
-      _active = false
-      pcall(apply_spec, false)   -- FIX B2: pcall added
+      _active     = false
+      _zen_active = false
+      pcall(apply_spec, false)
     end
   end,
   desc = "Restore focus-mode options before Neovim exits",

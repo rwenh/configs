@@ -138,7 +138,8 @@ cmd("BufOnly", function()
         deleted = deleted + 1
       else
         local name = vim.api.nvim_buf_get_name(buf)
-        table.insert(skipped, name ~= "" and vim.fn.fnamemodify(name, ":t") or ("[buf " .. buf .. "]"))
+        table.insert(skipped,
+          name ~= "" and vim.fn.fnamemodify(name, ":t") or ("[buf " .. buf .. "]"))
       end
     end
   end
@@ -166,8 +167,8 @@ end, { desc = "Run Lua garbage collection" })
 -- TOGGLE OPTIONS
 -- ═══════════════════════════════════════════════════════════════════════════
 
-cmd("ToggleWrap",  make_toggle("wrap",  "Wrap"),  { desc = "Toggle line wrap"    })
-cmd("ToggleSpell", make_toggle("spell", "Spell"), { desc = "Toggle spell check"  })
+cmd("ToggleWrap",  make_toggle("wrap",  "Wrap"),  { desc = "Toggle line wrap"   })
+cmd("ToggleSpell", make_toggle("spell", "Spell"), { desc = "Toggle spell check" })
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- TOGGLE DIAGNOSTICS
@@ -231,7 +232,9 @@ end, { desc = "Resume last telescope picker" })
 -- MASON INSTALL ALL
 -- ═══════════════════════════════════════════════════════════════════════════
 
-local _mason_install_running = false
+if vim.g._mason_install_running == nil then
+  vim.g._mason_install_running = false
+end
 
 cmd("MasonInstallAll", function()
   local ok, registry = pcall(require, "mason-registry")
@@ -240,11 +243,11 @@ cmd("MasonInstallAll", function()
     return
   end
 
-  if _mason_install_running then
+  if vim.g._mason_install_running then
     vim.notify("MasonInstallAll is already running — please wait", vim.log.levels.WARN)
     return
   end
-  _mason_install_running = true
+  vim.g._mason_install_running = true
 
   -- Flatten all packages from the structured table.
   local pkgs = {}
@@ -263,7 +266,7 @@ cmd("MasonInstallAll", function()
       pcall(function() timer:stop(); timer:close() end)
       timer = nil
     end
-    _mason_install_running = false
+    vim.g._mason_install_running = false
     if #failed > 0 then
       vim.notify(
         string.format("MasonInstallAll: %d/%d done. Failed: %s",
@@ -288,7 +291,7 @@ cmd("MasonInstallAll", function()
       string.format("MasonInstallAll: timed out with %d installs still pending.", pending),
       vim.log.levels.WARN
     )
-    finish()   -- closes timer + resets _mason_install_running
+    finish()
   end))
 
   for _, pkg_name in ipairs(pkgs) do

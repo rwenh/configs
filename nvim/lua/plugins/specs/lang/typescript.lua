@@ -1,20 +1,10 @@
 -- lua/plugins/specs/lang/typescript.lua — TypeScript development
 --
--- LSP:    typescript-tools (this file — covers JS too; see javascript.lua)
--- Format: prettier via lsp.lua conform (typescript + typescriptreact)
--- Lint:   eslint_d via lsp.lua nvim-lint (guarded)
--- DAP:    pwa-node via dap.lua
--- Test:   neotest-jest/vitest via test.lua; runner.lua
---
---
 
 local shared = require("plugins.specs.lang.shared")
 
 return {
   -- ── typescript-tools ───────────────────────────────────────────────────────
-  -- Covers both TypeScript AND JavaScript (ft includes all four variants).
-  -- typescript-tools manages its own tsserver instance; do NOT add tsserver
-  -- to lsp.lua's servers table — two tsserver processes would conflict.
   {
     "pmizio/typescript-tools.nvim",
     ft           = shared.JS_TS_FT,
@@ -47,28 +37,7 @@ return {
     },
   },
 
-  -- ── Conform: typescriptreact ───────────────────────────────────────────────
-
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = function(_, opts)
-      opts.formatters_by_ft = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.typescriptreact = { "prettier" }
-    end,
-  },
-
-  -- ── nvim-lint: eslint_d ────────────────────────────────────────────────────
-
-  {
-    "mfussenegger/nvim-lint",
-    optional = true,
-    init = function()
-      if vim.fn.executable("eslint_d") ~= 1 then return end
-    end,
-  },
-
-  -- ── Neogen: JSDoc/TSDoc ────────────────────────────────────────────────────
+  -- ── Neogen: TSDoc ──────────────────────────────────────────────────────────
 
   {
     "danymat/neogen",
@@ -82,4 +51,5 @@ return {
   },
 
   shared.treesitter({ "typescript", "tsx" }),
+
 }

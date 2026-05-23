@@ -1,13 +1,11 @@
 -- lua/core/util/path.lua — project-root detection with caching
 --
--- Cache shape: { [normalized_path: string]: { root: string, time: number } }
---
 
 local M = {}
 
 -- ── Constants ─────────────────────────────────────────────────────────────────
 local MAX_WALK_DEPTH = 20   -- max directory levels walked toward filesystem root
-local CACHE_TTL      = 30   -- seconds before a cached root entry is considered stale
+local CACHE_TTL      = 30   -- seconds; limits redundant re-walks for the same path
 
 local ROOT_MARKERS = {
   ".git", ".hg", ".svn",
@@ -24,8 +22,6 @@ local _cache = {}
 
 -- ── Helpers ────────────────────────────────────────────────────────────────────
 
---- Normalize a directory path to a canonical cache key.
---- Strips trailing slash so "/proj/src/" and "/proj/src" hash to the same slot.
 local function normalize(p)
   local n = vim.fn.fnamemodify(p, ":p")
   return (n:gsub("/$", ""))
@@ -40,10 +36,6 @@ end
 
 -- ── Public API ─────────────────────────────────────────────────────────────────
 
---- Find the project root for *start_path* (defaults to the directory of the
---- current file).  Returns the root directory string, or nil when detection
---- fails entirely (headless contexts, no markers found, getcwd() throws).
----
 ---@param start_path string?  directory from which to begin the upward walk
 ---@return string|nil
 function M.find_root(start_path)
@@ -51,14 +43,13 @@ function M.find_root(start_path)
 
   local cache_key = normalize(start_path)
 
-  -- Cache hit (TTL-gated)
   local entry = _cache[cache_key]
   if entry and (os.time() - entry.time) < CACHE_TTL then
     return entry.root
   end
-  _cache[cache_key] = nil   -- discard stale entry before fresh walk
+  _cache[cache_key] = nil
 
-  local current = cache_key   -- already normalized; walk upward from here
+  local current = cache_key
 
   for _ = 1, MAX_WALK_DEPTH do
     for _, marker in ipairs(ROOT_MARKERS) do
@@ -73,14 +64,10 @@ function M.find_root(start_path)
     current = parent
   end
 
-  -- No marker found — return cwd as a best-effort fallback but do NOT cache
-  -- (the user may open a different project in the same session).
-  -- pcall: getcwd() can throw in headless / embedded contexts (v2.3.16).
   local ok_cwd, cwd = pcall(vim.fn.getcwd)
   return (ok_cwd and cwd and cwd ~= "") and cwd or nil
 end
 
---- Invalidate the entire root cache.
 function M.clear_cache()
   _cache = {}
 end

@@ -1,13 +1,10 @@
 -- lua/core/util/term.lua — shared toggleterm launch helper
 --
--- All lang specs and runner.lua reduce terminal launches to a single
--- M.float(cmd) or M.float_at_root(cmd) call.
---
 
 local M = {}
 
--- Accepted keys mirror toggleterm.terminal.Terminal:new() options.
--- direction, close_on_exit, on_exit, and cmd are the most commonly overridden.
+-- ── Defaults ──────────────────────────────────────────────────────────────────
+
 local DEFAULTS = {
   direction     = "float",
   close_on_exit = false,
@@ -15,10 +12,6 @@ local DEFAULTS = {
 
 -- ── Public helpers ─────────────────────────────────────────────────────────────
 
---- Return a "cd <root> && " shell prefix with proper escaping.
---- Extracted from float_at_root so callers building composite commands can
---- reuse it without duplicating the shellescape logic.
----
 ---@param root string  absolute path to the target directory
 ---@return string      shell fragment including trailing space, or "" on blank root
 function M.cd_prefix(root)
@@ -26,8 +19,6 @@ function M.cd_prefix(root)
   return "cd " .. vim.fn.shellescape(root) .. " && "
 end
 
---- Launch *cmd* in a floating toggleterm window.
----
 ---@param cmd  string        shell command to run (must be non-empty)
 ---@param opts table?        any Terminal:new() opts merged over DEFAULTS
 function M.float(cmd, opts)
@@ -54,9 +45,6 @@ function M.float(cmd, opts)
   end
 end
 
---- Run *cmd* after cd-ing to the project root.
---- Uses M.cd_prefix() so the escaping logic lives in exactly one place.
----
 ---@param cmd  string   bare shell command (no cd prefix needed)
 ---@param opts table?   forwarded to M.float
 function M.float_at_root(cmd, opts)

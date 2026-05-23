@@ -2,6 +2,7 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
+
 return {
   -- ── vim-dadbod-ui ──────────────────────────────────────────────────────────
   {
@@ -12,9 +13,9 @@ return {
     },
     cmd  = { "DBUI", "DBUIToggle", "DBUIAddConnection", "DBUIFindBuffer" },
     keys = {
-      { "<leader>dbu", "<cmd>DBUIToggle<cr>",        desc = "DB UI Toggle"        },
-      { "<leader>dba", "<cmd>DBUIAddConnection<cr>", desc = "DB Add Connection"   },
-      { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer"      },
+      { "<leader>dbu", "<cmd>DBUIToggle<cr>",        desc = "DB UI Toggle"      },
+      { "<leader>dba", "<cmd>DBUIAddConnection<cr>", desc = "DB Add Connection" },
+      { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer"    },
     },
     init = function()
       vim.g.db_ui_use_nerd_fonts           = 1
@@ -53,19 +54,4 @@ return {
 
   shared.treesitter({ "sql" }),
 
-  -- ── Conform: sqlfmt (merged from sql.lua) ──────────────────────────────────
-
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = function(_, opts)
-      if vim.fn.executable("sqlfmt") ~= 1 then
-        return
-      end
-      opts.formatters_by_ft = opts.formatters_by_ft or {}
-      for _, ft in ipairs({ "sql", "mysql" }) do
-        opts.formatters_by_ft[ft] = { "sqlfmt" }
-      end
-    end,
-  },
 }

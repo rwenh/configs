@@ -1,25 +1,19 @@
 -- lua/plugins/specs/lang/vhdl.lua — VHDL hardware description language
---
--- LSP:    vhdl_ls (rust_hdl) via lsp.lua optional servers
--- Format: vsg via conform (this file)
--- DAP:    none
--- Test:   none (GHDL simulation via keymaps below)
---
 -- vhdl_ls must be installed via: cargo install vhdl_ls
--- OR: :MasonInstall rust_hdl
 --
 
 local shared = require("plugins.specs.lang.shared")
+
 return {
-  -- ── Conform: vsg ───────────────────────────────────────────────────────────
+  -- ── Conform: vsg custom config ─────────────────────────────────────────────
+  -- This spec only provides the conditional invocation and output args.
+
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters_by_ft      = opts.formatters_by_ft or {}
-      opts.formatters_by_ft.vhdl = { "vsg" }
-      opts.formatters             = opts.formatters or {}
-      opts.formatters.vsg         = {
+      opts.formatters     = opts.formatters or {}
+      opts.formatters.vsg = {
         command   = "vsg",
         args      = { "--output", "-", "$FILENAME" },
         stdin     = false,
@@ -40,10 +34,8 @@ return {
       {
         "<leader>vha",
         function()
-          if vim.fn.executable("ghdl") ~= 1 then
-            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
           require("core.util.term").float(
             "ghdl -a " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
@@ -54,10 +46,8 @@ return {
       {
         "<leader>vhe",
         function()
-          if vim.fn.executable("ghdl") ~= 1 then
-            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
           require("core.util.term").float("ghdl -e " .. vim.fn.shellescape(entity))
@@ -68,10 +58,8 @@ return {
       {
         "<leader>vhr",
         function()
-          if vim.fn.executable("ghdl") ~= 1 then
-            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
           local entity = vim.fn.input("Entity name: ")
           if entity == "" then return end
           require("core.util.term").float(string.format(
@@ -85,10 +73,8 @@ return {
       {
         "<leader>vhc",
         function()
-          if vim.fn.executable("ghdl") ~= 1 then
-            vim.notify("[vhdl] ghdl not found", vim.log.levels.ERROR)
-            return
-          end
+          local exec = require("core.util.exec")
+          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
           require("core.util.term").float(
             "ghdl -s " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
@@ -100,23 +86,14 @@ return {
   },
 
   -- ── LuaSnip snippets ────────────────────────────────────────────────────────
+
   {
     "L3MON4D3/LuaSnip",
     optional = true,
-    ft = "vhdl",
-    config = function()
-      local ok, ls = pcall(require, "luasnip")
-      if not ok then return end
-      local s, t, i, f = ls.snippet, ls.text_node, ls.insert_node, ls.function_node
-
-      local function ref(n, default)
-        return f(function(args)
-          return (args[n] and args[n][1] ~= "") and args[n][1] or (default or "")
-        end, { n })
-      end
-
-      pcall(function()
-        ls.add_snippets("vhdl", {
+    ft       = "vhdl",
+    config   = function()
+      require("core.util.snippets").load("vhdl", function(s, t, i, _, ref)
+        return {
           s("entity", {
             t("entity "), i(1, "entity_name"), t(" is"),
             t({ "", "  port (" }),
@@ -153,7 +130,7 @@ return {
             t({ "", "    port map (", "      " }), i(0),
             t({ "", "    );", "end architecture sim;" }),
           }),
-        })
+        }
       end)
     end,
   },
