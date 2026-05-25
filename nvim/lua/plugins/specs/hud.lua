@@ -6,9 +6,6 @@
 -- 4. Focus tools         zen-mode, twilight
 -- 5. Misc               (blame.nvim moved to git.lua; TodoTelescope key in editor.lua)
 --
--- NOTE: nvim-notify is owned by ui.lua (single authoritative spec).
---       This file only lists it as a dependency where required by noice.
---
 
 return {
 
@@ -256,8 +253,6 @@ return {
   -- 4. FOCUS TOOLS
   -- ═══════════════════════════════════════════════════════════════════════════
 
-  -- focus.lua drives twilight manually when using <leader>uF.
-  -- Using <leader>uz directly activates zen without twilight — intentional.
   {
     "folke/zen-mode.nvim",
     cmd  = "ZenMode",

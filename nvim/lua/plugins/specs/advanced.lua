@@ -1,8 +1,5 @@
 -- lua/plugins/specs/advanced.lua
 --
--- Editing enhancements, navigation, visual polish, folding, annotations.
--- mini.* plugins are unified here (mini.move + mini.pairs moved from editor.lua).
---
 
 return {
 
@@ -42,16 +39,11 @@ return {
     "andymass/vim-matchup",
     event = { "BufReadPost", "BufNewFile" },
     init  = function()
-      -- Show match in a popup instead of the status line (less noisy).
       vim.g.matchup_matchparen_offscreen = { method = "popup" }
-      -- Defer highlight computation to avoid lag on large files.
       vim.g.matchup_matchparen_deferred  = 1
-      -- Disable surrounding-pair highlight (can be visually noisy).
       vim.g.matchup_matchparen_hi_surround_always = 0
-      -- HTML: match only tag names, not attributes.
       vim.g.matchup_matchpref = { html = { tagnameonly = 1 } }
     end,
-    -- No config() here — treesitter integration wired via the companion spec.
   },
 
   {
@@ -84,26 +76,18 @@ return {
   -- ── Color highlighting ─────────────────────────────────────────────────────
 
   {
-    "NvChad/nvim-colorizer.lua",
+    "brenoprata10/nvim-highlight-colors",
     event = "BufReadPost",
     opts  = {
-      filetypes = { "*", "!lazy", "!lspinfo", "!snacks_dashboard" },
-      user_default_options = {
-        RGB      = true,  RRGGBB   = true,  RRGGBBAA = true,
-        AARRGGBB = false,
-        rgb_fn   = true,  hsl_fn   = true,
-        css      = true,  css_fn   = true,
-        mode     = "background",
-        tailwind = true,
-        sass     = { enable = true, parsers = { "css" } },
-        virtualtext        = "■",
-        virtualtext_inline = false,
-        always_update      = false,
-      },
-      buftypes = {},
+      render              = "background",  -- "background" | "foreground" | "virtual"
+      enable_named_colors = true,
+      enable_tailwind     = true,
+      -- Exclude noisy filetypes where color highlighting adds no value.
+      exclude_filetypes   = { "lazy", "mason", "lspinfo", "snacks_dashboard" },
+      exclude_buftypes    = { "nofile", "prompt" },
     },
     config = function(_, opts)
-      pcall(function() require("colorizer").setup(opts) end)
+      pcall(function() require("nvim-highlight-colors").setup(opts) end)
     end,
   },
 
@@ -151,24 +135,22 @@ return {
 
   {
     "echasnovski/mini.nvim",
-    -- Load on any of these events/keys — whichever fires first.
     event = "VeryLazy",
     keys  = {
-      { "gc",          mode = { "n", "v" } },   -- mini.comment
-      { "gcc" },                                 -- mini.comment line
-      { "ga",          mode = { "n", "v" } },   -- mini.align
-      { "gA",          mode = { "n", "v" } },   -- mini.align preview
-      { "gS" },                                  -- mini.splitjoin
-      { "gsa",         mode = "v"          },   -- mini.surround add
-      { "gsd" }, { "gsf" }, { "gsF" },          -- mini.surround ops
+      { "gc",          mode = { "n", "v" } },
+      { "gcc" },
+      { "ga",          mode = { "n", "v" } },
+      { "gA",          mode = { "n", "v" } },
+      { "gS" },
+      { "gsa",         mode = "v"          },
+      { "gsd" }, { "gsf" }, { "gsF" },
       { "gsh" }, { "gsr" },
-      { "<A-h>", mode = { "n", "v", "i" } },   -- mini.move left
-      { "<A-j>", mode = { "n", "v", "i" } },   -- mini.move down
-      { "<A-k>", mode = { "n", "v", "i" } },   -- mini.move up
-      { "<A-l>", mode = { "n", "v", "i" } },   -- mini.move right
+      { "<A-h>", mode = { "n", "v", "i" } },
+      { "<A-j>", mode = { "n", "v", "i" } },
+      { "<A-k>", mode = { "n", "v", "i" } },
+      { "<A-l>", mode = { "n", "v", "i" } },
     },
     config = function()
-      -- Each setup() call is independent; failure of one doesn't block others.
       for _, mod in ipairs({
         "align", "comment", "move", "pairs", "splitjoin", "surround"
       }) do

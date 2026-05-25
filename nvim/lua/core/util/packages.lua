@@ -1,14 +1,5 @@
 -- lua/core/util/packages.lua — Mason and LSP package lists (single source of truth)
 --
--- Two naming schemes exist in the Mason ecosystem:
---   M.lspconfig    lspconfig server identifiers, used by mason-lspconfig
---                  ensure_installed (e.g. "lua_ls", "html", "cssls")
---   M.mason        Mason registry package names, used by :MasonInstallAll
---                  (e.g. "lua-language-server", "html-lsp", "css-lsp")
---
--- Both tables must stay in sync when adding a new LSP server.
--- All other consumers (commands.lua, lsp.lua) require this module.
---
 
 local M = {}
 

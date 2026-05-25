@@ -6,8 +6,6 @@
 --   web         before html/css (autotag + emmet consumed by html/css)
 --   database    owns SQL config  (sql.lua removed — was an empty stub)
 --
--- lang/shared.lua is a pure Lua module (no plugin specs); it is required
--- directly by lang specs at their module level — no import entry needed here.
 
 return {
   -- ── Core plugin infrastructure ─────────────────────────────────────────────

@@ -212,7 +212,10 @@ return {
         themable         = true,
         numbers          = "none",
         close_command    = "bdelete! %d",
-        diagnostics      = "nvim_lsp",
+        -- diagnostics = "nvim_lsp" queries all open buffers on every LSP update
+        -- and noticeably degrades responsiveness in large projects (50+ buffers).
+        -- Per-buffer diagnostic counts are already shown in lualine_b.
+        diagnostics      = false,
         offsets          = {
           { filetype = "NvimTree", text = "Explorer",
             highlight = "Directory", separator = true },
@@ -377,6 +380,8 @@ return {
         elseif term.direction == "vertical" then return vim.o.columns * 0.4
         end
       end,
+      -- open_mapping registers <C-\> in normal, insert, and terminal modes.
+      -- Do NOT duplicate this in keymaps.lua — it would produce double bindings.
       open_mapping  = [[<C-\>]],
       on_open = function(term)
         vim.opt_local.number         = false
@@ -416,9 +421,6 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
       -- ── Header: logo + version stamp + session quote ──────────────────────
-      -- The quote is appended directly to the logo string so it appears
-      -- immediately when the dashboard renders — no timer, no float window,
-      -- no race conditions.
       local function build_header()
         local ver = tostring(vim.g.nvim_ide_version or "?")
         local logo = {
@@ -434,12 +436,10 @@ return {
           "╚══════════════════════════════════════════════════════════════╝",
         }
         local header = table.concat(logo, "\n")
-        -- Append the session quote (one per Neovim session via quotes.lua cache).
         local ok, Q = pcall(require, "core.util.quotes")
         if ok then
           local q   = Q.session()
           local fmt = Q.formatted(q)
-          -- Indent each line of the quote slightly for visual breathing room.
           local indented = vim.tbl_map(
             function(l) return "  " .. l end,
             vim.split(fmt, "\n", { plain = true })
@@ -449,7 +449,6 @@ return {
         return header
       end
 
-      -- ── snacks setup ──────────────────────────────────────────────────────
       local ok_snacks, snacks = pcall(require, "snacks")
       if not ok_snacks then
         vim.notify("snacks.nvim not available", vim.log.levels.WARN)
@@ -486,7 +485,6 @@ return {
             { section = "startup" },
           },
         },
-        -- All other snacks modules disabled.
         bigfile      = { enabled = false }, notifier     = { enabled = false },
         quickfile    = { enabled = false }, statuscolumn = { enabled = false },
         words        = { enabled = false }, scroll       = { enabled = false },
@@ -495,7 +493,6 @@ return {
         input        = { enabled = false }, scope        = { enabled = false },
         zen          = { enabled = false }, image        = { enabled = false },
       })
-
     end,
   },
 }

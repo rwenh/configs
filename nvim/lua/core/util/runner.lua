@@ -187,10 +187,20 @@ local runners = {
     end
 
     if entity then
-      return string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s",
+      -- Write VCD to a stable temp path so gtkwave can pick it up.
+      local vcd = "/tmp/nvim_ghdl_wave.vcd"
+      local cmd = string.format(
+        "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
         vim.fn.shellescape(file),
         vim.fn.shellescape(entity),
-        vim.fn.shellescape(entity))
+        vim.fn.shellescape(entity),
+        vim.fn.shellescape(vcd)
+      )
+      -- Open waveform viewer when available (parity with <leader>vhr in vhdl.lua).
+      if vim.fn.executable("gtkwave") == 1 then
+        cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
+      end
+      return cmd
     end
 
     vim.notify(

@@ -25,9 +25,9 @@ return {
         group    = vim.api.nvim_create_augroup("ClangdInlayHints", { clear = true }),
         pattern  = { "c", "cpp" },
         callback = function(e)
-          local client = vim.lsp.get_client_by_id(
-            (vim.lsp.get_clients({ bufnr = e.buf, name = "clangd" })[1] or {}).id
-          )
+          -- get_clients() returns full client objects directly; no need for
+          -- a get_client_by_id round-trip.
+          local client = vim.lsp.get_clients({ bufnr = e.buf, name = "clangd" })[1]
           if client then
             pcall(function() vim.lsp.inlay_hint.enable(true, { bufnr = e.buf }) end)
           end

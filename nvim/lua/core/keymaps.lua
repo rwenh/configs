@@ -5,9 +5,6 @@ local map  = vim.keymap.set
 local opts = { noremap = true, silent = true }
 
 -- ── Lazy-require factory ──────────────────────────────────────────────────────
--- Each pre-built call_* closure is created at module load time.  The closure
--- stores the module name string; the actual pcall(require, mod) is deferred
--- until the returned function is invoked (i.e. at keypress time).
 local function lazy(mod, tag)
   return function(fn)
     return function()
@@ -199,14 +196,15 @@ map("n", "<leader>'t", function()
 end, { desc = "Run tests" })
 
 -- ── Terminal ──────────────────────────────────────────────────────────────────
+-- NOTE: <C-\> toggle is registered by toggleterm's own open_mapping = [[<C-\>]]
+-- in ui.lua. Registering it here too would cause double-mapping.
+-- The leader bindings below are supplementary controls not covered by open_mapping.
 
 map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Terminal"           })
 map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal"     })
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal"})
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal"  })
-map("t", "<Esc>",  "<C-\\><C-n>",        opts)
-map("n", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
-map("t", "<C-\\>", "<cmd>ToggleTerm<cr>", opts)
+map("t", "<Esc>",  "<C-\\><C-n>", opts)
 
 -- ── UI toggles ────────────────────────────────────────────────────────────────
 -- NOTE: <leader>uz (ZenMode)  owned by specs/hud.lua zen-mode.nvim keys=.

@@ -18,6 +18,8 @@ opt.showbreak      = "↳ "
 opt.breakindentopt = "shift:2,min:40"
 opt.mouse          = "a"
 
+-- System clipboard: every yank lands in '+' (OS clipboard).
+-- Set to "" to use internal registers only and opt in with "+y explicitly.
 opt.clipboard = "unnamedplus"
 
 opt.undofile = true
@@ -107,9 +109,6 @@ opt.spelllang = "en_us"
 -- SESSION
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- Removed in v2.3.3:
---   "terminal" — persisted terminal buffers fail on restore ("[Process exited]")
---   "help"     — help buffers are ephemeral
 opt.sessionoptions = table.concat({
   "buffers",       -- open buffers
   "curdir",        -- current working directory
@@ -143,14 +142,6 @@ local disabled_builtins = {
   "vimball", "vimballPlugin",
   "2html_plugin",
   "netrw", "netrwPlugin", "netrwSettings", "netrwFileHandlers",
-
-  -- matchparen intentionally NOT here (restored in v2.3.9b):
-  --   vim-matchup (advanced.lua) supersedes the builtin and sets
-  --   g:loaded_matchparen itself, preventing double-loading.
-
-  -- matchit IS disabled (v2.3.11):
-  --   vim-matchup does NOT set g:loaded_matchit — they are separate builtins.
-  --   vim-matchup provides a superior treesitter-aware replacement for % motion.
   "matchit",
 }
 

@@ -122,12 +122,14 @@ return {
 
       local function setup_codelldb()
         local codelldb_cmd = mason.bin("codelldb")
+
         if vim.fn.executable(codelldb_cmd) ~= 1 then
           vim.notify(
             "[dap] codelldb not found — C / C++ / Rust debug unavailable.\n"
             .. "Run: :MasonInstall codelldb",
             vim.log.levels.WARN
           )
+          return
         end
 
         dap.adapters.codelldb = {
@@ -147,7 +149,6 @@ return {
 
         dap.configurations.c   = { vim.deepcopy(base_launch) }
         dap.configurations.cpp = { vim.deepcopy(base_launch) }
-
       end
 
       local function setup_go()

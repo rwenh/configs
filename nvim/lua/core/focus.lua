@@ -19,9 +19,8 @@ local SPEC = {
   { "wo", "cursorline",     false, true    },
 }
 
-local _active     = false
-local _snap       = {}
-local _zen_active = false
+local _active = false
+local _snap   = {}
 
 -- ── Unified spec applicator ───────────────────────────────────────────────────
 
@@ -42,18 +41,16 @@ local function apply_spec(active)
 end
 
 -- ── Plugin coordination helpers ───────────────────────────────────────────────
+-- _zen_active removed: zm.open() and zm.close() are idempotent.
+-- Independent <leader>uz usage can no longer desync focus state.
 
 local function set_zen(want_on)
-  if want_on == _zen_active then return end
-  _zen_active = want_on
-
   local ok, zm = pcall(require, "zen-mode")
   if not ok then return end
-
   if want_on then
-    pcall(function() zm.open() end)
+    pcall(zm.open)
   else
-    pcall(function() zm.close() end)
+    pcall(zm.close)
   end
 end
 
@@ -86,7 +83,6 @@ function M.exit()   M.set(false) end
 --- Toggle focus mode.
 function M.toggle() M.set(not _active) end
 
---- Return true when focus mode is currently active.
 ---@return boolean
 function M.is_active() return _active end
 
@@ -96,8 +92,7 @@ vim.api.nvim_create_autocmd("VimLeavePre", {
   group    = vim.api.nvim_create_augroup("FocusModeCleanup", { clear = true }),
   callback = function()
     if _active then
-      _active     = false
-      _zen_active = false
+      _active = false
       pcall(apply_spec, false)
     end
   end,

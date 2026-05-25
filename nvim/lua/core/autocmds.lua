@@ -96,6 +96,9 @@ au("BufWritePre", {
   callback = function(e)
     if not is_real_buf(e.buf) then return end
 
+    -- Skip binary files — byte-level content must not be altered.
+    if vim.bo[e.buf].binary then return end
+
     local ft = vim.bo[e.buf].filetype
     if vim.tbl_contains(
       { "markdown", "markdown_inline", "diff", "rst", "asciidoc", "mail" }, ft

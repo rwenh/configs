@@ -119,7 +119,8 @@ return {
             pcall(function()
               require("conform").format({
                 bufnr      = e.buf,
-                timeout_ms = vim.g.format_timeout_ms or 500,
+                -- Override per-session with: vim.g.format_timeout_ms = N
+                timeout_ms = vim.g.format_timeout_ms or 1500,
                 lsp_format = "fallback",
               })
             end)
@@ -201,6 +202,30 @@ return {
         "clangd", "kotlin_language_server", "zls",
       }) do lsp_setup(s, {}) end
 
+      -- ── TypeScript fallback ──────────────────────────────────────────────────
+      do
+        local ts_tools_present = (function()
+          local ok, cfg = pcall(require, "lazy.core.config")
+          if not ok then return false end
+          return cfg.plugins["typescript-tools.nvim"] ~= nil
+        end)()
+
+        if not ts_tools_present then
+          if vim.fn.executable("typescript-language-server") == 1 then
+            lsp_setup("ts_ls", {})
+          else
+            vim.schedule(function()
+              vim.notify(
+                "[lsp] typescript-tools.nvim not found and typescript-language-server"
+                .. " not on PATH.\nTypeScript LSP unavailable.\n"
+                .. "Fix: :Lazy install  OR  npm i -g typescript-language-server",
+                vim.log.levels.WARN
+              )
+            end)
+          end
+        end
+      end
+
       -- ── Optional servers (binary-gated) ─────────────────────────────────────
       for _, entry in ipairs({
         { server = "vhdl_ls",   binary = "vhdl_ls",
@@ -276,7 +301,11 @@ return {
         if vim.g.disable_autoformat then return nil end
         local ok, v = pcall(function() return vim.b[bufnr].disable_autoformat end)
         if ok and v then return nil end
-        return { timeout_ms = vim.g.format_timeout_ms or 500, lsp_format = "fallback" }
+        return {
+          -- Matches the 1500 ms default used in the LspAttach fmt() closure above.
+          timeout_ms = vim.g.format_timeout_ms or 1500,
+          lsp_format = "fallback",
+        }
       end,
     },
     config = function(_, opts)

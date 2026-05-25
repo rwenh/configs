@@ -116,6 +116,30 @@ return {
         return cmd == "bun test" and cmd or (cmd .. " --")
       end
 
+      -- ── JS test runner detection ───────────────────────────────────────────
+      -- Resolve the project root at opts() call time (neotest is lazy-loaded,
+      -- so this runs when neotest first activates — a project is open).
+      local _proj_root = (function()
+        local ok, p = pcall(require, "core.util.path")
+        return ok and p.find_root(vim.fn.getcwd()) or vim.fn.getcwd()
+      end)()
+
+      ---@param root string
+      ---@param patterns string[]
+      ---@return boolean
+      local function has_config(root, patterns)
+        for _, pat in ipairs(patterns) do
+          if vim.fn.findfile(pat, root .. ";") ~= "" then return true end
+        end
+        return false
+      end
+
+      local _is_vitest = has_config(_proj_root, {
+        "vitest.config.ts", "vitest.config.js",
+        "vitest.config.mts", "vitest.config.mjs",
+        "vitest.config.cjs",
+      })
+
       -- ── load_adapter helper ────────────────────────────────────────────────
 
       local adapters = {}
@@ -158,13 +182,20 @@ return {
         return require("neotest-elixir")({})
       end)
 
+      -- vitest: always load — it uses its own is_test_file detection and won't
+      -- claim jest-only projects.
       load_adapter("neotest-vitest", function()
         return require("neotest-vitest")({})
       end)
 
-      load_adapter("neotest-jest", function()
-        return require("neotest-jest")({ jestCommand = jest_cmd })
-      end)
+      -- jest: skip when a vitest config is present in the project root.
+      -- vitest projects with jest-style test filenames would otherwise get
+      -- invoked through the jest adapter, exiting non-zero.
+      if not _is_vitest then
+        load_adapter("neotest-jest", function()
+          return require("neotest-jest")({ jestCommand = jest_cmd })
+        end)
+      end
 
       load_adapter("neotest-java", function()
         return require("neotest-java")({ ignore_wrapper = false })
