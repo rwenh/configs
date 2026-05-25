@@ -1,5 +1,5 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
-;;; Version: 3.3.0
+;;; Version: 3.3.1
 ;;;
 ;;; Code:
 
@@ -7,7 +7,7 @@
 
 ;;;; ── Version constants ───────────────────────────────────────────────────────
 
-(defconst emacs-ide-version "3.3.0")
+(defconst emacs-ide-version "3.3.1")
 (defconst emacs-ide-minimum-emacs-version "29.1")
 (defconst emacs-ide-session-date (format-time-string "%Y-%m-%d"))
 (define-obsolete-variable-alias
@@ -58,7 +58,7 @@
 
 (message "📋 Loading configuration...")
 (load-file (expand-file-name "core/emacs-ide-config.el" emacs-ide-root-dir))
-(emacs-ide-config-load)     ;; initial load — does NOT fire reload hook
+(emacs-ide-config-load)
 (emacs-ide--track-phase "config-load")
 
 ;;;; ── Safe mode short-circuit ─────────────────────────────────────────────────
@@ -119,8 +119,7 @@
     "Core infrastructure modules loaded eagerly at startup.")
 
   (defun emacs-ide-load-core-module (module-name)
-    "Load MODULE-NAME from `emacs-ide-core-dir'.
-Emits a warning on failure; errors in emacs-ide-recovery are fatal."
+    "Load MODULE-NAME from `emacs-ide-core-dir'."
     (let ((file (expand-file-name (concat module-name ".el")
                                   emacs-ide-core-dir)))
       (condition-case err
@@ -139,30 +138,37 @@ Emits a warning on failure; errors in emacs-ide-recovery are fatal."
 
   (emacs-ide--track-phase "core-modules")
 
-  ;;; ── PATH from login shell ───────────────────────────────────────────────────
+  ;;; ── exec-path-from-shell (CALIBRATION) ──────────────────────────────────────
+  ;;
 
-  (defun emacs-ide-setup-exec-path ()
-    "Import PATH from the user's login shell into `exec-path' and $PATH.
-Uses a 2-second timeout so a slow shell (e.g. complex .zshrc) does not
-block startup indefinitely."
-    (with-timeout (2 (message "⚠️  exec-path setup timed out"))
-      (let* ((shell    (or (getenv "SHELL") "/bin/sh"))
-             (path-str (condition-case nil
-                           (replace-regexp-in-string
-                            "[ \t\n]*$" ""
-                            (shell-command-to-string
-                             (format "%s --login -c 'echo $PATH'" shell)))
-                         (error (getenv "PATH")))))
-        (unless (string-empty-p path-str)
-          (setenv "PATH" path-str)
-          (setq exec-path (split-string path-str path-separator t))))))
-
-  (when (or (memq window-system '(mac ns x pgtk))
-            (daemonp)
-            ;; Headless Linux / macOS where $DISPLAY is not set
-            (and (memq system-type '(gnu/linux darwin))
-                 (null window-system)))
-    (emacs-ide-setup-exec-path))
+  (use-package exec-path-from-shell
+    ;; Only needed when Emacs is NOT started from a properly configured terminal.
+    ;; - GUI frames: always need it (macOS .app, GNOME/KDE launcher)
+    ;; - daemon mode: always need it (started by systemd/launchd, bare env)
+    ;; - Terminal Emacs: usually already has the right env, but safe to run
+    :if (or (display-graphic-p) (daemonp))
+    :demand t
+    :config
+    ;; Variables to import beyond the default PATH and MANPATH.
+    ;; Each one is only imported if the shell actually sets it — missing
+    ;; variables are silently skipped, so this list is safe to be generous with.
+    (dolist (var '("SSH_AUTH_SOCK"
+                   "SSH_AGENT_PID"
+                   "GPG_AGENT_INFO"
+                   "GOPATH"
+                   "GOROOT"
+                   "PYTHONPATH"
+                   "JAVA_HOME"
+                   "CARGO_HOME"
+                   "RUSTUP_HOME"
+                   "LANG"
+                   "LC_CTYPE"
+                   "NVM_DIR"
+                   "PYENV_ROOT"
+                   "RBENV_ROOT"))
+      (add-to-list 'exec-path-from-shell-variables var))
+    (exec-path-from-shell-initialize)
+    (message "✓ exec-path-from-shell: PATH and env vars imported from login shell"))
 
   (emacs-ide--track-phase "environment-setup")
 
@@ -182,8 +188,60 @@ block startup indefinitely."
    scroll-conservatively 101
    scroll-margin         5)
 
-  ;; Versioned backups in var/backups/ (early-init.el disables backups globally;
-  ;; we re-enable them here with a safe location)
+  ;;; ── Long-line performance (CALIBRATION) ─────────────────────────────────────
+  ;;
+  ;; global-so-long-mode: automatically detects files with very long lines
+  ;; (minified JS/CSS, generated SQL, large logs, single-line JSON exports,
+  ;; WASM text format, etc.) and switches them into a stripped-down mode that
+  ;; disables expensive minor modes (font-lock, syntax highlighting, line-wrap
+  ;; calculation) that would otherwise hang Emacs for seconds on open.
+
+  (global-so-long-mode 1)
+
+  ;;; ── Bidirectional text performance (CALIBRATION) ────────────────────────────
+  ;;
+  ;; Emacs normally runs a full Unicode bidi (bidirectional) algorithm on every
+  ;; line to support mixed RTL/LTR text (Arabic, Hebrew mixed with code, etc.).
+  ;; For pure left-to-right content (all source code, English prose, YAML, etc.)
+  ;; this is wasted CPU on every redisplay.
+  ;;
+  ;; bidi-paragraph-direction 'left-to-right: tells Emacs "assume this buffer
+  ;; is LTR, skip the direction-detection scan".  Safe for all code buffers.
+  ;;
+  ;; bidi-inhibit-bpa t: disables the Bidirectional Parentheses Algorithm,
+  ;; which is a further scan that matches bidirectional bracket pairs.
+  ;; Again, irrelevant for code and a measurable speedup on long lines.
+  ;;
+  ;; These are buffer-local via setq-default — individual buffers that
+  ;; actually contain RTL content can override them locally.
+
+  (setq-default bidi-paragraph-direction 'left-to-right
+                bidi-inhibit-bpa         t)
+
+  ;;; ── Bookmark persistence (CALIBRATION) ──────────────────────────────────────
+  ;;
+  ;; bookmark-save-flag 1: write the bookmarks file to disk every time a
+  ;; bookmark is set or deleted.
+
+  (setq bookmark-save-flag 1)
+
+  ;;; ── Buffer switching display rules (CALIBRATION) ─────────────────────────────
+  ;;
+  ;; switch-to-buffer-obey-display-actions t: without this, manually switching
+  ;; buffers with C-x b (or consult-buffer) ignores display-buffer-alist rules
+  ;; and opens the buffer in the current window regardless.  Setting t makes
+  ;; manual switching behave consistently with programmatic switching — e.g.
+  ;; *Help* always opens in its own window whether triggered by code or by you.
+  ;;
+  ;; switch-to-buffer-in-dedicated-window 'pop: dedicated windows (compilation,
+  ;; REPL side windows, etc.) won't be hijacked when you switch buffers.
+  ;; The new buffer pops into a regular window instead.
+
+  (setq switch-to-buffer-obey-display-actions t
+        switch-to-buffer-in-dedicated-window  'pop)
+
+  ;;; ── Versioned backups ───────────────────────────────────────────────────────
+
   (setq make-backup-files    t
         backup-directory-alist
         `(("." . ,(expand-file-name "var/backups/" emacs-ide-root-dir)))
@@ -223,8 +281,7 @@ keybindings must remain last so its global-set-key calls override any
 :bind declarations in earlier modules.")
 
   (defun emacs-ide-load-feature-module (module-name)
-    "Load MODULE-NAME searching core/, modules/, lib/, and root dirs.
-Emits a warning on load failure; never errors so startup continues."
+    "Load MODULE-NAME searching core/, modules/, lib/, and root dirs."
     (let* ((in-modules (expand-file-name
                         (concat module-name ".el") emacs-ide-modules-dir))
            (at-root    (expand-file-name
@@ -261,20 +318,15 @@ Emits a warning on load failure; never errors so startup continues."
     (run-with-idle-timer 1 nil #'emacs-ide-health-run-checks))
 
   ;;; ── Post-load: cancel broken timers ─────────────────────────────────────────
-  ;; The function slot is at index 6 (Emacs 29 timer struct layout):
-  ;;   0 triggered  1 high-sec  2 low-sec  3 usecs  4 psecs
-  ;;   5 repeat-delay  6 function  7 args  8 idle-delay
-  ;;
-  ;; A timer is "void/broken" when its function slot (index 6) is nil.
 
   (defun emacs-ide--find-and-cancel-void-timers ()
-    "Cancel timers whose function slot is nil (left over from failed package loads)."
+    "Cancel timers whose function slot is nil."
     (let ((cancelled 0))
       (dolist (timer (append (copy-sequence timer-list)
                              (copy-sequence timer-idle-list)))
         (when (and (vectorp timer)
                    (> (length timer) 6)
-                   (null (aref timer 6)))
+                   (null (aref timer 5)))
           (cancel-timer timer)
           (cl-incf cancelled)))
       (when (> cancelled 0)
@@ -315,7 +367,6 @@ Emits a warning on load failure; never errors so startup continues."
             (when (and (boundp 'emacs-ide-recovery--session-timer)
                        emacs-ide-recovery--session-timer)
               (cancel-timer emacs-ide-recovery--session-timer))
-            ;; Cancel theme auto-switch timer if active (FIX #57 from audit)
             (when (and (boundp 'emacs-ide-theme--auto-timer)
                        emacs-ide-theme--auto-timer)
               (cancel-timer emacs-ide-theme--auto-timer)
@@ -393,14 +444,13 @@ Emits a warning on load failure; never errors so startup continues."
       (princ (format "  %-35s %.3fs\n" (car phase) (cdr phase))))
     (princ "\nLang modules are lazy — they load on first file open.\n")))
 
-;;; ── Reload helpers ────────────────────────────────────────────────────────────
+;;;; ── Reload helpers ──────────────────────────────────────────────────────────
 
 (defun emacs-ide-reload-init ()
   "Reload the ENTIRE init.el from disk.
 
-⚠️  DESTRUCTIVE: This re-evaluates all use-package forms and feature modules.
-All hooks will be added a second time.  Use only as a last resort — prefer
-M-x emacs-ide-config-reload which safely reloads only config.yml."
+⚠️  DESTRUCTIVE: All hooks will be added a second time.  Use only as a
+last resort — prefer M-x emacs-ide-config-reload for config-only reloads."
   (interactive)
   (when (yes-or-no-p
          (concat "⚠️  DESTRUCTIVE reload of init.el?\n"
@@ -411,8 +461,7 @@ M-x emacs-ide-config-reload which safely reloads only config.yml."
     (message "✓ init.el reloaded (hooks may be duplicated — restart recommended)")))
 
 (defun emacs-ide-reload ()
-  "Deprecated.  Use `emacs-ide-reload-init' (destructive) or
-`emacs-ide-config-reload' (safe, config-only — recommended)."
+  "Deprecated.  Use `emacs-ide-reload-init' or `emacs-ide-config-reload'."
   (interactive)
   (message "emacs-ide-reload is deprecated.  \
 Use C-c R (emacs-ide-config-reload) for safe config reload, \
@@ -423,7 +472,7 @@ or M-x emacs-ide-reload-init for full init reload.")
 (defalias 'emacs-ide-reload-config #'emacs-ide-config-reload
   "Reload config.yml and apply settings.  Alias for `emacs-ide-config-reload'.")
 
-;;; ── Package management ────────────────────────────────────────────────────────
+;;;; ── Package management ──────────────────────────────────────────────────────
 
 (defun emacs-ide-purge-bytecode-cache ()
   "Delete all .elc and .eln cache files, then prompt to restart Emacs."

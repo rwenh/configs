@@ -1,6 +1,9 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
-;;; Version: 3.1.1 | PATCH: Fixed projectile cache consistency (FIX #14-alt)
+;;; Version: 3.1.2
+;;;
 ;;; Code:
+
+(require 'cl-lib)
 
 (when (bound-and-true-p emacs-ide-project-enable)
 
@@ -20,7 +23,6 @@
                 ("~/work"     . 2)
                 ("~/code"     . 2))))))
 
-;; FIX #14-alt: Cache consistency on config reload
 (when (boundp 'emacs-ide-config-reload-hook)
   (add-hook 'emacs-ide-config-reload-hook
             (lambda ()
@@ -100,6 +102,31 @@
   :after (projectile consult)
   :bind (("C-c p h" . consult-projectile)))
 
+;;; ─── ibuffer-project (CALIBRATION) ──────────────────────────────────────────
+;;
+;; Integration: also remaps `list-buffers' (C-x C-b) to ibuffer-list-buffers
+;; so the project grouping appears whenever you invoke the buffer list.
+
+(use-package ibuffer-project
+  :after projectile
+  :config
+  (defun emacs-ide-ibuffer-project-setup ()
+    "Configure ibuffer to group buffers by project and sort by file path."
+    (setq ibuffer-filter-groups
+          (ibuffer-project-generate-filter-groups))
+    (unless (eq ibuffer-sorting-mode 'project-file-relative)
+      (ibuffer-do-sort-by-project-file-relative)))
+
+  (add-hook 'ibuffer-hook #'emacs-ide-ibuffer-project-setup)
+
+  ;; Remap list-buffers to ibuffer-list-buffers so C-x C-b always shows
+  ;; the project-grouped view rather than the plain buffer list.
+  (keymap-global-set "<remap> <list-buffers>" #'ibuffer-list-buffers)
+
+  ;; ibuffer quality-of-life settings from Crafted Emacs defaults
+  (setq ibuffer-movement-cycle nil   ; don't wrap around at top/bottom
+        ibuffer-old-time       24))  ; mark buffers as "old" after 24 hours
+
 (use-package treemacs
   :defer t
   :init
@@ -120,6 +147,8 @@
 
 (use-package treemacs-magit
   :after (treemacs magit))
+
+;;; ─── Project helpers ─────────────────────────────────────────────────────────
 
 (defun emacs-ide-project-root ()
   (or (and (fboundp 'projectile-project-root)

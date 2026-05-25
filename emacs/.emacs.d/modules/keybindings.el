@@ -1,16 +1,5 @@
 ;;; keybindings.el --- Vanilla-first IDE Keybindings -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
-;;; DESIGN RULES (enforced here):
-;;;   1.  keybindings.el loads last in the feature-module list.
-;;;   2.  All global-set-key calls for IDE commands live here.  No feature
-;;;       module should set global keys that are not also in this file.
-;;;   3.  Direct symbol bindings go in the DIRECT section; they are verified
-;;;       by emacs-ide-spot-check with strict eq.
-;;;   4.  Lambda / closure bindings (deferred commands, guards) go in the
-;;;       LAMBDA section; spot-check verifies only that they are non-nil.
-;;;   5.  Prefix maps are created with define-prefix-command so that C-h
-;;;       and which-key can enumerate their children.
+;;; Version: 3.3.1
 ;;;
 ;;; Code:
 
@@ -63,6 +52,10 @@
 (global-set-key (kbd "C-h F")   #'helpful-function)
 (global-set-key (kbd "C-h C")   #'helpful-command)
 (global-set-key (kbd "C-h d")   #'helpful-at-point)
+
+;;;; ── Dictionary ──────────────────────────────────────────────────────────────
+
+(global-set-key (kbd "M-#") #'dictionary-lookup-definition)
 
 ;;;; ── Org ─────────────────────────────────────────────────────────────────────
 
@@ -170,15 +163,13 @@
         (emacs-ide-eshell-here)
       (eshell 'N))))
 
-;;;; ── Notes (C-c n) prefix map — FIXED #2 ────────────────────────────────────
+;;;; ── Notes (C-c n) prefix map ───────────────────────────────────────────────
 
 (define-prefix-command 'emacs-ide-notes-map)
 (global-set-key (kbd "C-c n") 'emacs-ide-notes-map)
 
-;; C-c n n — neotree (direct symbol; spot-check verifies with eq)
 (global-set-key (kbd "C-c n n") #'neotree-toggle)
 
-;; C-c n / — full-text search across notes directory (lambda-bound)
 (global-set-key (kbd "C-c n /")
   (lambda () (interactive)
     (if (fboundp 'emacs-ide-notes-search)
@@ -227,6 +218,9 @@
     (princ
      "=== EMACS IDE v3.3 — NON-OBVIOUS BINDINGS ===
 Vanilla defaults work normally.  C-h k looks up any key.
+
+DICTIONARY:
+  M-#       Look up word at point (opens in left side window)
 
 HYDRA MENUS  (C-c h prefix — chord-free discoverable commands):
   C-c h w   window hydra    split/resize/ace/winner
@@ -307,6 +301,7 @@ UPGRADED BUILT-INS:
   C-x g     magit-status
   C-h f/v/k helpful-*
   M-/       hippie-expand
+  M-#       dictionary-lookup-definition
 
 TERMINAL:
   C-c t     vterm in current directory

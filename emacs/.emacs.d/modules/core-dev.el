@@ -1,5 +1,5 @@
 ;;; core-dev.el --- Development Core Infrastructure -*- lexical-binding: t -*-
-;;; Version: 3.3.0
+;;; Version: 3.3.1
 ;;;
 ;;; Code:
 
@@ -8,12 +8,10 @@
 ;;;; ── Language registry ───────────────────────────────────────────────────────
 
 (defvar emacs-ide-dev--registered-langs nil
-  "Alist of (LANG-KEY-SYMBOL . plist) for every lang module that has registered.
-Keys are interned symbols matching the lang-key strings used in config.yml.")
+  "Alist of (LANG-KEY-SYMBOL . plist) for every lang module that has registered.")
 
 (defvar emacs-ide-dev--config-languages nil
   "Cached `languages' section from config.yml.
-Set lazily on first call to `emacs-ide-dev--config-languages'.
 Cleared on `emacs-ide-config-reload-hook' so a reload picks up changes.")
 
 ;;;; ── Config reload: cache invalidation ──────────────────────────────────────
@@ -25,8 +23,7 @@ Cleared on `emacs-ide-config-reload-hook' so a reload picks up changes.")
 ;;;; ── Config access helpers ───────────────────────────────────────────────────
 
 (defun emacs-ide-dev--config-languages ()
-  "Return the parsed `languages' alist from config.yml, caching the result.
-Returns nil when config is not loaded or the section is absent."
+  "Return the parsed `languages' alist from config.yml, caching the result."
   (or emacs-ide-dev--config-languages
       (setq emacs-ide-dev--config-languages
             (condition-case nil
@@ -35,9 +32,7 @@ Returns nil when config is not loaded or the section is absent."
               (error nil)))))
 
 (defun emacs-ide-dev--config-lang-settings (lang-key)
-  "Return the lang-settings alist for LANG-KEY from config.yml, or nil.
-Example: (emacs-ide-dev--config-lang-settings \"sql\") →
-  ((dialect . postgres) (lsp-server . sqls) ...)"
+  "Return the lang-settings alist for LANG-KEY from config.yml, or nil."
   (condition-case nil
       (when (boundp 'emacs-ide-config-data)
         (let ((ls (cdr (assoc 'lang-settings emacs-ide-config-data))))
@@ -49,20 +44,17 @@ Example: (emacs-ide-dev--config-lang-settings \"sql\") →
 (defun emacs-ide-dev-lang-enabled-p (lang-key)
   "Return non-nil if LANG-KEY is enabled in config.yml.
 When the `languages' section is absent or empty, all languages default to
-enabled (opt-in-by-default policy — see Session 1 notes on bug #43)."
+enabled (opt-in-by-default policy)."
   (let ((langs (emacs-ide-dev--config-languages)))
     (if (null langs)
-        t  ; no languages section → everything enabled
+        t
       (let ((cell (assoc (intern lang-key) langs)))
-        ;; cell absent → key not listed → default enabled
-        ;; cell present → use its value (nil = disabled, t = enabled)
         (if cell (cdr cell) t)))))
 
 ;;;; ── Executable guard ────────────────────────────────────────────────────────
 
 (defun emacs-ide-dev-executable-guard (executables)
-  "Return non-nil when all EXECUTABLES are found on PATH.
-EXECUTABLES may be a string (single binary) or a list of strings."
+  "Return non-nil when all EXECUTABLES are found on PATH."
   (let ((exes (if (stringp executables)
                   (list executables)
                 executables)))
@@ -71,22 +63,13 @@ EXECUTABLES may be a string (single binary) or a list of strings."
 ;;;; ── Language registration ───────────────────────────────────────────────────
 
 (defun emacs-ide-dev-register (lang-key &rest plist)
-  "Register or replace the lang entry for LANG-KEY.
-PLIST should contain at minimum :tier, :lsp-server, :formatter,
-:test-cmd, :repl, and :modes.
-
-Example:
-  (emacs-ide-dev-register \"python\"
-    :tier 1 :lsp-server \"pyright\" :formatter \"black\"
-    :test-cmd \"pytest\" :repl \"ipython\"
-    :modes \\='(python-mode python-ts-mode))"
+  "Register or replace the lang entry for LANG-KEY."
   (let* ((key-sym  (intern lang-key))
          (existing (assoc key-sym emacs-ide-dev--registered-langs)))
     (if existing
         (setcdr existing plist)
       (push (cons key-sym plist) emacs-ide-dev--registered-langs))))
 
-;; Backward-compat alias
 (defalias 'emacs-ide-dev-register-lang #'emacs-ide-dev-register)
 
 (defun emacs-ide-dev-registered-langs ()
@@ -99,25 +82,27 @@ Example:
   (let ((entry (assoc (intern lang-key) emacs-ide-dev--registered-langs)))
     (and entry (plist-get (cdr entry) prop))))
 
-;;;; ── Tree-sitter grammar installer ──────────────────────────────────────────
+;;;; ── treesit-auto (CALIBRATION) ─────────────────────────────────────────────
+;;
+
+(use-package treesit-auto
+  :if (and (fboundp 'treesit-available-p)
+           (treesit-available-p))
+  :demand t
+  :config
+  (setq treesit-auto-install 'prompt)
+
+  (global-treesit-auto-mode 1)
+
+  (treesit-auto-add-to-auto-mode-alist 'all))
 
 (defun emacs-ide-dev-ensure-treesit (grammar)
-  "Install GRAMMAR tree-sitter language if not already available.
-Runs on a 2-second idle timer to avoid blocking startup.  Safe to call
-multiple times — skips installation if the grammar is already present."
-  (when (and (fboundp 'treesit-available-p)
-             (treesit-available-p))
-    (unless (and (fboundp 'treesit-language-available-p)
-                 (treesit-language-available-p grammar))
-      (run-with-idle-timer
-       2 nil
-       (lambda ()
-         (condition-case err
-             (when (fboundp 'treesit-install-language-grammar)
-               (treesit-install-language-grammar grammar))
-           (error
-            (message "core-dev: tree-sitter grammar %s install failed: %s"
-                     grammar (error-message-string err)))))))))
+  "No-op shim: GRAMMAR management is now handled by treesit-auto.
+This function is kept only for backward compatibility with lang modules
+that call it.  treesit-auto installs grammars on demand when a file of
+the corresponding type is opened."
+  ;; Intentionally empty — treesit-auto handles everything.
+  (ignore grammar))
 
 ;;;; ── Keymap helpers ──────────────────────────────────────────────────────────
 
@@ -134,12 +119,7 @@ multiple times — skips installation if the grammar is already present."
 ;;;; ── REPL hub helper ─────────────────────────────────────────────────────────
 
 (defun emacs-ide-dev--register-repl (lang-key modes repl-cmd)
-  "Register a simple comint-based REPL for LANG-KEY across MODES.
-REPL-CMD is the executable name.  Each mode gets a registry entry that
-launches the REPL via `make-comint'.
-
-Most lang modules call `emacs-ide-repl-register' directly for finer control;
-this helper is for simple cases where a bare comint REPL suffices."
+  "Register a simple comint-based REPL for LANG-KEY across MODES."
   (when (fboundp 'emacs-ide-repl-register)
     (dolist (mode modes)
       (emacs-ide-repl-register mode
@@ -159,10 +139,7 @@ this helper is for simple cases where a bare comint REPL suffices."
 ;;;; ── Formatter helper ────────────────────────────────────────────────────────
 
 (defun emacs-ide-dev-attach-formatter (formatter-sym mode)
-  "Map apheleia FORMATTER-SYM to major MODE when both are available.
-Only sets the mapping if the formatter entry exists in `apheleia-formatters'
-(i.e., the formatter binary is on PATH and was registered by the formatter
-module).  Safe to call before apheleia loads."
+  "Map apheleia FORMATTER-SYM to major MODE when both are available."
   (with-eval-after-load 'apheleia
     (when (and (boundp 'apheleia-formatters)
                (assq formatter-sym apheleia-formatters)
@@ -172,9 +149,7 @@ module).  Safe to call before apheleia loads."
 ;;;; ── DAP helper ──────────────────────────────────────────────────────────────
 
 (defun emacs-ide-dev-attach-dap (template-name dap-provider)
-  "Load DAP-PROVIDER when dap-mode is available.
-TEMPLATE-NAME is used only for the error message.  The provider symbol
-(e.g. \\='dap-python) is required via `require' with noerror."
+  "Load DAP-PROVIDER when dap-mode is available."
   (with-eval-after-load 'dap-mode
     (condition-case err
         (require dap-provider nil t)
@@ -186,12 +161,7 @@ TEMPLATE-NAME is used only for the error message.  The provider symbol
 ;;;; ── Test runner helper ──────────────────────────────────────────────────────
 
 (defun emacs-ide-dev-register-test-runner (lang-key &rest plist)
-  "Register test runners for LANG-KEY's modes via the runner registry.
-PLIST should contain :file-fn, :project-fn, :point-fn, :watch-fn, and
-optionally :modes (defaults to (lang-key-mode)).
-
-This helper is the preferred API when a lang module wants to register
-multiple mode variants without repeating the with-eval-after-load boilerplate."
+  "Register test runners for LANG-KEY's modes via the runner registry."
   (with-eval-after-load 'tools-test-runner-registry
     (when (fboundp 'emacs-ide-test-register-runner)
       (let ((modes (plist-get plist :modes)))

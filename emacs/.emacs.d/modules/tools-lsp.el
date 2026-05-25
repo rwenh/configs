@@ -1,5 +1,5 @@
 ;;; tools-lsp.el --- LSP Configuration -*- lexical-binding: t -*-
-;;; Version: 3.3.0
+;;; Version: 3.3.1
 ;;;
 ;;; Code:
 
@@ -9,11 +9,6 @@
 
 (use-package lsp-mode
   :commands (lsp lsp-deferred)
-
-  ;; Hook list covers BOTH classic and tree-sitter mode variants.
-  ;; Lang modules add their own hooks too — this list acts as a safety net
-  ;; for the race condition where a ts-mode activates before the lang
-  ;; module's 0.5-second pre-warm idle timer fires (bug #LSP-ts-race).
   :hook ((;; C / C++
           c-mode c++-mode c-ts-mode c++-ts-mode
           ;; Python
@@ -22,9 +17,7 @@
           rust-mode rust-ts-mode
           ;; Go
           go-mode go-ts-mode
-          ;; Java  — FIX #24: java-mode was in this list but java-ts-mode
-          ;; was missing; lsp-java only hooked java-ts-mode, leaving
-          ;; classic java-mode users with no LSP.
+          ;; Java
           java-mode java-ts-mode
           ;; JavaScript / TypeScript
           js-mode js-ts-mode
@@ -72,8 +65,6 @@
             emacs-ide-lsp-enable-inlay-hints)))
 
   ;; ── Re-apply config on explicit reload ───────────────────────────────────
-  ;; If the user changes lsp.inlay-hints in config.yml and reloads, update
-  ;; the global lsp-mode variable so new buffers pick up the new value.
   (add-hook 'emacs-ide-config-reload-hook
             (lambda ()
               (setq lsp-inlay-hints-enable      emacs-ide-lsp-enable-inlay-hints
@@ -113,9 +104,46 @@
 
 ) ;; end (when emacs-ide-lsp-enable)
 
+;;; ─── dumb-jump — xref fallback (CALIBRATION) ────────────────────────────────
+;;
+;; dumb-jump uses ripgrep/grep to find definitions with zero configuration.
+;; It registers itself as an xref backend so it acts automatically:
+;;   • When LSP is active   → LSP wins (higher priority in xref-backend-functions)
+;;   • When LSP is absent   → dumb-jump kicks in transparently
+;;   • In any language      → works even for languages with no LSP server
+;;
+;; The hydra (C-M-y) provides a discoverable menu for all jump actions.
+
+(use-package dumb-jump
+  :demand t
+  :config
+  ;; Register as xref backend — runs after LSP, before the default etags backend.
+  (add-hook 'xref-backend-functions #'dumb-jump-xref-activate)
+
+  ;; Prefer ripgrep → ag → grep in that order
+  (setq dumb-jump-prefer-searcher
+        (cond
+         ((executable-find "rg")  'rg)
+         ((executable-find "ag")  'ag)
+         (t                       'grep))
+        dumb-jump-aggressive      nil
+        dumb-jump-selector        'completing-read)
+
+  ;; Hydra for discoverable access to all dumb-jump actions
+  (when (fboundp 'defhydra)
+    (defhydra dumb-jump-hydra (:color blue :columns 3)
+      "Dumb Jump"
+      ("j" dumb-jump-go              "Go")
+      ("o" dumb-jump-go-other-window "Other window")
+      ("e" dumb-jump-go-prefer-external "Go external")
+      ("x" dumb-jump-go-prefer-external-other-window "Go ext. other win")
+      ("i" dumb-jump-go-prompt       "Prompt")
+      ("l" dumb-jump-quick-look      "Quick look")
+      ("b" dumb-jump-back            "Back"))
+    ;; C-M-y is easy to chord quickly; mnemonic: "jump"
+    (global-set-key (kbd "C-M-y") #'dumb-jump-hydra/body)))
+
 ;;; ─── Public commands (always available) ──────────────────────────────────────
-;; These are defined unconditionally so that keybindings and spot-check always
-;; see them, even when lsp.enable is false in config.yml.
 
 (defun emacs-ide-lsp-status ()
   "Show LSP connection status for the current buffer."
@@ -129,7 +157,9 @@
                                   (mapconcat #'lsp--workspace-print
                                              (lsp-workspaces) ", "))
                              "connected"))
-               "✗ inactive (not started in this buffer)"))))
+               (format "✗ inactive — dumb-jump fallback %s"
+                       (if (fboundp 'dumb-jump-xref-activate)
+                           "active" "unavailable"))))))
 
 (defun emacs-ide-lsp-check-servers ()
   "Display which LSP servers are installed and available on PATH."
@@ -156,14 +186,16 @@
                    ("r-languageserver"           . "R"))))
     (with-output-to-temp-buffer "*LSP Server Status*"
       (princ "=== LSP SERVER STATUS ===\n\n")
-      (princ (format "LSP enabled:  %s\n"
+      (princ (format "LSP enabled:    %s\n"
                      (if (bound-and-true-p emacs-ide-lsp-enable) "yes" "no")))
-      (princ (format "Inlay hints:  %s\n"
+      (princ (format "Inlay hints:    %s\n"
                      (if (bound-and-true-p emacs-ide-lsp-enable-inlay-hints)
                          "yes" "no")))
-      (princ (format "Idle delay:   %.2fs\n\n"
+      (princ (format "Idle delay:     %.2fs\n"
                      (if (boundp 'emacs-ide-lsp-idle-delay)
                          emacs-ide-lsp-idle-delay 0.3)))
+      (princ (format "Dumb-jump:      %s  (fallback when LSP absent)\n\n"
+                     (if (fboundp 'dumb-jump-xref-activate) "✓ loaded" "✗ not loaded")))
       (let ((found 0) (missing 0))
         (dolist (srv servers)
           (let ((available (executable-find (car srv))))
@@ -174,7 +206,8 @@
                            (if available (car srv) "(not on PATH)")))))
         (princ (format "\n%d installed, %d not found.\n" found missing))
         (when (= found 0)
-          (princ "\nTip: Install language servers — see README §Tool Installation.\n"))))))
+          (princ "\nTip: Install language servers — see README §Tool Installation.\n"))
+        (princ "\nNote: dumb-jump covers any language not listed above.\n")))))
 
 (provide 'tools-lsp)
 ;;; tools-lsp.el ends here

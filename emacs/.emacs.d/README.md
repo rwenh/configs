@@ -1,869 +1,683 @@
-# Enterprise Emacs IDE
+# Emacs IDE — v3.3.1
 
-**Version 3.2.2** — Production-grade Emacs configuration with lazy-loaded 50-language support,
-LSP, DAP debugging, Hydra menus, unified REPL hub, perspective workspaces, ef-themes,
-async formatting, Git integration, and full recovery system.
-
----
-
-## What's New in v3.2.2
-
-15 bugs fixed across 9 files. Every fix was identified by auditing the first-install log and cross-checking all module interdependencies.
-
-| # | File | Bug | Fix |
-|---|------|-----|-----|
-| 1 | `ui-modeline.el` | `<nil> <mouse-1> is undefined` on every startup | Keymap only assigned when `define-key` succeeds |
-| 2 | `ui-dashboard.el` | `kill-on-file-open` missing closing paren — `remove-hook` never ran, hook fired forever | Paren fixed; `remove-hook` always executes |
-| 3 | `init.el` | `emacs-ide-health-check-startup` ghost function called but never defined — startup health check silently skipped | Replaced with real `emacs-ide-health-run-checks` |
-| 4 | `emacs-ide-spot-check.el` | `emacs-ide-repl-send-line` and `C-c x l` missing from spot-check | Added to commands list and keybindings table |
-| 5 | `emacs-ide-spot-check.el` | `emacs-ide-test-run-all` missing from commands list | Added |
-| 6 | `emacs-ide-spot-check.el` | `C-c t` / `C-c e` always reported ✗ — spot-check used symbol equality against lambdas | `keybindings.el` now uses direct refs; entries restored to direct table |
-| 7 | `emacs-ide-spot-check.el` | All 10 hydra bodies never verified | Added to commands list where `fboundp` works |
-| 8 | `init.el` | `emacs-ide-telemetry-log-startup` defined but never called — startup telemetry log always empty | Called in `emacs-startup-hook` |
-| 9 | `emacs-ide-recovery.el` | Crash counter never incremented — counter permanently 0, crash detection non-functional | Increments on startup, resets to 0 on clean exit |
-| 10 | `lang-sql.el` | `emacs-ide-config-get-nested` ghost function — SQL dialect from `config.yml` silently ignored | Replaced with `emacs-ide-dev--config-lang-settings` |
-| 11 | `emacs-ide-spot-check.el` | 19 public interactive commands not verified by spot-check | Added `emacs-ide-health-status`, `emacs-ide-select-theme`, telemetry toggles, spelling, vterm extras, project/debug helpers, and more |
-| 12 | `tools-lsp.el` | `lsp-inlay-hints-enable` hardcoded `t` — `lsp.inlay-hints: false` in config had no effect | Now reads `emacs-ide-lsp-enable-inlay-hints` config variable; propagated to Rust, Lua, TypeScript per-language hints |
-| 13 | `tools-git.el` | `emacs-ide-git-enable` guard missing — `git.enable: false` had no effect | Wrapped module body in `(when emacs-ide-git-enable ...)` |
-| 14 | `debug-core.el` | `emacs-ide-debug-enable` guard missing — `debug.enable: false` had no effect | Wrapped `dap-mode` setup in guard; helper commands stay defined so hydra/keys always work |
-| 15 | `emacs-ide-spot-check.el` | `C-c D s/r/q` and all `C-c h *` always reported ✗ — lambda-bound keys can't be symbol-checked | Split keybindings into two sections: direct (symbol equality) and lambda-bound (non-nil check) |
-
-### What's New in v3.2.x (preceding patches)
-
-- `emacs-ide-repl-send-line` added to REPL hub (`C-c x l`)
-- `emacs-ide-test-run-all` added to test runner (`C-c C-T`)
-- `emacs-ide-health-status` alias documented and verified
-- `emacs-ide-lsp-check-servers` added to `tools-lsp.el`
-- `emacs-ide-diagnose-languages` added to `emacs-ide-diagnose.el`
-- Config reload hook now fires only on explicit reload, not initial load
-- `emacs-ide-recovery--session-timer` declared properly — no void-variable warning on exit
-
-### What's New in v3
-
-- **50-language lazy loading** — `modules/langs/` replaces monolithic `lang-core.el`. Zero boot cost — each lang module loads only when you open a file of that type, or when a project marker (`Cargo.toml`, `go.mod`, `package.json`, etc.) is detected.
-- **ef-themes** replaces modus-themes — sharper, more opinionated office aesthetic. Toggle dark/light with `F12`.
-- **nerd-icons** replaces all-the-icons — single font, faster load, richer symbol coverage.
-- **Hydra menus** — 10 discoverable chord-free command menus (`C-c h w/b/g/l/p/t/d/u/r/s`).
-- **perspective.el workspaces** — named workspaces with isolated buffer lists. Auto-creates a workspace per project. Switch with `M-1..9`.
-- **Unified REPL hub** — `C-c x r` dispatches to the right REPL for any language (Python, Node, Go, Rust, Clojure, Julia, R, Lua, Nix).
-- **tools-project-detect** — reads project root markers + `config.yml` language flags, pre-warms only the lang tiers you use.
-- **Optional Meow modal editing** — Emacs-native modal mode. Off by default; enable with `editing.meow: true` in `config.yml`.
-
----
-
-## Requirements
-
-| Requirement | Minimum | Notes |
-|---|---|---|
-| Emacs | 29.1+ | Native compilation strongly recommended |
-| Git | any | Required — health check fails without it |
-| ripgrep (`rg`) | any | Recommended for project search |
-| `fd` | any | Recommended for file finding |
-| Node.js + npm | any | Required for JS/TS LSP and prettier |
-| Go | 1.21+ | Required for Go LSP/tools |
-| Rust + cargo | any | Required for Rust LSP/tools |
-| Python 3 + pip | 3.9+ | Required for Python LSP/tools |
-| Java 21+ | 21 | Required for Java/Kotlin LSP |
-
----
-
-## Install
+`Emacs 29.1+` · `straight.el` · `52 modules` · `50 languages` · `<2s cold start`
 
 ```bash
-git clone <your-repo> ~/.emacs.d
-emacs --init-directory ~/.emacs.d
-```
-
-On first launch straight.el bootstraps itself and installs all packages. This takes 2–5 minutes. Subsequent startups are typically **< 2 seconds** in practice (lang modules are lazy). The `startup-time-target: 3.0` in `config.yml` is the warning threshold — a notification fires if startup exceeds it, not a goal in itself.
-
-> **After upgrading Emacs** (e.g. 29 → 30), always purge stale bytecode before restarting:
-> ```bash
-> find ~/.emacs.d -name "*.elc" -delete
-> ```
-> Or from inside Emacs: `M-x emacs-ide-purge-bytecode-cache`
-> (covers `core/`, `modules/`, `modules/langs/`, and `var/eln-cache/` automatically).
-
-To boot in safe mode (minimal config, no packages):
-
-```bash
-emacs --emacs-ide-safe
-# or: EMACS_SAFE_MODE=1 emacs
+git clone <repo> ~/.emacs.d && emacs --init-directory ~/.emacs.d
+# First launch: straight.el bootstraps + installs all packages (~3 min, once only)
+# Safe mode:    emacs --emacs-ide-safe  |  EMACS_SAFE_MODE=1 emacs
+# After Emacs upgrade: M-x emacs-ide-purge-bytecode-cache
 ```
 
 ---
 
-## Tool Installation by Distro
-
-Install only the tools for languages you actually use. After installing, run
-`M-x emacs-ide-diagnose` to verify setup or `M-x emacs-ide-health-status` for a health report.
-
-### openSUSE Leap / Tumbleweed
-
-```bash
-# Base tools
-sudo zypper install git ripgrep fd emacs
-
-# Language runtimes
-sudo zypper install nodejs npm go java-21-openjdk
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-
-# LSP servers — Tier 1
-pip install pyright --break-system-packages
-rustup component add rust-analyzer
-go install golang.org/x/tools/gopls@latest
-npm install -g typescript-language-server
-sudo zypper install clang                        # C/C++ (clangd included)
-
-# LSP servers — Tier 2
-npm install -g bash-language-server yaml-language-server
-go install github.com/sqls-server/sqls@latest
-# Kotlin LSP
-curl -sSLO https://github.com/fwcd/kotlin-language-server/releases/latest/download/server.zip
-unzip server.zip -d ~/.local/kotlin-language-server
-sudo ln -sf ~/.local/kotlin-language-server/server/bin/kotlin-language-server /usr/local/bin/
-# Java LSP (jdtls) — lsp-mode does not auto-install it
-VERSION=$(curl -sSL https://download.eclipse.org/jdtls/milestones/ | grep -oP '[\d]+\.[\d]+\.[\d]+' | sort -V | tail -1)
-mkdir -p ~/.local/share/jdtls
-FILENAME=$(curl -sSL "https://download.eclipse.org/jdtls/milestones/${VERSION}/" | grep -oP 'jdt-language-server-[\d.\-]+\.tar\.gz' | head -1)
-curl -L "https://download.eclipse.org/jdtls/milestones/${VERSION}/${FILENAME}" | tar xz -C ~/.local/share/jdtls
-printf '#!/bin/sh\nexec python3 ~/.local/share/jdtls/bin/jdtls -configuration ~/.cache/jdtls -data ~/.local/share/jdtls/workspace "$@"\n' | sudo tee /usr/local/bin/jdtls
-sudo chmod +x /usr/local/bin/jdtls
-
-# Formatters — Tier 1
-pip install black isort --break-system-packages
-npm install -g prettier
-go install golang.org/x/tools/cmd/goimports@latest
-sudo zypper install clang                        # clang-format included
-
-# Formatters — Tier 2
-pip install pgformatter --break-system-packages
-go install mvdan.cc/sh/v3/cmd/shfmt@latest
-cargo install stylua
-curl -sSLO https://github.com/pinterest/ktlint/releases/latest/download/ktlint
-chmod +x ktlint && sudo mv ktlint /usr/local/bin/
-curl -sSLO https://github.com/google/google-java-format/releases/latest/download/google-java-format-all-deps.jar
-sudo mkdir -p /usr/local/lib && sudo mv google-java-format-all-deps.jar /usr/local/lib/
-printf '#!/bin/sh\nexec java -jar /usr/local/lib/google-java-format-all-deps.jar "$@"\n' | sudo tee /usr/local/bin/google-java-format
-sudo chmod +x /usr/local/bin/google-java-format
-
-# Debug adapters
-pip install debugpy --break-system-packages
-go install github.com/go-delve/delve/cmd/dlv@latest
-sudo zypper install lldb
-```
-
-### Ubuntu / Debian
-
-```bash
-# Base tools
-sudo apt install git ripgrep fd-find emacs
-
-# Language runtimes
-sudo apt install nodejs npm golang-go default-jdk-21
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-
-# LSP servers — Tier 1
-pip install pyright
-rustup component add rust-analyzer
-go install golang.org/x/tools/gopls@latest
-npm install -g typescript-language-server
-sudo apt install clangd
-
-# LSP servers — Tier 2
-npm install -g bash-language-server yaml-language-server
-go install github.com/sqls-server/sqls@latest
-# Kotlin LSP and Java LSP: same steps as openSUSE above
-
-# Formatters — Tier 1
-pip install black isort
-npm install -g prettier
-go install golang.org/x/tools/cmd/goimports@latest
-sudo apt install clang-format
-
-# Formatters — Tier 2
-sudo apt install pgformatter
-go install mvdan.cc/sh/v3/cmd/shfmt@latest
-cargo install stylua
-# ktlint and google-java-format: same steps as openSUSE above
-
-# Debug adapters
-pip install debugpy
-go install github.com/go-delve/delve/cmd/dlv@latest
-sudo apt install lldb
-```
-
-### macOS (Homebrew)
-
-```bash
-# Base tools
-brew install git ripgrep fd emacs
-
-# Language runtimes
-brew install node go openjdk@21
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-echo 'export PATH="$HOME/.cargo/bin:$HOME/go/bin:$(brew --prefix openjdk@21)/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
-
-# LSP servers — Tier 1
-pip install pyright
-rustup component add rust-analyzer
-go install golang.org/x/tools/gopls@latest
-npm install -g typescript-language-server
-brew install llvm                                # provides clangd
-
-# LSP servers — Tier 2
-npm install -g bash-language-server yaml-language-server
-go install github.com/sqls-server/sqls@latest
-brew install kotlin-language-server
-# Java LSP: same manual jdtls steps as openSUSE above
-
-# Formatters — Tier 1
-pip install black isort
-npm install -g prettier
-go install golang.org/x/tools/cmd/goimports@latest
-brew install clang-format
-
-# Formatters — Tier 2
-pip install pgformatter
-go install mvdan.cc/sh/v3/cmd/shfmt@latest
-cargo install stylua
-brew install ktlint google-java-format
-
-# Debug adapters
-pip install debugpy
-go install github.com/go-delve/delve/cmd/dlv@latest
-# LLDB ships with Xcode Command Line Tools
-```
-
-### Fonts (all distros)
-
-After first Emacs launch, install the Nerd Icons font once:
+## Architecture
 
 ```
-M-x nerd-icons-install-fonts
+early-init.el          18-phase startup: GC · frame · native-comp · JIT · bidi · TLS
+init.el                Bootstrap · exec-path · so-long · bidi · bookmarks · buf-rules
+config.yml             Single source of truth — M-x emacs-ide-config-reload to apply
+
+core/        (10)      Always loaded at boot, before any feature module
+modules/     (26)      Eager feature modules, loaded in strict order
+modules/langs/ (13)    Lazy lang modules — zero boot cost, load on file open
+var/                   Runtime state (never commit)
+snippets/              YASnippet custom snippets
 ```
 
-### LSP servers not covered by `M-x lsp-install-server`
-
-| Server | Language | Install method |
-|---|---|---|
-| `jdtls` | Java | Manual — see openSUSE steps above |
-
-All other Tier 1/2 servers are detected automatically by `lsp-mode` once on PATH.
-
----
-
-## Directory Structure
-
+**Load order (strict):**
 ```
-~/.emacs.d/                                     52 files total (51 .el + 1 .yml)
-│
-├── early-init.el              GC · frame · native-comp · JIT · TLS (before init)
-├── init.el                    Bootstrap · module loader · startup tracking
-├── config.yml                 All user config — edit this, not the .el files
-│
-├── core/                      10 files — infrastructure, always loaded at boot
-│   ├── emacs-ide-config.el    YAML loader; (require)'d first, before core loop
-│   ├── emacs-ide-health.el    Health check system + emacs-ide-health-status alias
-│   ├── emacs-ide-diagnose.el  Diagnostics — M-x emacs-ide-diagnose / diagnose-lsp / diagnose-languages
-│   ├── emacs-ide-package.el   Package load-time tracking
-│   ├── emacs-ide-profiler.el  CPU / memory profiler
-│   ├── emacs-ide-recovery.el  Crash tracking · safe mode · config backup/restore
-│   ├── emacs-ide-security.el  TLS · auth-source · network security
-│   ├── emacs-ide-telemetry.el Local usage analytics (startup metrics now logged)
-│   ├── emacs-ide-test.el      ERT integration tests (M-x emacs-ide-run-tests)
-│   └── emacs-ide-spot-check.el Command · keybinding · feature integrity check
-│
-├── modules/                   26 files — feature modules, loaded eagerly in order
-│   ├── ui-core.el             ef-themes · nerd-icons · visual enhancements
-│   ├── ui-theme.el            ef-themes toggle (F12) · auto dark/light by time
-│   ├── ui-modeline.el         doom-modeline + health segment (mouse-1 fixed)
-│   ├── ui-dashboard.el        Startup dashboard (kill-on-file-open hook fixed)
-│   ├── ui-workspace.el        perspective.el workspaces · tab-bar · M-1..9
-│   ├── completion-core.el     Vertico · Corfu · Consult · Embark · Orderless
-│   ├── completion-snippets.el YASnippet + community snippets
-│   ├── editing-core.el        Smartparens · undo-tree · mc · avy · Meow (opt)
-│   ├── core-dev.el            Shared lang API · emacs-ide-dev-*
-│   ├── tools-lsp.el           lsp-mode · lsp-ui · flycheck (inlay-hints config-driven)
-│   ├── tools-project.el       Projectile · Treemacs · Neotree
-│   ├── tools-project-detect.el Project root → lang tier pre-warming
-│   ├── tools-git.el           Magit · diff-hl · forge · git-timemachine (git.enable guard added)
-│   ├── tools-terminal.el      VTerm (C-c t) · Eshell · Docker
-│   ├── tools-format.el        Apheleia base config
-│   ├── apheleia-langs-patch.el 50-lang complete formatter map
-│   ├── tools-repl.el          Unified REPL hub · C-c x r/s/b/d/l/t
-│   ├── tools-org.el           Org-mode · agenda · capture · babel · export
-│   ├── tools-spelling.el      Flyspell prose + flyspell-prog-mode code
-│   ├── tools-notes.el         org-roam linked notes
-│   ├── tools-rest.el          Restclient · Verb
-│   ├── tools-test-runner-registry.el  Per-lang test registry · C-c X f/p/./w/s
-│   ├── tools-test.el          Auto-detect fallback + history · C-c C-t / C-c C-T
-│   ├── debug-core.el          DAP adapters (debug.enable guard added)
-│   ├── tools-hydra.el         10 Hydra menus · C-c h w/b/g/l/p/t/d/u/r/s
-│   └── keybindings.el         All global keys — always loads last
-│
-├── modules/langs/             13 files — lazy, zero boot cost
-│   ├── lang-python.el         pyright · ipython · pytest · poetry · debugpy
-│   ├── lang-rust.el           rust-analyzer · evcxr · cargo · LLDB
-│   ├── lang-web.el            tsserver · Node REPL · jest · prettier
-│   ├── lang-go.el             gopls · gore · go test · Delve
-│   ├── lang-c.el              clangd · clang-format · CMake · LLDB
-│   ├── lang-jvm.el            jdtls · kotlin-ls · Metals · Maven/Gradle
-│   ├── lang-lua.el            lua-language-server · stylua · busted
-│   ├── lang-shell.el          bash-ls · shellcheck · shfmt · bats
-│   ├── lang-sql.el            sqls · pgformatter · ejc-sql (dialect reads config.yml)
-│   ├── lang-data.el           ESS/R · julia-repl · Jupyter
-│   ├── lang-functional.el     HLS · CIDER · Elixir · OCaml · Erlang
-│   ├── lang-systems.el        ZLS · nil · nix-mode · Zig · D · V
-│   └── lang-prose.el          md · yaml · toml · json · docker · terraform
-│
-├── var/                       Auto-created on first launch — do not commit
-│   ├── backups/               Versioned config.yml backups
-│   ├── eln-cache/             Native-compiled .eln files
-│   ├── crash-history          Crash counter (increments on start, resets on clean exit)
-│   ├── recovery.log           Recovery system log
-│   ├── telemetry.log          Local startup metrics log
-│   ├── persp-state            Workspace layout save file
-│   ├── places                 Save-place history
-│   └── custom.el              Emacs custom-set-variables
-│
-└── snippets/                  Auto-created — add custom YASnippet snippets here
-```
-
-| Location | Files | How loaded |
-|---|---|---|
-| root | 3 | `early-init.el` at startup · `init.el` bootstraps · `config.yml` parsed by config module |
-| `core/` | 10 | `emacs-ide-config.el` first · 7 via core loop · `emacs-ide-test.el` + `emacs-ide-spot-check.el` eagerly at end of init |
-| `modules/` | 26 | Eagerly in order at startup |
-| `modules/langs/` | 13 | Lazily on file open or project switch |
-| **Total** | **52** | |
-
-`var/` and `snippets/` are auto-created. Never commit them.
-
----
-
-## Configuration
-
-All settings live in **`config.yml`** — edit this, not the `.el` modules.
-
-```bash
-M-x emacs-ide-config-edit     # Open config in Emacs
-M-x emacs-ide-config-reload   # Reload after editing (no restart needed)
-M-x emacs-ide-config-show     # View currently active values
-```
-
-Key sections and their effects:
-
-```yaml
-general:
-  theme: ef-dark               # ef-dark · ef-light · ef-cherie · ef-winter · …
-  font: JetBrains Mono
-  font-size: 11
-
-lsp:
-  enable: true                 # false → tools-lsp.el skips all lsp-mode setup
-  inlay-hints: true            # false → disables hints in all languages uniformly
-
-git:
-  enable: true                 # false → Magit and all git packages do not load
-
-debug:
-  enable: true                 # false → dap-mode does not load
-
-editing:
-  meow: false                  # true → Emacs-native modal editing
-
-workspace:
-  enable: true                 # perspective.el named workspaces
-
-languages:
-  python: true                 # Loads lang-python.el on first .py file
-  rust: true
-  go: true
-  javascript: true
-  haskell: false               # Set true to enable (off by default)
-
-lang-settings:
-  sql:
-    dialect: postgres          # Read correctly since v3.2.2
-  rust:
-    lsp-server: rust-analyzer
-    cargo-watch: clippy
-  python:
-    lsp-server: pyright
-    formatter: black
-```
-
-> **Languages are lazy by default.** Setting a language to `false` prevents
-> its module from ever loading. Keys absent from `config.yml` default to `true`.
-
----
-
-## How Lazy Loading Works
-
-```
-Emacs starts
-  → early-init.el   (GC, frame, native-comp)
-  → init.el         (core + 26 feature modules — no lang modules)
-  → ready in ~1.5-2s
-
-You open ~/work/api/main.py
-  → find-file-hook fires
-  → tools-project-detect scans root: finds pyproject.toml
-  → checks config.yml: python: true
-  → loads lang-python.el (0.5s idle, non-blocking)
-  → LSP starts, pyright connects, pytest wired, REPL ready
-
-You run M-x projectile-switch-project → ~/code/myapp (Cargo.toml)
-  → tools-project-detect fires on project switch
-  → loads lang-rust.el pre-emptively
-  → rust-analyzer ready before you open the first .rs file
-```
-
-Adding a new language: create `modules/langs/lang-xyz.el` following the
-`lang-python.el` template, add `xyz: true` to `config.yml`. Nothing else.
-
----
-
-## Health & Diagnostics
-
-### Quick Verification
-
-Run these after setup or after any significant change:
-
-```
-M-x emacs-ide-spot-check            ← commands + keybindings + features integrity
-M-x emacs-ide-run-tests             ← full ERT suite
-M-x emacs-ide-diagnose              ← module load status + config validation
-M-x emacs-ide-diagnose-lsp          ← LSP server availability
-M-x emacs-ide-diagnose-languages    ← per-language enable/load/LSP/formatter status
-M-x emacs-ide-health-status         ← system tools + LSP + config health
-```
-
-### Full Status Command Reference
-
-```
-M-x emacs-ide-health-status         health report (system tools, LSP, config)
-M-x emacs-ide-health-auto-fix       attempt automatic remediation of warnings
-M-x emacs-ide-lsp-check-servers     which LSP servers are on PATH
-M-x emacs-ide-lsp-status            LSP connection status for current buffer
-M-x emacs-ide-config-show           all active configuration variable values
-M-x emacs-ide-startup-report        load phase breakdown and timings
-M-x emacs-ide-package-report        package load times (slowest 20)
-M-x emacs-ide-detect-show-status    project detection + pre-warmed languages
-M-x emacs-ide-repl-status           live REPL hub status
-M-x emacs-ide-test-runner-status    registered per-language test runners
-M-x emacs-ide-workspace-status      perspective workspaces + buffer counts
-M-x emacs-ide-security-check        TLS + auth sources + GPG audit
-M-x emacs-ide-recovery-report       crash counter, log path, disabled packages
-M-x emacs-ide-telemetry-report      local usage analytics
-M-x emacs-ide-early-init-report     early-init phase benchmark
-M-x emacs-ide-check-formatters      which formatters are on PATH
-```
-
-### Expected Spot-Check Output (clean install)
-
-```
-=== EMACS IDE SPOT CHECK ===
-
-COMMANDS (M-x):
-  ✓ emacs-ide-run-tests
-  ✓ emacs-ide-diagnose
-  ✓ emacs-ide-health-check-all
-  ✓ emacs-ide-health-status
-  ... (94 commands total — all ✓)
-
-KEYBINDINGS (direct — verified by symbol equality):
-  ✓ C-c x r      → emacs-ide-repl-launch
-  ✓ C-c x l      → emacs-ide-repl-send-line
-  ✓ C-c C-T      → emacs-ide-test-run-all
-  ✓ C-c t        → emacs-ide-vterm-here
-  ✓ C-c e        → emacs-ide-eshell-here
-  ... (42 bindings total — all ✓)
-
-KEYBINDINGS (lambda-bound — verified as non-nil):
-  ✓ C-c h w      → lambda/compiled
-  ✓ C-c D s      → lambda/compiled
-  ... (13 bindings total — all ✓)
-
-MODULE FEATURES PROVIDED:
-  ✓ emacs-ide-config
-  ✓ emacs-ide-health
-  ... (all 37 features — all ✓)
-
-=== SUMMARY ===
-✓ ALL CHECKS PASSED — everything is working correctly.
+config → health → diagnose → package → profiler → security → telemetry → recovery
+→ ui-core → ui-theme → ui-modeline → ui-dashboard → ui-workspace
+→ completion-core → completion-snippets → editing-core → core-dev
+→ tools-lsp → tools-project → tools-git → tools-terminal
+→ tools-format → apheleia-langs-patch
+→ tools-org → tools-spelling → tools-notes → tools-rest
+→ tools-test-runner-registry → tools-test → debug-core
+→ tools-repl → tools-project-detect → tools-hydra
+→ keybindings                          ← always last
+→ [test + spot-check]                  ← eagerly at end of init
+langs/: lazy on file-open or project-switch
 ```
 
 ---
 
-## Keybindings — Non-Obvious Reference
+## Runtime Dependencies
 
-Vanilla Emacs defaults (`C-x C-s`, `C-x C-f`, `M-.`, `C-/`, etc.) work as always.
-Run `C-h k` to look up any key.
+**Required:** `git` `ripgrep` `emacs 29.1+`  
+**Recommended:** `fd` `node/npm` `python3` `go` `rust/cargo` `java 21`  
+**Fonts:** `M-x nerd-icons-install-fonts` (once)
 
-### Hydra menus — C-c h prefix
+**Packages auto-installed by straight.el** (selected):
 
-| Key | Hydra | What's inside |
-|---|---|---|
-| `C-c h w` | Window | split · resize · ace · winner |
-| `C-c h b` | Buffer | switch · kill · scratch · ibuffer |
-| `C-c h g` | Git | magit · diff · blame · stash · forge |
-| `C-c h l` | LSP | rename · actions · refs · format · hover |
-| `C-c h p` | Project | find · ripgrep · compile · treemacs |
-| `C-c h t` | Test | file · project · at-point · watch · report |
-| `C-c h d` | Debug | step · continue · breakpoints · inspect · repl |
-| `C-c h u` | Toggles | theme · line-nos · flycheck · dimmer · zen |
-| `C-c h r` | REPL | launch · send region/buffer/defun · toggle |
-| `C-c h s` | Search | ripgrep · occur · imenu · outline · symbol |
-| `C-c h h` | Help | list all hydra entry points |
-
-### REPL — C-c x prefix (lowercase x)
-
-| Key | Command |
+| Layer | Packages |
 |---|---|
-| `C-c x r` | Launch / switch to REPL for current language |
-| `C-c x s` | Send region to REPL |
-| `C-c x b` | Send buffer to REPL |
-| `C-c x d` | Send defun at point to REPL |
-| `C-c x l` | Send current line to REPL and advance |
-| `C-c x t` | Toggle REPL window (bottom side window) |
-| `C-c x R` | Show test report (this session) |
-
-### Tests — C-c X prefix (uppercase X)
-
-| Key | Command |
-|---|---|
-| `C-c X f` | Run file tests |
-| `C-c X p` | Run project tests |
-| `C-c X .` | Run test at point |
-| `C-c X w` | Watch mode |
-| `C-c X s` | Show registered runners |
-| `C-c X l` | Repeat last test run |
-| `C-c C-t` | Smart dispatch (file → project → auto-detect) |
-| `C-c C-T` | Force full project suite |
-
-Supported frameworks (auto-detected): pytest · unittest · cargo test · go test ·
-jest · vitest · npm test · rspec · mvn test · gradle test · mix test ·
-cabal test · stack test · bats · ERT · ctest · make test.
-
-### Workspaces — C-c W prefix
-
-| Key | Command |
-|---|---|
-| `C-c W s` | Switch workspace |
-| `C-c W n` | New workspace |
-| `C-c W k` | Kill workspace |
-| `C-c W r` | Rename workspace |
-| `C-c W b` | Switch buffer within workspace |
-| `C-c W S` | Save window layout (burly bookmark) |
-| `C-c W R` | Restore window layout |
-| `M-1..9` | Switch to workspace by index |
-
-### Navigation
-
-| Key | Command |
-|---|---|
-| `C-:` | `avy-goto-char` |
-| `C-'` | `avy-goto-char-2` |
-| `M-g f` | `avy-goto-line` |
-| `M-g w` | `avy-goto-word-1` |
-| `M-o` | `ace-window` |
-| `C-c left` | `winner-undo` |
-
-### Search — M-s prefix
-
-| Key | Command |
-|---|---|
-| `M-s l` | `consult-line` |
-| `M-s L` | `consult-line-multi` |
-| `M-s r` | `consult-ripgrep` |
-| `M-s g` | `consult-grep` |
-| `M-s G` | `consult-git-grep` |
-| `M-s f` | `consult-find` |
-
-### Go-to — M-g prefix
-
-| Key | Command |
-|---|---|
-| `M-g g` | `consult-goto-line` |
-| `M-g i` | `consult-imenu` |
-| `M-g I` | `consult-imenu-multi` |
-| `M-g o` | `consult-outline` |
-| `M-g s` | `consult-lsp-symbols` |
-| `M-g e` | `consult-lsp-diagnostics` |
-
-### Editing
-
-| Key | Command |
-|---|---|
-| `C->` | `mc/mark-next-like-this` |
-| `C-<` | `mc/mark-previous-like-this` |
-| `C-=` | `er/expand-region` |
-| `C--` | `er/contract-region` |
-| `M-↑ / M-↓` | `move-text-up / down` |
-| `C-/` | `undo-tree-undo` |
-| `C-?` | `undo-tree-redo` |
-| `C-x u` | `undo-tree-visualize` |
-| `C-.` | `embark-act` |
-| `C-;` | `embark-dwim` |
-| `M-/` | `hippie-expand` |
-
-### LSP (active in LSP buffers only)
-
-| Key | Command |
-|---|---|
-| `C-c l r` | `lsp-rename` |
-| `C-c l f` | `lsp-format-buffer` |
-| `C-c l a` | `lsp-execute-code-action` |
-| `M-.` | `lsp-ui-peek-find-definitions` |
-| `M-?` | `lsp-ui-peek-find-references` |
-
-### Debugging (DAP)
-
-| Key | Command |
-|---|---|
-| `F5` | Start debug session |
-| `F8` | Toggle breakpoint |
-| `C-c h d` | Debug hydra (full step/break/inspect/repl menu) |
-
-### Git
-
-| Key | Command |
-|---|---|
-| `C-x g` | `magit-status` |
-| `C-x M-g` | `magit-dispatch` |
-| `C-x v t` | `git-timemachine` |
-
-### Project
-
-| Key | Command |
-|---|---|
-| `C-c p f` | `projectile-find-file` |
-| `C-c p p` | `projectile-switch-project` |
-| `C-c p s r` | `projectile-ripgrep` |
-| `C-c p c` | `projectile-compile-project` |
-| `F9` | Treemacs toggle |
-| `C-c n` | Neotree toggle |
-| `C-c D d` | Project detect status |
-| `C-c D s` | Profiler start |
-| `C-c D r` | Profiler report |
-
-### Terminal
-
-| Key | Command |
-|---|---|
-| `C-c t` | `emacs-ide-vterm-here` (current directory) |
-| `C-c T` | `vterm-other-window` |
-| `C-c e` | `emacs-ide-eshell-here` (current directory) |
-
-### UI & Utility
-
-| Key | Command |
-|---|---|
-| `F12` | Toggle dark/light ef-theme |
-| `C-c P` | Presentation mode |
-| `C-c ?` | `which-key-show-top-level` |
-| `C-c H` | Keybinding cheat sheet |
-| `C-c R` | Reload config |
-| `C-c L` | LSP status |
-| `C-c V s` | REST scratch buffer |
-| `C-c V i` | Insert REST request template |
-
-### Recovery — C-c r prefix
-
-| Key | Command |
-|---|---|
-| `C-c r r` | Recovery report |
-| `C-c r v` | View recovery log |
-| `C-c r b` | Backup config.yml |
-| `C-c r d` | Disable problematic package |
-| `C-c r C-r` | Reset crash counter |
+| Completion | `vertico` `orderless` `marginalia` `consult` `embark` `corfu` `cape` `yasnippet` |
+| UI | `ef-themes` `nerd-icons` `doom-modeline` `dashboard` `perspective` `rainbow-delimiters` `hl-todo` `beacon` `dimmer` `pulsar` `which-key` `avy` `ace-window` `neotree` `treemacs` |
+| Editing | `smartparens` `undo-tree` `multiple-cursors` `expand-region` `move-text` `wgrep` `olivetti` `editorconfig` |
+| LSP/DAP | `lsp-mode` `lsp-ui` `flycheck` `dap-mode` `dumb-jump` |
+| Project | `projectile` `consult-projectile` `treemacs-projectile` `ibuffer-project` `treesit-auto` |
+| Git | `magit` `diff-hl` `git-timemachine` `forge` `git-link` `magit-todos` |
+| Format | `apheleia` |
+| Terminal | `vterm` `multi-vterm` |
+| Notes | `org-roam` `org-roam-ui` `consult-org-roam` |
+| REST | `verb` `restclient` |
+| Hydra | `hydra` |
+| Env | `exec-path-from-shell` |
+| Tree-sitter | `treesit-auto` |
 
 ---
 
-## Safe Mode & Recovery
+## Module Reference
 
-The crash counter increments on every Emacs startup and resets to zero on a clean exit via `kill-emacs-hook`. If Emacs crashes, the hook never runs and the incremented count persists. The next startup finds count > 0, which you can inspect with `M-x emacs-ide-recovery-report`.
-
-Force safe mode manually:
-
-```bash
-emacs --emacs-ide-safe
-# or: EMACS_SAFE_MODE=1 emacs
-```
-
-Recovery workflow:
-
-1. `M-x emacs-ide-recovery-report` — see crash count and disabled packages
-2. `M-x emacs-ide-recovery-view-log` — find the error
-3. `M-x emacs-ide-recovery-disable-package` — isolate a broken package
-4. `M-x emacs-ide-recovery-reset-crash-count` — reset counter once resolved
-5. Restart Emacs normally
-
-Config backup/restore:
+### `early-init.el`
+18 benchmark phases. GC deferred to `most-positive-fixnum` during init, restored to 16MB after. `file-name-handler-alist` disabled at phase 2 (covers all subsequent requires). Native comp: speed 2, async silent. bidi: `left-to-right` + `inhibit-bpa`. JIT lock, redisplay, I/O, Wayland/pgtk tuned. TLS: gnutls verify + 3072-bit primes. Theme flash prevention guards on `display-graphic-p`. Safe mode via `--emacs-ide-safe` flag.
 
 ```
-M-x emacs-ide-recovery-backup-config    — timestamped backup to var/backups/
-M-x emacs-ide-recovery-restore-config   — interactively restore from backup
+M-x emacs-ide-early-init-report    per-phase benchmark timings
 ```
 
 ---
 
-## Module Load Order
+### `init.el`
+Bootstraps straight.el, loads all modules in order, tracks startup phases. **Calibrated additions:** `exec-path-from-shell` imports `PATH SSH_AUTH_SOCK SSH_AGENT_PID GPG_AGENT_INFO GOPATH GOROOT PYTHONPATH JAVA_HOME CARGO_HOME RUSTUP_HOME LANG LC_CTYPE NVM_DIR PYENV_ROOT RBENV_ROOT` from login shell. `global-so-long-mode` enabled globally. `bidi-paragraph-direction left-to-right` + `bidi-inhibit-bpa t` as defaults. `bookmark-save-flag 1` (crash-safe). `switch-to-buffer-obey-display-actions t` + `switch-to-buffer-in-dedicated-window pop`.
 
 ```
-early-init:  GC · frame · native-comp · JIT · TLS
-
-core:        emacs-ide-config (first, via require)
-             → emacs-ide-health → emacs-ide-diagnose → emacs-ide-package
-             → emacs-ide-profiler → emacs-ide-security → emacs-ide-telemetry
-             → emacs-ide-recovery
-             → emacs-ide-test + emacs-ide-spot-check  (eager, at end of init)
-
-features:    ui-core → ui-theme → ui-modeline → ui-dashboard → ui-workspace
-             → completion-core → completion-snippets
-             → editing-core
-             → core-dev
-             → tools-lsp → tools-project → tools-git → tools-terminal
-             → tools-format → apheleia-langs-patch
-             → tools-org → tools-spelling → tools-notes → tools-rest
-             → tools-test-runner-registry → tools-test → debug-core
-             → tools-repl → tools-project-detect → tools-hydra
-             → keybindings   ← always last
-
-langs/:      loaded lazily on file open or project switch
-             lang-python · lang-rust · lang-web · lang-go · lang-c
-             lang-jvm · lang-lua · lang-shell · lang-sql · lang-data
-             lang-functional · lang-systems · lang-prose
-```
-
-Load order notes:
-
-- `emacs-ide-config.el` loads first so config values are available to all downstream modules
-- `core-dev.el` loads before `tools-lsp.el` so language modules can call `emacs-ide-dev-*`
-- `keybindings.el` loads last so its global bindings win over any module's `:bind` declarations
-- `tools-hydra.el` wraps all hydra definitions in `(with-eval-after-load 'hydra)` — hydra is `:demand t` so bodies are always available by the time keybindings loads
-- All `langs/` modules are deferred — no hook, lazy-loaded on file open or project switch
-
----
-
-## Synergy Checklist
-
-Run after any significant change or fresh install:
-
-```
-M-x emacs-ide-spot-check            all ✓? (94 commands, 42 direct bindings, 13 lambda bindings, 37 features)
-M-x emacs-ide-run-tests             all ERT tests green?
-M-x emacs-ide-health-status         health report OK?
-M-x emacs-ide-diagnose              module load status + config validation
-M-x emacs-ide-startup-report        all phases present?
-M-x emacs-ide-config-show           gc-threshold = 16777216?
-M-x emacs-ide-security-check        TLS verified?
-M-x emacs-ide-detect-show-status    project detect working?
-```
-
-Open a Python/Rust/Go file and confirm:
-
-- Tree-sitter syntax highlighting active (richer colors)
-- LSP diagnostics appearing in the margin
-- Inlay hints visible (controlled by `lsp.inlay-hints` in config.yml)
-- `C-c X f` runs the right test framework
-- `C-c x r` opens the correct REPL
-- `C-c x l` sends the current line to the REPL
-- Saving triggers async formatting (no cursor jump)
-- `C-c h l` opens the LSP hydra menu
-
----
-
-## Support & Troubleshooting
-
-### IDE Won't Start
-
-```bash
-EMACS_SAFE_MODE=1 emacs
-```
-
-Then:
-
-```
-M-x emacs-ide-recovery-view-log
-M-x emacs-ide-diagnose
-```
-
-### `<nil> <mouse-1> is undefined` on startup
-
-This was a bug in `ui-modeline.el` fixed in v3.2.2. Hot-swap the fixed `ui-modeline.el` into `~/.emacs.d/modules/`.
-
-### LSP Not Working
-
-```
-M-x emacs-ide-lsp-status            current buffer LSP connection
-M-x emacs-ide-lsp-check-servers     which servers are on PATH
-M-x emacs-ide-diagnose-lsp          full LSP diagnostics
-```
-
-Check `config.yml`: `lsp.enable` must be `true`. Verify `lsp.inlay-hints` matches your preference.
-
-### SQL Dialect Not Respected
-
-Fixed in v3.2.2 (`lang-sql.el`). Hot-swap the fixed file into `~/.emacs.d/modules/langs/`.
-
-### git.enable / debug.enable / lsp.inlay-hints Not Respected
-
-Fixed in v3.2.2 (`tools-git.el`, `debug-core.el`, `tools-lsp.el`). Hot-swap the three fixed files.
-
-### Slow Startup
-
-```
+M-x emacs-ide-show-version
 M-x emacs-ide-startup-report
+M-x emacs-ide-reload-init          destructive full reload
+M-x emacs-ide-config-reload        safe config-only reload  (C-c R)
+M-x emacs-ide-purge-bytecode-cache delete .elc/.eln, prompt restart
+M-x emacs-ide-update               straight-pull-all + rebuild
+M-x emacs-ide-freeze-versions      write straight/versions/default.el
+```
+
+---
+
+### `core/emacs-ide-config.el`
+Hand-rolled YAML parser (4 indent levels). Reads `config.yml` → nested alist → applies to all IDE variables. Environment detection via `$EMACS_ENVIRONMENT` or hostname. `emacs-ide-config-reload-hook` fires only on explicit reload, never on startup load.
+
+```
+M-x emacs-ide-config-reload        C-c R
+M-x emacs-ide-config-edit
+M-x emacs-ide-config-show
+```
+
+**Key config sections:** `general` `lsp` `completion` `performance` `features` `editing` `theme` `workspace` `project` `git` `terminal` `debug` `languages` `lang-settings` `repl` `security` `telemetry` `environments`
+
+---
+
+### `core/emacs-ide-health.el`
+Registry of health checks. Runs on 60s idle timer after init. Checks: `system-tools` `lsp` `config` `emacs-version`. Results cached in `emacs-ide-health-results`. Summary string fed to modeline segment.
+
+```
+M-x emacs-ide-health-check-all     (alias: emacs-ide-health-status)
+M-x emacs-ide-health-auto-fix      cancel void timers, re-run checks
+```
+
+---
+
+### `core/emacs-ide-diagnose.el`
+Comprehensive diagnostics across all modules, modes, config, LSP servers, and language formatters.
+
+```
+M-x emacs-ide-diagnose
+M-x emacs-ide-diagnose-lsp
+M-x emacs-ide-diagnose-languages
+```
+
+---
+
+### `core/emacs-ide-recovery.el`
+Crash counter increments on every startup, resets on clean `kill-emacs-hook`. Periodic 5-min idle timer flushes state. Config backup to `var/backups/`. Session timer declared as `emacs-ide-recovery--session-timer`.
+
+```
+M-x emacs-ide-recovery-report
+M-x emacs-ide-recovery-view-log
+M-x emacs-ide-recovery-backup-config
+M-x emacs-ide-recovery-restore-config
+M-x emacs-ide-recovery-disable-package
+M-x emacs-ide-recovery-reset-crash-count   C-c r C-r
+```
+```
+C-c r r   report    C-c r v   log    C-c r b   backup    C-c r d   disable pkg
+```
+
+---
+
+### `core/emacs-ide-security.el`
+TLS verify, 3072-bit primes, gnutls-cli program, `package-check-signature`, auth-sources, `network-security-level`. Re-applies on config reload.
+
+```
+M-x emacs-ide-security-check
+M-x emacs-ide-security-harden
+```
+
+---
+
+### `core/emacs-ide-package.el`
+Wraps `require` with advice to track per-package load times. Slow threshold configurable. Report shows top-20 slowest.
+
+```
 M-x emacs-ide-package-report
+M-x emacs-ide-package-clear-times
+```
+
+---
+
+### `core/emacs-ide-profiler.el`
+Wraps Emacs built-in `profiler`. State synced to prevent double-start.
+
+```
+M-x emacs-ide-profile-start        C-c D s
+M-x emacs-ide-profile-report       C-c D r
+M-x emacs-ide-profile-stop         C-c D q
+M-x emacs-ide-profile-reset
+M-x emacs-ide-profile-startup      uses esup if available
 M-x emacs-ide-early-init-report
 ```
 
-### Spot-Check Reports Failures
+---
+
+### `core/emacs-ide-telemetry.el`
+Local-only. Tracks command counts via `post-command-hook` with 0.5s idle flush. Logs startup metrics (elapsed, GC count, pkg count) to `var/telemetry.log` with rotation at 10MB.
+
+```
+M-x emacs-ide-telemetry-report
+M-x emacs-ide-telemetry-clear
+M-x emacs-ide-telemetry-enable
+M-x emacs-ide-telemetry-disable
+```
+
+---
+
+### `core/emacs-ide-test.el`
+ERT suite covering: Emacs version, startup phases, directory structure, core module features, health system, recovery system, packages, completion, editing modes, theme, git binary, required files.
+
+```
+M-x emacs-ide-run-tests
+```
+
+---
+
+### `core/emacs-ide-spot-check.el`
+Integrity check for all 94+ commands, 42 direct-symbol keybindings, 13 lambda-bound keybindings, and 37 module features. Direct bindings verified with strict `eq`; lambda bindings verified as non-nil.
 
 ```
 M-x emacs-ide-spot-check
 ```
 
-If commands show ✗: module failed to load — check `*Messages*` for errors and try `M-x emacs-ide-health-auto-fix`.  
-If lambda-bound keys show UNBOUND: `tools-hydra.el` or `keybindings.el` failed to load.
+---
 
-### Configuration Not Applied
+### `ui-core.el`
+ef-themes, nerd-icons (+ dired/completion/corfu icon integrations), font stack (JetBrains Mono → Cascadia → Fira → Iosevka → Source Code Pro), ligatures, pixel-scroll precision, global line numbers (relative configurable), `show-paren` mixed style, `global-hl-line-mode`, doom-modeline, rainbow-delimiters, rainbow-mode, highlight-numbers, hl-todo, beacon, dimmer, pulsar, highlight-indent-guides, which-key, ace-window, winner-mode, neotree, diredfl, visual-fill-column, tab-bar, presentation mode.
+
+**Calibrated additions:**
+- `display-buffer-alist`: `*Help*` own window · `*Completions*` own window 10-line · `*Dictionary*` left side-window 70-char
+- `Man-notify-method 'aggressive` — man pages focus immediately
+- `ediff-window-setup-function 'ediff-setup-windows-plain` — no popup frame
 
 ```
-M-x emacs-ide-config-reload
-M-x emacs-ide-config-show
+M-x emacs-ide-presentation-mode    C-c P
+M-x emacs-ide-set-transparency
+F12   toggle dark/light theme
 ```
-
-Verify `gc-cons-threshold` is 16777216 in the output.
 
 ---
 
-## Version History
+### `ui-theme.el`
+ef-themes toggle (dark ↔ light). Auto dark/light switching by hour (`theme.dark-hour` / `theme.light-hour`). Per-environment theme override from `config.yml`. `emacs-ide-after-theme-hook` fires after every `load-theme`. Modus-themes migration helper.
 
-| Version | Notes |
+```
+M-x emacs-ide-toggle-theme         F12
+M-x emacs-ide-select-theme
+M-x emacs-ide-theme-enable-auto
+M-x emacs-ide-theme-disable-auto
+```
+
+---
+
+### `ui-modeline.el`
+doom-modeline with custom `emacs-ide-health` segment (click → run health check). Keymap created lazily (no TTY errors). Falls back to powerline → default modeline.
+
+---
+
+### `ui-dashboard.el`
+Startup dashboard with custom sections: `ide-actions` `ide-workspace` `ide-health` `recents` `projects` `bookmarks`. Refreshes on 6s idle. Kills itself when first file opens.
+
+---
+
+### `ui-workspace.el`
+perspective.el named workspaces. Tab-bar shows workspace names. Auto-creates workspace per Projectile project. Saves on exit. Burly window-layout bookmarks.
+
+```
+C-c W s   switch    C-c W n   new       C-c W k   kill      C-c W r   rename
+C-c W b   buf       C-c W i   ibuffer   C-c W l   load      C-c W w   save
+C-c W S   burly-save                    C-c W R   burly-restore
+M-1..9    switch by index
+```
+
+```
+M-x emacs-ide-workspace-status
+M-x emacs-ide-workspace-switch-by-index
+```
+
+---
+
+### `completion-core.el`
+vertico (multiform: grid for files, buffer for grep/imenu, flat for buffers, alpha-sort for symbols/commands). orderless (literal + regexp + flex). marginalia right-aligned. consult (full binding set). consult-lsp, consult-projectile. embark (which-key indicator). corfu (auto, popupinfo, history, config-driven delay/prefix/height). cape (keyword, elisp-block, file, dabbrev). hippie-expand. savehist, saveplace, abbrevs. Minibuffer: recursive, depth-indicate, electric-default.
+
+**consult bindings:**
+```
+C-x b     consult-buffer          C-x C-r  consult-recent-file
+M-y       consult-yank-pop        M-g g    consult-goto-line
+M-s l     consult-line            M-s r    consult-ripgrep
+M-s G     consult-git-grep        M-g i    consult-imenu
+M-g s     consult-lsp-symbols     M-g e    consult-lsp-diagnostics
+C-.       embark-act              C-;      embark-dwim
+```
+
+---
+
+### `completion-snippets.el`
+yasnippet + yasnippet-snippets + yasnippet-capf (integrates with corfu).
+
+```
+C-c y e   expand    C-c y n   new snippet    C-c y v   visit file    C-c y i   insert
+```
+
+---
+
+### `editing-core.el`
+`delete-selection-mode` `global-auto-revert-mode`. Trailing whitespace on save. Final newline enforced. Smartparens (disables `electric-pair-mode` locally when active). undo-tree (visualizer, timestamps). multiple-cursors. expand-region. avy. move-text. surround. olivetti. wgrep. whitespace. `electric-pair-mode` (global fallback).
+
+**Calibrated additions:**
+- `editorconfig-mode` — reads `.editorconfig` per project (built-in on Emacs 30, package on 29)
+- `repeat-mode` — Emacs 28+, repeat key sequences by pressing only the last key
+- `auto-window-vscroll nil` — eliminates scroll stutter
+- `scroll-preserve-screen-position t` — C-v/M-v keeps relative cursor position
+- `kill-do-not-save-duplicates t` — clean kill-ring
+
+```
+C->       mc/mark-next            C-<      mc/mark-prev
+C-=       er/expand-region        C--      er/contract-region
+C-:       avy-goto-char           C-'      avy-goto-char-2
+M-g w     avy-goto-word-1         M-↑/↓   move-text
+C-/       undo-tree-undo          C-?      undo-tree-redo
+C-x u     undo-tree-visualize
+C-M-f/b   sp-forward/backward-sexp
+C-)       sp-forward-slurp        C-}      sp-forward-barf
+```
+
+---
+
+### `core-dev.el`
+Shared API for all lang modules. Language registry (`emacs-ide-dev-register`). Config language enable check (`emacs-ide-dev-lang-enabled-p`). Helpers: `emacs-ide-dev-bind-compile` `emacs-ide-dev-attach-repl` `emacs-ide-dev-attach-formatter` `emacs-ide-dev-attach-dap` `emacs-ide-dev-register-test-runner`.
+
+**Calibrated addition:** `treesit-auto` replaces manual `emacs-ide-dev-ensure-treesit` idle-timer approach.
+- `global-treesit-auto-mode` — auto-switches `foo-mode → foo-ts-mode` when grammar present
+- `treesit-auto-install 'prompt` — installs missing grammars on demand
+- `treesit-auto-add-to-auto-mode-alist 'all` — wires file extensions to ts-modes
+- `emacs-ide-dev-ensure-treesit` kept as no-op shim for backward compat
+
+---
+
+### `tools-lsp.el`
+lsp-mode with hooks for C/C++/Python/Rust/Go/Java/JS/TS (classic + ts-mode variants). lsp-ui (doc at-point, sideline, peek, imenu). flycheck on lsp-mode hook. All settings config-driven: `lsp.idle-delay` `lsp.inlay-hints` `lsp.semantic-tokens` `lsp.lens` `lsp.breadcrumb` `lsp.sideline`. Inlay hints propagated to lsp-rust, lsp-lua, lsp-typescript individually. Re-applies on config reload.
+
+**Calibrated addition:** `dumb-jump` as xref fallback.
+- Registers via `xref-backend-functions` — LSP wins when active, dumb-jump covers the gap
+- Covers any language, any file, even before lang module pre-warms
+- Prefers `rg → ag → grep`
+- `C-M-y` → `dumb-jump-hydra` (go / other-window / external / prompt / quick-look / back)
+
+```
+C-c l r   lsp-rename              C-c l f   lsp-format-buffer
+C-c l a   lsp-execute-code-action C-c l d   lsp-find-definition
+C-c l R   lsp-find-references     C-c l i   lsp-find-implementation
+C-c l h   lsp-describe-thing-at-point
+C-M-y     dumb-jump-hydra
+```
+
+```
+M-x emacs-ide-lsp-status           C-c L
+M-x emacs-ide-lsp-check-servers
+```
+
+---
+
+### `tools-project.el`
+Projectile (alien indexing, rg/fd generic command, recentf sort, ignored dirs from config). consult-projectile. Treemacs + treemacs-projectile + treemacs-magit.
+
+**Calibrated addition:** `ibuffer-project` — groups ibuffer by project root, sorts by project-relative path. Remaps `C-x C-b` to `ibuffer-list-buffers`. `ibuffer-movement-cycle nil`, `ibuffer-old-time 24`.
+
+```
+C-c p f   find-file      C-c p p   switch-project  C-c p s r  ripgrep
+C-c p c   compile        C-c p t   test            C-c p r    run
+C-c p b   switch-buffer  C-c p k   kill-buffers    C-c p i    invalidate-cache
+C-c p h   consult-projectile                        F9         treemacs
+```
+
+```
+M-x emacs-ide-project-info
+M-x emacs-ide-project-compile / run / test
+M-x emacs-ide-project-create-python / rust / go
+```
+
+---
+
+### `tools-git.el`
+Magit (same-window diff, all-hunk refine, gravatars, no-confirm stage/unstage). diff-hl (flydiff, margin on TTY). git-timemachine. magit-todos (TODO/FIXME/HACK/NOTE/BUG/PERF/REVIEW). git-link (permalink to GitHub/GitLab). forge (topic limit 60). git-commit (fill-column + summary-max-length from config). All gated on `git.enable`.
+
+```
+C-x g     magit-status    C-x M-g   magit-dispatch    C-x v t   git-timemachine
+```
+
+```
+M-x emacs-ide-git-status / stage-file / unstage-file / commit-amend
+M-x emacs-ide-git-push / pull / create-branch / diff-buffer / log-buffer
+M-x emacs-ide-git-blame-toggle / copy-link / stash / stash-pop
+M-x emacs-ide-git-flow-feature-start / finish
+```
+
+---
+
+### `tools-terminal.el`
+compile (ANSI color, scroll to first-error, always-kill). comint (read-only prompt, scroll to bottom). vterm (max-scrollback, kill-buffer-on-exit, timer-delay, update-pwd). multi-vterm. eshell (50k history, visual commands). dired (group-dirs-first, dwim-target, wdired). dockerfile-mode, docker-compose-mode, docker.
+
+```
+C-c t     vterm-here      C-c T     vterm-other-window    C-c e     eshell-here
+C-c M-t   multi-vterm     C-c M-n/p multi-vterm-next/prev
+```
+
+```
+M-x emacs-ide-vterm-here / toggle / project / send-string / run-command / run-file
+M-x emacs-ide-eshell-here
+M-x emacs-ide-docker-build / docker-compose-up
+```
+
+---
+
+### `tools-format.el` + `apheleia-langs-patch.el`
+apheleia (async format on save, no cursor jump). Full 50-language formatter map:
+
+`black/isort/ruff` `prettier` `rustfmt` `gofmt/goimports` `clang-format` `google-java-format` `ktlint` `scalafmt` `stylua` `shfmt` `pgformatter/sqlfluff` `ormolu/fourmolu` `mix-format` `ocamlformat` `zigfmt` `nixpkgs-fmt` `rubocop/standardrb` `phpcbf` `cljfmt` `terraform-fmt` `taplo`
+
+```
+M-x emacs-ide-check-formatters
+```
+
+---
+
+### `tools-repl.el`
+Unified REPL hub with registry per major-mode. Side-window display (side + height from config). Built-in registrations for Python, Rust (evcxr), Node, Go (gore), Lua, Clojure (CIDER), Haskell, R (ESS), Julia.
+
+```
+C-c x r   launch/switch   C-c x s   send-region    C-c x b   send-buffer
+C-c x d   send-defun      C-c x l   send-line+adv  C-c x t   toggle-window
+C-c x R   test-report
+```
+
+```
+M-x emacs-ide-repl-status
+```
+
+---
+
+### `tools-test.el` + `tools-test-runner-registry.el`
+Auto-detects test framework from major-mode and project markers. History with pass/fail/duration. Per-lang runner registry (`:file-fn` `:project-fn` `:point-fn` `:watch-fn`).
+
+Supported: pytest · unittest · cargo test · go test · jest · vitest · npm test · rspec · mvn test · gradle test · mix test · cabal test · stack test · bats · ERT · ctest · make test
+
+```
+C-c C-t   smart-dispatch (file→project→auto)    C-c C-T   force project suite
+C-c X f   run-file    C-c X p   run-project    C-c X .   run-at-point
+C-c X w   watch       C-c X s   runner-status  C-c X l   run-last
+```
+
+```
+M-x emacs-ide-test-report
+M-x emacs-ide-test-runner-status
+```
+
+---
+
+### `debug-core.el`
+dap-mode (sessions, locals, controls, tooltip, REPL). Gated on `debug.enable`. Helper commands always available regardless of gate.
+
+```
+M-x emacs-ide-debug-toggle-breakpoint
+M-x emacs-ide-debug-delete-all-breakpoints
+M-x emacs-ide-debug-set-conditional-breakpoint
+M-x emacs-ide-debug-repl
+```
+
+---
+
+### `tools-org.el`
+Full org-mode: agenda (week view, custom commands), capture (task/note/meeting/bug templates), babel (elisp/python/shell/js/C), export (md/html). Paths from config per environment. `org-confirm-babel-evaluate` auto-approves files under home. Diary entries on dashboard.
+
+```
+C-c a   org-agenda    C-c c   org-capture    C-c l   org-store-link
+```
+
+---
+
+### `tools-notes.el`
+org-roam with 5 capture templates (default/project/bug/reference/literature). Daily notes. consult-org-roam search/backlinks/forward-links. org-roam-ui graph. DB autosync on 3s idle. Directory from `config.yml general.notes-directory`.
+
+```
+C-c n f   find-node      C-c n i   insert-link    C-c n b   buffer-toggle
+C-c n d   today          C-c n D   date           C-c n g   graph
+C-c n s   search         C-c n B   backlinks      C-c n F   forward-links
+C-c n p   project-note   C-c n c   capture        C-c n /   full-text-search
+```
+
+---
+
+### `tools-spelling.el`
+flyspell (aspell → hunspell → ispell). flyspell-prog-mode on prog-mode. Custom word filter (skips symbols, URLs, long tokens). flyspell-correct with avy-menu.
+
+```
+C-c S s   ispell-word    C-c S b   spell-buffer    C-c S n   next-error
+C-c S t   toggle         C-c S c   correct-wrapper
+```
+
+---
+
+### `tools-rest.el`
+verb (org-mode HTTP client). restclient + restclient-jq (`.http` files).
+
+```
+C-c V s   rest-scratch    C-c V i   insert-request-template
+```
+
+---
+
+### `tools-hydra.el`
+10 hydra menus, all gated on `(with-eval-after-load 'hydra)`.
+
+```
+C-c h w   window    C-c h b   buffer    C-c h g   git       C-c h l   lsp
+C-c h p   project   C-c h t   test      C-c h d   debug     C-c h u   toggles
+C-c h r   repl      C-c h s   search    C-c h h   list-all
+```
+
+**window:** split-v/h · undo · delete · balance · resize · windmove · ace · swap · maximize · tab-bar  
+**buffer:** consult-buffer · ibuffer · recent · kill · revert · scratch · new · save-all · imenu  
+**git:** status · log · dispatch · diff · blame · timemachine · hunk-next/prev/revert · stash · forge · push · pull  
+**lsp:** definition · references · implementation · type-def · outline · symbols · rename · action · format · hover · ui-toggle · sig-help · diagnostics · lens · workspace  
+**project:** find-file · find-dir · ripgrep · grep · occur · switch-project · switch-buffer · kill-bufs · compile · recompile · run · treemacs · neotree · ibuffer  
+**test:** file · project · at-point · last · watch · report · runner-status  
+**debug:** step-in/next/out · continue · restart · quit · breakpoint-toggle/condition/log/delete-all · locals · eval · expressions · up/down-frame · repl · launch  
+**toggles:** theme · line-nums · relative-nums · indent-guides · whitespace · visual-line · fill-column · flycheck · flyspell · dimmer · beacon · pulsar · treemacs · neotree · presentation · olivetti  
+**repl:** launch · toggle · send-region/buffer/defun/line · status  
+**search:** line · multi · ripgrep · grep · git-grep · find · imenu · imenu-multi · outline · symbols · mark · global-mark · keep-lines · focus-lines
+
+---
+
+### `tools-project-detect.el`
+Reads project root markers → detects language tier → pre-warms lang module on 0.5s idle timer. Fires on `projectile-after-switch-project-hook` and `find-file-hook`. Extension fallback for non-project files. Cache cleared on config reload.
+
+**Markers (sample):** `pyproject.toml/setup.py/Pipfile` → python · `Cargo.toml` → rust · `go.mod` → go · `package.json/tsconfig.json` → js/ts · `CMakeLists.txt/Makefile` → c · `pom.xml/build.gradle` → java · `flake.nix` → nix · `build.zig` → zig · …22 more
+
+```
+C-c D d   detect-show-status
+M-x emacs-ide-detect-current-project
+M-x emacs-ide-detect-reset-cache
+```
+
+---
+
+### `keybindings.el` — Global Keymap Reference
+
+Loads last. All global bindings canonical here.
+
+**Upgraded built-ins:**
+```
+C-x C-b   ibuffer                 C-x b     consult-buffer
+C-x C-r   consult-recent-file     M-y       consult-yank-pop
+C-x g     magit-status            C-x M-g   magit-dispatch
+C-x v t   git-timemachine
+M-#       dictionary-lookup-definition      ← calibrated addition
+M-/       hippie-expand
+M-o       ace-window
+```
+
+**C-h help:**
+```
+C-h f     helpful-callable    C-h v     helpful-variable    C-h k     helpful-key
+C-h F     helpful-function    C-h C     helpful-command     C-h d     helpful-at-point
+```
+
+**C-c prefixes (full map):**
+```
+C-c a/c/l   org-agenda/capture/store-link
+C-c B/b     compile/recompile
+C-c H       show-keybindings-help
+C-c L       lsp-status
+C-c P       presentation-mode
+C-c R       config-reload
+C-c ?       which-key-show-top-level
+F12         toggle-theme
+
+C-c h w/b/g/l/p/t/d/u/r/s/h   hydra menus (see tools-hydra.el)
+
+C-c x r/s/b/d/l/t/R            repl hub
+C-c X f/p/./w/s/l               test runner (uppercase X)
+C-c C-t / C-c C-T               test smart-dispatch / force-all
+
+C-c r r/v/b/d / r C-r           recovery
+
+C-c V s/i                       rest client
+
+C-c t / C-c T                   vterm-here / vterm-other-window
+C-c e                           eshell-here
+
+C-c n n/f/i/b/d/D/g/p/c/s/B/F/ notes + org-roam
+
+C-c W s/n/k/r/b/i/l/w/S/R      workspaces
+M-1..9                          workspace switch by index
+
+C-c D d/s/r/q                   project-detect + profiler
+C-c p *                         projectile (see tools-project.el)
+
+C-M-y                           dumb-jump-hydra   ← calibrated addition
+```
+
+---
+
+## Lang Modules (lazy, zero boot cost)
+
+| Module | Languages | LSP | Formatter | Test | REPL |
+|---|---|---|---|---|---|
+| `lang-python` | Python | pyright | black+isort | pytest | ipython |
+| `lang-rust` | Rust | rust-analyzer | rustfmt | cargo test | evcxr |
+| `lang-web` | JS/TS | tsserver | prettier | jest/vitest | node |
+| `lang-go` | Go | gopls | gofmt/goimports | go test | gore |
+| `lang-c` | C/C++/CUDA/CMake | clangd | clang-format | ctest | — |
+| `lang-jvm` | Java/Kotlin/Scala/Groovy | jdtls/kotlin-ls/metals | gjf/ktlint/scalafmt | mvn/gradle/sbt | — |
+| `lang-lua` | Lua | lua-language-server | stylua | busted | lua |
+| `lang-shell` | Bash/Zsh/Fish | bash-ls | shfmt | bats | bash |
+| `lang-sql` | SQL | sqls | pg_format | — | sql |
+| `lang-data` | R/Julia | r-ls/julia-ls | styler | Rscript/Pkg.test | R/julia |
+| `lang-functional` | Haskell/Clojure/Elixir/OCaml/Erlang | hls/clojure-lsp/elixir-ls/ocamllsp | ormolu/cljfmt/mix-fmt/ocamlformat | cabal/clj/mix | ghci/cider/erl |
+| `lang-systems` | Zig/Nix/D/V | zls/nil | zigfmt/nixpkgs-fmt | zig test | nix repl |
+| `lang-prose` | MD/YAML/TOML/JSON/Docker/Terraform | yaml-ls/vscode-json-ls/docker-ls/terraform-ls | prettier/taplo/terraform-fmt | — | — |
+
+Each lang module: tree-sitter grammar via treesit-auto · LSP hook (classic + ts-mode) · formatter via apheleia · test runner registration · DAP template · REPL hub registration · `C-c C-c` compile/run binding.
+
+---
+
+## `config.yml` — Key Toggles
+
+```yaml
+lsp:
+  enable: true          # false → entire tools-lsp.el skipped
+  inlay-hints: true     # propagated to rust/lua/typescript individually
+
+git:
+  enable: true          # false → magit + diff-hl + forge do not load
+
+debug:
+  enable: true          # false → dap-mode does not load; helper cmds still available
+
+editing:
+  meow: false           # true → Meow modal editing
+
+theme:
+  auto-switch: false    # true → dark/light by dark-hour/light-hour
+
+languages:              # false → lang module never loads
+  python: true
+  haskell: false        # opt-in (off by default)
+  # … 50 total
+```
+
+---
+
+## Diagnostics Quick Reference
+
+```
+M-x emacs-ide-spot-check               commands + keybindings + features integrity
+M-x emacs-ide-run-tests                full ERT suite
+M-x emacs-ide-diagnose                 module load + config validation
+M-x emacs-ide-diagnose-lsp             LSP server PATH check
+M-x emacs-ide-diagnose-languages       per-lang enable/load/LSP/formatter matrix
+M-x emacs-ide-health-status            system tools + LSP + config health
+M-x emacs-ide-health-auto-fix          attempt auto remediation
+M-x emacs-ide-lsp-check-servers        which servers are on PATH
+M-x emacs-ide-lsp-status               current buffer connection  (C-c L)
+M-x emacs-ide-config-show              active variable values
+M-x emacs-ide-startup-report           phase timings
+M-x emacs-ide-early-init-report        early-init phase benchmark
+M-x emacs-ide-package-report           top-20 slowest package loads
+M-x emacs-ide-detect-show-status       project detection + pre-warmed langs
+M-x emacs-ide-repl-status              live REPL hub registry
+M-x emacs-ide-test-runner-status       registered per-lang test runners
+M-x emacs-ide-workspace-status         perspective workspaces + buffer counts
+M-x emacs-ide-security-check           TLS + auth-sources + GPG
+M-x emacs-ide-recovery-report          crash count + log + disabled pkgs
+M-x emacs-ide-telemetry-report         session command usage
+M-x emacs-ide-check-formatters         formatter PATH status
+```
+
+---
+
+## Recovery
+
+```bash
+EMACS_SAFE_MODE=1 emacs          # or: emacs --emacs-ide-safe
+```
+→ `M-x emacs-ide-recovery-view-log` → `M-x emacs-ide-recovery-disable-package` → restart → `M-x emacs-ide-recovery-reset-crash-count`
+
+---
+
+## Version
+
+| | |
 |---|---|
-| 3.2.2 | **15 bug fixes across 9 files.** `<nil> mouse-1` startup error. `kill-on-file-open` hook. Ghost functions (`emacs-ide-health-check-startup`, `emacs-ide-config-get-nested`). Crash counter now functional. Startup telemetry now logged. `lsp.inlay-hints` / `git.enable` / `debug.enable` config flags now respected. Spot-check: 19 missing commands added, lambda-bound key handling fixed, C-c C-T added. |
-| 3.2.1 | `emacs-ide-recovery--session-timer` declared. `emacs-ide-lsp-check-servers` added. `emacs-ide-diagnose-languages` added. `emacs-ide-repl-send-line` added (`C-c x l`). Config reload hook fires only on explicit reload. |
-| 3.2.0 | `emacs-ide-health-auto-fix` and `emacs-ide-health-run-check` added. Periodic health timer repeat arg fixed. `emacs-ide-config-apply` uses `alist-get`. `emacs-ide-spot-check.el` infinite recursion in `init.el` fixed. |
-| 3.0.4 | Config reload hook. YAML level-3 parser. LSP `:init` → `:config` for Rust/Web/Lua. Health check periodic timer. `hydra-debug` rename. Taplo TOML formatter. LSP `setq` odd-arg crash. `core-dev` language cache. `emacs-ide-diagnose.el` added. |
-| 3.0.3 | `emacs-ide-spot-check.el` added. `emacs-ide-test.el` fixed for Emacs 30. |
-| 3.0.2 | `C-c R` void-function. REST prefix `C-c R` → `C-c V`. Formatter allowlist expanded. |
-| 3.0.1 | `core-dev.el` string→symbol key fix. Double LSP start on Python removed. |
-| 3.0.0 | 50-lang lazy loading. ef-themes. nerd-icons. Hydra menus. perspective.el workspaces. Unified REPL hub. Optional Meow modal editing. |
-| 2.2.7 | `early-init.el` TTY guards. `warning-suppress-log-types` pre-bind. |
-| 2.2.6 | Emacs 30 stale bytecode fix. `emacs-ide-purge-bytecode-cache` added. |
-| 2.2.5 | Startup 58s → <3s — straight.el tuning, dashboard optimization, projectile indexing. |
-
----
-
-## License
-
-[Your License Here]
-
----
-
-**Enterprise Emacs IDE v3.2.2** — Production Ready ✅
+| **v3.3.1** | `exec-path-from-shell` (13 env vars) · `global-so-long-mode` · bidi perf defaults · `bookmark-save-flag 1` · `switch-to-buffer` display rules · `dumb-jump` xref fallback + hydra · `ibuffer-project` · `editorconfig` · `repeat-mode` · `treesit-auto` replaces manual grammar timers · `display-buffer-alist` for Help/Completions/Dictionary · `Man-notify-method aggressive` · `ediff-setup-windows-plain` · `M-#` dictionary · scroll quality settings |
+| v3.2.2 | 15 bug fixes: modeline keymap · dashboard hook · ghost functions · crash counter · telemetry logging · inlay-hints/git.enable/debug.enable config flags · spot-check integrity |
+| v3.2.1 | recovery timer · lsp-check-servers · diagnose-languages · repl-send-line · config reload hook |
+| v3.0.0 | 50-lang lazy loading · ef-themes · nerd-icons · hydra menus · workspaces · REPL hub · Meow |

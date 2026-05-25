@@ -1,12 +1,11 @@
 ;;; ui-dashboard.el --- Office Dashboard -*- lexical-binding: t -*-
-;;; Version: 3.2.0 | FIX: number-p → numberp, missing closing paren on
-;;;           emacs-ide-dashboard--kill-on-file-open corrected.
+;;; Version: 3.3.0
+
 ;;; Code:
 
 (defun emacs-ide-dashboard--health-section (_list-size)
   (let* ((results  (and (boundp 'emacs-ide-health-results)  emacs-ide-health-results))
          (checked  (and (boundp 'emacs-ide-health-last-check) emacs-ide-health-last-check))
-         ;; FIX: was (number-p ...) — the correct predicate is (numberp ...)
          (errors   (if (and (boundp 'emacs-ide-health--errors)
                             (numberp emacs-ide-health--errors))
                        emacs-ide-health--errors 0))
@@ -81,6 +80,7 @@
   (insert "\n"))
 
 (defun emacs-ide-dashboard--kill-on-file-open ()
+  "Kill dashboard when opening first file."
   (when (and buffer-file-name
              (not (string= (buffer-name) "*dashboard*")))
     (let ((db-buf (get-buffer (or (bound-and-true-p dashboard-buffer-name)
@@ -90,10 +90,9 @@
           (when (and db-win (not (one-window-p)))
             (delete-window db-win)))
         (kill-buffer db-buf))))
-  ;; Always remove the hook after the first file open, regardless of
-  ;; whether the dashboard buffer existed.
   (remove-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open))
 
+;; Main configuration
 (when (or (not (boundp 'emacs-ide-feature-dashboard)) emacs-ide-feature-dashboard)
 
   (use-package dashboard
@@ -103,7 +102,6 @@
           dashboard-center-content    t
           dashboard-set-heading-icons t
           dashboard-set-file-icons    t
-          dashboard-force-refresh     nil
           dashboard-items
           '((ide-actions   . 1)
             (ide-workspace . 1)
@@ -131,6 +129,7 @@
                     (error 0)))
           dashboard-footer-messages
           '("M-x butterfly  ·  C-h C  ·  M-x tetris"))
+
     :config
     (add-to-list 'dashboard-item-generators
                  '(ide-health    . emacs-ide-dashboard--health-section))
@@ -141,24 +140,31 @@
     (add-to-list 'dashboard-item-shortcuts '(ide-health    . "h"))
     (add-to-list 'dashboard-item-shortcuts '(ide-workspace . "w"))
 
-    ;; Disable the problematic resize hook that can leave dangling timers
+    ;; === FIXES FOR SCROLL WARNING ===
+    (with-eval-after-load 'pixel-scroll
+      (setq pixel-scroll-precision-interpolate-page nil))
+
+    ;; Disable dashboard's own resize hook that often causes scroll issues
     (when (fboundp 'dashboard-resize-on-hook)
       (fset 'dashboard-resize-on-hook #'ignore))
 
     (when (fboundp 'dashboard-setup-startup-hook)
       (dashboard-setup-startup-hook))
 
-    ;; Refresh dashboard after a short idle to pick up health results
-    (run-with-idle-timer 6 nil
+    ;; Safer refresh with scroll protection
+    (run-with-idle-timer 5 nil
                          (lambda ()
                            (when (get-buffer "*dashboard*")
                              (with-current-buffer "*dashboard*"
-                               (when (fboundp 'dashboard-refresh-buffer)
-                                 (dashboard-refresh-buffer))))))
+                               (let ((pixel-scroll-precision-mode nil))
+                                 (when (fboundp 'dashboard-refresh-buffer)
+                                   (dashboard-refresh-buffer)))))))
 
+    ;; Add kill hook safely
     (unless (memq #'emacs-ide-dashboard--kill-on-file-open find-file-hook)
-      (add-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open))
+      (add-hook 'find-file-hook #'emacs-ide-dashboard--kill-on-file-open t)) ; t = append
 
+    ;; Set as initial buffer only if session restore is disabled
     (let ((restore-session (and (fboundp 'emacs-ide-config-get)
                                 (emacs-ide-config-get 'general 'restore-session nil))))
       (unless restore-session

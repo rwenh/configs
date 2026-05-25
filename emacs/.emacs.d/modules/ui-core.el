@@ -1,14 +1,7 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
-;;; Version: 3.0.4
+;;; Version: 3.0.5
+;;;
 ;;; Code:
-
-;; ============================================================================
-;; FIX: Removed the top-level `use-package :if` guard that called
-;; `emacs-ide-config-get` at macro-expansion / load time.  That pattern
-;; throws `(no-catch --cl-block-nil-- nil)` when use-package expands the :if
-;; predicate before the function is guaranteed available.
-;; All config-gate logic is now deferred into :hook / after-init-hook lambdas.
-;; ============================================================================
 
 (when (fboundp 'menu-bar-mode)     (menu-bar-mode   -1))
 (when (fboundp 'tool-bar-mode)     (tool-bar-mode   -1))
@@ -24,7 +17,40 @@
       inhibit-splash-screen           t
       inhibit-startup-echo-area-message t)
 
-;; ── ef-themes ────────────────────────────────────────────────────────────────
+;;; ─── Display buffer rules (CALIBRATION) ──────────────────────────────────────
+;;
+;; Help:        always pops into its own window so it doesn't clobber your code
+;; Completions: own window, fixed height of 10 lines — enough to scan choices
+;; Dictionary:  left side-window, 70 chars wide — stays anchored while you code
+;; Ediff:       control panel stays in the same frame (not a separate X window)
+;; Man:         opens in its own window and immediately focuses it
+
+(add-to-list 'display-buffer-alist
+             '("\\*Help\\*"
+               (display-buffer-reuse-window display-buffer-pop-up-window)))
+
+(add-to-list 'display-buffer-alist
+             '("\\*Completions\\*"
+               (display-buffer-reuse-window display-buffer-pop-up-window)
+               (inhibit-same-window . t)
+               (window-height . 10)))
+
+;; Dictionary: left side-window — stays pinned while you type
+(add-to-list 'display-buffer-alist
+             '("^\\*Dictionary\\*"
+               (display-buffer-in-side-window)
+               (side . left)
+               (window-width . 70)))
+
+;; Man pages: open in own window and switch focus immediately
+(setq Man-notify-method 'aggressive)
+
+;; Ediff: keep the control panel inside the current frame.
+;; The default (`ediff-setup-windows-multiframe') opens a tiny separate X
+;; window which gets lost behind the main frame on tiling WMs and multi-monitor.
+(setq ediff-window-setup-function 'ediff-setup-windows-plain)
+
+;;; ─── ef-themes ────────────────────────────────────────────────────────────────
 
 (use-package ef-themes
   :demand t
@@ -57,7 +83,7 @@
                 theme err)
        (load-theme 'ef-dark t)))))
 
-;; ── nerd-icons ───────────────────────────────────────────────────────────────
+;;; ─── nerd-icons ───────────────────────────────────────────────────────────────
 
 (use-package nerd-icons
   :demand t
@@ -85,7 +111,7 @@
   :defer t
   :config (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
 
-;; ── Font & frame (GUI only) ──────────────────────────────────────────────────
+;;; ─── Font & frame (GUI only) ──────────────────────────────────────────────────
 
 (when (display-graphic-p)
   (setq frame-resize-pixelwise  t
@@ -127,7 +153,7 @@
     (when (member "Noto Color Emoji" (font-family-list))
       (set-fontset-font t 'unicode "Noto Color Emoji" nil 'prepend))))
 
-;; ── Smooth scrolling ─────────────────────────────────────────────────────────
+;;; ─── Smooth scrolling ────────────────────────────────────────────────────────
 
 (when (fboundp 'pixel-scroll-precision-mode)
   (pixel-scroll-precision-mode 1)
@@ -135,7 +161,7 @@
         pixel-scroll-precision-large-scroll-height  40.0
         pixel-scroll-precision-interpolation-factor 1.0))
 
-;; ── Line numbers ─────────────────────────────────────────────────────────────
+;;; ─── Line numbers ─────────────────────────────────────────────────────────────
 
 (let ((line-nums-on (if (fboundp 'emacs-ide-config-get)
                         (emacs-ide-config-get 'features 'line-numbers t)
@@ -156,7 +182,7 @@
                 treemacs-mode-hook))
   (add-hook mode (lambda () (display-line-numbers-mode 0))))
 
-;; ── Core visual modes ────────────────────────────────────────────────────────
+;;; ─── Core visual modes ────────────────────────────────────────────────────────
 
 (column-number-mode 1)
 (size-indication-mode 1)
@@ -168,7 +194,7 @@
       show-paren-when-point-inside-paren t
       show-paren-when-point-in-periphery t)
 
-;; ── doom-modeline ────────────────────────────────────────────────────────────
+;;; ─── doom-modeline ────────────────────────────────────────────────────────────
 
 (use-package doom-modeline
   :defer t
@@ -206,7 +232,7 @@
                  "%b"))
         " — Emacs IDE"))
 
-;; ── Visual enhancement packages ──────────────────────────────────────────────
+;;; ─── Visual enhancement packages ─────────────────────────────────────────────
 
 (use-package rainbow-delimiters
   :defer t
@@ -244,7 +270,6 @@
   :init (setq pulsar-pulse t pulsar-delay 0.055 pulsar-iterations 10
               pulsar-face 'pulsar-magenta pulsar-highlight-face 'pulsar-yellow))
 
-;; Activate beacon / dimmer / pulsar after init — all config-gated safely -----
 (add-hook 'after-init-hook
           (lambda ()
             (let ((cfg (lambda (key)
@@ -258,12 +283,7 @@
               (when (and (funcall cfg 'pulsar) (fboundp 'pulsar-global-mode))
                 (pulsar-global-mode 1)))))
 
-;; ── highlight-indent-guides ──────────────────────────────────────────────────
-;; FIX: was `use-package :if (emacs-ide-config-get ...)` at top-level, which
-;; causes `(no-catch --cl-block-nil-- nil)` because use-package evaluates the
-;; :if predicate at macro-expansion time before the function exists.
-;; Solution: load the package unconditionally and enable the hook only when the
-;; config flag is true, checked lazily inside the hook lambda itself.
+;;; ─── highlight-indent-guides ─────────────────────────────────────────────────
 
 (use-package highlight-indent-guides
   :defer t
@@ -280,7 +300,7 @@
           t)
     (highlight-indent-guides-mode 1)))
 
-;; ── which-key ────────────────────────────────────────────────────────────────
+;;; ─── which-key ───────────────────────────────────────────────────────────────
 
 (use-package which-key
   :defer t
@@ -301,7 +321,7 @@
                            (emacs-ide-config-get 'features 'which-key t)))
               (which-key-mode 1))))
 
-;; ── Window management ────────────────────────────────────────────────────────
+;;; ─── Window management ───────────────────────────────────────────────────────
 
 (use-package ace-window
   :defer t
@@ -319,7 +339,7 @@
          ("C-c w f" . flip-frame)
          ("C-c w r" . rotate-frame-clockwise)))
 
-;; ── Neotree ──────────────────────────────────────────────────────────────────
+;;; ─── Neotree ─────────────────────────────────────────────────────────────────
 
 (use-package neotree
   :defer t
@@ -332,13 +352,13 @@
         neo-show-updir-line       nil
         neo-vc-integration        '(face)))
 
-;; ── Dired enhancements ───────────────────────────────────────────────────────
+;;; ─── Dired enhancements ──────────────────────────────────────────────────────
 
 (use-package diredfl
   :defer t
   :hook (dired-mode . diredfl-mode))
 
-;; ── Writing / focus ──────────────────────────────────────────────────────────
+;;; ─── Writing / focus ─────────────────────────────────────────────────────────
 
 (use-package visual-fill-column
   :defer t
@@ -347,7 +367,7 @@
         visual-fill-column-center-text nil)
   :hook ((org-mode markdown-mode) . visual-fill-column-mode))
 
-;; ── tab-bar ──────────────────────────────────────────────────────────────────
+;;; ─── tab-bar ─────────────────────────────────────────────────────────────────
 
 (use-package tab-bar
   :straight nil
@@ -362,7 +382,7 @@
   :config
   (tab-bar-mode 1))
 
-;; ── Presentation mode ────────────────────────────────────────────────────────
+;;; ─── Presentation mode ───────────────────────────────────────────────────────
 
 (defvar emacs-ide-presentation-mode--active nil
   "Non-nil when presentation mode is active.")

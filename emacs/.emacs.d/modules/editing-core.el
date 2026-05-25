@@ -1,7 +1,9 @@
 ;;; editing-core.el --- Elite Editing Features -*- lexical-binding: t -*-
-;;; Version: 3.3.0
+;;; Version: 3.3.1
 ;;;
 ;;; Code:
+
+(require 'cl-lib)
 
 ;;;; ── Basic editing modes (AUTHORITATIVE — see #79) ───────────────────────────
 
@@ -23,6 +25,56 @@
 
 ;; Single space ends a sentence (affects fill, M-e, etc.)
 (setq sentence-end-double-space nil)
+
+;;;; ── Scroll quality (CALIBRATION) ───────────────────────────────────────────
+;;
+
+(setq auto-window-vscroll             nil
+      scroll-preserve-screen-position t
+      kill-do-not-save-duplicates     t
+      scroll-conservatively           101
+      scroll-margin                   5
+      fast-but-imprecise-scrolling    t)
+
+;;;; ── repeat-mode (CALIBRATION) ──────────────────────────────────────────────
+;;
+;; repeat-mode (Emacs 28+) lets you repeat certain key sequences by pressing
+;; only the last key after the first invocation.  Examples:
+;;   C-x [ [ [ [   → page backward 4 times
+;;   C-x o o o     → cycle windows 3 times
+;;   C-u C-u       → no change (universal-argument)
+;; Press C-g, a movement key, or type anything to exit repeat mode.
+;; This is entirely invisible when not in use — zero cost.
+
+(unless (version< emacs-version "28")
+  (repeat-mode 1))
+
+;;;; ── editorconfig (CALIBRATION) ─────────────────────────────────────────────
+;;
+;; When a project has a .editorconfig file, this mode reads it and applies:
+;;   indent_style   → whether to use tabs or spaces
+;;   indent_size    → how many spaces/columns per indent level
+;;   end_of_line    → lf / crlf / cr
+;;   charset        → utf-8 / latin1 etc.
+;;   trim_trailing_whitespace
+;;   insert_final_newline
+;;
+;; This is a cross-editor standard — projects that use it expect all editors
+;; (VS Code, Vim, JetBrains, Emacs) to honour it automatically.  Without this,
+;; you'll silently introduce whitespace diffs in any project that has a
+;; .editorconfig.
+;;
+;; Emacs 30 ships editorconfig built-in.  For Emacs 29 and earlier we install
+;; the package.
+
+(if (version<= "30" emacs-version)
+    ;; Built-in since Emacs 30 — just enable the mode
+    (add-hook 'prog-mode-hook #'editorconfig-mode)
+  ;; Emacs 29 and earlier — use the package
+  (use-package editorconfig
+    :demand t
+    :config
+    (editorconfig-mode 1)))
 
 ;;;; ── Meow (optional modal editing) ──────────────────────────────────────────
 
@@ -99,7 +151,6 @@
         (message "Meow installed — M-x emacs-ide-toggle-meow to activate"))
     (message "straight.el not available")))
 
-;; Auto-enable Meow if editing.meow: true in config.yml
 (with-eval-after-load 'emacs-ide-config
   (when (and (boundp 'emacs-ide-config-data)
              (let ((editing (cdr (assoc 'editing emacs-ide-config-data))))
@@ -111,19 +162,9 @@
                   (setq emacs-ide-meow-enabled t))))))
 
 ;;;; ── Smartparens ─────────────────────────────────────────────────────────────
-;; Rationale: both modes insert closing delimiters on open-delimiter keypress.
-;; With both active, typing `(' inserts `())' instead of `()'.  smartparens
-;; is a strict superset of electric-pair — it handles all the same pairs plus
-;; structured navigation, slurp/barf, and mode-specific pair rules.
-;; electric-pair-mode is kept as the global default (activated below) so that
-;; buffers where smartparens is NOT enabled (minibuffer, dired, etc.) still
-;; get basic pairing.  In any buffer where smartparens activates, we turn off
-;; electric-pair locally.
 
 (defun emacs-ide--disable-electric-pair-locally ()
-  "Disable `electric-pair-mode' in the current buffer.
-Called from `smartparens-mode-hook' to prevent double-insertion of closing
-delimiters when both modes would otherwise be active simultaneously."
+  "Disable `electric-pair-mode' in the current buffer."
   (electric-pair-local-mode -1))
 
 (use-package smartparens
@@ -153,9 +194,7 @@ delimiters when both modes would otherwise be active simultaneously."
         sp-message-width                nil)
   :config
   (require 'smartparens-config)
-  ;; FIX #60: disable electric-pair locally whenever smartparens activates
   (add-hook 'smartparens-mode-hook #'emacs-ide--disable-electric-pair-locally)
-  ;; Mode-specific pair rules
   (sp-local-pair 'emacs-lisp-mode "`" nil :when '(sp-in-string-p))
   (sp-local-pair 'markdown-mode   "```" "```")
   (sp-local-pair 'org-mode        "=" "=" :actions '(wrap))
@@ -270,8 +309,6 @@ delimiters when both modes would otherwise be active simultaneously."
                              (?\( . ?\))
                              (?`  . ?`)))
 (electric-pair-mode 1)
-
-;; NOTE: helpful bindings (C-h f/v/k/F/C/d) are NOT set here.
 
 (provide 'editing-core)
 ;;; editing-core.el ends here
