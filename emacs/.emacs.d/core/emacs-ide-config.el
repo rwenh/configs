@@ -14,6 +14,50 @@
 (defvar emacs-ide-config-loaded-p nil)
 (defvar emacs-ide-config-reload-hook nil)
 
+;;;; ── Config variable declarations ──────────────────────────────────────────
+;; These are set by `emacs-ide-config-apply' after parsing config.yml.
+
+;; General
+(defvar emacs-ide-theme           'ef-dark)
+(defvar emacs-ide-font            "JetBrains Mono")
+(defvar emacs-ide-font-size       11)
+
+;; LSP
+(defvar emacs-ide-lsp-enable                t)
+(defvar emacs-ide-lsp-enable-inlay-hints    t)
+(defvar emacs-ide-lsp-idle-delay            0.3)
+(defvar emacs-ide-lsp-breadcrumb            t)
+(defvar emacs-ide-lsp-semantic-tokens       t)
+(defvar emacs-ide-lsp-lens                  t)
+(defvar emacs-ide-lsp-sideline              t)
+(defvar emacs-ide-lsp-signature-help        t)
+(defvar emacs-ide-lsp-hover-docs            t)
+(defvar emacs-ide-lsp-symbol-highlighting   t)
+(defvar emacs-ide-lsp-organize-imports      t)
+(defvar emacs-ide-lsp-large-file-threshold  100000)
+(defvar emacs-ide-lsp-diagnostics-provider  'flycheck)
+
+;; Completion
+(defvar emacs-ide-completion-backend  'corfu)
+(defvar emacs-ide-completion-delay    0.15)
+(defvar emacs-ide-completion-prefix   1)
+(defvar emacs-ide-completion-auto     t)
+(defvar emacs-ide-completion-fuzzy    t)
+(defvar emacs-ide-completion-preview  t)
+
+;; Features
+(defvar emacs-ide-feature-dashboard  t)
+(defvar emacs-ide-feature-which-key  t)
+(defvar emacs-ide-modeline-height    32)
+
+;; Theme
+(defvar emacs-ide-theme-auto-switch  nil)
+
+;; Subsystems
+(defvar emacs-ide-git-enable      t)
+(defvar emacs-ide-project-enable  t)
+(defvar emacs-ide-debug-enable    t)
+
 ;;;; ── Defaults ────────────────────────────────────────────────────────────────
 
 (defvar emacs-ide-config-defaults
@@ -142,8 +186,68 @@
   (when-let ((p (alist-get 'project cfg)))
     (emacs-ide-config--set 'emacs-ide-project-enable p 'enable t))
 
+  (when-let ((perf (alist-get 'performance cfg)))
+    (emacs-ide-config--set 'emacs-ide-startup-time-target perf 'startup-time-target 3.0))
+
   (when-let ((d (alist-get 'debug cfg)))
     (emacs-ide-config--set 'emacs-ide-debug-enable d 'enable t)))
+
+;;;; ── Public accessor ────────────────────────────────────────────────────────
+
+(defun emacs-ide-config-get (section key &optional default)
+  "Return KEY's value from SECTION in `emacs-ide-config-data', or DEFAULT.
+SECTION and KEY are symbols matching config.yml keys, e.g.:
+  (emacs-ide-config-get \\='lsp \\='idle-delay 0.3)"
+  (if-let* ((data emacs-ide-config-data)
+            (sec  (alist-get section data))
+            (cell (assoc key sec)))
+      (cdr cell)
+    default))
+
+;;;; ── Config show ─────────────────────────────────────────────────────────────
+
+(defun emacs-ide-config-show ()
+  "Display active config variable values derived from config.yml."
+  (interactive)
+  (with-output-to-temp-buffer "*Config Values*"
+    (princ (format "=== ACTIVE CONFIG (env: %s) ===\n\n"
+                   (or emacs-ide-config-environment "unknown")))
+    (princ (format "Config loaded:  %s\n\n"
+                   (if emacs-ide-config-loaded-p "yes" "no")))
+    (dolist (entry
+             `(("General"
+                ("theme"              . ,emacs-ide-theme)
+                ("font"               . ,emacs-ide-font)
+                ("font-size"          . ,emacs-ide-font-size))
+               ("LSP"
+                ("enable"             . ,emacs-ide-lsp-enable)
+                ("inlay-hints"        . ,emacs-ide-lsp-enable-inlay-hints)
+                ("idle-delay"         . ,emacs-ide-lsp-idle-delay)
+                ("breadcrumb"         . ,emacs-ide-lsp-breadcrumb)
+                ("semantic-tokens"    . ,emacs-ide-lsp-semantic-tokens)
+                ("lens"               . ,emacs-ide-lsp-lens)
+                ("sideline"           . ,emacs-ide-lsp-sideline)
+                ("diagnostics"        . ,emacs-ide-lsp-diagnostics-provider)
+                ("large-file"         . ,emacs-ide-lsp-large-file-threshold))
+               ("Completion"
+                ("backend"            . ,emacs-ide-completion-backend)
+                ("delay"              . ,emacs-ide-completion-delay)
+                ("auto-prefix"        . ,emacs-ide-completion-prefix)
+                ("auto"               . ,emacs-ide-completion-auto)
+                ("fuzzy"              . ,emacs-ide-completion-fuzzy))
+               ("Features"
+                ("dashboard"          . ,emacs-ide-feature-dashboard)
+                ("which-key"          . ,emacs-ide-feature-which-key)
+                ("modeline-height"    . ,emacs-ide-modeline-height))
+               ("Subsystems"
+                ("git.enable"         . ,emacs-ide-git-enable)
+                ("project.enable"     . ,emacs-ide-project-enable)
+                ("debug.enable"       . ,emacs-ide-debug-enable)
+                ("theme.auto-switch"  . ,emacs-ide-theme-auto-switch))))
+      (princ (format "%s:\n" (car entry)))
+      (dolist (kv (cdr entry))
+        (princ (format "  %-22s %s\n" (car kv) (cdr kv))))
+      (princ "\n"))))
 
 ;;;; ── Load / Reload ──────────────────────────────────────────────────────────
 

@@ -1,13 +1,12 @@
 ;;; emacs-ide-test.el --- Enterprise Test Suite -*- lexical-binding: t -*-
-;;; Version: 3.2.0 | FIX: emacs-ide-health-auto-fix now exists in health.el,
-;;;           emacs-ide-health-run-check (singular) now exists in health.el,
-;;;           recovery tests guard against genuinely missing optional fns.
 ;;; Code:
 
 (require 'ert)
 (require 'cl-lib)
 
 (defvar emacs-ide-test-timeout 10)
+(defvar emacs-ide-startup-time-target 3.0
+  "Maximum acceptable startup time in seconds.  Set by config.yml performance.startup-time-target.")
 (defvar emacs-ide-test-startup-time-max
   (if (boundp 'emacs-ide-startup-time-target)
       emacs-ide-startup-time-target

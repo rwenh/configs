@@ -10,7 +10,7 @@
     default))
 
 ;; emacs-ide-git-enable is declared and set by emacs-ide-config.el.
-(when emacs-ide-git-enable
+(when (bound-and-true-p emacs-ide-git-enable)
 
 ;;; ─── Magit ───────────────────────────────────────────────────────────────────
 

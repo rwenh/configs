@@ -7,9 +7,8 @@
 
 ;;;; ── DAP mode (conditional on debug.enable) ─────────────────────────────────
 
-(when emacs-ide-debug-enable
+(when (bound-and-true-p emacs-ide-debug-enable)
 
-(use-package dap-mode
   :defer t
   :commands (dap-debug dap-debug-edit-template)
   :init
