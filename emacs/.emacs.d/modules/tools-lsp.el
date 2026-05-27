@@ -1,7 +1,57 @@
 ;;; tools-lsp.el --- LSP Configuration -*- lexical-binding: t -*-
-;;; Version: 3.3.1
-;;;
+;;; Version: 3.4.0
 ;;; Code:
+
+(require 'cl-lib)
+
+;;;; ── Compute the minimal lsp-client-packages list ───────────────────────────
+
+(defun emacs-ide-lsp--enabled-client-packages ()
+  "Return a list of lsp-* feature symbols for languages enabled in config.yml.
+Falls back to the full client list if config is unavailable."
+  (let ((all-map
+         '(;; Tier 1 — always useful
+           ("python"     . (lsp-pyright))
+           ("javascript" . (lsp-javascript))
+           ("typescript" . (lsp-javascript))
+           ("rust"       . (lsp-rust))
+           ("go"         . (lsp-go))
+           ("c"          . (lsp-clangd))
+           ("java"       . (lsp-java))
+           ;; Tier 2
+           ("kotlin"     . (lsp-kotlin))
+           ("scala"      . (lsp-metals))
+           ("lua"        . (lsp-lua))
+           ("shell"      . (lsp-bash))
+           ("sql"        . (lsp-sqls))
+           ("groovy"     . (lsp-groovy))
+           ("r"          . (lsp-r))
+           ("julia"      . ())           ; uses lsp-julia, installed separately
+           ;; Tier 3
+           ("haskell"    . (lsp-haskell))
+           ("clojure"    . (lsp-clojure))
+           ("elixir"     . (lsp-elixir))
+           ("ocaml"      . (lsp-ocaml))
+           ("erlang"     . ())
+           ("zig"        . (lsp-zig))
+           ("nix"        . (lsp-nix))
+           ("ruby"       . (lsp-ruby-syntax-tree))
+           ("php"        . (lsp-intelephense))
+           ("csharp"     . (lsp-csharp))
+           ("dart"       . (lsp-dart))
+           ;; Prose
+           ("prose"      . (lsp-yaml lsp-json)))))
+    (if (not (fboundp 'emacs-ide-dev-lang-enabled-p))
+        ;; Config not loaded yet — return nil to use lsp-mode default
+        nil
+      (let (result)
+        (dolist (entry all-map)
+          (when (emacs-ide-dev-lang-enabled-p (car entry))
+            (dolist (pkg (cdr entry))
+              (cl-pushnew pkg result))))
+        ;; Always include the base client loader
+        (cl-pushnew 'lsp-completion result)
+        (nreverse result)))))
 
 (when (bound-and-true-p emacs-ide-lsp-enable)
 
@@ -25,19 +75,36 @@
          . lsp-deferred)
 
   :init
+  (let ((scoped (emacs-ide-lsp--enabled-client-packages)))
+    (when scoped
+      (setq lsp-client-packages scoped)))
+
   (setq
-   lsp-keymap-prefix        "C-c l"
-   lsp-completion-provider  :none
-   lsp-idle-delay           emacs-ide-lsp-idle-delay
-   lsp-enable-snippet       t
-   lsp-semantic-tokens-enable        emacs-ide-lsp-semantic-tokens
-   lsp-lens-enable                   emacs-ide-lsp-lens
-   lsp-headerline-breadcrumb-enable  emacs-ide-lsp-breadcrumb
-   lsp-inlay-hints-enable            emacs-ide-lsp-enable-inlay-hints)
+   lsp-keymap-prefix                         "C-c l"
+   lsp-completion-provider                   :none
+   lsp-idle-delay                            emacs-ide-lsp-idle-delay
+   lsp-enable-snippet                        t
+   lsp-semantic-tokens-enable               emacs-ide-lsp-semantic-tokens
+   lsp-lens-enable                           emacs-ide-lsp-lens
+   lsp-headerline-breadcrumb-enable          emacs-ide-lsp-breadcrumb
+   lsp-inlay-hints-enable                    emacs-ide-lsp-enable-inlay-hints
+   ;; New vars from config
+   lsp-signature-auto-activate               (when emacs-ide-lsp-signature-help
+                                               '(:on-trigger-char
+                                                 :on-server-request))
+   lsp-ui-doc-enable                         emacs-ide-lsp-hover-docs
+   lsp-enable-symbol-highlighting            emacs-ide-lsp-symbol-highlighting
+   lsp-before-save-edits                     emacs-ide-lsp-organize-imports
+   lsp-large-file-warning-threshold          emacs-ide-lsp-large-file-threshold
+   ;; Performance: don't watch too many files
+   lsp-file-watch-threshold                  1000
+   ;; Avoid logging spam in *lsp-log*
+   lsp-log-io                                nil
+   ;; Don't show the "servers support this file" info message
+   lsp-warn-no-matched-clients               nil)
 
   :config
-  ;; ── Propagate inlay-hints flag to per-language packages ──────────────────
-
+  ;; ── Inlay hints per language ──────────────────────────────────────────────
   (with-eval-after-load 'lsp-rust
     (when (boundp 'lsp-rust-analyzer-inlay-hints-mode)
       (setq lsp-rust-analyzer-inlay-hints-mode
@@ -64,14 +131,32 @@
       (setq lsp-typescript-display-variable-type-hints
             emacs-ide-lsp-enable-inlay-hints)))
 
+  ;; ── Diagnostics provider ─────────────────────────────────────────────────
+  ;; Apply diagnostics-provider from config (flycheck or flymake)
+  (let ((provider (bound-and-true-p emacs-ide-lsp-diagnostics-provider)))
+    (cond
+     ((eq provider 'flycheck)
+      (setq lsp-diagnostics-provider :flycheck))
+     ((eq provider 'flymake)
+      (setq lsp-diagnostics-provider :flymake))
+     (t
+      (setq lsp-diagnostics-provider :flycheck))))
+
   ;; ── Re-apply config on explicit reload ───────────────────────────────────
   (add-hook 'emacs-ide-config-reload-hook
             (lambda ()
-              (setq lsp-inlay-hints-enable      emacs-ide-lsp-enable-inlay-hints
-                    lsp-idle-delay              emacs-ide-lsp-idle-delay
-                    lsp-semantic-tokens-enable  emacs-ide-lsp-semantic-tokens
-                    lsp-lens-enable             emacs-ide-lsp-lens
-                    lsp-headerline-breadcrumb-enable emacs-ide-lsp-breadcrumb)))
+              (setq lsp-inlay-hints-enable             emacs-ide-lsp-enable-inlay-hints
+                    lsp-idle-delay                     emacs-ide-lsp-idle-delay
+                    lsp-semantic-tokens-enable         emacs-ide-lsp-semantic-tokens
+                    lsp-lens-enable                    emacs-ide-lsp-lens
+                    lsp-headerline-breadcrumb-enable   emacs-ide-lsp-breadcrumb
+                    lsp-enable-symbol-highlighting     emacs-ide-lsp-symbol-highlighting
+                    lsp-before-save-edits              emacs-ide-lsp-organize-imports
+                    lsp-large-file-warning-threshold   emacs-ide-lsp-large-file-threshold)
+              ;; Re-scope client packages on reload
+              (let ((scoped (emacs-ide-lsp--enabled-client-packages)))
+                (when scoped
+                  (setq lsp-client-packages scoped)))))
 
   :bind (:map lsp-mode-map
               ("C-c l r" . lsp-rename)
@@ -87,11 +172,12 @@
 (use-package lsp-ui
   :after lsp-mode
   :config
-  (setq lsp-ui-doc-enable       t
-        lsp-ui-doc-position     'at-point
-        lsp-ui-sideline-enable  emacs-ide-lsp-sideline
-        lsp-ui-peek-enable      t
-        lsp-ui-imenu-enable     t))
+  (setq lsp-ui-doc-enable           emacs-ide-lsp-hover-docs
+        lsp-ui-doc-position         'at-point
+        lsp-ui-doc-show-with-mouse  nil
+        lsp-ui-sideline-enable      emacs-ide-lsp-sideline
+        lsp-ui-peek-enable          t
+        lsp-ui-imenu-enable         t))
 
 ;;; ─── flycheck ────────────────────────────────────────────────────────────────
 
@@ -102,34 +188,38 @@
         '(save idle-change mode-enabled)
         flycheck-idle-change-delay 0.5))
 
+;;; ─── lsp-treemacs — deferred, on-demand only ─────────────────────────────────
+
+(use-package lsp-treemacs
+  :after lsp-mode
+  :commands (lsp-treemacs-errors-list
+             lsp-treemacs-symbols
+             lsp-treemacs-references
+             lsp-treemacs-implementations
+             lsp-treemacs-call-hierarchy
+             lsp-treemacs-type-hierarchy)
+  :config
+  ;; Only wire up when treemacs is already loaded — no eager pull
+  (when (featurep 'treemacs)
+    (when (fboundp 'lsp-treemacs-sync-mode)
+      (lsp-treemacs-sync-mode 1))))
+
 ) ;; end (when emacs-ide-lsp-enable)
 
-;;; ─── dumb-jump — xref fallback (CALIBRATION) ────────────────────────────────
-;;
-;; dumb-jump uses ripgrep/grep to find definitions with zero configuration.
-;; It registers itself as an xref backend so it acts automatically:
-;;   • When LSP is active   → LSP wins (higher priority in xref-backend-functions)
-;;   • When LSP is absent   → dumb-jump kicks in transparently
-;;   • In any language      → works even for languages with no LSP server
-;;
-;; The hydra (C-M-y) provides a discoverable menu for all jump actions.
+;;; ─── dumb-jump — xref fallback ───────────────────────────────────────────────
 
 (use-package dumb-jump
   :demand t
   :config
-  ;; Register as xref backend — runs after LSP, before the default etags backend.
   (add-hook 'xref-backend-functions #'dumb-jump-xref-activate)
-
-  ;; Prefer ripgrep → ag → grep in that order
   (setq dumb-jump-prefer-searcher
         (cond
-         ((executable-find "rg")  'rg)
-         ((executable-find "ag")  'ag)
-         (t                       'grep))
-        dumb-jump-aggressive      nil
-        dumb-jump-selector        'completing-read)
+         ((executable-find "rg") 'rg)
+         ((executable-find "ag") 'ag)
+         (t                      'grep))
+        dumb-jump-aggressive  nil
+        dumb-jump-selector    'completing-read)
 
-  ;; Hydra for discoverable access to all dumb-jump actions
   (when (fboundp 'defhydra)
     (defhydra dumb-jump-hydra (:color blue :columns 3)
       "Dumb Jump"
@@ -140,7 +230,6 @@
       ("i" dumb-jump-go-prompt       "Prompt")
       ("l" dumb-jump-quick-look      "Quick look")
       ("b" dumb-jump-back            "Back"))
-    ;; C-M-y is easy to chord quickly; mnemonic: "jump"
     (global-set-key (kbd "C-M-y") #'dumb-jump-hydra/body)))
 
 ;;; ─── Public commands (always available) ──────────────────────────────────────
@@ -172,18 +261,22 @@
                    ("clangd"                     . "C / C++")
                    ("jdtls"                      . "Java")
                    ("kotlin-language-server"     . "Kotlin")
-                   ("lua-language-server"         . "Lua")
+                   ("lua-language-server"        . "Lua")
                    ("bash-language-server"       . "Shell / Bash")
                    ("yaml-language-server"       . "YAML")
                    ("sqls"                       . "SQL")
                    ("solargraph"                 . "Ruby")
+                   ("ruby-lsp"                   . "Ruby (ruby-lsp)")
                    ("elixir-ls"                  . "Elixir")
                    ("clojure-lsp"                . "Clojure")
                    ("haskell-language-server"    . "Haskell")
                    ("zls"                        . "Zig")
                    ("nil"                        . "Nix")
                    ("metals"                     . "Scala")
-                   ("r-languageserver"           . "R"))))
+                   ("r-languageserver"           . "R")
+                   ("omnisharp"                  . "C#")
+                   ("intelephense"               . "PHP")
+                   ("dart"                       . "Dart"))))
     (with-output-to-temp-buffer "*LSP Server Status*"
       (princ "=== LSP SERVER STATUS ===\n\n")
       (princ (format "LSP enabled:    %s\n"
@@ -194,6 +287,10 @@
       (princ (format "Idle delay:     %.2fs\n"
                      (if (boundp 'emacs-ide-lsp-idle-delay)
                          emacs-ide-lsp-idle-delay 0.3)))
+      (princ (format "Client scope:   %s\n"
+                     (if (boundp 'lsp-client-packages)
+                         (format "%d packages" (length lsp-client-packages))
+                       "default (all)")))
       (princ (format "Dumb-jump:      %s  (fallback when LSP absent)\n\n"
                      (if (fboundp 'dumb-jump-xref-activate) "✓ loaded" "✗ not loaded")))
       (let ((found 0) (missing 0))

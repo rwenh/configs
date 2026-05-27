@@ -1,9 +1,6 @@
 ;;; emacs-ide-spot-check.el --- Spot-check commands and keybindings -*- lexical-binding: t -*-
 ;;; Version: 3.3.0
 ;;;
-;;;   Audit: added emacs-ide-vterm-here and emacs-ide-eshell-here to the
-;;;        COMMANDS list since they are real public interactive functions.
-;;;
 ;;; Code:
 
 (defun emacs-ide-spot-check--command-ok-p (fn)
@@ -134,10 +131,10 @@ Uses strict symbol equality — no substring matching — so that
                  emacs-ide-spell-toggle
                  emacs-ide-spell-buffer
                  ;; Terminal — real public functions, not just the bound lambdas
-                 emacs-ide-vterm-here     ;; FIX #68 audit: added
+                 emacs-ide-vterm-here
                  emacs-ide-vterm-toggle
                  emacs-ide-vterm-project
-                 emacs-ide-eshell-here   ;; FIX #68 audit: added
+                 emacs-ide-eshell-here
                  ;; Project helpers
                  emacs-ide-project-info
                  emacs-ide-project-compile
@@ -355,6 +352,10 @@ Uses strict symbol equality — no substring matching — so that
       (princ "  M-x emacs-ide-health-check-all   system tools + LSP + formatters\n")
       (princ "  M-x emacs-ide-security-check     TLS + GPG + auth-source\n")
       (princ "  M-x emacs-ide-startup-report     startup phase timings\n"))))
+
+
+(when (boundp 'emacs-ide--spot-check-run)
+  (fset 'emacs-ide--spot-check-run #'emacs-ide-spot-check))
 
 (provide 'emacs-ide-spot-check)
 ;;; emacs-ide-spot-check.el ends here

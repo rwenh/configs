@@ -1,6 +1,5 @@
-;;; apheleia-langs-patch.el --- Complete 50-lang apheleia formatter map -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
+;;; apheleia-langs-patch.el --- Complete formatter map -*- lexical-binding: t -*-
+;;; Version: 3.4.0
 ;;; Code:
 
 (with-eval-after-load 'apheleia
@@ -25,7 +24,8 @@
   (when (executable-find "prettier")
     (dolist (mode '(js2-mode js-mode js-ts-mode
                     typescript-mode typescript-ts-mode tsx-ts-mode
-                    web-mode css-mode css-ts-mode scss-mode
+                    web-mode mhtml-mode html-mode
+                    css-mode css-ts-mode scss-mode less-css-mode
                     json-mode json-ts-mode
                     yaml-mode yaml-ts-mode
                     markdown-mode gfm-mode
@@ -49,6 +49,14 @@
   (when (executable-find "clang-format")
     (dolist (mode '(c-mode c++-mode c-ts-mode c++-ts-mode cuda-mode))
       (setf (alist-get mode apheleia-mode-alist) 'clang-format)))
+
+  ;;; ── C# (NEW) ───────────────────────────────────────────────────────────────
+
+  (when (executable-find "dotnet-csharpier")
+    (setf (alist-get 'csharpier apheleia-formatters)
+          '("dotnet-csharpier" "--write-stdout"))
+    (setf (alist-get 'csharp-mode    apheleia-mode-alist) 'csharpier)
+    (setf (alist-get 'csharp-ts-mode apheleia-mode-alist) 'csharpier))
 
   ;;; ── Java ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +86,8 @@
   (when (executable-find "stylua")
     (setf (alist-get 'stylua apheleia-formatters)
           '("stylua" "-"))
-    (setf (alist-get 'lua-mode apheleia-mode-alist) 'stylua))
+    (setf (alist-get 'lua-mode    apheleia-mode-alist) 'stylua)
+    (setf (alist-get 'lua-ts-mode apheleia-mode-alist) 'stylua))
 
   ;;; ── Shell ──────────────────────────────────────────────────────────────────
 
@@ -140,26 +149,44 @@
           '("nixpkgs-fmt"))
     (setf (alist-get 'nix-mode apheleia-mode-alist) 'nixpkgs-fmt))
 
-  ;;; ── Ruby ───────────────────────────────────────────────────────────────────
+  ;;; ── Ruby (hardened) ────────────────────────────────────────────────────────
 
-  (when (executable-find "rubocop")
+  (cond
+   ;; standardrb is rubocop-compatible and opinionated — prefer it when present
+   ((executable-find "standardrb")
+    (setf (alist-get 'standardrb apheleia-formatters)
+          '("standardrb" "--fix" "--stdin" filepath
+            "--stderr" "--format" "quiet"))
+    (setf (alist-get 'ruby-mode    apheleia-mode-alist) 'standardrb)
+    (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) 'standardrb))
+   ((executable-find "rubocop")
     (setf (alist-get 'rubocop apheleia-formatters)
           '("rubocop" "--autocorrect" "--stdin" filepath
             "--stderr" "--format" "quiet"))
     (setf (alist-get 'ruby-mode    apheleia-mode-alist) 'rubocop)
-    (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) 'rubocop))
+    (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) 'rubocop)))
 
-  (when (executable-find "standardrb")
-    (setf (alist-get 'standardrb apheleia-formatters)
-          '("standardrb" "--fix" "--stdin" filepath
-            "--stderr" "--format" "quiet")))
+  ;;; ── PHP (hardened) ─────────────────────────────────────────────────────────
 
-  ;;; ── PHP ────────────────────────────────────────────────────────────────────
-
-  (when (executable-find "phpcbf")
+  (cond
+   ((executable-find "php-cs-fixer")
+    (unless (assq 'php-cs-fixer apheleia-formatters)
+      (push '(php-cs-fixer "php-cs-fixer" "fix" "--quiet" filepath)
+            apheleia-formatters))
+    (setf (alist-get 'php-mode    apheleia-mode-alist) 'php-cs-fixer)
+    (setf (alist-get 'php-ts-mode apheleia-mode-alist) 'php-cs-fixer))
+   ((executable-find "phpcbf")
     (setf (alist-get 'phpcbf apheleia-formatters)
           '("phpcbf" "--stdin-path" filepath "-"))
-    (setf (alist-get 'php-mode apheleia-mode-alist) 'phpcbf))
+    (setf (alist-get 'php-mode    apheleia-mode-alist) 'phpcbf)
+    (setf (alist-get 'php-ts-mode apheleia-mode-alist) 'phpcbf)))
+
+  ;;; ── Dart (NEW) ─────────────────────────────────────────────────────────────
+
+  (when (executable-find "dart")
+    (setf (alist-get 'dart-format apheleia-formatters)
+          '("dart" "format" "--output=show" "-"))
+    (setf (alist-get 'dart-mode apheleia-mode-alist) 'dart-format))
 
   ;;; ── Clojure ────────────────────────────────────────────────────────────────
 

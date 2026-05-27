@@ -1,6 +1,5 @@
 ;;; lang-functional.el --- Functional Languages IDE layer -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
+;;; Version: 3.4.0
 ;;; Code:
 
 (require 'core-dev)
@@ -19,6 +18,16 @@
   :tier 3 :lsp-server nil
   :formatter nil :test-cmd "rebar3 eunit" :repl "erl"
   :modes '(erlang-mode))
+
+(emacs-ide-dev-register "elixir"
+  :tier 3 :lsp-server "elixir-ls"
+  :formatter "mix-format" :test-cmd "mix test" :repl "iex"
+  :modes '(elixir-mode elixir-ts-mode))
+
+(emacs-ide-dev-register "ocaml"
+  :tier 3 :lsp-server "ocamllsp"
+  :formatter "ocamlformat" :test-cmd "dune test" :repl "utop"
+  :modes '(tuareg-mode))
 
 (when (or (emacs-ide-dev-lang-enabled-p "haskell")
           (emacs-ide-dev-lang-enabled-p "clojure")
@@ -137,6 +146,17 @@
   :mode (("\\.ex\\'"  . elixir-mode)
          ("\\.exs\\'" . elixir-mode))
   :config
+  (when (fboundp 'emacs-ide-repl-register)
+    (emacs-ide-repl-register 'elixir-mode
+      :launch (lambda ()
+                (if (executable-find "iex")
+                    (progn
+                      (require 'comint)
+                      (make-comint "elixir-repl" "iex")
+                      (switch-to-buffer "*elixir-repl*"))
+                  (message "lang-functional: iex not found on PATH")))
+      :buffer-name    "*elixir-repl*"
+      :send-region-fn nil))
   (when (fboundp 'emacs-ide-test-register-runner)
     (emacs-ide-test-register-runner 'elixir-mode
       :project-fn (lambda ()
@@ -157,6 +177,12 @@
            (executable-find "elixir-ls"))
   :hook (elixir-mode . lsp-deferred))
 
+(with-eval-after-load 'apheleia
+  (when (and (emacs-ide-dev-lang-enabled-p "elixir")
+             (executable-find "mix"))
+    (setf (alist-get 'elixir-mode    apheleia-mode-alist) 'mix-format)
+    (setf (alist-get 'elixir-ts-mode apheleia-mode-alist) 'mix-format)))
+
 (use-package alchemist
   :if (and (emacs-ide-dev-lang-enabled-p "elixir")
            (executable-find "elixir"))
@@ -169,13 +195,45 @@
            (executable-find "ocaml"))
   :defer t
   :mode (("\\.ml\\'"  . tuareg-mode)
-         ("\\.mli\\'" . tuareg-mode)))
+         ("\\.mli\\'" . tuareg-mode)
+         ("\\.mly\\'" . tuareg-mode))
+  :config
+  (when (fboundp 'emacs-ide-repl-register)
+    (emacs-ide-repl-register 'tuareg-mode
+      :launch (lambda ()
+                (cond
+                 ((fboundp 'utop)          (utop))
+                 ((executable-find "utop")
+                  (require 'comint)
+                  (make-comint "ocaml-repl" "utop")
+                  (switch-to-buffer "*ocaml-repl*"))
+                 ((executable-find "ocaml")
+                  (require 'comint)
+                  (make-comint "ocaml-repl" "ocaml")
+                  (switch-to-buffer "*ocaml-repl*"))
+                 (t (message "lang-functional: ocaml/utop not found on PATH"))))
+      :buffer-name    "*ocaml-repl*"
+      :send-region-fn (lambda (beg end)
+                        (when (fboundp 'tuareg-eval-region)
+                          (tuareg-eval-region beg end)))))
+  (when (fboundp 'emacs-ide-test-register-runner)
+    (emacs-ide-test-register-runner 'tuareg-mode
+      :project-fn (lambda ()
+                    (interactive)
+                    (if (executable-find "dune")
+                        (compile "dune test")
+                      (message "lang-functional: dune not found on PATH"))))))
 
 (use-package lsp-mode
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
            (emacs-ide-dev-lang-enabled-p "ocaml")
            (executable-find "ocamllsp"))
   :hook (tuareg-mode . lsp-deferred))
+
+(with-eval-after-load 'apheleia
+  (when (and (emacs-ide-dev-lang-enabled-p "ocaml")
+             (executable-find "ocamlformat"))
+    (setf (alist-get 'tuareg-mode apheleia-mode-alist) 'ocamlformat)))
 
 ;;;; ── Erlang ──────────────────────────────────────────────────────────────────
 

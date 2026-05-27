@@ -1,6 +1,5 @@
 ;;; ui-core.el --- Office-Grade Visual Configuration -*- lexical-binding: t -*-
-;;; Version: 3.0.5
-;;;
+;;; Version: 3.4.0
 ;;; Code:
 
 (when (fboundp 'menu-bar-mode)     (menu-bar-mode   -1))
@@ -17,13 +16,7 @@
       inhibit-splash-screen           t
       inhibit-startup-echo-area-message t)
 
-;;; ─── Display buffer rules (CALIBRATION) ──────────────────────────────────────
-;;
-;; Help:        always pops into its own window so it doesn't clobber your code
-;; Completions: own window, fixed height of 10 lines — enough to scan choices
-;; Dictionary:  left side-window, 70 chars wide — stays anchored while you code
-;; Ediff:       control panel stays in the same frame (not a separate X window)
-;; Man:         opens in its own window and immediately focuses it
+;;; ─── Display buffer rules ────────────────────────────────────────────────────
 
 (add-to-list 'display-buffer-alist
              '("\\*Help\\*"
@@ -35,19 +28,13 @@
                (inhibit-same-window . t)
                (window-height . 10)))
 
-;; Dictionary: left side-window — stays pinned while you type
 (add-to-list 'display-buffer-alist
              '("^\\*Dictionary\\*"
                (display-buffer-in-side-window)
                (side . left)
                (window-width . 70)))
 
-;; Man pages: open in own window and switch focus immediately
 (setq Man-notify-method 'aggressive)
-
-;; Ediff: keep the control panel inside the current frame.
-;; The default (`ediff-setup-windows-multiframe') opens a tiny separate X
-;; window which gets lost behind the main frame on tiling WMs and multi-monitor.
 (setq ediff-window-setup-function 'ediff-setup-windows-plain)
 
 ;;; ─── ef-themes ────────────────────────────────────────────────────────────────
@@ -68,9 +55,9 @@
   :config
   (let* ((raw   (bound-and-true-p emacs-ide-theme))
          (theme (cond
-                 ((stringp raw)  (intern raw))
-                 ((symbolp raw)  raw)
-                 (t              'ef-dark)))
+                 ((stringp raw) (intern raw))
+                 ((symbolp raw) raw)
+                 (t             'ef-dark)))
          (theme (if (string-prefix-p "modus-" (symbol-name theme))
                     (if (string-suffix-p "operandi" (symbol-name theme))
                         'ef-light
@@ -167,8 +154,8 @@
                         (emacs-ide-config-get 'features 'line-numbers t)
                       t))
       (relative-on (if (fboundp 'emacs-ide-config-get)
-                       (emacs-ide-config-get 'features 'relative-line-numbers t)
-                     t)))
+                       (emacs-ide-config-get 'features 'relative-line-numbers nil)
+                     nil)))
   (when line-nums-on
     (global-display-line-numbers-mode 1)
     (setq display-line-numbers-type        (if relative-on 'relative t)
@@ -371,16 +358,35 @@
 
 (use-package tab-bar
   :straight nil
-  :defer t
   :init
   (setq tab-bar-show              1
         tab-bar-close-button-show nil
         tab-bar-new-button-show   nil
         tab-bar-tab-hints         t
         tab-bar-separator         "  "
-        tab-bar-tab-name-function 'tab-bar-tab-name-current-with-count)
-  :config
-  (tab-bar-mode 1))
+        tab-bar-tab-name-function 'tab-bar-tab-name-current-with-count))
+
+(add-hook 'after-init-hook
+          (lambda ()
+            (when (fboundp 'tab-bar-mode)
+              (tab-bar-mode 1)))
+          ;; run early in after-init so ui-workspace's tab-bar-format
+          ;; customization applies before first display
+          5)
+
+;;; ─── editorconfig ────────────────────────────────────────────────────────────
+
+(if (version<= "30" emacs-version)
+    ;; Built-in since Emacs 30 — enable globally after init
+    (add-hook 'after-init-hook
+              (lambda ()
+                (when (fboundp 'editorconfig-mode)
+                  (editorconfig-mode 1))))
+  ;; Emacs 29 and earlier — use the package, global
+  (use-package editorconfig
+    :demand t
+    :config
+    (editorconfig-mode 1)))
 
 ;;; ─── Presentation mode ───────────────────────────────────────────────────────
 

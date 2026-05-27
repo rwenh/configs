@@ -1,10 +1,5 @@
 ;;; lang-rust.el --- Rust Language Support -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
-;;;   Also: rust-ts-mode added to cargo-minor-mode hook and test runner.
-;;;         apheleia mapping extended to rust-ts-mode.
-;;;         Compile keybind added to rust-ts-mode-map.
-;;;
+;;; Version: 3.4.0
 ;;; Code:
 
 (require 'core-dev)
@@ -24,19 +19,16 @@
 (use-package rust-mode
   :mode "\\.rs\\'"
   :config
-  ;; C-c C-c → cargo run for the current file's manifest
   (define-key rust-mode-map (kbd "C-c C-c")
     (lambda ()
       (interactive)
       (compile "cargo run")))
-  ;; Propagate compile key to rust-ts-mode when available
   (with-eval-after-load 'rust-ts-mode
     (when (boundp 'rust-ts-mode-map)
       (define-key rust-ts-mode-map (kbd "C-c C-c")
         (lambda () (interactive) (compile "cargo run"))))))
 
 ;;;; ── LSP (rust-analyzer) ─────────────────────────────────────────────────────
-;; Only cargo/clippy settings live here.
 
 (use-package lsp-rust
   :after  (rust-mode lsp-mode)
@@ -44,13 +36,10 @@
                (executable-find "rust-analyzer"))
   :hook   ((rust-mode rust-ts-mode) . lsp-deferred)
   :config
-  ;; Clippy on save — set here because these are Rust-specific and do not
-  ;; overlap with the inlay-hints concern owned by tools-lsp.el.
   (when (boundp 'lsp-rust-analyzer-cargo-watch-command)
     (setq lsp-rust-analyzer-cargo-watch-command "clippy"))
   (when (boundp 'lsp-rust-analyzer-checkOnSave-command)
     (setq lsp-rust-analyzer-checkOnSave-command "clippy"))
-  ;; Proc-macro support
   (when (boundp 'lsp-rust-analyzer-proc-macro-enable)
     (setq lsp-rust-analyzer-proc-macro-enable t)))
 
@@ -78,7 +67,7 @@
   (interactive)
   (compile "cargo test"))
 
-(with-eval-after-load 'tools-test
+(with-eval-after-load 'tools-test-runner-registry
   (when (fboundp 'emacs-ide-test-register-runner)
     (dolist (mode '(rust-mode rust-ts-mode))
       (emacs-ide-test-register-runner mode

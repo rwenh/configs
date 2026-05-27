@@ -1,6 +1,5 @@
 ;;; tools-project.el --- Project Management with Projectile -*- lexical-binding: t -*-
-;;; Version: 3.1.2
-;;;
+;;; Version: 3.4.0
 ;;; Code:
 
 (require 'cl-lib)
@@ -59,9 +58,9 @@
         '("*.pyc" "*.o" "*.so" "*.dll" "*.exe" "*.class"
           "*.elc" "*.log" ".DS_Store" "Thumbs.db" "*.jar"
           "*.war" "*.beam" "TAGS")
-        projectile-auto-discover                   t
-        projectile-switch-project-action           #'projectile-dired
-        projectile-require-project-root            nil
+        projectile-auto-discover                    t
+        projectile-switch-project-action            #'projectile-find-file
+        projectile-require-project-root             nil
         projectile-track-known-projects-automatically t
         projectile-use-git-grep
         (eq (bound-and-true-p emacs-ide-project-search) 'git-grep)
@@ -102,10 +101,7 @@
   :after (projectile consult)
   :bind (("C-c p h" . consult-projectile)))
 
-;;; ─── ibuffer-project (CALIBRATION) ──────────────────────────────────────────
-;;
-;; Integration: also remaps `list-buffers' (C-x C-b) to ibuffer-list-buffers
-;; so the project grouping appears whenever you invoke the buffer list.
+;;; ─── ibuffer-project ─────────────────────────────────────────────────────────
 
 (use-package ibuffer-project
   :after projectile
@@ -118,34 +114,39 @@
       (ibuffer-do-sort-by-project-file-relative)))
 
   (add-hook 'ibuffer-hook #'emacs-ide-ibuffer-project-setup)
-
-  ;; Remap list-buffers to ibuffer-list-buffers so C-x C-b always shows
-  ;; the project-grouped view rather than the plain buffer list.
   (keymap-global-set "<remap> <list-buffers>" #'ibuffer-list-buffers)
+  (setq ibuffer-movement-cycle nil
+        ibuffer-old-time       24))
 
-  ;; ibuffer quality-of-life settings from Crafted Emacs defaults
-  (setq ibuffer-movement-cycle nil   ; don't wrap around at top/bottom
-        ibuffer-old-time       24))  ; mark buffers as "old" after 24 hours
+;;; ─── treemacs — strictly deferred ───────────────────────────────────────────
 
 (use-package treemacs
-  :defer t
+  :commands (treemacs
+             treemacs-select-window
+             treemacs-find-file
+             treemacs-add-project-to-workspace
+             treemacs-remove-project-from-workspace)
   :init
   (setq treemacs-width                    35
         treemacs-collapse-dirs            3
         treemacs-show-hidden-files        t
         treemacs-is-never-other-window    t
         treemacs-sorting                  'alphabetic-case-insensitive-asc
-        treemacs-fringe-indicator-mode    'always)
+        treemacs-fringe-indicator-mode    'always
+        ;; Avoid pulling in lsp-treemacs just by opening treemacs
+        treemacs-python-executable        (executable-find "python3"))
   :config
-  (when (fboundp 'treemacs-follow-mode)     (treemacs-follow-mode 1))
-  (when (fboundp 'treemacs-filewatch-mode)  (treemacs-filewatch-mode 1))
-  (when (fboundp 'treemacs-git-mode)        (treemacs-git-mode 'deferred))
+  (when (fboundp 'treemacs-follow-mode)    (treemacs-follow-mode 1))
+  (when (fboundp 'treemacs-filewatch-mode) (treemacs-filewatch-mode 1))
+  (when (fboundp 'treemacs-git-mode)       (treemacs-git-mode 'deferred))
   :bind (("<f9>" . treemacs)))
 
 (use-package treemacs-projectile
+  :commands (treemacs-projectile)
   :after (treemacs projectile))
 
 (use-package treemacs-magit
+  :commands (treemacs-magit--schedule-update)
   :after (treemacs magit))
 
 ;;; ─── Project helpers ─────────────────────────────────────────────────────────

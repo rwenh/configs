@@ -1,5 +1,5 @@
 ;;; init.el --- Enterprise Emacs IDE Core Bootstrap -*- lexical-binding: t -*-
-;;; Version: 3.3.1
+;;; Version: 3.4.1
 ;;;
 ;;; Code:
 
@@ -7,7 +7,7 @@
 
 ;;;; ── Version constants ───────────────────────────────────────────────────────
 
-(defconst emacs-ide-version "3.3.1")
+(defconst emacs-ide-version "3.4.1")
 (defconst emacs-ide-minimum-emacs-version "29.1")
 (defconst emacs-ide-session-date (format-time-string "%Y-%m-%d"))
 (define-obsolete-variable-alias
@@ -136,22 +136,20 @@
   (dolist (module emacs-ide-core-modules)
     (emacs-ide-load-core-module module))
 
+  (unless (fboundp 'emacs-ide-diagnose)
+    (defun emacs-ide-diagnose ()
+      (interactive)
+      (message
+       "✗ emacs-ide-diagnose.el failed to load — check *Messages* for the error.")))
+
   (emacs-ide--track-phase "core-modules")
 
-  ;;; ── exec-path-from-shell (CALIBRATION) ──────────────────────────────────────
-  ;;
+  ;;; ── exec-path-from-shell ─────────────────────────────────────────────────
 
   (use-package exec-path-from-shell
-    ;; Only needed when Emacs is NOT started from a properly configured terminal.
-    ;; - GUI frames: always need it (macOS .app, GNOME/KDE launcher)
-    ;; - daemon mode: always need it (started by systemd/launchd, bare env)
-    ;; - Terminal Emacs: usually already has the right env, but safe to run
     :if (or (display-graphic-p) (daemonp))
     :demand t
     :config
-    ;; Variables to import beyond the default PATH and MANPATH.
-    ;; Each one is only imported if the shell actually sets it — missing
-    ;; variables are silently skipped, so this list is safe to be generous with.
     (dolist (var '("SSH_AUTH_SOCK"
                    "SSH_AGENT_PID"
                    "GPG_AGENT_INFO"
@@ -188,54 +186,12 @@
    scroll-conservatively 101
    scroll-margin         5)
 
-  ;;; ── Long-line performance (CALIBRATION) ─────────────────────────────────────
-  ;;
-  ;; global-so-long-mode: automatically detects files with very long lines
-  ;; (minified JS/CSS, generated SQL, large logs, single-line JSON exports,
-  ;; WASM text format, etc.) and switches them into a stripped-down mode that
-  ;; disables expensive minor modes (font-lock, syntax highlighting, line-wrap
-  ;; calculation) that would otherwise hang Emacs for seconds on open.
-
   (global-so-long-mode 1)
-
-  ;;; ── Bidirectional text performance (CALIBRATION) ────────────────────────────
-  ;;
-  ;; Emacs normally runs a full Unicode bidi (bidirectional) algorithm on every
-  ;; line to support mixed RTL/LTR text (Arabic, Hebrew mixed with code, etc.).
-  ;; For pure left-to-right content (all source code, English prose, YAML, etc.)
-  ;; this is wasted CPU on every redisplay.
-  ;;
-  ;; bidi-paragraph-direction 'left-to-right: tells Emacs "assume this buffer
-  ;; is LTR, skip the direction-detection scan".  Safe for all code buffers.
-  ;;
-  ;; bidi-inhibit-bpa t: disables the Bidirectional Parentheses Algorithm,
-  ;; which is a further scan that matches bidirectional bracket pairs.
-  ;; Again, irrelevant for code and a measurable speedup on long lines.
-  ;;
-  ;; These are buffer-local via setq-default — individual buffers that
-  ;; actually contain RTL content can override them locally.
 
   (setq-default bidi-paragraph-direction 'left-to-right
                 bidi-inhibit-bpa         t)
 
-  ;;; ── Bookmark persistence (CALIBRATION) ──────────────────────────────────────
-  ;;
-  ;; bookmark-save-flag 1: write the bookmarks file to disk every time a
-  ;; bookmark is set or deleted.
-
   (setq bookmark-save-flag 1)
-
-  ;;; ── Buffer switching display rules (CALIBRATION) ─────────────────────────────
-  ;;
-  ;; switch-to-buffer-obey-display-actions t: without this, manually switching
-  ;; buffers with C-x b (or consult-buffer) ignores display-buffer-alist rules
-  ;; and opens the buffer in the current window regardless.  Setting t makes
-  ;; manual switching behave consistently with programmatic switching — e.g.
-  ;; *Help* always opens in its own window whether triggered by code or by you.
-  ;;
-  ;; switch-to-buffer-in-dedicated-window 'pop: dedicated windows (compilation,
-  ;; REPL side windows, etc.) won't be hijacked when you switch buffers.
-  ;; The new buffer pops into a regular window instead.
 
   (setq switch-to-buffer-obey-display-actions t
         switch-to-buffer-in-dedicated-window  'pop)
@@ -355,7 +311,20 @@ keybindings must remain last so its global-set-key calls override any
                          emacs-ide-version elapsed gc-count)
                 (when (fboundp 'emacs-ide-telemetry-log-startup)
                   (emacs-ide-telemetry-log-startup elapsed gc-count pkg-count))))
-            100))  ;; end (unless emacs-ide-safe-mode)
+            100)
+
+  ;;; ── Reload helpers (normal-boot only) ───────────────────────────────────────
+
+  (defun emacs-ide-reload ()
+    "Deprecated.  Use `emacs-ide-reload-init' or `emacs-ide-config-reload'."
+    (interactive)
+    (message "emacs-ide-reload is deprecated.  \
+Use C-c R (emacs-ide-config-reload) for safe config reload, \
+or M-x emacs-ide-reload-init for full init reload.")
+    (when (yes-or-no-p "Run emacs-ide-config-reload (safe) instead? ")
+      (emacs-ide-config-reload)))
+
+) ;; end (unless emacs-ide-safe-mode)
 
 ;;;; ── Kill hook ───────────────────────────────────────────────────────────────
 
@@ -377,48 +346,61 @@ keybindings must remain last so its global-set-key calls override any
 (when (and (stringp custom-file) (file-exists-p custom-file))
   (load custom-file nil 'nomessage))
 
-;;;; ── Eagerly load test + spot-check ─────────────────────────────────────────
+;;;; ── On-demand loader helpers ───────────────────────────────────────────────
 
-(let ((test-file (expand-file-name "core/emacs-ide-test.el"
-                                   emacs-ide-root-dir)))
-  (if (file-exists-p test-file)
-      (condition-case err
-          (progn (load-file test-file)
-                 (message "✓ emacs-ide-test loaded"))
-        (error (warn "⚠️  emacs-ide-test.el: %s" (error-message-string err))))
-    (warn "⚠️  emacs-ide-test.el not found at %s" test-file)))
+(defun emacs-ide--ensure-test-loaded ()
+  "Load emacs-ide-test.el on demand if not already loaded."
+  (unless (featurep 'emacs-ide-test)
+    (let ((file (expand-file-name "core/emacs-ide-test.el" emacs-ide-root-dir)))
+      (if (file-exists-p file)
+          (condition-case err
+              (load-file file)
+            (error (warn "⚠️  emacs-ide-test.el: %s" (error-message-string err))))
+        (warn "⚠️  emacs-ide-test.el not found at %s" file)))))
 
-(let ((sc-file (expand-file-name "core/emacs-ide-spot-check.el"
-                                 emacs-ide-root-dir)))
-  (if (file-exists-p sc-file)
-      (condition-case err
-          (progn (load-file sc-file)
-                 (message "✓ emacs-ide-spot-check loaded"))
-        (error (warn "⚠️  emacs-ide-spot-check.el: %s"
-                     (error-message-string err))))
-    (warn "⚠️  emacs-ide-spot-check.el not found at %s" sc-file)))
+(defun emacs-ide--ensure-spot-check-loaded ()
+  "Load emacs-ide-spot-check.el on demand if not already loaded."
+  (unless (featurep 'emacs-ide-spot-check)
+    (let ((file (expand-file-name "core/emacs-ide-spot-check.el" emacs-ide-root-dir)))
+      (if (file-exists-p file)
+          (condition-case err
+              (load-file file)
+            (error (warn "⚠️  emacs-ide-spot-check.el: %s" (error-message-string err))))
+        (warn "⚠️  emacs-ide-spot-check.el not found at %s" file)))))
 
-(unless (fboundp 'emacs-ide-diagnose)
-  (defun emacs-ide-diagnose ()
-    (interactive)
-    (message "emacs-ide-diagnose.el failed to load — see *Messages*.")))
+(defvar emacs-ide--spot-check-run nil
+  "Internal: set by emacs-ide-spot-check.el to the real spot-check function.")
 
 ;;;; ── Interactive helpers ─────────────────────────────────────────────────────
 
 (defun emacs-ide-run-tests ()
-  "Run all Emacs IDE ERT tests interactively."
+  "Run all Emacs IDE ERT tests and display results in the *ert* browser.
+
+Loads emacs-ide-test.el on demand if not already present.  Once loaded,
+the function defined there overwrites this bootstrap wrapper."
   (interactive)
+  (emacs-ide--ensure-test-loaded)
   (if (featurep 'emacs-ide-test)
-      (let ((ert-verbose t))
-        (ert-run-tests-batch "^test-emacs-ide-"))
-    (let ((file (expand-file-name "core/emacs-ide-test.el"
-                                  emacs-ide-root-dir)))
-      (if (file-exists-p file)
-          (progn
-            (load-file file)
-            (let ((ert-verbose t))
-              (ert-run-tests-batch "^test-emacs-ide-")))
-        (message "✗ Test file not found: %s" file)))))
+      (ert "^test-emacs-ide-")
+    (message "✗ emacs-ide-test failed to load — check *Messages*")))
+
+(defun emacs-ide-spot-check ()
+  "Run the IDE spot-check (commands, keybindings, module features).
+
+Loads emacs-ide-spot-check.el on demand.  Dispatches through the private
+`emacs-ide--spot-check-run' symbol set by that file, so there is no
+ambiguity with the public function it also defines."
+  (interactive)
+  (emacs-ide--ensure-spot-check-loaded)
+  (cond
+   ((functionp emacs-ide--spot-check-run)
+    (call-interactively emacs-ide--spot-check-run))
+   ;; Fallback: if the file loaded but didn't set the trampoline (shouldn't
+   ;; happen), call the public symbol directly — by now it IS the real fn.
+   ((featurep 'emacs-ide-spot-check)
+    (call-interactively (symbol-function 'emacs-ide-spot-check)))
+   (t
+    (message "✗ emacs-ide-spot-check failed to load — check *Messages*"))))
 
 (defun emacs-ide-show-version ()
   "Display the IDE version string."
@@ -442,9 +424,10 @@ keybindings must remain last so its global-set-key calls override any
     (princ "Startup Phases:\n")
     (dolist (phase (reverse emacs-ide--startup-phases))
       (princ (format "  %-35s %.3fs\n" (car phase) (cdr phase))))
-    (princ "\nLang modules are lazy — they load on first file open.\n")))
+    (princ "\nLang modules are lazy — they load on first file open.\n")
+    (princ "Test/spot-check modules are on-demand — not loaded at startup.\n")))
 
-;;;; ── Reload helpers ──────────────────────────────────────────────────────────
+;;;; ── Reload helpers (always available) ──────────────────────────────────────
 
 (defun emacs-ide-reload-init ()
   "Reload the ENTIRE init.el from disk.
@@ -459,18 +442,6 @@ last resort — prefer M-x emacs-ide-config-reload for config-only reloads."
                  "Proceed? "))
     (load-file user-init-file)
     (message "✓ init.el reloaded (hooks may be duplicated — restart recommended)")))
-
-(defun emacs-ide-reload ()
-  "Deprecated.  Use `emacs-ide-reload-init' or `emacs-ide-config-reload'."
-  (interactive)
-  (message "emacs-ide-reload is deprecated.  \
-Use C-c R (emacs-ide-config-reload) for safe config reload, \
-or M-x emacs-ide-reload-init for full init reload.")
-  (when (yes-or-no-p "Run emacs-ide-config-reload (safe) instead? ")
-    (emacs-ide-config-reload)))
-
-(defalias 'emacs-ide-reload-config #'emacs-ide-config-reload
-  "Reload config.yml and apply settings.  Alias for `emacs-ide-config-reload'.")
 
 ;;;; ── Package management ──────────────────────────────────────────────────────
 

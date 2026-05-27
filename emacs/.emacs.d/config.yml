@@ -1,16 +1,7 @@
 # ============================================================================
-# Enterprise Emacs IDE Configuration — v3.1.0
+# Enterprise Emacs IDE Configuration — v3.4.0
 # ============================================================================
-# Edit here, then: M-x emacs-ide-config-reload
-#
-# NEW in v3.1.0:
-#   - Auto dark/light by time of day (theme.auto-switch)
-#   - Richer corfu UX (popup-info, auto-prefix 1)
-#   - Inlay hints on by default
-#   - Consult hidden-file search
-#   - Dimmer + pulsar + beacon tuned defaults
-#   - Per-env git identity auto-applied
-#   - Tab-bar integration with perspective labels
+# Edit here, then: M-x emacs-ide-config-reload  (C-c R)
 # ============================================================================
 
 general:
@@ -20,17 +11,17 @@ general:
   font-size: 11
   safe-mode: false
   show-dashboard: true
-  restore-session: false       # true → restore prior session via perspective
+  restore-session: false
 
 completion:
-  backend: corfu               # corfu (recommended) or company
+  backend: corfu
   delay: 0.15
   auto: true
   snippet-expansion: true
   fuzzy-matching: true
   popup-height: 16
   preview: true
-  auto-prefix: 1               # Trigger after 1 char (aggressive mode)
+  auto-prefix: 1
 
 lsp:
   enable: true
@@ -60,6 +51,7 @@ formatting:
   go: gofmt
   c: clang-format
   cpp: clang-format
+  csharp: csharpier
   java: google-java-format
   kotlin: ktlint
   lua: stylua
@@ -68,6 +60,8 @@ formatting:
   haskell: ormolu
   elixir: mix-format
   ruby: rubocop
+  php: php-cs-fixer
+  dart: dart-format
   nix: nixpkgs-fmt
   zig: zigfmt
   clojure: cljfmt
@@ -98,21 +92,21 @@ features:
   dimmer: true
   pulsar: true
   line-numbers: true
-  relative-line-numbers: false  # true → relative line numbers
+  relative-line-numbers: false
   column-number: true
   file-size: true
   modeline: doom-modeline
   modeline-height: 32
 
 editing:
-  meow: false                  # Emacs-native modal — off by default
+  meow: false
   hydra: true
   surround: true
 
 theme:
-  auto-switch: false           # true → switch dark/light by time
-  dark-hour: 19                # Switch to dark theme at this hour
-  light-hour: 7                # Switch to light theme at this hour
+  auto-switch: false
+  dark-hour: 19
+  light-hour: 7
 
 workspace:
   enable: true
@@ -159,7 +153,7 @@ git:
 
 terminal:
   enable: true
-  shell:                       # Empty → use $SHELL
+  shell:
   max-scrollback: 100000
   timer-delay: 0.01
   kill-buffer-on-exit: true
@@ -175,12 +169,15 @@ debug:
   rust: true
   cpp: true
   java: true
+  csharp: true
 
 languages:
   python: true
   python-jupyter: false
   javascript: true
   typescript: true
+  html: true
+  css: true
   rust: true
   go: true
   c: true
@@ -202,8 +199,12 @@ languages:
   nix: false
   d: false
   v: false
+  # Previously had modules missing — now available
   ruby: false
   php: false
+  # New languages
+  csharp: false
+  dart: false
   prose: true
 
 lang-settings:
@@ -224,6 +225,14 @@ lang-settings:
     formatter: prettier
     test-runner: jest
 
+  html:
+    lsp-server: vscode-html-language-server
+    formatter: prettier
+
+  css:
+    lsp-server: vscode-css-language-server
+    formatter: prettier
+
   rust:
     lsp-server: rust-analyzer
     formatter: rustfmt
@@ -237,6 +246,13 @@ lang-settings:
   c:
     lsp-server: clangd
     formatter: clang-format
+
+  csharp:
+    lsp-server: omnisharp
+    formatter: csharpier
+    # OmniSharp: dotnet tool install -g OmniSharp
+    # csharp-ls: dotnet tool install -g csharp-ls (lighter weight, free)
+    # csharpier: dotnet tool install -g csharpier
 
   java:
     lsp-server: jdtls
@@ -283,7 +299,23 @@ lang-settings:
 
   ruby:
     lsp-server: solargraph
+    # or: ruby-lsp (install: gem install ruby-lsp)
     formatter: rubocop
+    # or: standardrb (install: gem install standardrb)
+    test-runner: rspec
+
+  php:
+    lsp-server: intelephense
+    # or: phpactor (composer global require phpactor/phpactor)
+    formatter: php-cs-fixer
+    # or: phpcbf (composer global require squizlabs/php_codesniffer)
+    test-runner: phpunit
+    # or: pest (composer require pestphp/pest)
+
+  dart:
+    lsp-server: dart
+    formatter: dart-format
+    test-runner: flutter-test
 
   nix:
     lsp-server: nil
@@ -361,7 +393,7 @@ advanced:
 # ============================================================================
 # QUICK REFERENCE
 # ============================================================================
-# M-x emacs-ide-config-reload      Reload after editing
+# M-x emacs-ide-config-reload      Reload after editing  (C-c R)
 # M-x emacs-ide-config-show        View current values
 # M-x emacs-ide-diagnose           Comprehensive diagnostics
 # M-x emacs-ide-health-check-all   System health report
@@ -370,3 +402,13 @@ advanced:
 # M-x emacs-ide-check-formatters   Which formatters are on PATH
 # F12                              Toggle dark ↔ light theme
 # M-x emacs-ide-theme-enable-auto  Auto dark/light by time of day
+#
+# INSTALL NEW LANG SERVERS:
+#   C#:   dotnet tool install -g OmniSharp
+#         dotnet tool install -g csharpier
+#   Ruby: gem install solargraph rubocop
+#   PHP:  npm install -g intelephense
+#         composer global require friendsofphp/php-cs-fixer
+#   Dart: install Flutter SDK (includes dart + analysis server)
+#   HTML: npm install -g vscode-langservers-extracted
+#   CSS:  npm install -g vscode-langservers-extracted

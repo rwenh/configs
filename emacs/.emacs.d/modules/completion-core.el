@@ -1,6 +1,5 @@
 ;;; completion-core.el --- Elite Completion Framework -*- lexical-binding: t -*-
-;;; Version: 3.3.0
-;;;
+;;; Version: 3.4.0
 ;;; Code:
 
 ;;;; ── Vertico ──────────────────────────────────────────────────────────────────
@@ -44,9 +43,11 @@
         completion-category-defaults  nil
         completion-category-overrides '((file (styles basic partial-completion)))
         orderless-component-separator #'orderless-escapable-split-on-space
-        orderless-matching-styles     '(orderless-literal
-                                        orderless-regexp
-                                        orderless-flex)))
+        ;; Respect emacs-ide-completion-fuzzy from config
+        orderless-matching-styles
+        (if (bound-and-true-p emacs-ide-completion-fuzzy)
+            '(orderless-literal orderless-regexp orderless-flex)
+          '(orderless-literal orderless-regexp))))
 
 ;;;; ── Marginalia ──────────────────────────────────────────────────────────────
 
@@ -101,7 +102,6 @@
    :preview-key '(:debounce 0.4 any))
   (setq xref-show-xrefs-function       #'consult-xref
         xref-show-definitions-function #'consult-xref
-        ;; Include hidden files but skip .git
         consult-find-args
         "find . -not ( -wholename */.git* -prune )"))
 
@@ -127,7 +127,6 @@
         embark-quit-after-action
         '((kill-buffer . nil) (t . t)))
   :config
-
   (defun embark-which-key-indicator (&optional keymap targets prefix)
     "Show the Embark action menu using which-key."
     (if (null keymap)
@@ -152,7 +151,6 @@
               #'embark-highlight-indicator
               #'embark-isearch-highlight-indicator))
 
-  ;; Extra keymap bindings
   (with-eval-after-load 'magit
     (define-key embark-file-map   (kbd "g") #'magit-status)
     (define-key embark-buffer-map (kbd "g") #'magit-status))
@@ -167,23 +165,23 @@
 ;;;; ── Corfu (in-buffer completion) ───────────────────────────────────────────
 
 (use-package corfu
+  :demand t
   :init
-  (setq corfu-auto             t
-        ;; Read delay from config; fall back to 0.15 if config not loaded yet
+  (setq corfu-auto             (if (boundp 'emacs-ide-completion-auto)
+                                   emacs-ide-completion-auto
+                                 t)
         corfu-auto-delay       (if (and (fboundp 'emacs-ide-config-get)
                                         (boundp 'emacs-ide-config-data))
                                    (or (emacs-ide-config-get
                                         'completion 'delay nil)
                                        0.15)
                                  0.15)
-        ;; Read auto-prefix from config
         corfu-auto-prefix      (if (and (fboundp 'emacs-ide-config-get)
                                         (boundp 'emacs-ide-config-data))
                                    (or (emacs-ide-config-get
                                         'completion 'auto-prefix nil)
                                        1)
                                  1)
-        ;; Read popup-height from config
         corfu-count            (if (and (fboundp 'emacs-ide-config-get)
                                         (boundp 'emacs-ide-config-data))
                                    (or (emacs-ide-config-get
@@ -193,7 +191,9 @@
         corfu-cycle            t
         corfu-quit-at-boundary 'separator
         corfu-quit-no-match    'separator
-        corfu-preview-current  t
+        corfu-preview-current  (if (boundp 'emacs-ide-completion-preview)
+                                   emacs-ide-completion-preview
+                                 t)
         corfu-preselect        'prompt
         corfu-on-exact-match   nil
         corfu-scroll-margin    4
@@ -219,7 +219,6 @@
           corfu-popupinfo-max-width   80))
   (when (fboundp 'corfu-history-mode)
     (corfu-history-mode 1))
-  ;; Re-apply config-driven settings on reload
   (add-hook 'emacs-ide-config-reload-hook
             (lambda ()
               (when (fboundp 'emacs-ide-config-get)
@@ -228,7 +227,11 @@
                 (when-let ((pfx (emacs-ide-config-get 'completion 'auto-prefix nil)))
                   (setq corfu-auto-prefix pfx))
                 (when-let ((h (emacs-ide-config-get 'completion 'popup-height nil)))
-                  (setq corfu-count h))))))
+                  (setq corfu-count h))
+                (when (boundp 'emacs-ide-completion-auto)
+                  (setq corfu-auto emacs-ide-completion-auto))
+                (when (boundp 'emacs-ide-completion-preview)
+                  (setq corfu-preview-current emacs-ide-completion-preview))))))
 
 ;;;; ── Cape (completion extensions) ──────────────────────────────────────────
 
@@ -262,7 +265,6 @@
 (with-eval-after-load 'yasnippet
   (add-to-list 'hippie-expand-try-functions-list
                'yas-hippie-try-expand))
-;; M-/ is bound in keybindings.el
 
 ;;;; ── History persistence ─────────────────────────────────────────────────────
 
@@ -312,8 +314,6 @@
 
 (minibuffer-depth-indicate-mode  1)
 (minibuffer-electric-default-mode 1)
-
-;; NOTE: helpful bindings (C-h f/v/k/F/C/d) are NOT defined here.
 
 (provide 'completion-core)
 ;;; completion-core.el ends here
