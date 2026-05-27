@@ -45,7 +45,6 @@ au("BufReadPost", {
 
     local lcount = vim.api.nvim_buf_line_count(e.buf)
     if mark[1] and mark[1] > 0 and mark[1] <= lcount then
-      -- Target the window that actually shows this buffer, not window 0.
       local wins = vim.fn.win_findbuf(e.buf)
       if #wins > 0 then
         pcall(vim.api.nvim_win_set_cursor, wins[1], mark)
@@ -64,7 +63,6 @@ au("VimResized", {
     local tab_before = vim.fn.tabpagenr()
     pcall(function()
       vim.cmd("tabdo wincmd =")
-      -- Re-query: tabdo may have closed or reordered tabs.
       local total  = vim.fn.tabpagenr("$")
       local target = math.min(tab_before, total)
       if target > 0 then vim.cmd("tabnext " .. target) end
@@ -95,9 +93,16 @@ au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
     if not is_real_buf(e.buf) then return end
-
-    -- Skip binary files — byte-level content must not be altered.
     if vim.bo[e.buf].binary then return end
+
+    -- Primary guard: flag set by LargeFile autocmd at BufReadPre.
+    if vim.b[e.buf] and vim.b[e.buf].large_file then return end
+
+    local fname = vim.api.nvim_buf_get_name(e.buf)
+    if fname ~= "" then
+      local ok_stat, stat = pcall(vim.uv.fs_stat, fname)
+      if ok_stat and stat and stat.size > 500 * 1024 then return end
+    end
 
     local ft = vim.bo[e.buf].filetype
     if vim.tbl_contains(
@@ -269,9 +274,6 @@ au("BufReadPost", {
   end,
 })
 
--- Re-stamp foldmethod=manual on BufWinEnter for large files.
--- options.lua sets foldmethod="expr" globally; that default re-applies when
--- a buffer enters a new window, overriding the manual fold set above.
 au("BufWinEnter", {
   group    = large_file_group,
   callback = function(e)

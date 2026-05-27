@@ -49,79 +49,69 @@ return {
     config = function()
       local bkm = require("core.util.buf_keymap")
 
-      -- ── Debugpy probe strategies ────────────────────────────────────────
+      -- ── Debugpy interpreter resolution ───────────────────────────────────
+      --
+      -- Precedence (first match wins):
+      --   1. VIRTUAL_ENV env var  — active venv always wins, even over pyenv.
+      --   2. Non-shim PATH python — direct system or conda python with debugpy.
+      --   3. Pyenv version file   — resolves via .python-version walking upward.
+      --   4. User site-packages   — pip3 install --user debugpy scenario.
+      --   5. Any executable python — last resort; warns that debugpy is missing.
 
-      local function check_venv()
+      local function find_debugpy_python()
+        -- 1. Active virtualenv — unconditional priority.
         local venv = os.getenv("VIRTUAL_ENV")
-        if not venv then return nil end
-        local p = venv .. "/bin/python"
-        return vim.fn.executable(p) == 1 and p or nil
-      end
+        if venv and venv ~= "" then
+          local p = venv .. "/bin/python"
+          if vim.fn.executable(p) == 1 then return p end
+          -- venv set but python missing — fall through to system detection.
+        end
 
-      local function check_path_candidates()
-        local candidates = {}
+        -- 2. Non-shim PATH python with debugpy present.
         for _, name in ipairs({ "python3", "python" }) do
           local p = vim.fn.exepath(name)
-          if p ~= "" then
-            if p:find("shims", 1, true) then
-              local pyenv_root = os.getenv("PYENV_ROOT")
-              if pyenv_root then
-                local ver_file = vim.fn.findfile(".python-version", ".;")
-                if ver_file ~= "" then
-                  local ver = vim.fn.readfile(ver_file)[1]
-                  if ver and ver ~= "" then
-                    local resolved = pyenv_root
-                      .. "/versions/" .. ver:gsub("%s+", "")
-                      .. "/bin/python3"
-                    if vim.fn.executable(resolved) == 1 then
-                      table.insert(candidates, resolved)
-                    end
-                  end
-                end
-              end
-            else
-              table.insert(candidates, p)
-            end
-          end
-        end
-        vim.list_extend(candidates, { "/usr/bin/python3", "/usr/bin/python" })
-
-        for _, p in ipairs(candidates) do
-          if vim.fn.executable(p) == 1 then
+          if p ~= "" and not p:find("shims", 1, true) then
             local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(p, ":h"), ":h")
-            if vim.fn.executable(prefix .. "/bin/debugpy") == 1 then return p end
-            if vim.fn.glob(prefix .. "/lib/python*/site-packages/debugpy") ~= "" then
+            if vim.fn.executable(prefix .. "/bin/debugpy") == 1
+            or vim.fn.glob(prefix .. "/lib/python*/site-packages/debugpy") ~= "" then
               return p
             end
           end
         end
-        return nil
-      end
 
-      local function check_user_sitepackages()
-        local home = os.getenv("HOME") or ""
-        if home == "" then return nil end
-        local pattern = home .. "/.local/lib/python*/site-packages/debugpy"
-        if vim.fn.glob(pattern) ~= "" then
-          return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or nil
+        -- 3. Pyenv: resolve via .python-version walking from cwd upward.
+        local pyenv_root = os.getenv("PYENV_ROOT")
+        if pyenv_root and pyenv_root ~= "" then
+          local ver_file = vim.fn.findfile(".python-version", vim.fn.getcwd() .. ";")
+          if ver_file ~= "" then
+            local lines = vim.fn.readfile(ver_file)
+            local ver   = lines[1] and vim.trim(lines[1]) or ""
+            if ver ~= "" then
+              local resolved = pyenv_root .. "/versions/" .. ver .. "/bin/python3"
+              if vim.fn.executable(resolved) == 1 then return resolved end
+            end
+          end
         end
-        return nil
-      end
 
-      local function find_debugpy_python()
-        return check_venv()
-          or check_path_candidates()
-          or check_user_sitepackages()
-          or (function()
-            vim.schedule(function()
-              vim.notify(
-                "[python] debugpy not found in any interpreter.\n"
-                .. "Install with: pip install debugpy",
-                vim.log.levels.WARN
-              )
-            end)
-            return vim.fn.exepath("python3") ~= "" and vim.fn.exepath("python3") or "python3"
-          end)()
+        -- 4. User site-packages debugpy (pip install --user debugpy).
+        local home = os.getenv("HOME") or ""
+        if home ~= ""
+        and vim.fn.glob(home .. "/.local/lib/python*/site-packages/debugpy") ~= "" then
+          local p = vim.fn.exepath("python3")
+          if p ~= "" then return p end
+        end
+
+        -- 5. Last resort — any python; warn about missing debugpy.
+        local fallback = vim.fn.exepath("python3") ~= ""
+          and vim.fn.exepath("python3") or "python3"
+        vim.schedule(function()
+          vim.notify(
+            "[python] debugpy not found in any interpreter.\n"
+            .. "Install with: pip install debugpy",
+            vim.log.levels.WARN
+          )
+        end)
+        return fallback
       end
 
       -- ── DAP keymaps — owned by nvim-dap-python ──────────────────────────

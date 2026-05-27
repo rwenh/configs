@@ -11,50 +11,6 @@ return {
       "L3MON4D3/LuaSnip",
     },
 
-    config = function(_, opts)
-      local has_ls, ls = pcall(require, "luasnip")
-
-      if not has_ls then
-        vim.notify(
-          "[completion] LuaSnip not loaded — snippets will use native vim.snippet.\n"
-          .. "Run :Lazy install to ensure LuaSnip is installed.",
-          vim.log.levels.WARN
-        )
-      else
-        pcall(function()
-          require("luasnip.loaders.from_vscode").lazy_load()
-        end)
-      end
-
-      opts.snippets = {
-        expand = function(snippet)
-          if has_ls and ls then
-            pcall(function() ls.lsp_expand(snippet) end)
-          else
-            pcall(function() vim.snippet.expand(snippet) end)
-          end
-        end,
-        active = function(filter)
-          if has_ls and ls then
-            return ls.jumpable(filter and filter.direction or 1)
-          end
-          return vim.snippet.active(filter)
-        end,
-        jump = function(direction)
-          if has_ls and ls then
-            ls.jump(direction)
-          else
-            vim.snippet.jump(direction)
-          end
-        end,
-      }
-
-      local ok = pcall(function() require("blink.cmp").setup(opts) end)
-      if not ok then
-        vim.notify("blink.cmp setup failed", vim.log.levels.ERROR)
-      end
-    end,
-
     opts = {
       keymap = {
         preset        = "default",
@@ -62,7 +18,6 @@ return {
         ["<C-q>"]     = { "hide" },
         ["<CR>"]      = { "accept", "fallback" },
 
-        -- Tab/S-Tab: snippet navigation only.
         ["<Tab>"]   = { "snippet_forward",  "fallback" },
         ["<S-Tab>"] = { "snippet_backward", "fallback" },
 
@@ -115,11 +70,6 @@ return {
         sources = { "cmdline" },
       },
 
-      -- NOTE: snippets.expand/active/jump are overridden in config() above
-      -- where has_ls and ls are in scope.  This placeholder is replaced before
-      -- blink.cmp.setup() is called, so blink never sees an empty table here.
-      snippets = {},
-
       completion = {
         accept = { auto_brackets = { enabled = true } },
         menu = {
@@ -145,5 +95,50 @@ return {
         window  = { border = "rounded" },
       },
     },
+
+    config = function(_, opts)
+      local has_ls, ls = pcall(require, "luasnip")
+
+      if not has_ls then
+        vim.notify(
+          "[completion] LuaSnip not loaded — snippets will use native vim.snippet.\n"
+          .. "Run :Lazy install to ensure LuaSnip is installed.",
+          vim.log.levels.WARN
+        )
+      else
+        pcall(function()
+          require("luasnip.loaders.from_vscode").lazy_load()
+        end)
+      end
+
+      -- Build the snippets table here, where has_ls and ls are in scope.
+      opts.snippets = {
+        expand = function(snippet)
+          if has_ls and ls then
+            pcall(function() ls.lsp_expand(snippet) end)
+          else
+            pcall(function() vim.snippet.expand(snippet) end)
+          end
+        end,
+        active = function(filter)
+          if has_ls and ls then
+            return ls.jumpable(filter and filter.direction or 1)
+          end
+          return vim.snippet.active(filter)
+        end,
+        jump = function(direction)
+          if has_ls and ls then
+            ls.jump(direction)
+          else
+            vim.snippet.jump(direction)
+          end
+        end,
+      }
+
+      local ok = pcall(function() require("blink.cmp").setup(opts) end)
+      if not ok then
+        vim.notify("blink.cmp setup failed", vim.log.levels.ERROR)
+      end
+    end,
   },
 }

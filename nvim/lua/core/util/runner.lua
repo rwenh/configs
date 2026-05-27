@@ -187,7 +187,6 @@ local runners = {
     end
 
     if entity then
-      -- Write VCD to a stable temp path so gtkwave can pick it up.
       local vcd = "/tmp/nvim_ghdl_wave.vcd"
       local cmd = string.format(
         "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
@@ -196,7 +195,6 @@ local runners = {
         vim.fn.shellescape(entity),
         vim.fn.shellescape(vcd)
       )
-      -- Open waveform viewer when available (parity with <leader>vhr in vhdl.lua).
       if vim.fn.executable("gtkwave") == 1 then
         cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
       end
@@ -301,20 +299,43 @@ function M.run_selection(start_line, end_line)
   local buf = vim.api.nvim_get_current_buf()
 
   if not start_line or not end_line then
+    -- Read visual marks.  '< and '> are set by Neovim when leaving visual
+    -- mode; they persist until overwritten by the next visual operation.
+    -- Guard against three stale-mark scenarios:
+    --   (a) marks were never set (line = 0)
+    --   (b) marks reference lines deleted since the selection was made
+    --   (c) marks come from a different buffer (nvim_buf_get_mark is buf-local,
+    --       so this can only happen when buf itself was replaced, which the
+    --       line-count check catches via bound violation)
     local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
     local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
     if not ok_s or not ok_e then
       vim.notify("[runner] could not read visual selection marks", vim.log.levels.ERROR)
       return
     end
-    start_line = mark_s[1]
-    end_line   = mark_e[1]
-  end
 
-  if start_line == 0 or end_line == 0 then
-    vim.notify("[runner] no visual selection — make a selection first",
-      vim.log.levels.WARN)
-    return
+    local sl, el = mark_s[1], mark_e[1]
+
+    -- Zero means the mark was never set.
+    if sl == 0 or el == 0 then
+      vim.notify("[runner] no visual selection — make a selection first",
+        vim.log.levels.WARN)
+      return
+    end
+
+    -- Out-of-bounds means the buffer shrank after the selection was made.
+    local lcount = vim.api.nvim_buf_line_count(buf)
+    if sl > lcount or el > lcount then
+      vim.notify(
+        "[runner] visual marks are stale (buffer changed since last selection).\n"
+        .. "Re-select the lines and try again.",
+        vim.log.levels.WARN
+      )
+      return
+    end
+
+    start_line = sl
+    end_line   = el
   end
 
   if start_line > end_line then

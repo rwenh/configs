@@ -3,11 +3,7 @@
 -- Themes, statusline, bufferline, notifications, diagnostics, which-key,
 -- toggleterm, and snacks dashboard.
 --
-
-local _active_theme = (function()
-  local ok, t = pcall(function() return require("core.theme").config.theme end)
-  return ok and t or "tokyonight"
-end)()
+local _active_theme = vim.g._nvim_active_theme or "tokyonight"
 
 local function theme_spec(plugin_name, name, extra)
   local is_active = (name == _active_theme)
@@ -212,9 +208,6 @@ return {
         themable         = true,
         numbers          = "none",
         close_command    = "bdelete! %d",
-        -- diagnostics = "nvim_lsp" queries all open buffers on every LSP update
-        -- and noticeably degrades responsiveness in large projects (50+ buffers).
-        -- Per-buffer diagnostic counts are already shown in lualine_b.
         diagnostics      = false,
         offsets          = {
           { filetype = "NvimTree", text = "Explorer",
@@ -322,7 +315,6 @@ return {
                  spacing = 3, width = { min = 20, max = 50 } },
       keys   = { scroll_down = "<c-d>", scroll_up = "<c-u>" },
       spec   = {
-        -- Core groups
         { "<leader>b",  group = "buffer"       },
         { "<leader>e",  group = "explorer"     },
         { "<leader>f",  group = "find"         },
@@ -341,7 +333,6 @@ return {
         { "<leader>/",  group = "search"       },
         { "<leader>\\", group = "terminal"     },
         { "<leader>uF", desc  = "Deep focus mode" },
-        -- Language groups — keep in sync with lang specs
         { "<leader>py", group = "python"       },
         { "<leader>rb", group = "ruby"         },
         { "<leader>go", group = "go"           },
@@ -380,8 +371,6 @@ return {
         elseif term.direction == "vertical" then return vim.o.columns * 0.4
         end
       end,
-      -- open_mapping registers <C-\> in normal, insert, and terminal modes.
-      -- Do NOT duplicate this in keymaps.lua — it would produce double bindings.
       open_mapping  = [[<C-\>]],
       on_open = function(term)
         vim.opt_local.number         = false
@@ -411,7 +400,6 @@ return {
 
   -- ═══════════════════════════════════════════════════════════════════════════
   -- DASHBOARD — snacks.nvim
-  -- Quote displayed statically in the header (no animation overlay).
   -- ═══════════════════════════════════════════════════════════════════════════
 
   {
@@ -420,7 +408,6 @@ return {
     priority = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      -- ── Header: logo + version stamp + session quote ──────────────────────
       local function build_header()
         local ver = tostring(vim.g.nvim_ide_version or "?")
         local logo = {

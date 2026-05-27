@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua — v2.4.0
+-- lua/plugins/specs/lsp.lua — v2.4.2
 --
 
 return {
@@ -119,7 +119,6 @@ return {
             pcall(function()
               require("conform").format({
                 bufnr      = e.buf,
-                -- Override per-session with: vim.g.format_timeout_ms = N
                 timeout_ms = vim.g.format_timeout_ms or 1500,
                 lsp_format = "fallback",
               })
@@ -203,11 +202,18 @@ return {
       }) do lsp_setup(s, {}) end
 
       -- ── TypeScript fallback ──────────────────────────────────────────────────
+      -- Detects whether typescript-tools.nvim is present using only public APIs:
+      --   1. package.loaded — already required this session (fastest path).
+      --   2. nvim_get_runtime_file — lazy.nvim adds the plugin dir to rtp when
+      --      configured, even before the plugin is lazily loaded.
+      -- Previously used require("lazy.core.config"), a private internal API that
+      -- silently breaks across lazy.nvim minor releases.
       do
         local ts_tools_present = (function()
-          local ok, cfg = pcall(require, "lazy.core.config")
-          if not ok then return false end
-          return cfg.plugins["typescript-tools.nvim"] ~= nil
+          if package.loaded["typescript-tools"] then return true end
+          local hits = vim.api.nvim_get_runtime_file(
+            "lua/typescript-tools.lua", false)
+          return #hits > 0
         end)()
 
         if not ts_tools_present then
@@ -302,7 +308,6 @@ return {
         local ok, v = pcall(function() return vim.b[bufnr].disable_autoformat end)
         if ok and v then return nil end
         return {
-          -- Matches the 1500 ms default used in the LspAttach fmt() closure above.
           timeout_ms = vim.g.format_timeout_ms or 1500,
           lsp_format = "fallback",
         }

@@ -53,50 +53,10 @@ return {
     },
 
     config = function(_, opts)
-      local neotest = require("neotest")
-
-      neotest.setup(opts)
-
-      local _rust_registered = false
-      vim.api.nvim_create_autocmd("LspAttach", {
-        group = vim.api.nvim_create_augroup("NeotestRustDeferred", { clear = true }),
-        callback = function(e)
-          if _rust_registered then return end
-          local client = vim.lsp.get_client_by_id(e.data.client_id)
-          if not client or client.name ~= "rust-analyzer" then return end
-
-          vim.schedule(function()
-            local ok, rust_adapter = pcall(function()
-              return require("neotest-rust")({ dap_adapter = "codelldb" })
-            end)
-
-            if not ok or not rust_adapter then
-              vim.notify("[neotest] rust adapter failed to load after rust-analyzer attach",
-                vim.log.levels.WARN)
-              return
-            end
-
-            _rust_registered = true
-
-            local added = false
-            pcall(function()
-              if type(neotest.adapters) == "table"
-              and type(neotest.adapters.add) == "function" then
-                neotest.adapters.add(rust_adapter)
-                added = true
-              end
-            end)
-
-            if not added then
-              local base = vim.deepcopy(opts.adapters or {})
-              table.insert(base, rust_adapter)
-              pcall(function()
-                neotest.setup(vim.tbl_extend("force", opts, { adapters = base }))
-              end)
-            end
-          end)
-        end,
-      })
+      local ok, err = pcall(function() require("neotest").setup(opts) end)
+      if not ok then
+        vim.notify("[neotest] setup failed: " .. tostring(err), vim.log.levels.ERROR)
+      end
     end,
 
     opts = function()
@@ -116,29 +76,19 @@ return {
         return cmd == "bun test" and cmd or (cmd .. " --")
       end
 
-      -- ── JS test runner detection ───────────────────────────────────────────
-      -- Resolve the project root at opts() call time (neotest is lazy-loaded,
-      -- so this runs when neotest first activates — a project is open).
-      local _proj_root = (function()
-        local ok, p = pcall(require, "core.util.path")
-        return ok and p.find_root(vim.fn.getcwd()) or vim.fn.getcwd()
-      end)()
+      -- ── Vitest config detection (called at test-discovery time, not load time) ──
+      -- Detects vitest configs relative to a given root directory.
+      local VITEST_CONFIGS = {
+        "vitest.config.ts",  "vitest.config.js",
+        "vitest.config.mts", "vitest.config.mjs", "vitest.config.cjs",
+      }
 
-      ---@param root string
-      ---@param patterns string[]
-      ---@return boolean
-      local function has_config(root, patterns)
-        for _, pat in ipairs(patterns) do
+      local function is_vitest_root(root)
+        for _, pat in ipairs(VITEST_CONFIGS) do
           if vim.fn.findfile(pat, root .. ";") ~= "" then return true end
         end
         return false
       end
-
-      local _is_vitest = has_config(_proj_root, {
-        "vitest.config.ts", "vitest.config.js",
-        "vitest.config.mts", "vitest.config.mjs",
-        "vitest.config.cjs",
-      })
 
       -- ── load_adapter helper ────────────────────────────────────────────────
 
@@ -156,12 +106,15 @@ return {
         end
       end
 
-      -- ── Eager adapter registration (all except rust) ───────────────────────
+      -- ── Adapter registration ───────────────────────────────────────────────
+
       load_adapter("neotest-python", function()
         return require("neotest-python")({ runner = "pytest" })
       end)
 
-      -- neotest-rust registered in config() via LspAttach — not here.
+      load_adapter("neotest-rust", function()
+        return require("neotest-rust")({ dap_adapter = "codelldb" })
+      end)
 
       load_adapter("neotest-go", function()
         return require("neotest-go")({})
@@ -182,20 +135,26 @@ return {
         return require("neotest-elixir")({})
       end)
 
-      -- vitest: always load — it uses its own is_test_file detection and won't
-      -- claim jest-only projects.
+      -- vitest registered before jest so it wins file-ownership in vitest projects.
       load_adapter("neotest-vitest", function()
         return require("neotest-vitest")({})
       end)
 
-      -- jest: skip when a vitest config is present in the project root.
-      -- vitest projects with jest-style test filenames would otherwise get
-      -- invoked through the jest adapter, exiting non-zero.
-      if not _is_vitest then
-        load_adapter("neotest-jest", function()
-          return require("neotest-jest")({ jestCommand = jest_cmd })
-        end)
-      end
+      load_adapter("neotest-jest", function()
+        local jest = require("neotest-jest")({ jestCommand = jest_cmd })
+
+        local orig_is_test_file = jest.is_test_file
+        jest.is_test_file = function(file_path)
+          local ok_p, p = pcall(require, "core.util.path")
+          local root = (ok_p and p.find_root(vim.fn.fnamemodify(file_path, ":h")))
+            or vim.fn.getcwd()
+          -- Yield the file to the vitest adapter if a vitest config is present.
+          if is_vitest_root(root) then return false end
+          return orig_is_test_file(file_path)
+        end
+
+        return jest
+      end)
 
       load_adapter("neotest-java", function()
         return require("neotest-java")({ ignore_wrapper = false })
