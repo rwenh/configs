@@ -218,7 +218,7 @@ au("BufEnter", {
     local root    = path_util.find_root(buf_dir)
 
     if root and root ~= vim.fn.getcwd() then
-      pcall(vim.cmd.cd, root)
+      pcall(vim.cmd.lcd, root)
     end
   end,
 })

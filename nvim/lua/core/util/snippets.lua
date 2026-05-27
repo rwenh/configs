@@ -8,7 +8,9 @@ local M = {}
 ---@return table             LuaSnip function_node, or {} on LuaSnip failure
 function M.ref(n, default)
   local ok, ls = pcall(require, "luasnip")
-  if not ok then return {} end
+  if not ok then
+    return { type = "textNode", static_text = { default or "" } }
+  end
   return ls.function_node(function(args)
     local val = args[1] and args[1][1]
     return (val and val ~= "") and val or (default or "")

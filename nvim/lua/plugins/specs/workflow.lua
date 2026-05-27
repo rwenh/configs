@@ -49,44 +49,46 @@ return {
         desc = "Overseer: shell command",
       },
     },
-    opts = {
-      strategy = {
-        (function()
-          local ok = pcall(require, "toggleterm")
-          return ok and "toggleterm" or "terminal"
-        end)(),
-        direction     = "float",
-        close_on_exit = false,
-        open_on_start = true,
-      },
-
-      templates   = { "builtin" },
-
-      auto_scroll = vim.g.overseer_auto_scroll ~= false,
-
-      task_list = {
-        direction      = "bottom",
-        min_height     = 10,
-        max_height     = 25,
-        default_detail = 1,
-        bindings = {
-          ["<CR>"]       = "RunAction",
-          ["<C-e>"]      = "Edit",
-          ["o"]          = "Open",
-          ["p"]          = "TogglePreview",
-          ["<C-f>"]      = "ScrollOutputDown",
-          ["<C-b>"]      = "ScrollOutputUp",
-          ["?"]          = "ShowHelp",
-          ["<leader>ot"] = "Close",
+    opts = function()
+      -- Evaluated at setup time (not spec-parse time), so toggleterm is
+      -- guaranteed to have been loaded if it was triggered before overseer.
+      local strategy_name = (pcall(require, "toggleterm")) and "toggleterm" or "terminal"
+      return {
+        strategy = {
+          strategy_name,
+          direction     = "float",
+          close_on_exit = false,
+          open_on_start = true,
         },
-      },
 
-      form     = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
-      confirm  = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
-      task_win = vim.tbl_extend("keep", { padding = 2               }, WIN_OPTS),
+        templates   = { "builtin" },
 
-      log = { { type = "echo", level = vim.log.levels.WARN } },
-    },
+        auto_scroll = vim.g.overseer_auto_scroll ~= false,
+
+        task_list = {
+          direction      = "bottom",
+          min_height     = 10,
+          max_height     = 25,
+          default_detail = 1,
+          bindings = {
+            ["<CR>"]       = "RunAction",
+            ["<C-e>"]      = "Edit",
+            ["o"]          = "Open",
+            ["p"]          = "TogglePreview",
+            ["<C-f>"]      = "ScrollOutputDown",
+            ["<C-b>"]      = "ScrollOutputUp",
+            ["?"]          = "ShowHelp",
+            ["<leader>ot"] = "Close",
+          },
+        },
+
+        form     = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
+        confirm  = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
+        task_win = vim.tbl_extend("keep", { padding = 2               }, WIN_OPTS),
+
+        log = { { type = "echo", level = vim.log.levels.WARN } },
+      }
+    end,
     config = function(_, opts)
       local ok = pcall(function() require("overseer").setup(opts) end)
       if not ok then

@@ -152,7 +152,7 @@ return {
     },
     config = function()
       for _, mod in ipairs({
-        "align", "comment", "move", "pairs", "splitjoin", "surround"
+        "align", "comment", "move", "splitjoin", "surround"
       }) do
         pcall(function() require("mini." .. mod).setup() end)
       end

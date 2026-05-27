@@ -314,7 +314,8 @@ return {
       local function serialize_breakpoints(bp_data)
         local bps = {}
         for bufnr, buf_bps in pairs(bp_data) do
-          local path = vim.api.nvim_buf_get_name(bufnr)
+          local ok_name, path = pcall(vim.api.nvim_buf_get_name, bufnr)
+          if not ok_name then path = "" end
           if path ~= "" and #buf_bps > 0 then
             bps[path] = vim.tbl_map(function(bp)
               return {
