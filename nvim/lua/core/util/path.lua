@@ -4,8 +4,16 @@
 local M = {}
 
 -- ── Constants ─────────────────────────────────────────────────────────────────
-local MAX_WALK_DEPTH = 20   -- max directory levels walked toward filesystem root
-local CACHE_TTL      = 30   -- seconds; limits redundant re-walks for the same path
+-- Override at the top of init.lua before plugins load, e.g.:
+--   vim.g.path_max_walk_depth = 30   -- deeper monorepo structures
+--   vim.g.path_cache_ttl      = 60   -- less aggressive cache invalidation
+local MAX_WALK_DEPTH = (type(vim.g.path_max_walk_depth) == "number"
+  and vim.g.path_max_walk_depth > 0)
+  and vim.g.path_max_walk_depth or 20
+
+local CACHE_TTL = (type(vim.g.path_cache_ttl) == "number"
+  and vim.g.path_cache_ttl > 0)
+  and vim.g.path_cache_ttl or 30
 
 local ROOT_MARKERS = {
   ".git", ".hg", ".svn",
@@ -65,7 +73,21 @@ function M.find_root(start_path)
   end
 
   local ok_cwd, cwd = pcall(vim.fn.getcwd)
-  return (ok_cwd and cwd and cwd ~= "") and cwd or nil
+  if ok_cwd and cwd and cwd ~= "" then
+    if vim.g.path_debug then
+      vim.schedule(function()
+        vim.notify(
+          "[path] no root markers found walking from: " .. start_path
+          .. "\n  falling back to cwd: " .. cwd
+          .. "\n  (set vim.g.path_debug = false to silence this)",
+          vim.log.levels.DEBUG
+        )
+      end)
+    end
+    return cwd
+  end
+
+  return nil
 end
 
 function M.clear_cache()

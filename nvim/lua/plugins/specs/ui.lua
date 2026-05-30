@@ -1,8 +1,5 @@
 -- lua/plugins/specs/ui.lua
 --
--- Themes, statusline, bufferline, notifications, diagnostics, which-key,
--- toggleterm, and snacks dashboard.
---
 local _active_theme = vim.g._nvim_active_theme or "tokyonight"
 
 local function theme_spec(plugin_name, name, extra)
@@ -17,6 +14,35 @@ local function theme_spec(plugin_name, name, extra)
 end
 
 local LUALINE_MODE_ICONS = require("core.util.icons").modes
+
+-- ── Dashboard header ─────────────────────────────────────────────────────────
+local function build_header()
+  local ver = tostring(vim.g.nvim_ide_version or "?")
+  local logo = {
+    "╔══════════════════════════════════════════════════════════════╗",
+    "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",
+    "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║",
+    "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║",
+    "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║",
+    "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║",
+    "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║",
+    "║                                                              ║",
+    string.format("║  [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v%-5s║", ver),
+    "╚══════════════════════════════════════════════════════════════╝",
+  }
+  local header = table.concat(logo, "\n")
+  local ok, Q = pcall(require, "core.util.quotes")
+  if ok then
+    local q   = Q.session()
+    local fmt = Q.formatted(q)
+    local indented = vim.tbl_map(
+      function(l) return "  " .. l end,
+      vim.split(fmt, "\n", { plain = true })
+    )
+    header = header .. "\n\n" .. table.concat(indented, "\n")
+  end
+  return header
+end
 
 return {
 
@@ -408,34 +434,6 @@ return {
     priority = 90,
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      local function build_header()
-        local ver = tostring(vim.g.nvim_ide_version or "?")
-        local logo = {
-          "╔══════════════════════════════════════════════════════════════╗",
-          "║  ███╗   ██╗██╗   ██╗██╗███╗   ███╗ ██╗██████╗ ███████╗     ║",
-          "║  ████╗  ██║██║   ██║██║████╗ ████║ ██║██╔══██╗██╔════╝     ║",
-          "║  ██╔██╗ ██║██║   ██║██║██╔████╔██║ ██║██║  ██║█████╗       ║",
-          "║  ██║╚██╗██║╚██╗ ██╔╝██║██║╚██╔╝██║ ██║██║  ██║██╔══╝       ║",
-          "║  ██║ ╚████║ ╚████╔╝ ██║██║ ╚═╝ ██║ ██║██████╔╝███████╗     ║",
-          "║  ╚═╝  ╚═══╝  ╚═══╝  ╚═╝╚═╝     ╚═╝ ╚═╝╚═════╝ ╚══════╝    ║",
-          "║                                                              ║",
-          string.format("║  [ LSP ]  [ DAP ]  [ TREESITTER ]  [ 20+ LANGS ]  v%-5s║", ver),
-          "╚══════════════════════════════════════════════════════════════╝",
-        }
-        local header = table.concat(logo, "\n")
-        local ok, Q = pcall(require, "core.util.quotes")
-        if ok then
-          local q   = Q.session()
-          local fmt = Q.formatted(q)
-          local indented = vim.tbl_map(
-            function(l) return "  " .. l end,
-            vim.split(fmt, "\n", { plain = true })
-          )
-          header = header .. "\n\n" .. table.concat(indented, "\n")
-        end
-        return header
-      end
-
       local ok_snacks, snacks = pcall(require, "snacks")
       if not ok_snacks then
         vim.notify("snacks.nvim not available", vim.log.levels.WARN)

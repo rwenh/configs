@@ -35,28 +35,15 @@ return {
                 extraArgs  = { "--all-targets", "--all-features" },
               },
               inlayHints = {
-                parameterHints      = { enable = true },
-                typeHints           = { enable = true },
-                closingBraceHints   = { minLines = 25 },
+                parameterHints    = { enable = true },
+                typeHints         = { enable = true },
+                closingBraceHints = { minLines = 25 },
               },
             },
           },
         },
         dap = {
-          adapter = (function()
-            local mason = require("core.util.mason")
-            local cmd   = mason.bin("codelldb")
-            if vim.fn.executable(cmd) ~= 1 then
-              vim.schedule(function()
-                vim.notify(
-                  "[rust] codelldb not found — Rust debug unavailable.\n"
-                  .. "Run: :MasonInstall codelldb",
-                  vim.log.levels.WARN
-                )
-              end)
-            end
-            return "codelldb"
-          end)(),
+          adapter = "codelldb",
         },
         tools = {
           test_executor = "swole",

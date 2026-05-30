@@ -1,12 +1,10 @@
 -- lua/plugins/specs/lang/vhdl.lua — VHDL hardware description language
--- vhdl_ls must be installed via: cargo install vhdl_ls
 --
 
 local shared = require("plugins.specs.lang.shared")
 
 return {
-  -- ── Conform: vsg custom config ─────────────────────────────────────────────
-  -- This spec only provides the conditional invocation and output args.
+  -- ── Conform: vsg formatter ─────────────────────────────────────────────────
 
   {
     "stevearc/conform.nvim",
@@ -14,9 +12,9 @@ return {
     opts = function(_, opts)
       opts.formatters     = opts.formatters or {}
       opts.formatters.vsg = {
-        command   = "vsg",
-        args      = { "--output", "-", "$FILENAME" },
-        stdin     = false,
+        command = "vsg",
+        args    = { "--output", "-", "--stdin" },
+        stdin   = true,
         condition = function()
           if vim.g.disable_vsg_format then return false end
           return vim.fn.executable("vsg") == 1

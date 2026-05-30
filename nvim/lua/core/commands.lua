@@ -1,5 +1,4 @@
 -- lua/core/commands.lua — user commands
---
 
 local cmd = vim.api.nvim_create_user_command
 
@@ -255,6 +254,11 @@ cmd("MasonInstallAll", function()
     vim.list_extend(pkgs, section)
   end
 
+  local TIMEOUT_MS = (type(vim.g.mason_install_timeout_ms) == "number"
+    and vim.g.mason_install_timeout_ms > 0)
+    and vim.g.mason_install_timeout_ms
+    or  120000
+
   local total   = #pkgs
   local pending = 0
   local done    = 0
@@ -286,9 +290,15 @@ cmd("MasonInstallAll", function()
   end
 
   timer = vim.uv.new_timer()
-  timer:start(60000, 0, vim.schedule_wrap(function()
+  timer:start(TIMEOUT_MS, 0, vim.schedule_wrap(function()
     vim.notify(
-      string.format("MasonInstallAll: timed out with %d installs still pending.", pending),
+      string.format(
+        "MasonInstallAll: timed out after %ds with %d install(s) still pending.\n"
+        .. "Increase timeout: vim.g.mason_install_timeout_ms = %d",
+        math.floor(TIMEOUT_MS / 1000),
+        pending,
+        TIMEOUT_MS * 2
+      ),
       vim.log.levels.WARN
     )
     finish()
@@ -301,27 +311,56 @@ cmd("MasonInstallAll", function()
       vim.notify("Not in registry: " .. pkg_name, vim.log.levels.WARN)
       table.insert(failed, pkg_name)
       done = done + 1
+
     elseif pkg:is_installed() then
       vim.notify(pkg_name .. " already installed", vim.log.levels.INFO)
       done = done + 1
+
     else
       pending = pending + 1
       vim.notify("Installing " .. pkg_name .. "…", vim.log.levels.INFO)
-      pcall(function()
-        pkg:install():once("closed", vim.schedule_wrap(function()
+
+      local ok_inst, installer = pcall(function() return pkg:install() end)
+
+      if not ok_inst or type(installer) ~= "table" then
+        -- install() threw synchronously or returned a non-object.
+        pending = pending - 1
+        done    = done + 1
+        table.insert(failed, pkg_name)
+        vim.notify(
+          string.format("%s ✗ (install() failed: %s)", pkg_name, tostring(installer)),
+          vim.log.levels.ERROR
+        )
+        check_done()
+
+      else
+        -- Register the closed listener.  If :once() itself throws, revert.
+        local ok_once = pcall(function()
+          installer:once("closed", vim.schedule_wrap(function()
+            pending = pending - 1
+            done    = done + 1
+            if pkg:is_installed() then
+              vim.notify(pkg_name .. " ✓", vim.log.levels.INFO)
+            else
+              table.insert(failed, pkg_name)
+              vim.notify(pkg_name .. " ✗", vim.log.levels.ERROR)
+            end
+            check_done()
+          end))
+        end)
+
+        if not ok_once then
           pending = pending - 1
           done    = done + 1
-          if pkg:is_installed() then
-            vim.notify(pkg_name .. " ✓", vim.log.levels.INFO)
-          else
-            table.insert(failed, pkg_name)
-            vim.notify(pkg_name .. " ✗", vim.log.levels.ERROR)
-          end
+          table.insert(failed, pkg_name)
+          vim.notify(pkg_name .. " ✗ (listener registration failed)",
+            vim.log.levels.ERROR)
           check_done()
-        end))
-      end)
+        end
+      end
     end
   end
 
+  -- Handles the degenerate case where every package was already installed.
   check_done()
 end, { desc = "Install all Mason packages" })

@@ -25,19 +25,19 @@ return {
     end,
     keys = {
       { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",
-        desc = "TS Organize Imports",    ft = shared.TS_FT },
+        desc = "TS Organize Imports",         ft = shared.JS_TS_FT },
       { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",
-        desc = "TS Add Missing Imports", ft = shared.TS_FT },
+        desc = "TS Add Missing Imports",      ft = shared.JS_TS_FT },
       { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>",
-        desc = "TS Remove Unused",       ft = shared.TS_FT },
+        desc = "TS Remove Unused Imports",    ft = shared.JS_TS_FT },
       { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",
-        desc = "TS Fix All",             ft = shared.TS_FT },
+        desc = "TS Fix All Auto-fixable",     ft = shared.JS_TS_FT },
       { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>",
-        desc = "TS Go To Source Def (not .d.ts)", ft = shared.TS_FT },
+        desc = "TS Go To Source Def (.ts not .d.ts)", ft = shared.JS_TS_FT },
     },
   },
 
-  -- ── Neogen: TSDoc ──────────────────────────────────────────────────────────
+  -- ── Neogen: TSDoc (TypeScript-only; JS uses jsdoc convention) ─────────────
 
   {
     "danymat/neogen",
@@ -51,5 +51,4 @@ return {
   },
 
   shared.treesitter({ "typescript", "tsx" }),
-
 }

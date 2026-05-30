@@ -12,6 +12,7 @@ return {
     "neovim/nvim-lspconfig",
     optional = true,
     init = function()
+      -- Defined once, used by both the 0.11 and legacy branches below.
       local cfg = {
         filetypes    = { "html", "htmldjango", "jinja.html" },
         init_options = {
@@ -20,8 +21,12 @@ return {
       }
 
       if vim.fn.executable("vscode-html-language-server") ~= 1 then
-        vim.notify("[html] html-lsp not found — run :MasonInstall html-lsp",
-          vim.log.levels.WARN)
+        vim.schedule(function()
+          vim.notify(
+            "[html] vscode-html-language-server not found — run :MasonInstall html-lsp",
+            vim.log.levels.WARN
+          )
+        end)
         return
       end
 
@@ -32,16 +37,16 @@ return {
         end)
       else
         vim.api.nvim_create_autocmd("BufReadPost", {
-          pattern  = { "*.html", "*.htmldjango" },
+          pattern  = { "*.html", "*.htmldjango", "*.jinja" },
           once     = true,
           group    = vim.api.nvim_create_augroup("HtmlLspCfg", { clear = true }),
           callback = function()
             local ok, lspconfig = pcall(require, "lspconfig")
             if ok then pcall(function() lspconfig.html.setup(cfg) end) end
           end,
+          desc = "Register html-lsp on first HTML buffer (legacy path)",
         })
       end
     end,
   },
-
 }

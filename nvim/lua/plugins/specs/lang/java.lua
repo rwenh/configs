@@ -6,11 +6,6 @@
 -- Test:   neotest-java via test.lua; java-test via jdtls bundles
 -- Docs:   neogen optional spec (this file)
 --
--- DAP architecture:
---   jdtls.setup_dap() in on_attach registers the adapter.
---   dap.lua registers dap.configurations.java on FileType.
---   Both are needed; they are complementary not redundant.
---
 
 return {
   {
@@ -36,8 +31,9 @@ return {
             return
           end
 
-          local data_dir  = vim.fn.stdpath("data")
+          local data_dir = vim.fn.stdpath("data")
 
+          -- ── Mason package root ─────────────────────────────────────────────
           local mason_root = (function()
             local ok_mr, mr = pcall(require, "mason-registry")
             if ok_mr and mr.get_package then
@@ -47,16 +43,19 @@ return {
             return data_dir .. "/mason/packages/jdtls"
           end)()
 
+          -- ── Project root ───────────────────────────────────────────────────
           local root_dir = setup.find_root(
             { ".git", "mvnw", "gradlew", "pom.xml", "build.gradle" }
           ) or vim.fn.getcwd()
 
+          -- ── Workspace directory ────────────────────────────────────────────
           local buf_path  = vim.api.nvim_buf_get_name(e.buf)
           local hash_src  = (buf_path ~= "" and buf_path ~= root_dir)
             and buf_path or root_dir
           local workspace = data_dir .. "/jdtls-workspace/"
-            .. vim.fn.sha256(hash_src):sub(1, 16)
+            .. vim.fn.sha256(hash_src)   -- full 64 hex chars
 
+          -- ── OS-specific config dir ─────────────────────────────────────────
           local config_dir = (function()
             local sysname = (vim.uv.os_uname() or {}).sysname or "Linux"
             if sysname:find("Windows") then return mason_root .. "/config_win"
@@ -65,17 +64,36 @@ return {
             end
           end)()
 
-          local bundles = vim.split(
-            vim.fn.glob(mason_root:gsub("jdtls$", "java-debug-adapter")
-              .. "/extension/server/com.microsoft.java.debug.plugin-*.jar"),
-            "\n", { plain = true, trimempty = true }
-          )
-          vim.list_extend(bundles, vim.split(
-            vim.fn.glob(mason_root:gsub("jdtls$", "java-test")
-              .. "/extension/server/*.jar"),
-            "\n", { plain = true, trimempty = true }
-          ))
+          -- ── Bundle assembly ────────────────────────────────────────────────
 
+          local function safe_glob_split(pattern, label)
+            local result = vim.fn.glob(pattern)
+            if result == "" then
+              vim.schedule(function()
+                vim.notify(
+                  string.format(
+                    "[java] %s not found — DAP / test features will be unavailable.\n"
+                    .. "Run: :MasonInstall %s",
+                    label,
+                    label:lower():gsub(" ", "-")
+                  ),
+                  vim.log.levels.WARN
+                )
+              end)
+              return {}
+            end
+            return vim.split(result, "\n", { plain = true, trimempty = true })
+          end
+
+          local dbg_pattern = mason_root:gsub("jdtls$", "java-debug-adapter")
+            .. "/extension/server/com.microsoft.java.debug.plugin-*.jar"
+          local bundles = safe_glob_split(dbg_pattern, "java-debug-adapter")
+
+          local test_pattern = mason_root:gsub("jdtls$", "java-test")
+            .. "/extension/server/*.jar"
+          vim.list_extend(bundles, safe_glob_split(test_pattern, "java-test"))
+
+          -- ── Launcher jar ──────────────────────────────────────────────────
           local launcher = vim.fn.glob(
             mason_root .. "/plugins/org.eclipse.equinox.launcher_*.jar"
           )
@@ -87,6 +105,7 @@ return {
             return
           end
 
+          -- ── jdtls config builder ──────────────────────────────────────────
           local function build_jdtls_config()
             return {
               cmd = {
@@ -122,6 +141,7 @@ return {
                   pcall(function() require("jdtls.dap").setup_dap_main_class_configs() end)
                 end
 
+                -- Only register test keymaps when java-test jars are present.
                 local has_java_test = #vim.tbl_filter(function(b)
                   return b:find("junit", 1, true) or b:find("java%-test", 1, true)
                 end, bundles) > 0

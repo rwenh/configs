@@ -28,14 +28,16 @@ local flash_call   = lazy("flash",          "[flash] not loaded — run :Lazy in
 local focus_call   = lazy("core.focus",     "[focus]")
 
 -- ── Basic editing ──────────────────────────────────────────────────────────────
+-- Note: jk / kj insert-mode escape is handled by better-escape.nvim
+-- (plugins/specs/advanced.lua).  Mapping it here too would double-register.
 
-map("v", "<", "<gv", opts)
-map("v", ">", ">gv", opts)
-map("n", "<A-j>", "<cmd>move .+1<cr>==", opts)
-map("n", "<A-k>", "<cmd>move .-2<cr>==", opts)
-map("x", "<A-j>", ":move '>+1<cr>gv=gv", opts)
-map("x", "<A-k>", ":move '<-2<cr>gv=gv", opts)
-map("n", "<Esc>", "<cmd>nohlsearch<cr>", opts)
+map("v", "<", "<gv",          { noremap = true, silent = true, desc = "Indent left (keep selection)"  })
+map("v", ">", ">gv",          { noremap = true, silent = true, desc = "Indent right (keep selection)" })
+map("n", "<A-j>", "<cmd>move .+1<cr>==", { noremap = true, silent = true, desc = "Move line down"  })
+map("n", "<A-k>", "<cmd>move .-2<cr>==", { noremap = true, silent = true, desc = "Move line up"    })
+map("x", "<A-j>", ":move '>+1<cr>gv=gv", { noremap = true, silent = true, desc = "Move selection down" })
+map("x", "<A-k>", ":move '<-2<cr>gv=gv", { noremap = true, silent = true, desc = "Move selection up"   })
+map("n", "<Esc>", "<cmd>nohlsearch<cr>", { noremap = true, silent = true, desc = "Clear search highlight" })
 
 -- ── Window management ─────────────────────────────────────────────────────────
 
@@ -75,16 +77,16 @@ map("n", "<leader>sm", function()
   end
 end, { desc = "Maximize / restore split" })
 
--- NOTE: <C-j>/<C-k> are normal-mode only; blink.cmp owns them in insert mode.
-map("n", "<C-h>", "<C-w>h", opts)
-map("n", "<C-j>", "<C-w>j", opts)
-map("n", "<C-k>", "<C-w>k", opts)
-map("n", "<C-l>", "<C-w>l", opts)
+-- NOTE: <C-j>/<C-k> are Normal-mode only; blink.cmp owns them in Insert mode.
+map("n", "<C-h>", "<C-w>h", { noremap = true, silent = true, desc = "Move to left split"  })
+map("n", "<C-j>", "<C-w>j", { noremap = true, silent = true, desc = "Move to lower split" })
+map("n", "<C-k>", "<C-w>k", { noremap = true, silent = true, desc = "Move to upper split" })
+map("n", "<C-l>", "<C-w>l", { noremap = true, silent = true, desc = "Move to right split" })
 
-map("n", "<C-Up>",    "<cmd>resize +2<cr>",          opts)
-map("n", "<C-Down>",  "<cmd>resize -2<cr>",          opts)
-map("n", "<C-Left>",  "<cmd>vertical resize -2<cr>", opts)
-map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", opts)
+map("n", "<C-Up>",    "<cmd>resize +2<cr>",          { noremap = true, silent = true, desc = "Increase split height" })
+map("n", "<C-Down>",  "<cmd>resize -2<cr>",          { noremap = true, silent = true, desc = "Decrease split height" })
+map("n", "<C-Left>",  "<cmd>vertical resize -2<cr>", { noremap = true, silent = true, desc = "Decrease split width"  })
+map("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { noremap = true, silent = true, desc = "Increase split width"  })
 
 -- ── Buffer management ─────────────────────────────────────────────────────────
 
@@ -92,8 +94,8 @@ map("n", "<leader>bn", "<cmd>bnext<cr>",   { desc = "Next buffer"   })
 map("n", "<leader>bp", "<cmd>bprev<cr>",   { desc = "Prev buffer"   })
 map("n", "<leader>bd", "<cmd>bdelete<cr>", { desc = "Delete buffer" })
 map("n", "<leader>bo", "<cmd>BufOnly<cr>", { desc = "Delete other buffers" })
-map("n", "]b", "<cmd>bnext<cr>", { desc = "Next buffer" })
-map("n", "[b", "<cmd>bprev<cr>", { desc = "Prev buffer" })
+map("n", "]b", "<cmd>bnext<cr>", { noremap = true, silent = true, desc = "Next buffer" })
+map("n", "[b", "<cmd>bprev<cr>", { noremap = true, silent = true, desc = "Prev buffer" })
 
 -- ── Telescope find ────────────────────────────────────────────────────────────
 
@@ -122,8 +124,7 @@ end
 
 -- Resume needs TelescopeResume (user command) not a builtin picker.
 map("n", "<leader>fr", "<cmd>TelescopeResume<cr>", { desc = "Resume last search" })
-
-map("n", "<C-s>", "<cmd>Telescope live_grep<cr>", { desc = "Live grep" })
+map("n", "<C-s>",      "<cmd>Telescope live_grep<cr>", { noremap = true, silent = true, desc = "Live grep" })
 
 -- ── Git ───────────────────────────────────────────────────────────────────────
 -- NOTE: <leader>.p/.r/.S are buffer-local in git.lua (gitsigns on_attach).
@@ -167,13 +168,13 @@ map("n", "<leader>;r", function()
   else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
 end, { desc = "Toggle REPL" })
 
-map("n", "<F5>",  dap_call(function(d) d.continue()          end), { desc = "Continue / Start"  })
-map("n", "<F6>",  dap_call(function(d) d.toggle_breakpoint() end), { desc = "Toggle Breakpoint" })
-map("n", "<F7>",  dap_call(function(d) d.step_into()         end), { desc = "Step Into"         })
-map("n", "<F8>",  dap_call(function(d) d.step_over()         end), { desc = "Step Over"         })
-map("n", "<F9>",  dap_call(function(d) d.step_out()          end), { desc = "Step Out"          })
-map("n", "<F10>", dap_call(function(d) d.run_to_cursor()     end), { desc = "Run To Cursor"     })
-map("n", "<F11>", dap_call(function(d) d.terminate()         end), { desc = "Terminate"         })
+map("n", "<F5>",  dap_call(function(d) d.continue()          end), { desc = "DAP: Continue / Start"  })
+map("n", "<F6>",  dap_call(function(d) d.toggle_breakpoint() end), { desc = "DAP: Toggle Breakpoint" })
+map("n", "<F7>",  dap_call(function(d) d.step_into()         end), { desc = "DAP: Step Into"         })
+map("n", "<F8>",  dap_call(function(d) d.step_over()         end), { desc = "DAP: Step Over"         })
+map("n", "<F9>",  dap_call(function(d) d.step_out()          end), { desc = "DAP: Step Out"          })
+map("n", "<F10>", dap_call(function(d) d.run_to_cursor()     end), { desc = "DAP: Run To Cursor"     })
+map("n", "<F11>", dap_call(function(d) d.terminate()         end), { desc = "DAP: Terminate"         })
 
 -- ── Run & test ────────────────────────────────────────────────────────────────
 
@@ -197,14 +198,17 @@ end, { desc = "Run tests" })
 
 -- ── Terminal ──────────────────────────────────────────────────────────────────
 -- NOTE: <C-\> toggle is registered by toggleterm's own open_mapping = [[<C-\>]]
--- in ui.lua. Registering it here too would cause double-mapping.
--- The leader bindings below are supplementary controls not covered by open_mapping.
+-- in ui.lua.
 
-map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Terminal"           })
-map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal"     })
-map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal"})
-map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal"  })
-map("t", "<Esc>",  "<C-\\><C-n>", opts)
+map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Terminal"            })
+map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal"      })
+map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
+map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal"   })
+
+-- Terminal-mode <Esc> exits back to Normal mode.
+--   vim.keymap.del("t", "<Esc>")
+--   vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { noremap = true })
+map("t", "<Esc>", "<C-\\><C-n>", { noremap = true, silent = true, desc = "Exit terminal mode" })
 
 -- ── UI toggles ────────────────────────────────────────────────────────────────
 -- NOTE: <leader>uz (ZenMode)  owned by specs/hud.lua zen-mode.nvim keys=.
@@ -218,9 +222,9 @@ map("n", "<leader>ul", "<cmd>set number! relativenumber!<cr>",         { desc = 
 -- ── Search & replace ──────────────────────────────────────────────────────────
 
 local _spectre_maps = {
-  { "<leader>/s", function(s) s.open()                              end, "Search & replace"  },
-  { "<leader>/w", function(s) s.open_visual({ select_word = true }) end, "Replace word"       },
-  { "<leader>/f", function(s) s.open_file_search()                  end, "Replace in file"    },
+  { "<leader>/s", function(s) s.open()                              end, "Search & replace (Spectre)" },
+  { "<leader>/w", function(s) s.open_visual({ select_word = true }) end, "Replace word under cursor"  },
+  { "<leader>/f", function(s) s.open_file_search()                  end, "Replace in current file"    },
 }
 for _, spec in ipairs(_spectre_maps) do
   map("n", spec[1], spectre_call(spec[2]), { desc = spec[3] })
@@ -228,15 +232,20 @@ end
 
 -- ── Harpoon ───────────────────────────────────────────────────────────────────
 
-map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),              { desc = "Harpoon add"  })
-map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end), { desc = "Harpoon menu" })
+map("n", "<leader>ha", harpoon_call(function(h) h:list():add() end),
+  { desc = "Harpoon add file" })
+map("n", "<leader>hm", harpoon_call(function(h) h.ui:toggle_quick_menu(h:list()) end),
+  { desc = "Harpoon menu" })
+
 for i = 1, 4 do
   map("n", "<leader>h" .. i,
     harpoon_call(function(h) h:list():select(i) end),
-    { desc = "Harpoon " .. i })
+    { desc = "Harpoon jump to file " .. i })
+  -- Alt-shortcut variants intentionally have no desc to keep which-key clean;
+  -- they are discoverable via <leader>h.
   map("n", "<M-" .. i .. ">",
     harpoon_call(function(h) h:list():select(i) end),
-    opts)
+    { noremap = true, silent = true, desc = "Harpoon file " .. i })
 end
 
 -- ── Flash ─────────────────────────────────────────────────────────────────────
@@ -250,29 +259,29 @@ map({ "n", "x", "o" }, "s",
 --       <leader>xu owned by advanced.lua (undotree keys=).
 --       <leader>xg owned by advanced.lua (Neogen keys=).
 
-map("n", "<leader>xc", "<cmd>CopyPath<cr>",    { desc = "Copy file path"       })
-map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy relative path"   })
-map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",    { desc = "Change to file dir"   })
-map("n", "<leader>xe", "<cmd>!chmod +x %<cr>", { desc = "Make executable"      })
-map("n", "<leader>xm", "<cmd>CleanUp<cr>",     { desc = "Clean memory"         })
-map("n", "<leader>xh", "<cmd>Health<cr>",      { desc = "Health check"         })
-map("n", "<leader>xp", "<cmd>ProjectRoot<cr>", { desc = "LCD to project root"  })
-map("n", "<leader>xl", "<cmd>Lazy<cr>",        { desc = "Lazy"                 })
-map("n", "<leader>xn", "<cmd>Mason<cr>",       { desc = "Mason"                })
+map("n", "<leader>xc", "<cmd>CopyPath<cr>",    { desc = "Copy file path (absolute)" })
+map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy file path (relative)" })
+map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",    { desc = "CD to file directory"      })
+map("n", "<leader>xe", "<cmd>!chmod +x %<cr>", { desc = "Make file executable"      })
+map("n", "<leader>xm", "<cmd>CleanUp<cr>",     { desc = "Lua garbage collect"       })
+map("n", "<leader>xh", "<cmd>Health<cr>",      { desc = "Health summary"            })
+map("n", "<leader>xp", "<cmd>ProjectRoot<cr>", { desc = "LCD to project root"       })
+map("n", "<leader>xl", "<cmd>Lazy<cr>",        { desc = "Lazy plugin manager"       })
+map("n", "<leader>xn", "<cmd>Mason<cr>",       { desc = "Mason package manager"     })
 
 -- ── TODO comments ─────────────────────────────────────────────────────────────
 
-map("n", "]t", todo_call(function(tc) tc.jump_next() end), { desc = "Next todo"     })
-map("n", "[t", todo_call(function(tc) tc.jump_prev() end), { desc = "Previous todo" })
+map("n", "]t", todo_call(function(tc) tc.jump_next() end), { desc = "Next TODO"     })
+map("n", "[t", todo_call(function(tc) tc.jump_prev() end), { desc = "Previous TODO" })
 
 -- ── Oil (convenience alias) ───────────────────────────────────────────────────
 
-map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent dir (Oil)" })
+map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent directory (Oil)" })
 
 -- ── Noice ─────────────────────────────────────────────────────────────────────
 
-map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications"  })
-map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history"   })
+map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications" })
+map("n", "<leader>uN", "<cmd>Noice history<cr>", { desc = "Notification history"  })
 
 -- ── Focus ─────────────────────────────────────────────────────────────────────
 

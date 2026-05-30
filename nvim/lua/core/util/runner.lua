@@ -174,11 +174,12 @@ local runners = {
       .. " && " .. vim.fn.shellescape(exe)
   end,
 
+  -- ── VHDL runner ──────────────────────────────────────────────────────────────
   vhdl = function(file)
     if vim.fn.executable("ghdl") ~= 1 then return nil end
 
     local entity = nil
-    local ok_rf, lines = pcall(vim.fn.readfile, file, "", 200)
+    local ok_rf, lines = pcall(vim.fn.readfile, file)   -- no line-count limit
     if ok_rf and lines then
       for _, line in ipairs(lines) do
         entity = line:match("entity%s+(%w+)%s+is")
@@ -202,11 +203,12 @@ local runners = {
     end
 
     vim.notify(
-      "[runner] VHDL: entity declaration not found in the first 200 lines of\n"
+      "[runner] VHDL: no 'entity … is' declaration found in\n"
       .. vim.fn.fnamemodify(file, ":t") .. "\n"
       .. "Falling back to syntax check only (ghdl -s).\n"
-      .. "Move the entity declaration closer to the top, or use <leader>vha to\n"
-      .. "analyze and <leader>vhe to elaborate manually.",
+      .. "Ensure the entity declaration uses the standard form:\n"
+      .. "  entity <name> is\n"
+      .. "Or use <leader>vha to analyze and <leader>vhe to elaborate manually.",
       vim.log.levels.WARN
     )
     return "ghdl -s " .. vim.fn.shellescape(file)
@@ -298,39 +300,33 @@ function M.run_selection(start_line, end_line)
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
 
+  -- ── Resolve visual marks when caller does not supply explicit lines ─────────
   if not start_line or not end_line then
-    -- Read visual marks.  '< and '> are set by Neovim when leaving visual
-    -- mode; they persist until overwritten by the next visual operation.
-    -- Guard against three stale-mark scenarios:
-    --   (a) marks were never set (line = 0)
-    --   (b) marks reference lines deleted since the selection was made
-    --   (c) marks come from a different buffer (nvim_buf_get_mark is buf-local,
-    --       so this can only happen when buf itself was replaced, which the
-    --       line-count check catches via bound violation)
     local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
     local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
-    if not ok_s or not ok_e then
-      vim.notify("[runner] could not read visual selection marks", vim.log.levels.ERROR)
-      return
-    end
 
-    local sl, el = mark_s[1], mark_e[1]
+    -- Single consolidated guard: covers unset marks (line=0), stale marks
+    -- (line > lcount), and mark API failure in one readable block.
+    local lcount   = vim.api.nvim_buf_line_count(buf)
+    local sl       = ok_s and mark_s[1] or 0
+    local el       = ok_e and mark_e[1] or 0
+    local marks_ok = ok_s and ok_e
+      and sl > 0 and el > 0
+      and sl <= lcount and el <= lcount
 
-    -- Zero means the mark was never set.
-    if sl == 0 or el == 0 then
-      vim.notify("[runner] no visual selection — make a selection first",
-        vim.log.levels.WARN)
-      return
-    end
-
-    -- Out-of-bounds means the buffer shrank after the selection was made.
-    local lcount = vim.api.nvim_buf_line_count(buf)
-    if sl > lcount or el > lcount then
-      vim.notify(
-        "[runner] visual marks are stale (buffer changed since last selection).\n"
-        .. "Re-select the lines and try again.",
-        vim.log.levels.WARN
-      )
+    if not marks_ok then
+      if not ok_s or not ok_e then
+        vim.notify("[runner] could not read visual selection marks", vim.log.levels.ERROR)
+      elseif sl == 0 or el == 0 then
+        vim.notify("[runner] no visual selection — make a selection first",
+          vim.log.levels.WARN)
+      else
+        vim.notify(
+          "[runner] visual marks are stale (buffer changed since last selection).\n"
+          .. "Re-select the lines and try again.",
+          vim.log.levels.WARN
+        )
+      end
       return
     end
 
@@ -363,8 +359,8 @@ function M.run_selection(start_line, end_line)
     sh               = "sh",
     bash             = "sh",
   }
-  local ext      = EXT_MAP[ft] or ft
-  local tmpfile  = vim.fn.tempname() .. "." .. ext
+  local ext     = EXT_MAP[ft] or ft
+  local tmpfile = vim.fn.tempname() .. "." .. ext
 
   local write_ok = pcall(vim.fn.writefile, vim.split(code, "\n"), tmpfile)
   if not write_ok then
@@ -375,18 +371,33 @@ function M.run_selection(start_line, end_line)
 
   local cmd = interpreter .. " " .. vim.fn.shellescape(tmpfile)
 
+  -- ── Cleanup helpers ─────────────────────────────────────────────────────────
+  local cleaned = false
   local function cleanup()
-    vim.defer_fn(function() pcall(os.remove, tmpfile) end, 500)
+    if cleaned then return end
+    cleaned = true
+    pcall(os.remove, tmpfile)
   end
 
   local t = term()
   if t then
-    t.float(cmd, { on_exit = function() cleanup() end })
+    t.float(cmd, {
+      on_exit = function() vim.schedule(cleanup) end,
+    })
   else
+    -- Fallback: plain split terminal.
+    local aug_name = "RunnerSelectionCleanup_" .. vim.fn.sha256(tmpfile):sub(1, 8)
     vim.api.nvim_create_autocmd("TermClose", {
       once     = true,
-      callback = function() cleanup() end,
+      group    = vim.api.nvim_create_augroup(aug_name, { clear = true }),
+      callback = function()
+        vim.schedule(cleanup)
+        pcall(vim.api.nvim_del_augroup_by_name, aug_name)
+      end,
     })
+    -- Safety net: if TermClose never fires (user deletes the buffer, etc.)
+    -- clean up after 2 s.
+    vim.defer_fn(cleanup, 2000)
     vim.cmd("split | terminal " .. cmd)
   end
 end

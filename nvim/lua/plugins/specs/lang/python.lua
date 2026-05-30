@@ -1,13 +1,5 @@
 -- lua/plugins/specs/lang/python.lua — Python language support
 --
--- LSP:    basedpyright via lsp.lua
--- Format: black + isort via lsp.lua conform
--- Lint:   ruff via lsp.lua nvim-lint
--- DAP:    nvim-dap-python (this file)
--- REPL:   iron.nvim (this file)
--- Venv:   venv-selector.nvim (this file)
--- Docs:   neogen optional spec (this file)
---
 
 return {
   -- ── Venv selector ──────────────────────────────────────────────────────────
@@ -51,7 +43,7 @@ return {
 
       -- ── Debugpy interpreter resolution ───────────────────────────────────
       --
-      -- Precedence (first match wins):
+      -- Auto-detection precedence (first match wins):
       --   1. VIRTUAL_ENV env var  — active venv always wins, even over pyenv.
       --   2. Non-shim PATH python — direct system or conda python with debugpy.
       --   3. Pyenv version file   — resolves via .python-version walking upward.
@@ -59,12 +51,22 @@ return {
       --   5. Any executable python — last resort; warns that debugpy is missing.
 
       local function find_debugpy_python()
+        -- 0. Escape hatch — explicit override via vim.g.
+        if type(vim.g.debugpy_python) == "string" and vim.g.debugpy_python ~= "" then
+          local override = vim.g.debugpy_python
+          if vim.fn.executable(override) == 1 then return override end
+          vim.notify(
+            "[python] vim.g.debugpy_python = '" .. override
+            .. "' is not executable — falling through to auto-detection.",
+            vim.log.levels.WARN
+          )
+        end
+
         -- 1. Active virtualenv — unconditional priority.
         local venv = os.getenv("VIRTUAL_ENV")
         if venv and venv ~= "" then
           local p = venv .. "/bin/python"
           if vim.fn.executable(p) == 1 then return p end
-          -- venv set but python missing — fall through to system detection.
         end
 
         -- 2. Non-shim PATH python with debugpy present.
@@ -107,14 +109,15 @@ return {
         vim.schedule(function()
           vim.notify(
             "[python] debugpy not found in any interpreter.\n"
-            .. "Install with: pip install debugpy",
+            .. "Install with: pip install debugpy\n"
+            .. "Or pin an interpreter: vim.g.debugpy_python = '/path/to/python'",
             vim.log.levels.WARN
           )
         end)
         return fallback
       end
 
-      -- ── DAP keymaps — owned by nvim-dap-python ──────────────────────────
+      -- ── DAP keymaps ───────────────────────────────────────────────────────
 
       local DAP_MAPS = {
         { "n",       "<leader>pydm", function()
@@ -188,15 +191,25 @@ return {
 
       local bkm = require("core.util.buf_keymap")
 
-      -- ── REPL keymaps — owned by iron.nvim ───────────────────────────────
+      -- ── REPL keymaps ─────────────────────────────────────────────────────
 
       local IRON_MAPS = {
         { "n", "<leader>pyrc", function()
-            local prev = vim.o.operatorfunc
+            local prev_opfunc = vim.o.operatorfunc
             vim.o.operatorfunc = "v:lua.require'iron.core'.send_motion"
             vim.api.nvim_feedkeys("g@", "n", false)
-            vim.defer_fn(function() vim.o.operatorfunc = prev end, 0)
+            vim.api.nvim_create_autocmd("ModeChanged", {
+              pattern  = "no:*",
+              once     = true,
+              group    = vim.api.nvim_create_augroup(
+                           "IronOpFuncRestore", { clear = true }),
+              callback = function()
+                vim.o.operatorfunc = prev_opfunc
+              end,
+              desc = "Restore operatorfunc after iron send_motion",
+            })
           end, "REPL send motion (operator)" },
+
         { "v", "<leader>pyrv", function()
             pcall(function()
               require("iron.core").visual_send(vim.api.nvim_get_current_buf())
@@ -228,9 +241,9 @@ return {
       bkm.on_ft("python", IRON_MAPS, "python_iron_keymaps_registered")
     end,
     keys = {
-      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"    },
-      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"  },
-      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt" },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"     },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"   },
+      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt"  },
     },
   },
 

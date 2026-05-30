@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua — v2.4.2
+-- lua/plugins/specs/lsp.lua — v2.4.1
 --
 
 return {
@@ -202,17 +202,18 @@ return {
       }) do lsp_setup(s, {}) end
 
       -- ── TypeScript fallback ──────────────────────────────────────────────────
-      -- Detects whether typescript-tools.nvim is present using only public APIs:
-      --   1. package.loaded — already required this session (fastest path).
-      --   2. nvim_get_runtime_file — lazy.nvim adds the plugin dir to rtp when
-      --      configured, even before the plugin is lazily loaded.
-      -- Previously used require("lazy.core.config"), a private internal API that
-      -- silently breaks across lazy.nvim minor releases.
+      -- Detects whether typescript-tools.nvim is present using public APIs:
+      --   1. package.loaded      — already required this session (fastest path).
+      --   2. nvim_get_runtime_file("lua/typescript-tools/init.lua") — lazy.nvim
+      --      adds the plugin dir to rtp when configured, even before lazy-loading.
+      --      The module lives at lua/typescript-tools/init.lua (directory module),
+      --      NOT at lua/typescript-tools.lua — the previous single-file check
+      --      never matched and caused ts_ls to always register as a fallback.
       do
         local ts_tools_present = (function()
           if package.loaded["typescript-tools"] then return true end
           local hits = vim.api.nvim_get_runtime_file(
-            "lua/typescript-tools.lua", false)
+            "lua/typescript-tools/init.lua", false)
           return #hits > 0
         end)()
 
@@ -234,21 +235,42 @@ return {
 
       -- ── Optional servers (binary-gated) ─────────────────────────────────────
       for _, entry in ipairs({
-        { server = "vhdl_ls",   binary = "vhdl_ls",
-          config = { filetypes = { "vhdl", "vhd" } } },
-        { server = "fortls",
-          config = { filetypes = { "fortran" }, settings = { fortls = {
-            notifyInit = true, nthreads = 4,
-            hover_signature = true, use_signature_help = true,
-          }}}},
-        { server = "sqls",
-          config = { filetypes = { "sql", "mysql" },
+        {
+          server = "vhdl_ls",
+          binary = "vhdl_ls",
+          config = { filetypes = { "vhdl", "vhd" } },
+        },
+        {
+          server = "fortls",
+          binary = "fortls",   -- explicit: avoids nil-fallback ambiguity
+          config = {
+            filetypes = { "fortran" },
+            settings  = { fortls = {
+              notifyInit        = true,
+              nthreads          = 4,
+              hover_signature   = true,
+              use_signature_help = true,
+            }},
+          },
+        },
+        {
+          server = "sqls",
+          binary = "sqls",     -- explicit: avoids nil-fallback ambiguity
+          config = {
+            filetypes = { "sql", "mysql" },
             on_attach = function(client, _)
               client.server_capabilities.renameProvider = false
-            end }},
-        { server = "cobol_ls", binary = "cobol-language-server",
-          config = { filetypes = { "cobol" },
-            settings = { cobol = { dialects = { "gnucobol", "ibm" } } }}},
+            end,
+          },
+        },
+        {
+          server = "cobol_ls",
+          binary = "cobol-language-server",
+          config = {
+            filetypes = { "cobol" },
+            settings  = { cobol = { dialects = { "gnucobol", "ibm" } } },
+          },
+        },
       }) do
         if vim.fn.executable(entry.binary or entry.server) == 1 then
           lsp_setup(entry.server, entry.config)

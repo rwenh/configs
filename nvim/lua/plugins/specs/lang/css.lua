@@ -12,13 +12,28 @@ return {
     init = function()
       vim.api.nvim_create_autocmd("BufReadPost", {
         pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
+        once     = true,
         group    = vim.api.nvim_create_augroup("CssModulesLsp", { clear = true }),
         callback = function()
-          if vim.fn.executable("cssmodules-language-server") ~= 1 then return end
+          if vim.fn.executable("cssmodules-language-server") ~= 1 then
+            vim.schedule(function()
+              vim.notify(
+                "[css] cssmodules-language-server not found — CSS module completion unavailable.\n"
+                .. "Install: npm i -g cssmodules-language-server",
+                vim.log.levels.DEBUG   -- DEBUG so it doesn't surface unless searched
+              )
+            end)
+            return
+          end
+
           local cfg = {
             init_options = { isCSSModules = true },
-            filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+            filetypes    = {
+              "css", "scss", "less",
+              "typescriptreact", "javascriptreact",
+            },
           }
+
           if vim.fn.has("nvim-0.11") == 1 then
             pcall(function()
               vim.lsp.config("cssmodules_ls", cfg)
@@ -49,8 +64,7 @@ return {
     opts = {
       document_color = { enabled = true, kind = "inline" },
       conceal        = { enabled = false },
-      -- server.override=false: tailwindcss LSP managed by lsp.lua servers table.
-      server = { override = false },
+      server         = { override = false },
     },
     config = function(_, opts)
       pcall(function() require("tailwind-tools").setup(opts) end)
@@ -58,5 +72,4 @@ return {
   },
 
   shared.treesitter({ "css", "scss" }),
-
 }

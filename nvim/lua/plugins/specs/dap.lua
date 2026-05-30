@@ -1,5 +1,4 @@
 -- lua/plugins/specs/dap.lua — Debug Adapter Protocol
---
 
 return {
   {
@@ -124,11 +123,13 @@ return {
         local codelldb_cmd = mason.bin("codelldb")
 
         if vim.fn.executable(codelldb_cmd) ~= 1 then
-          vim.notify(
-            "[dap] codelldb not found — C / C++ / Rust debug unavailable.\n"
-            .. "Run: :MasonInstall codelldb",
-            vim.log.levels.WARN
-          )
+          vim.schedule(function()
+            vim.notify(
+              "[dap] codelldb not found — C / C++ / Rust debug unavailable.\n"
+              .. "Run: :MasonInstall codelldb",
+              vim.log.levels.WARN
+            )
+          end)
           return
         end
 
@@ -219,32 +220,44 @@ return {
         dap.configurations.typescriptreact = ts_launch
       end
 
+      -- ── Ruby adapter — detection deferred to debug invocation time ────────────
       local function setup_ruby()
-        local use_bundle = vim.fn.executable("bundle") == 1
-        local rdbg_bin   = (function()
-          if vim.fn.executable("rdbg") == 1 then return vim.fn.exepath("rdbg") end
-          local m = mason.bin("rdbg")
-          if vim.fn.executable(m) == 1 then return m end
-          return nil
-        end)()
-
-        if not use_bundle and not rdbg_bin then
-          vim.notify(
-            "[dap] Ruby debugger (rdbg) not found.\n"
-            .. "Run: gem install rdbg  OR  bundle add rdbg",
-            vim.log.levels.WARN
-          )
-          return
-        end
-
         dap.adapters.ruby = function(callback, config)
+          -- Re-evaluate at debug time so venv/gem changes take effect immediately.
+          local use_bundle = vim.fn.executable("bundle") == 1
+          local rdbg_bin   = (function()
+            if vim.fn.executable("rdbg") == 1 then return vim.fn.exepath("rdbg") end
+            local m = mason.bin("rdbg")
+            if vim.fn.executable(m) == 1 then return m end
+            return nil
+          end)()
+
+          if not use_bundle and not rdbg_bin then
+            vim.notify(
+              "[dap] Ruby debugger (rdbg) not found.\n"
+              .. "Run: gem install rdbg  OR  bundle add rdbg",
+              vim.log.levels.WARN
+            )
+            -- Return a no-op adapter so nvim-dap doesn't hard-error.
+            callback({
+              type       = "server",
+              host       = "127.0.0.1",
+              port       = "${port}",
+              executable = { command = "false", args = {} },
+            })
+            return
+          end
+
           local args = use_bundle
             and { "exec", "rdbg", "-n", "--open", "--port", "${port}",
                   "-c", "--", "ruby", config.program }
             or  { "-n", "--open", "--port", "${port}",
                   "-c", "--", "ruby", config.program }
+
           callback({
-            type = "server", host = "127.0.0.1", port = "${port}",
+            type       = "server",
+            host       = "127.0.0.1",
+            port       = "${port}",
             executable = {
               command = use_bundle and "bundle" or rdbg_bin,
               args    = args,

@@ -76,33 +76,53 @@ return {
         return cmd == "bun test" and cmd or (cmd .. " --")
       end
 
-      -- ── Vitest config detection (called at test-discovery time, not load time) ──
-      -- Detects vitest configs relative to a given root directory.
+      -- ── Vitest config detection — results cached per root ─────────────────
       local VITEST_CONFIGS = {
         "vitest.config.ts",  "vitest.config.js",
         "vitest.config.mts", "vitest.config.mjs", "vitest.config.cjs",
       }
 
+      local _vitest_cache = {}   -- { [root] = true|false }
+
       local function is_vitest_root(root)
+        if _vitest_cache[root] ~= nil then return _vitest_cache[root] end
         for _, pat in ipairs(VITEST_CONFIGS) do
-          if vim.fn.findfile(pat, root .. ";") ~= "" then return true end
+          if vim.fn.findfile(pat, root .. ";") ~= "" then
+            _vitest_cache[root] = true
+            return true
+          end
         end
+        _vitest_cache[root] = false
         return false
       end
 
       -- ── load_adapter helper ────────────────────────────────────────────────
 
       local adapters = {}
+
       local function load_adapter(name, loader)
+        local mod = name:gsub("%-", "/")
+        local in_rtp = (
+          #vim.api.nvim_get_runtime_file("lua/" .. mod .. ".lua",        false) > 0 or
+          #vim.api.nvim_get_runtime_file("lua/" .. mod .. "/init.lua",   false) > 0
+        )
+
+        if not in_rtp then
+          return
+        end
+
         local ok, adapter = pcall(loader)
         if ok and adapter then
           table.insert(adapters, adapter)
         else
-          vim.notify(
-            "[neotest] adapter not loaded: " .. name
-              .. "\nRun :Lazy install to ensure the adapter plugin is installed.",
-            vim.log.levels.WARN
-          )
+          vim.schedule(function()
+            vim.notify(
+              "[neotest] adapter failed to load: " .. name .. "\n"
+              .. "The plugin is present but require() errored.\n"
+              .. "Run :checkhealth neotest or :Lazy log for details.",
+              vim.log.levels.WARN
+            )
+          end)
         end
       end
 
@@ -135,7 +155,8 @@ return {
         return require("neotest-elixir")({})
       end)
 
-      -- vitest registered before jest so it wins file-ownership in vitest projects.
+      -- vitest registered before jest so it wins file-ownership in vitest
+      -- projects.
       load_adapter("neotest-vitest", function()
         return require("neotest-vitest")({})
       end)
@@ -148,7 +169,8 @@ return {
           local ok_p, p = pcall(require, "core.util.path")
           local root = (ok_p and p.find_root(vim.fn.fnamemodify(file_path, ":h")))
             or vim.fn.getcwd()
-          -- Yield the file to the vitest adapter if a vitest config is present.
+          -- Yield the file to the vitest adapter when vitest config is present.
+          -- Uses the cached result — no extra findfile calls per invocation.
           if is_vitest_root(root) then return false end
           return orig_is_test_file(file_path)
         end

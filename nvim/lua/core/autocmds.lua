@@ -111,6 +111,15 @@ au("BufWritePre", {
 
     if #vim.api.nvim_buf_get_lines(e.buf, 0, -1, false) == 0 then return end
 
+    -- ── Fast pre-scan ────────────────────────────────────────────────────────
+    --
+    local scan_ok, match_line = pcall(vim.api.nvim_buf_call, e.buf, function()
+      return vim.fn.search([[\s\+$]], "nw")
+    end)
+    -- match_line == 0 means no trailing whitespace found; skip the clone.
+    if not scan_ok or match_line == 0 then return end
+
+    -- ── Full trim pass (only reached when whitespace was detected) ────────────
     pcall(function()
       local lines   = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
       local trimmed = {}
