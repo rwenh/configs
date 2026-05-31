@@ -12,6 +12,7 @@
 - [Quick Install](#quick-install)
 - [Structure](#structure)
 - [Architecture](#architecture)
+- [Escape Hatches](#escape-hatches)
 - [Languages](#languages)
 - [Plugins](#plugins)
 - [Key Bindings](#key-bindings)
@@ -50,7 +51,7 @@
 | Elixir | `elixir`, `mix` |
 | Fortran | `gfortran`, `fprettify` |
 | COBOL | `gnucobol`; LSP manual install — see [INSTALL.md](INSTALL.md) |
-| VHDL | `ghdl`, `gtkwave`; `cargo install vhdl_ls` |
+| VHDL | `ghdl`, `gtkwave`; `cargo install vhdl_ls`; `pip install vsg` |
 | REST | `curl`, optionally `jq` |
 | SQL | `sqlfmt` (formatter, optional) |
 
@@ -67,7 +68,7 @@ sudo zypper in gcc gcc-c++ make cmake ninja git curl wget unzip \
   sqlite3 xclip xsel wl-clipboard
 
 # 2. Language tooling
-pip3 install --user pynvim debugpy black isort ruff pytest ipython virtualenv
+pip3 install --user pynvim debugpy black isort ruff pytest ipython virtualenv vsg
 npm install -g typescript ts-node tsx prettier eslint_d neovim
 gem install solargraph rubocop debug
 cargo install stylua vhdl_ls
@@ -110,14 +111,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/rwenh/configs/main/install.s
     ├── core/
     │   ├── bootstrap.lua         ← leader keys, version stamp, lazy.nvim bootstrap
     │   ├── options.lua
-    │   ├── keymaps.lua           ← global keymaps (lazy-require pattern)
+    │   ├── keymaps.lua           ← global keymaps (lazy-require pattern, full desc= coverage)
     │   ├── autocmds.lua
     │   ├── commands.lua          ← :MasonInstallAll, :Format, …
     │   ├── theme.lua             ← auto dark/light + toggle
     │   ├── focus.lua             ← deep focus mode
-    │   ├── highlights.lua        ← overrides that survive theme toggles
+    │   ├── highlights.lua        ← theme-aware overrides (TokyoNight full / others minimal)
     │   └── util/
-    │       ├── path.lua          ← project root detection (TTL cache)
+    │       ├── path.lua          ← project root detection (TTL cache, configurable)
     │       ├── runner.lua        ← file / selection / test runner (20+ filetypes)
     │       ├── term.lua          ← toggleterm launch helper
     │       ├── buf_keymap.lua    ← buffer-local keymap registration + dedup
@@ -159,15 +160,50 @@ bash <(curl -fsSL https://raw.githubusercontent.com/rwenh/configs/main/install.s
 
 **Capability memoisation** — `get_capabilities()` in `lsp.lua` is called once and cached, preventing a deep-copy per server on startup.
 
-**Project root detection** — `path.find_root()` walks upward from the current file through standard root markers (`.git`, `Cargo.toml`, `package.json`, etc.) with a 30-second TTL, invalidated on `DirChanged`.
+**Project root detection** — `path.find_root()` walks upward from the current file through standard root markers (`.git`, `Cargo.toml`, `package.json`, etc.) with a configurable TTL cache, invalidated on `DirChanged`. See [Escape Hatches](#escape-hatches) for tuning options.
 
 **Buffer-local keymap deduplication** — `bkm.batch(buf, maps, flag)` stores a boolean in `vim.b[buf][flag]`, making repeated calls on the same buffer no-ops. Prevents double-registration on `:luafile` reloads.
 
-**Deferred DAP** — adapters register inside `FileType once=true` autocmds. Zero DAP initialisation cost unless a relevant file is opened.
+**Deferred DAP** — adapters register inside `FileType once=true` autocmds. Zero DAP initialisation cost unless a relevant file is opened. Ruby adapter re-detects `bundle`/`rdbg` on each debug invocation so runtime environment changes take effect without restart.
 
 **Executable guards** — `exec.require_bin(name, hint)` centralises all `vim.fn.executable()` checks. Replaced ~65 inline guard blocks across the codebase.
 
 **Large-file protection** — files over 500 KB have treesitter, folding, syntax highlighting, cursorline, and spellcheck automatically disabled.
+
+**Theme-aware highlights** — `highlights.lua` applies full TokyoNight-tuned overrides when TokyoNight is active and a minimal universal set (DAP signs only) for all other themes, preventing accent-colour bleed across theme switches.
+
+**Atomic Mason installs** — `:MasonInstallAll` uses an atomic pending counter so a synchronous `install()` throw or `:once()` registration failure cannot leave the counter in an inconsistent state. Timeout is configurable.
+
+---
+
+## Escape Hatches
+
+Flags read at plugin-load time. Set them in `init.lua` **before** `require("core.bootstrap")`:
+
+```lua
+-- ~/.config/nvim/init.lua (top, before bootstrap)
+vim.g.disable_highlight_overrides = false  -- true = skip all highlight overrides
+vim.g.disable_tint                = false  -- true = disable tint.nvim window dimming
+vim.g.disable_smear_cursor        = false  -- true = disable smear-cursor motion trail
+vim.g.disable_vsg_format          = false  -- true = disable vsg VHDL formatter
+vim.g.mason_install_timeout_ms    = 120000 -- :MasonInstallAll per-install timeout (ms)
+vim.g.debugpy_python              = nil    -- "/path/to/python" pins debugpy interpreter
+vim.g.path_max_walk_depth         = 20     -- max dirs walked upward for root detection
+vim.g.path_cache_ttl              = 30     -- root-detection cache lifetime (seconds)
+vim.g.path_debug                  = false  -- true = log root-detection fallbacks (DEBUG)
+```
+
+| Flag | Default | When to change |
+|------|---------|----------------|
+| `disable_highlight_overrides` | `false` | Theme ships its own complete highlight set |
+| `disable_tint` | `false` | Remote/multiplexed terminals; colour bleed |
+| `disable_smear_cursor` | `false` | tmux, screen, or slow SSH connections |
+| `disable_vsg_format` | `false` | vsg not installed or project uses different style |
+| `mason_install_timeout_ms` | `120000` | Very slow network or large batch installs |
+| `debugpy_python` | `nil` | Containers, conda, unusual venv layouts |
+| `path_max_walk_depth` | `20` | Deep monorepo structures |
+| `path_cache_ttl` | `30` | Frequently switching between projects |
+| `path_debug` | `false` | Diagnosing wrong-root / unexpected cwd fallbacks |
 
 ---
 
@@ -194,10 +230,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/rwenh/configs/main/install.s
 | Zig | zls | codelldb | zig fmt | — | zig build test |
 | Fortran | fortls | — | fprettify | — | — |
 | COBOL | cobol-language-server¹ | — | — | — | — |
-| VHDL | vhdl_ls² | — | vsg | — | ghdl |
+| VHDL | vhdl_ls² | — | vsg³ | — | ghdl |
 
 > ¹ Not in Mason registry: `npm i -g @broadcommfd/cobol-language-support`
 > ² Not in Mason registry: `cargo install vhdl_ls`
+> ³ vsg formats via `--stdin`; install with `pip install vsg`
 
 ---
 
@@ -248,7 +285,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/rwenh/configs/main/install.s
 | nvim-ufo | Fold enhancement with previews |
 | zen-mode.nvim | Distraction-free writing |
 | twilight.nvim | Dim inactive code |
-| smear-cursor.nvim | Cursor motion trail |
+| smear-cursor.nvim | Cursor motion trail (opt-out: `vim.g.disable_smear_cursor`) |
+| tint.nvim | Inactive window dimming (opt-out: `vim.g.disable_tint`) |
 
 ---
 
@@ -303,6 +341,8 @@ M.config = {
 
 Toggle: `<leader>ut` · Switch: `require("core.theme").switch("catppuccin")`
 
+> **Note:** highlight overrides in `highlights.lua` apply the full TokyoNight accent palette only when TokyoNight is active. Other themes receive a minimal set (DAP signs only). Set `vim.g.disable_highlight_overrides = true` to suppress all overrides.
+
 ---
 
 ## Deep Focus Mode
@@ -345,10 +385,22 @@ rm -rf ~/.local/share/nvim ~/.cache/nvim && nvim
 | Completion broken | `:Lazy update` · verify `version = "1.*"` in `completion.lua` |
 | COBOL LSP missing | `npm i -g @broadcommfd/cobol-language-support` + restart |
 | VHDL LSP missing | `cargo install vhdl_ls` + restart |
+| TypeScript LSP double-attaching | Ensure typescript-tools.nvim is installed; `lsp.lua` falls back to `ts_ls` only when it cannot find `lua/typescript-tools/init.lua` in the runtime path |
+| `<leader>ts*` keys missing in JS/JSX | Resolved in v2.4.1-patch; swap `typescript.lua` |
+| VHDL format applies to saved file not buffer | Resolved in v2.4.1-patch (vsg now uses `--stdin`); swap `vhdl.lua` |
+| Iron REPL send-motion silently wrong | Resolved in v2.4.1-patch (operatorfunc restored after motion); swap `python.lua` |
+| `<Esc>` exits terminal before nested TUI receives it | By design; see keymaps.lua terminal note. Override: `vim.keymap.del("t","<Esc>")` then map `<Esc><Esc>` |
+| tint.nvim colour bleed / smear-cursor artefacts | Set `vim.g.disable_tint = true` or `vim.g.disable_smear_cursor = true` in `init.lua` |
+| Highlight overrides wrong colour on non-TN theme | Set `vim.g.disable_highlight_overrides = true` or swap `highlights.lua` |
+| MasonInstallAll always times out | Set `vim.g.mason_install_timeout_ms = 240000` in `init.lua` |
+| Wrong project root detected | Set `vim.g.path_debug = true` to log fallbacks; adjust `vim.g.path_max_walk_depth` |
+| debugpy not found in unusual venv | Set `vim.g.debugpy_python = "/path/to/python"` in `init.lua` |
 | Large file very slow | Expected — treesitter/folding auto-disabled above 500 KB |
 | Kotlin gradlew fails | `chmod +x gradlew` in project root |
 | Dashboard blank after config change | Full restart required; `:luafile` is insufficient for `ui.lua` |
 | Plugins not loading at all | `rm -rf ~/.local/share/nvim ~/.cache/nvim && nvim` |
+| Java workspace stale / wrong index | Delete `~/.local/share/nvim/jdtls-workspace/` and restart |
+| Ruby DAP uses wrong bundler state | Resolved in v2.4.1-patch (re-detected per debug session); swap `dap.lua` |
 
 **Neovim too old (openSUSE):**
 ```bash
@@ -360,6 +412,34 @@ sudo zypper ref && sudo zypper in neovim
 ---
 
 ## Changelog
+
+### v2.4.1-patch
+
+**Bug fixes**
+
+- `lsp.lua` — TypeScript-tools detection corrected to `lua/typescript-tools/init.lua`; `ts_ls` no longer double-registers when typescript-tools is properly installed
+- `lsp.lua` — Version comment corrected from v2.4.2 to v2.4.1
+- `dap.lua` — Ruby adapter re-detects `bundle`/`rdbg` on every debug invocation; stale environment state after gem installs no longer requires restart
+- `commands.lua` — `:MasonInstallAll` pending counter is now atomic; `install()` or `:once()` throws revert the increment; timeout configurable via `vim.g.mason_install_timeout_ms`
+- `runner.lua` — VHDL entity scan no longer has a 200-line cap; `run_selection` temp-file cleanup race resolved with ModeChanged guard
+- `java.lua` — Workspace hash uses full 64-char sha256 (was 16); bundle globs emit actionable `:MasonInstall` warnings when absent instead of silently passing empty tables
+- `python.lua` — `operatorfunc` restore uses `ModeChanged no:*` autocmd instead of `defer_fn(0)`, fixing the iron `send_motion` race condition
+- `rust.lua` — Premature codelldb executable check removed from `vim.g.rustaceanvim` IIFE; warning now correctly deferred to `dap.lua` on first Rust file open
+- `test.lua` — `load_adapter` silently skips plugins not in the runtime path; vitest root detection result cached per directory
+- `autocmds.lua` — `TrimWhitespace` skips full buffer clone when no trailing whitespace detected (C-level regex pre-scan)
+- `typescript.lua` — All `<leader>ts*` keymaps now active in `.js` and `.jsx` buffers
+- `vhdl.lua` — vsg formatter uses `--stdin` so buffer content (not on-disk file) is formatted
+- `css.lua` — cssmodules LSP setup carries `once=true`; "server not found" notify downgraded to DEBUG
+- `html.lua` — Startup notify deferred; `cfg` table deduplicated across 0.11 and legacy branches
+- `highlights.lua` — Theme-aware: full TokyoNight overrides when active; minimal DAP-only set for all other themes
+- `hud.lua` — `tint.nvim` and `smear-cursor.nvim` have `cond` opt-out guards
+
+**Ergonomics**
+
+- `keymaps.lua` — Every mapping now carries `desc=`; terminal `<Esc>` override documented; `jk`/`kj` delegated to better-escape.nvim noted
+- `path.lua` — `MAX_WALK_DEPTH` and `CACHE_TTL` configurable via `vim.g`; debug logging on cwd fallback via `vim.g.path_debug`
+- `python.lua` — `vim.g.debugpy_python` escape hatch short-circuits all five detection levels
+- `ui.lua` — `build_header()` hoisted to module level; no longer re-created on every `config()` call
 
 ### v2.4.1
 

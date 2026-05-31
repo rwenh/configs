@@ -12,6 +12,7 @@ Complete installation guide. Quick-start: [README.md](README.md).
 - [Fonts](#fonts)
 - [Configuration](#configuration)
 - [First Launch](#first-launch)
+- [Escape Hatches](#escape-hatches)
 - [Load-order Constraints](#load-order-constraints)
 - [Hot-swap Reference](#hot-swap-reference)
 - [Troubleshooting](#troubleshooting)
@@ -96,8 +97,10 @@ Install after system packages. Skip sections for languages you won't use.
 ### Python
 
 ```bash
-pip3 install --user pynvim debugpy black isort ruff pytest ipython virtualenv
+pip3 install --user pynvim debugpy black isort ruff pytest ipython virtualenv vsg
 ```
+
+> `vsg` is the VHDL Style Guide formatter. Safe to omit if not using VHDL.
 
 ### Node / JavaScript / TypeScript
 
@@ -200,6 +203,55 @@ Expected state after install:
 | Dashboard | Logo + quote on startup |
 | `gd` on any symbol | LSP jumps to definition |
 
+> **Slow network?** Increase the MasonInstallAll timeout before first launch:
+> ```lua
+> -- init.lua, before require("core.bootstrap")
+> vim.g.mason_install_timeout_ms = 300000  -- 5 minutes
+> ```
+
+---
+
+## Escape Hatches
+
+Optional `vim.g` flags that tune or disable specific behaviours. Set them at the **very top of `init.lua`** before `require("core.bootstrap")` so they are visible to all plugin specs at load time.
+
+```lua
+-- ~/.config/nvim/init.lua — optional tuning block (add above bootstrap)
+
+-- Highlight overrides (highlights.lua)
+-- vim.g.disable_highlight_overrides = true   -- skip all; use theme's own highlights
+
+-- Visual plugins (hud.lua)
+-- vim.g.disable_tint         = true   -- disable tint.nvim inactive-window dimming
+-- vim.g.disable_smear_cursor = true   -- disable smear-cursor motion trail
+
+-- VHDL formatter (vhdl.lua)
+-- vim.g.disable_vsg_format   = true   -- disable vsg format-on-save
+
+-- MasonInstallAll (commands.lua)
+-- vim.g.mason_install_timeout_ms = 240000   -- extend timeout to 4 min (default 120 s)
+
+-- Python debugpy (python.lua)
+-- vim.g.debugpy_python = "/path/to/python"  -- pin interpreter; bypasses auto-detection
+
+-- Project root detection (path.lua)
+-- vim.g.path_max_walk_depth = 30    -- walk deeper for nested monorepos (default 20)
+-- vim.g.path_cache_ttl      = 60    -- cache longer when switching projects rarely (default 30 s)
+-- vim.g.path_debug          = true  -- log root-detection fallbacks at DEBUG level
+```
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `disable_highlight_overrides` | `false` | Skip all `highlights.lua` overrides |
+| `disable_tint` | `false` | Disable tint.nvim (low-maintenance upstream) |
+| `disable_smear_cursor` | `false` | Disable smear-cursor (tmux artefact workaround) |
+| `disable_vsg_format` | `false` | Disable VHDL vsg formatter |
+| `mason_install_timeout_ms` | `120000` | Per-install timeout for `:MasonInstallAll` |
+| `debugpy_python` | `nil` | Pin Python interpreter for debugpy |
+| `path_max_walk_depth` | `20` | Upward-walk limit for root detection |
+| `path_cache_ttl` | `30` | Root-cache lifetime in seconds |
+| `path_debug` | `false` | Log silent cwd fallbacks (DEBUG level) |
+
 ---
 
 ## Load-order Constraints
@@ -219,6 +271,8 @@ Enforced in `plugins/specs/init.lua`. Do not reorder.
 
 ### Pure Lua modules (safe to `:luafile`)
 
+These modules carry no plugin state and can be reloaded without restarting:
+
 ```vim
 :luafile ~/.config/nvim/lua/core/keymaps.lua
 :luafile ~/.config/nvim/lua/core/commands.lua
@@ -228,7 +282,11 @@ Enforced in `plugins/specs/init.lua`. Do not reorder.
 :luafile ~/.config/nvim/lua/core/util/quotes.lua
 :luafile ~/.config/nvim/lua/core/util/runner.lua
 :luafile ~/.config/nvim/lua/core/util/path.lua
+:luafile ~/.config/nvim/lua/core/util/exec.lua
+:luafile ~/.config/nvim/lua/core/util/term.lua
 ```
+
+> `path.lua` re-reads `vim.g.path_max_walk_depth` and `vim.g.path_cache_ttl` at load time, so updating those globals and then `:luafile`-ing `path.lua` applies the new values immediately.
 
 ### Plugin reloads (use Lazy)
 
@@ -249,6 +307,12 @@ Enforced in `plugins/specs/init.lua`. Do not reorder.
 | `options.lua` | some options only take effect before plugins load |
 | `treesitter.lua` | parser state is process-scoped |
 | Any theme spec | lazy.nvim priority flags are set at startup |
+| `lsp.lua` | LSP server config and capabilities memoised at startup |
+| `completion.lua` | blink.cmp capability injection must precede LSP init |
+| `dap.lua` | adapter FileType autocmds registered once at config time |
+| `test.lua` | neotest adapter list assembled at config time |
+| Any `lang/*.lua` | LSP on_attach keymaps and formatter tables set at startup |
+| Any `vim.g` escape-hatch flag | flags are read once at plugin-load time |
 
 ---
 
@@ -273,6 +337,17 @@ Enforced in `plugins/specs/init.lua`. Do not reorder.
 | Completion not working | `:Lazy update` · verify `version = "1.*"` in `completion.lua` |
 | COBOL LSP not attaching | `npm i -g @broadcommfd/cobol-language-support` + restart |
 | VHDL LSP not attaching | `cargo install vhdl_ls` + restart |
+| TypeScript LSP double-attaching | Ensure typescript-tools.nvim installed; `lsp.lua` falls back to `ts_ls` only when `lua/typescript-tools/init.lua` absent from rtp |
+| `<leader>ts*` keys missing in .js/.jsx | Swap `typescript.lua` (v2.4.1-patch) |
+| VHDL format applies stale on-disk content | Swap `vhdl.lua` (v2.4.1-patch; vsg now uses `--stdin`) |
+| Iron send-motion applies wrong range | Swap `python.lua` (v2.4.1-patch; operatorfunc race resolved) |
+| Ruby DAP uses wrong bundle after gem install | Swap `dap.lua` (v2.4.1-patch; re-detected per session) |
+| `:MasonInstallAll` times out | Set `vim.g.mason_install_timeout_ms = 240000` · swap `commands.lua` |
+| debugpy not found in venv/conda | Set `vim.g.debugpy_python = "/path/to/python"` · swap `python.lua` |
+| Wrong project root | Set `vim.g.path_debug = true`; check DEBUG notifications |
+| Highlight colours wrong on non-TN theme | Swap `highlights.lua` · or `vim.g.disable_highlight_overrides = true` |
+| tint.nvim / smear-cursor artefacts | `vim.g.disable_tint = true` / `vim.g.disable_smear_cursor = true` |
+| Java workspace stale or wrong index | Delete `~/.local/share/nvim/jdtls-workspace/` + restart |
 | Dashboard quote not visible | Full restart required after `ui.lua` changes |
 | Treesitter highlighting broken | `:TSUpdate` |
 | DAP adapter not found | `:MasonInstallAll` |

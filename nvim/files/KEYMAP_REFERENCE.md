@@ -31,7 +31,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 - [Language: Python](#language-python)
 - [Language: Rust](#language-rust)
 - [Language: Go](#language-go)
-- [Language: TypeScript](#language-typescript)
+- [Language: TypeScript / JavaScript](#language-typescript--javascript)
 - [Language: JavaScript Packages](#language-javascript-packages)
 - [Language: Java](#language-java)
 - [Language: Kotlin](#language-kotlin)
@@ -52,9 +52,12 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 ## Editing
 
+> `jk` / `kj` insert-mode escape is handled by **better-escape.nvim** (timeout 200 ms).
+> It is not a hard keymap and does not appear in `:map`.
+
 | Key | Mode | Action |
 |-----|------|--------|
-| `jk` / `kj` | Insert | Exit insert mode |
+| `jk` / `kj` | Insert | Exit insert mode (better-escape.nvim) |
 | `<Esc>` | Normal | Clear search highlight |
 | `Alt+j` | Normal / Visual | Move line / selection down |
 | `Alt+k` | Normal / Visual | Move line / selection up |
@@ -71,9 +74,16 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>se` | Equal splits |
 | `<leader>sx` | Close current split |
 | `<leader>sm` | Maximize / restore split |
-| `Ctrl+h/j/k/l` | Move between splits |
-| `Ctrl+↑/↓` | Resize height |
-| `Ctrl+←/→` | Resize width |
+| `Ctrl+h` | Move to left split |
+| `Ctrl+j` | Move to lower split |
+| `Ctrl+k` | Move to upper split |
+| `Ctrl+l` | Move to right split |
+| `Ctrl+↑` | Increase split height |
+| `Ctrl+↓` | Decrease split height |
+| `Ctrl+←` | Decrease split width |
+| `Ctrl+→` | Increase split width |
+
+> `Ctrl+j` / `Ctrl+k` are Normal-mode only. blink.cmp owns them in Insert mode — there is no conflict.
 
 ---
 
@@ -302,6 +312,14 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>\v` | Normal | Vertical terminal |
 | `<Esc>` | Terminal | Exit terminal mode |
 
+> **`<Esc>` in terminal mode** exits back to Normal before the running program
+> receives the key. This is intentional for most use cases but breaks nested
+> TUI programs (ranger, vim, fzf). To use double-escape instead, add to `init.lua`:
+> ```lua
+> vim.keymap.del("t", "<Esc>")
+> vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { noremap = true })
+> ```
+
 ---
 
 ## UI & Focus
@@ -338,7 +356,8 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 |-----|--------|
 | `<leader>ha` | Add current file |
 | `<leader>hm` | Quick menu |
-| `<leader>h1`–`h4` / `Alt+1`–`4` | Jump to file 1–4 |
+| `<leader>h1`–`h4` | Jump to file 1–4 |
+| `Alt+1`–`4` | Jump to file 1–4 (shortcut) |
 
 ---
 
@@ -477,6 +496,11 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>pyrq` | Quit REPL |
 | `<leader>pyrx` | Clear REPL |
 
+> **`<leader>pyrc` (send motion):** enters operator-pending mode — press a motion
+> (`ip`, `aw`, `3j`, etc.) to send that range to the REPL. The operatorfunc is
+> restored after the motion completes via a `ModeChanged` autocmd rather than a
+> fixed-delay timer, so the motion selection is always captured correctly.
+
 ---
 
 ## Language: Rust
@@ -505,7 +529,11 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 ---
 
-## Language: TypeScript
+## Language: TypeScript / JavaScript
+
+> These keymaps are active in **all four filetypes**: `typescript`, `typescriptreact`,
+> `javascript`, and `javascriptreact`. All TypeScript Tools commands work for
+> JavaScript files when TypeScript's JS support is active.
 
 | Key | Action |
 |-----|--------|
@@ -513,7 +541,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>tsi` | Add missing imports |
 | `<leader>tsr` | Remove unused imports |
 | `<leader>tsf` | Fix all auto-fixable |
-| `<leader>tsd` | Go to source definition |
+| `<leader>tsd` | Go to source definition (not `.d.ts`) |
 
 ---
 
@@ -626,7 +654,8 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 ## Language: VHDL
 
-> Requires `ghdl` on PATH.
+> Requires `ghdl` on PATH. Formatter requires `vsg` (`pip install vsg`).
+> Format-on-save uses `--stdin` so unsaved buffer changes are formatted correctly.
 
 | Key | Action |
 |-----|--------|
