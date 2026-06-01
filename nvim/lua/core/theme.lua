@@ -111,9 +111,16 @@ function M.switch(theme_name)
   end
   M.config.theme = theme_name
 
-  _cache.manual_override = nil
-  _cache.hour            = nil
-  _cache.value           = nil
+  -- Stamp before apply() so the ColorScheme autocmd in highlights.lua
+  -- picks up the new theme name on the same event that fires during apply().
+  vim.g._nvim_active_theme = theme_name
+
+  -- Deliberately NOT resetting _cache.manual_override here: the user's
+  -- dark/light preference (set via toggle()) should survive a theme switch.
+  -- Only invalidate the TTL cache so time-of-day re-resolves when no manual
+  -- override exists.
+  _cache.hour  = nil
+  _cache.value = nil
 
   apply(resolve_background())
   vim.notify(string.format("[theme] switched to %s", theme_name), vim.log.levels.INFO)

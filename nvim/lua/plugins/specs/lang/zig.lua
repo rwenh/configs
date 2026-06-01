@@ -32,9 +32,10 @@ return {
         pattern  = "zig",
         group    = vim.api.nvim_create_augroup("ZigDap", { clear = true }),
         callback = function()
-          local ok, dap = pcall(require, "dap")
-          if not ok then
-            vim.notify("nvim-dap not available", vim.log.levels.WARN)
+          local ok_dap, dap = pcall(require, "dap")
+          if not ok_dap then
+            vim.notify("[zig] nvim-dap not available — DAP config skipped",
+              vim.log.levels.DEBUG)
             return
           end
 

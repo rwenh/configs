@@ -179,7 +179,7 @@ local runners = {
     if vim.fn.executable("ghdl") ~= 1 then return nil end
 
     local entity = nil
-    local ok_rf, lines = pcall(vim.fn.readfile, file)   -- no line-count limit
+    local ok_rf, lines = pcall(vim.fn.readfile, file)
     if ok_rf and lines then
       for _, line in ipairs(lines) do
         entity = line:match("entity%s+(%w+)%s+is")
@@ -229,7 +229,10 @@ local selection_interpreters = {
     return vim.fn.executable("python3") == 1 and "python3" or "python"
   end,
   lua = function()
-    return vim.fn.executable("lua") == 1 and "lua" or nil
+    for _, v in ipairs({ "lua", "lua5.4", "lua5.3", "lua5.2", "lua5.1" }) do
+      if vim.fn.executable(v) == 1 then return v end
+    end
+    return nil
   end,
   javascript = function()
     return vim.fn.executable("node") == 1 and "node" or nil
@@ -305,8 +308,6 @@ function M.run_selection(start_line, end_line)
     local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
     local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
 
-    -- Single consolidated guard: covers unset marks (line=0), stale marks
-    -- (line > lcount), and mark API failure in one readable block.
     local lcount   = vim.api.nvim_buf_line_count(buf)
     local sl       = ok_s and mark_s[1] or 0
     local el       = ok_e and mark_e[1] or 0
@@ -354,10 +355,13 @@ function M.run_selection(start_line, end_line)
   end
 
   local EXT_MAP = {
+    javascript       = "js",
+    typescript       = "ts",
     javascriptreact  = "js",
     typescriptreact  = "ts",
     sh               = "sh",
     bash             = "sh",
+    lua              = "lua",
   }
   local ext     = EXT_MAP[ft] or ft
   local tmpfile = vim.fn.tempname() .. "." .. ext
@@ -395,8 +399,6 @@ function M.run_selection(start_line, end_line)
         pcall(vim.api.nvim_del_augroup_by_name, aug_name)
       end,
     })
-    -- Safety net: if TermClose never fires (user deletes the buffer, etc.)
-    -- clean up after 2 s.
     vim.defer_fn(cleanup, 2000)
     vim.cmd("split | terminal " .. cmd)
   end

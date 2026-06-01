@@ -37,10 +37,13 @@ return {
               vim.notify("[cobol] cobc not found", vim.log.levels.ERROR)
               return
             end
-            require("core.util.term").float(
-              "cobc -fsyntax-only "
-              .. vim.fn.shellescape(vim.fn.expand("%:p"))
-            )
+            local tmp_obj = vim.fn.tempname() .. ".o"
+            require("core.util.term").float(string.format(
+              "cobc -Wall -c -o %s %s; EC=$?; rm -f %s; exit $EC",
+              vim.fn.shellescape(tmp_obj),
+              vim.fn.shellescape(vim.fn.expand("%:p")),
+              vim.fn.shellescape(tmp_obj)
+            ))
           end,
           desc = "COBOL Syntax Check",
           ft   = "cobol",

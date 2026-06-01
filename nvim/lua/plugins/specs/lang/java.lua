@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/java.lua — Java development
 --
--- LSP:    jdtls via nvim-jdtls (this file — not lspconfig/mason-lspconfig)
--- Format: jdtls built-in formatter (no conform entry needed)
--- DAP:    java-debug-adapter via jdtls on_attach + dap.lua configurations
--- Test:   neotest-java via test.lua; java-test via jdtls bundles
--- Docs:   neogen optional spec (this file)
---
 
 return {
   {
@@ -185,14 +179,17 @@ return {
             }
           end
 
-          local start_ok = pcall(function()
+          local start_ok, start_err = pcall(function()
             jdtls.start_or_attach(build_jdtls_config())
           end)
           if start_ok then
             vim.b[e.buf].jdtls_started = true
           else
-            vim.notify("[java] jdtls failed to start — will retry on next open",
-              vim.log.levels.WARN)
+            vim.notify(
+              "[java] jdtls failed to start: " .. tostring(start_err)
+              .. "\nDelete ~/.local/share/nvim/jdtls-workspace/ and reopen the file.",
+              vim.log.levels.WARN
+            )
           end
         end,
       })

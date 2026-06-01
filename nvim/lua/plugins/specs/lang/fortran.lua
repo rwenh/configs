@@ -5,7 +5,6 @@ local shared = require("plugins.specs.lang.shared")
 
 return {
   -- ── Conform: fprettify custom config ──────────────────────────────────────
-  -- This spec only provides the custom formatter invocation arguments.
 
   {
     "stevearc/conform.nvim",
@@ -16,6 +15,17 @@ return {
         command = "fprettify",
         args    = { "--indent", "2", "--stdout", "-" },
         stdin   = true,
+        condition = function()
+          if vim.fn.executable("fprettify") ~= 1 then
+            vim.notify(
+              "[fortran] fprettify not found — format-on-save disabled.\n"
+              .. "Install: pip install fprettify",
+              vim.log.levels.DEBUG
+            )
+            return false
+          end
+          return true
+        end,
       }
     end,
   },

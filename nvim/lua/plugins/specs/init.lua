@@ -11,9 +11,9 @@ return {
   -- ── Core plugin infrastructure ─────────────────────────────────────────────
   { import = "plugins.specs.ui"         },
   { import = "plugins.specs.editor"     },
-  { import = "plugins.specs.completion" },   -- blink caps; must precede lsp
+  { import = "plugins.specs.completion" },
   { import = "plugins.specs.treesitter" },
-  { import = "plugins.specs.lsp"        },   -- must precede lang/*
+  { import = "plugins.specs.lsp"        },
   { import = "plugins.specs.git"        },
   { import = "plugins.specs.dap"        },
   { import = "plugins.specs.test"       },
@@ -34,12 +34,12 @@ return {
   -- Web / scripted
   { import = "plugins.specs.lang.javascript" },
   { import = "plugins.specs.lang.typescript" },
-  { import = "plugins.specs.lang.web"        },   -- autotag + emmet; BEFORE html/css
+  { import = "plugins.specs.lang.web"        },
   { import = "plugins.specs.lang.html"       },
   { import = "plugins.specs.lang.css"        },
 
   -- Data / markup
-  { import = "plugins.specs.lang.database"   },   -- dadbod + SQL config owner
+  { import = "plugins.specs.lang.database"   },
   { import = "plugins.specs.lang.markdown"   },
   { import = "plugins.specs.lang.rest"       },
 

@@ -4,8 +4,6 @@
 local M = {}
 
 -- ── Color constants (TokyoNight palette) ──────────────────────────────────────
--- To adapt for a different dark theme change ONLY these values; apply() will
--- use them for any theme whose name starts with that theme's identifier string.
 local BG     = "#0d1117"   -- float background  (deep dark)
 local BLUE   = "#7aa2f7"   -- border / accent    (tokyonight blue)
 local PURPLE = "#bb9af7"   -- title / group      (tokyonight purple)
@@ -46,8 +44,6 @@ local tn_overrides = {
 
 -- ── Minimal theme-agnostic overrides ─────────────────────────────────────────
 -- These only set DAP sign
--- colours and the DapStoppedLine background — values that no standard theme
--- defines out of the box, so they are safe to apply universally.
 local minimal_overrides = {
   DapBreakpoint  = { fg = RED },
   DapStopped     = { fg = GREEN, bold = true },
@@ -81,7 +77,6 @@ end
 vim.api.nvim_create_autocmd("ColorScheme", {
   group    = vim.api.nvim_create_augroup("HighlightOverrides", { clear = true }),
   callback = function()
-    -- Sync the active-theme stamp so apply() uses the correct override set.
     local ok, t = pcall(require, "core.theme")
     if ok and t.get_active_theme then
       vim.g._nvim_active_theme = t.get_active_theme()

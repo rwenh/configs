@@ -1,26 +1,5 @@
 -- lua/core/util/buf_keymap.lua — buffer-local keymap registration helper
 --
--- Eliminates the local `map`/`imap`/`mapv` factory functions that were
--- independently defined in python.lua, java.lua, kotlin.lua, and elsewhere.
---
--- Usage:
---
---   local bkm = require("core.util.buf_keymap")
---
---   -- Single map:
---   bkm.set(buf, "n", "<leader>pydm", function() ... end, "Python Debug Method")
---
---   -- Batch (most common pattern):
---   bkm.batch(buf, {
---     { "n",        "<leader>pydm", function() ... end, "Python Debug Method" },
---     { "n",        "<leader>pydc", function() ... end, "Python Debug Class"  },
---     { {"n","v"},  "<leader>pyds", function() ... end, "Python Debug Selection" },
---   })
---
---   -- Guard: apply at most once per buffer lifetime.
---   -- Pass a unique flag_name per feature to prevent re-registration on
---   -- :luafile reloads (mirrors python.lua's python_dap_keymaps_registered flag).
---   bkm.batch(buf, maps, "python_dap_keymaps_registered")
 
 local M = {}
 
@@ -40,14 +19,6 @@ function M.set(buf, mode, lhs, rhs, desc)
   })
 end
 
---- Register a batch of buffer-local keymaps.
---- Each entry: { mode, lhs, rhs, desc }
----
---- If *flag_name* is provided the maps are applied at most once per buffer —
---- subsequent calls with the same flag_name on the same buffer are no-ops.
---- This replaces the ad-hoc `vim.b[buf].X_registered` pattern used in
---- python.lua and elsewhere.
----
 ---@param buf        integer    buffer handle
 ---@param maps       table      list of { mode, lhs, rhs, desc }
 ---@param flag_name  string?    optional deduplication key stored in vim.b[buf]
@@ -64,11 +35,6 @@ function M.batch(buf, maps, flag_name)
   end
 end
 
---- Convenience: apply *maps* to every currently-loaded buffer whose filetype
---- matches *ft*, then register a FileType autocmd to catch future buffers.
---- This replaces the dual "retroactive loop + FileType autocmd" pattern that
---- appears in python.lua (DAP keymaps) and iron.nvim keymaps.
----
 ---@param ft         string     filetype to match (e.g. "python")
 ---@param maps       table      list of { mode, lhs, rhs, desc }
 ---@param flag_name  string?    deduplication key (recommended)

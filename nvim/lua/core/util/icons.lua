@@ -1,9 +1,5 @@
 -- lua/core/util/icons.lua — shared Nerd Font icon constants
 --
--- All plugin specs that reference icons (clangd_extensions, nvim-navic,
--- lualine, lsp diagnostic signs, etc.) import from here instead of
--- hardcoding icon strings independently.  Changes to a single icon are
--- reflected everywhere automatically.
 
 local M = {}
 

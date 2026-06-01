@@ -230,16 +230,12 @@ M._weights = {
 }
 
 -- ── RNG seed ──────────────────────────────────────────────────────────────────
--- Fallback: headless / embedded environments where vim.uv is unavailable.
---   Multiply os.time() by 1000 and add pid for slightly better spread than
---   the original bare os.time() + pid.
 do
   local seed = (vim.uv and vim.uv.hrtime and vim.uv.hrtime())
     or (os.time() * 1000 + (vim.fn.getpid and vim.fn.getpid() or 0))
   math.randomseed(seed)
 end
 
---- Return a random quote, optionally filtered by category.
 ---@param category string?
 ---@return table  { text, author, category }
 function M.random(category)
@@ -281,8 +277,6 @@ function M.weighted()
   return pool[math.random(#pool)]
 end
 
---- Return the session quote — one per Neovim session, chosen once at first
---- call and cached in vim.g so dashboard re-opens show the same quote.
 ---@return table  { text, author, category }
 function M.session()
   if vim.g.nvim_session_quote_text and vim.g.nvim_session_quote_author then
@@ -316,7 +310,6 @@ function M.formatted(q)
   return q.text .. "\n— " .. q.author
 end
 
---- Return quote counts per category (for debugging / tests).
 ---@return table  { category = count }
 function M.counts()
   local result = {}

@@ -391,7 +391,7 @@ return {
             set_bps_scheduled(bufnr, entries)
           else
             local aug = vim.api.nvim_create_augroup(
-              "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 16), { clear = true }
+              "DapBpRestore_" .. vim.fn.sha256(path):sub(1, 32), { clear = true }
             )
             vim.api.nvim_create_autocmd("BufReadPost", {
               pattern  = "*",

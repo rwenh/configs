@@ -85,7 +85,11 @@ end
 ---@return function?, function?, function?, function?   s, t, i, f
 function M.destructure()
   local ok, ls = pcall(require, "luasnip")
-  if not ok then return nil, nil, nil, nil end
+  if not ok then
+    vim.notify("[snippets] LuaSnip not available — destructure() returned nils",
+      vim.log.levels.DEBUG)
+    return nil, nil, nil, nil
+  end
   return ls.snippet, ls.text_node, ls.insert_node, ls.function_node
 end
 

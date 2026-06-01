@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/go.lua — Go language support
 --
--- LSP:    gopls via lsp.lua
--- Format: goimports + gofumpt via lsp.lua conform
--- Lint:   staticcheck via go.nvim (built-in)
--- DAP:    delve via dap.lua (deferred FileType)
--- Test:   neotest-go via test.lua; go.nvim :GoTest; runner.lua run_tests()
---
 -- Test mechanism guide:
 --   <leader>'t   → runner.lua  (go test ./... from project root)
 --   <leader>'n   → neotest     (nearest test with rich output panel)
@@ -23,11 +17,11 @@ return {
     ft    = GO_FT,
     build = false,
     config = function()
-      local ok = pcall(function()
-        require("go").setup({ lsp_cfg = false })
+      local ok, err = pcall(function()
+        require("go").setup({ lsp_cfg = false })  -- gopls managed by lsp.lua
       end)
       if not ok then
-        vim.notify("go.nvim setup failed", vim.log.levels.WARN)
+        vim.notify("go.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
       end
     end,
     keys = {
@@ -42,6 +36,5 @@ return {
     },
   },
 
-  -- Go formatting (goimports + gofumpt) is owned by lsp.lua conform config.
   shared.treesitter({ "go", "gomod", "gowork", "gosum" }),
 }

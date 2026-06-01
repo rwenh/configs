@@ -90,9 +90,13 @@ return {
       }
     end,
     config = function(_, opts)
-      local ok = pcall(function() require("overseer").setup(opts) end)
+      local ok, err = pcall(function() require("overseer").setup(opts) end)
       if not ok then
-        vim.notify("overseer.nvim setup failed", vim.log.levels.WARN)
+        vim.notify(
+          "overseer.nvim setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update overseer.nvim",
+          vim.log.levels.WARN
+        )
       end
     end,
   },

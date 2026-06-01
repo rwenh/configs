@@ -12,7 +12,6 @@ return {
     "neovim/nvim-lspconfig",
     optional = true,
     init = function()
-      -- Defined once, used by both the 0.11 and legacy branches below.
       local cfg = {
         filetypes    = { "html", "htmldjango", "jinja.html" },
         init_options = {
@@ -24,7 +23,7 @@ return {
         vim.schedule(function()
           vim.notify(
             "[html] vscode-html-language-server not found — run :MasonInstall html-lsp",
-            vim.log.levels.WARN
+            vim.log.levels.DEBUG
           )
         end)
         return

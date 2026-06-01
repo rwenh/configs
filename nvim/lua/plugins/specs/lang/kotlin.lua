@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/kotlin.lua — Kotlin development
 --
--- LSP:    kotlin_language_server via lsp.lua
--- Format: ktlint via lsp.lua conform
--- Lint:   ktlint via lsp.lua nvim-lint
--- DAP:    java-debug-adapter via dap.lua (Kotlin runs on JVM)
--- Test:   neotest-java via test.lua; <leader>ktt here
---
 -- Test mechanism guide:
 --   <leader>ktt   → gradle/maven test (this file)
 --   <leader>'n    → neotest-java (nearest test)
@@ -27,6 +21,10 @@ return {
       local function resolve()
         local ok_path,   path   = pcall(require, "core.util.path")
         local ok_runner, runner = pcall(require, "core.util.runner")
+        if not ok_runner then
+          vim.notify("[kotlin] core.util.runner unavailable — build/test disabled",
+            vim.log.levels.ERROR)
+        end
         local root = (ok_path and path.find_root()) or vim.fn.getcwd()
         return root, ok_runner and runner or nil
       end

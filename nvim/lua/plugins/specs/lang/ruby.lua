@@ -1,17 +1,9 @@
 -- lua/plugins/specs/lang/ruby.lua — Ruby language support
 --
--- LSP:    solargraph via lsp.lua
--- Format: rubocop via lsp.lua conform
--- Lint:   rubocop via lsp.lua nvim-lint
--- DAP:    rdbg via dap.lua (deferred FileType)
--- Test:   vim-test (this file) + neotest-rspec (test.lua) + runner.lua
---
 -- Test mechanism guide:
 --   <leader>rbn/f/s  → vim-test (buffer-local, toggleterm strategy)
 --   <leader>'n       → neotest-rspec (nearest test with rich output)
 --   <leader>'t       → runner.lua (bundle exec rspec from project root)
---   Use neotest for interactive TDD; vim-test for quick file/suite runs;
---   runner for full CI-style suite execution.
 --
 
 local shared = require("plugins.specs.lang.shared")
@@ -22,13 +14,13 @@ return {
     "vim-test/vim-test",
     ft   = "ruby",
     init = function()
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = "ruby",
+      vim.api.nvim_create_autocmd("VimEnter", {
+        pattern  = "*",
         once     = true,
         group    = vim.api.nvim_create_augroup("VimTestRubyStrategy", { clear = true }),
         callback = function()
-          vim.g["test#strategy"]                    = "toggleterm"
-          vim.g["test#toggleterm#reuse_terminal"]   = 1
+          vim.g["test#strategy"]                  = "toggleterm"
+          vim.g["test#toggleterm#reuse_terminal"] = 1
         end,
       })
     end,
@@ -70,7 +62,4 @@ return {
 
   shared.treesitter({ "ruby" }),
 
-  -- NOTE: rubocop formatter/linter and solargraph LSP are in lsp.lua.
-  -- rdbg DAP adapter is in dap.lua.
-  -- neotest-rspec adapter is in test.lua.
 }

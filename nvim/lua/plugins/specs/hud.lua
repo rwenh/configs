@@ -49,9 +49,11 @@ return {
     },
   },
 
+  -- tint.nvim dims inactive windows. Opt out: vim.g.disable_tint = true
   {
     "levouh/tint.nvim",
     event = "VeryLazy",
+    cond  = function() return vim.g.disable_tint ~= true end,
     opts  = {
       tint                      = -30,
       saturation                = 0.7,
@@ -62,9 +64,12 @@ return {
     },
   },
 
+  -- smear-cursor.nvim renders a motion trail on the cursor.
+  -- Opt out: vim.g.disable_smear_cursor = true  (recommended for tmux/SSH)
   {
     "sphamba/smear-cursor.nvim",
     event = "VeryLazy",
+    cond  = function() return vim.g.disable_smear_cursor ~= true end,
     opts  = {
       stiffness                        = 0.8,
       trailing_exponent                = 3,
@@ -297,6 +302,4 @@ return {
   -- 5. MISC
   -- ═══════════════════════════════════════════════════════════════════════════
 
-  -- TodoTelescope key owned by editor.lua primary todo-comments spec.
-  -- blame.nvim owned by git.lua.
 }

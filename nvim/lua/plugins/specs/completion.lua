@@ -59,8 +59,9 @@ return {
             score_offset       = -3,
           },
           cmdline = {
-            name   = "cmdline",
-            module = "blink.cmp.sources.cmdline",
+            name               = "cmdline",
+            module             = "blink.cmp.sources.cmdline",
+            min_keyword_length = 0,
           },
         },
       },
@@ -97,7 +98,8 @@ return {
     },
 
     config = function(_, opts)
-      local has_ls, ls = pcall(require, "luasnip")
+      local has_ls = pcall(require, "luasnip")
+      local ls     = has_ls and require("luasnip") or nil
 
       if not has_ls then
         vim.notify(

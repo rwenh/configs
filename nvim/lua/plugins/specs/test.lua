@@ -55,7 +55,11 @@ return {
     config = function(_, opts)
       local ok, err = pcall(function() require("neotest").setup(opts) end)
       if not ok then
-        vim.notify("[neotest] setup failed: " .. tostring(err), vim.log.levels.ERROR)
+        vim.notify(
+          "[neotest] setup failed: " .. tostring(err)
+          .. "\nRun :checkhealth neotest for details.",
+          vim.log.levels.ERROR
+        )
       end
     end,
 
@@ -169,8 +173,6 @@ return {
           local ok_p, p = pcall(require, "core.util.path")
           local root = (ok_p and p.find_root(vim.fn.fnamemodify(file_path, ":h")))
             or vim.fn.getcwd()
-          -- Yield the file to the vitest adapter when vitest config is present.
-          -- Uses the cached result — no extra findfile calls per invocation.
           if is_vitest_root(root) then return false end
           return orig_is_test_file(file_path)
         end

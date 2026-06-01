@@ -202,13 +202,6 @@ return {
       }) do lsp_setup(s, {}) end
 
       -- ── TypeScript fallback ──────────────────────────────────────────────────
-      -- Detects whether typescript-tools.nvim is present using public APIs:
-      --   1. package.loaded      — already required this session (fastest path).
-      --   2. nvim_get_runtime_file("lua/typescript-tools/init.lua") — lazy.nvim
-      --      adds the plugin dir to rtp when configured, even before lazy-loading.
-      --      The module lives at lua/typescript-tools/init.lua (directory module),
-      --      NOT at lua/typescript-tools.lua — the previous single-file check
-      --      never matched and caused ts_ls to always register as a fallback.
       do
         local ts_tools_present = (function()
           if package.loaded["typescript-tools"] then return true end
@@ -242,7 +235,7 @@ return {
         },
         {
           server = "fortls",
-          binary = "fortls",   -- explicit: avoids nil-fallback ambiguity
+          binary = "fortls",
           config = {
             filetypes = { "fortran" },
             settings  = { fortls = {
@@ -255,7 +248,7 @@ return {
         },
         {
           server = "sqls",
-          binary = "sqls",     -- explicit: avoids nil-fallback ambiguity
+          binary = "sqls",
           config = {
             filetypes = { "sql", "mysql" },
             on_attach = function(client, _)

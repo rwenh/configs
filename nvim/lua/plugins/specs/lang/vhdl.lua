@@ -16,8 +16,18 @@ return {
         args    = { "--output", "-", "--stdin" },
         stdin   = true,
         condition = function()
-          if vim.g.disable_vsg_format then return false end
-          return vim.fn.executable("vsg") == 1
+          if vim.g.disable_vsg_format then
+            return false
+          end
+          if vim.fn.executable("vsg") ~= 1 then
+            vim.notify(
+              "[vhdl] vsg not found — VHDL format-on-save disabled.\n"
+              .. "Install: pip install vsg",
+              vim.log.levels.DEBUG
+            )
+            return false
+          end
+          return true
         end,
       }
     end,

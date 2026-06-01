@@ -109,9 +109,6 @@ return {
       incremental_selection = {
         enable  = true,
         keymaps = {
-          -- In INSERT mode blink.cmp owns <C-space> (open menu).
-          -- In NORMAL mode nvim-treesitter owns it (init/expand selection).
-          -- There is no functional conflict because the modes are exclusive.
           init_selection    = "<C-space>",
           node_incremental  = "<C-space>",
           scope_incremental = false,

@@ -5,10 +5,6 @@ local M = {}
 
 -- ── Option spec ───────────────────────────────────────────────────────────────
 
--- { scope, key, off_value, default }
---   scope     : "o" = vim.o   "wo" = vim.wo
---   off_value : value applied when focus is active
---   default   : restore fallback when snapshot is nil
 local SPEC = {
   { "o",  "laststatus",     0,     3       },
   { "o",  "showtabline",    0,     1       },
@@ -41,8 +37,6 @@ local function apply_spec(active)
 end
 
 -- ── Plugin coordination helpers ───────────────────────────────────────────────
--- _zen_active removed: zm.open() and zm.close() are idempotent.
--- Independent <leader>uz usage can no longer desync focus state.
 
 local function set_zen(want_on)
   local ok, zm = pcall(require, "zen-mode")

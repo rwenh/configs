@@ -15,7 +15,14 @@ return {
     end,
     opts  = { colors = { up_to_date = "#3C4048", outdated = "#d19a66" } },
     config = function(_, opts)
-      pcall(function() require("package-info").setup(opts) end)
+      local ok, err = pcall(function() require("package-info").setup(opts) end)
+      if not ok then
+        vim.notify(
+          "[javascript] package-info setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update package-info.nvim",
+          vim.log.levels.WARN
+        )
+      end
     end,
     keys = {
       {

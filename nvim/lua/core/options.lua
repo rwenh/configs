@@ -79,8 +79,6 @@ opt.foldlevelstart = 99
 opt.foldenable     = true
 
 opt.foldmethod = "expr"
--- Uses the native Lua treesitter foldexpr introduced in Neovim 0.10+.
--- (Replaced deprecated "nvim_treesitter#foldexpr()" shim in v2.3.1.)
 opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 
 -- ═══════════════════════════════════════════════════════════════════════════

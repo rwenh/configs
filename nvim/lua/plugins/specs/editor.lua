@@ -286,8 +286,6 @@ return {
 
   -- ── Flash ──────────────────────────────────────────────────────────────────
 
-  -- This spec registers flash without a keys= table because the keymap is
-  -- managed centrally; event=VeryLazy ensures it loads before any 's' press.
   {
     "folke/flash.nvim",
     event = "VeryLazy",
@@ -344,7 +342,7 @@ return {
         return (val ~= "" and not val:find("^fatal")) and val or nil
       end
 
-      pcall(function()
+      local ok_t, err_t = pcall(function()
         template.setup({
           temp_dir     = vim.fn.stdpath("config") .. "/templates",
           auto_name    = false,
@@ -353,6 +351,9 @@ return {
           web_devicons = true,
         })
       end)
+      if not ok_t then
+        vim.notify("[template] setup failed: " .. tostring(err_t), vim.log.levels.WARN)
+      end
     end,
   },
 }

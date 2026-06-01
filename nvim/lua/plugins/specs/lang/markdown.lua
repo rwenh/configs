@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/markdown.lua — Markdown development
 --
--- Architecture:
---   render-markdown.nvim — in-editor rendered Markdown (concealment, icons)
---   markdown-preview.nvim — browser preview (live HTML render)
---   vim-markdown         — syntax, frontmatter, folding (disabled; treesitter owns it)
---   vim-table-mode       — table editing helper
--- All four cover different concerns; none are redundant.
 
 local icons = require("core.util.icons")
 
@@ -43,8 +37,8 @@ return {
 
     init = function()
       vim.g.mkdp_filetypes  = { "markdown" }
-      vim.g.mkdp_auto_start = 0   -- don't auto-open on buffer enter
-      vim.g.mkdp_auto_close = 1   -- auto-close when buffer changes
+      vim.g.mkdp_auto_start = 0
+      vim.g.mkdp_auto_close = 1
       vim.g.mkdp_preview_options = {
         sync_scroll_type = "middle",
       }
@@ -120,9 +114,13 @@ return {
       },
     },
     config = function(_, opts)
-      local ok = pcall(function() require("render-markdown").setup(opts) end)
+      local ok, err = pcall(function() require("render-markdown").setup(opts) end)
       if not ok then
-        vim.notify("render-markdown.nvim setup failed", vim.log.levels.WARN)
+        vim.notify(
+          "render-markdown.nvim setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update render-markdown.nvim",
+          vim.log.levels.WARN
+        )
       end
     end,
   },

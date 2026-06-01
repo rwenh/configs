@@ -67,7 +67,10 @@ return {
       server         = { override = false },
     },
     config = function(_, opts)
-      pcall(function() require("tailwind-tools").setup(opts) end)
+      local ok, err = pcall(function() require("tailwind-tools").setup(opts) end)
+      if not ok then
+        vim.notify("tailwind-tools setup failed: " .. tostring(err), vim.log.levels.WARN)
+      end
     end,
   },
 

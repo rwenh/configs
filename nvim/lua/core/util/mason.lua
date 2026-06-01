@@ -3,11 +3,6 @@
 
 local M = {}
 
---- Resolve a binary to its absolute path.
--- Resolution order:
---   1. PATH (via exepath) — honours system-wide installs and symlinks.
---   2. mason/bin/<name>   — fallback for Mason-installed binaries.
---
 ---@param name string  binary name (e.g. "codelldb", "dlv", "debugpy")
 ---@return string      absolute path (may not exist — callers must check)
 function M.bin(name)
@@ -29,9 +24,6 @@ function M.packages_root()
   return vim.fn.stdpath("data") .. "/mason/packages"
 end
 
---- Check whether a Mason-installed binary is present and executable.
---
--- Uses executable() only — NOT filereadable().
 ---@param name string  binary name passed to M.bin()
 ---@return boolean
 function M.bin_ok(name)
@@ -39,13 +31,6 @@ function M.bin_ok(name)
   return vim.fn.executable(p) == 1
 end
 
---- Check whether a Mason-installed shell script exists and is readable.
---
--- filereadable() is intentionally used here because the script is invoked
--- by its absolute path from an adapter config, not run directly from a
--- shell; the caller is responsible for ensuring the correct interpreter
--- is prepended to the command when needed.
---
 ---@param rel string  path relative to mason/packages/
 ---                   (e.g. "elixir-ls/debugger.sh")
 ---@return boolean

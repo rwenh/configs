@@ -1,9 +1,5 @@
 -- lua/plugins/specs/lang/web.lua — shared web tooling
 --
--- IMPORTANT: this spec is imported before html.lua and css.lua in specs/init.lua.
--- autotag and emmet must be available when HTML/CSS configs run.
--- If this file fails to load, html.lua and css.lua lose autotag + emmet.
---
 
 local shared = require("plugins.specs.lang.shared")
 
@@ -23,7 +19,14 @@ return {
       per_filetype = {},
     },
     config = function(_, opts)
-      pcall(function() require("nvim-ts-autotag").setup(opts) end)
+      local ok, err = pcall(function() require("nvim-ts-autotag").setup(opts) end)
+      if not ok then
+        vim.notify(
+          "[web] nvim-ts-autotag setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update nvim-ts-autotag",
+          vim.log.levels.WARN
+        )
+      end
     end,
   },
 

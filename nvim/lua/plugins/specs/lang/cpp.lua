@@ -1,9 +1,5 @@
 -- lua/plugins/specs/lang/cpp.lua — C++ / CMake development
 --
--- NOTE: clangd_extensions (inlay hints, AST) is owned by c.lua which has
---       ft = { "c", "cpp" } — C++ users get full clangd support from c.lua.
---       This file adds CMake build tooling only.
---
 
 local shared = require("plugins.specs.lang.shared")
 local CMAKE_FT = { "cpp", "cmake" }
@@ -21,9 +17,13 @@ return {
       cmake_generate_options = { "-DCMAKE_EXPORT_COMPILE_COMMANDS=1" },
     },
     config = function(_, opts)
-      local ok = pcall(function() require("cmake-tools").setup(opts) end)
+      local ok, err = pcall(function() require("cmake-tools").setup(opts) end)
       if not ok then
-        vim.notify("cmake-tools setup failed", vim.log.levels.WARN)
+        vim.notify(
+          "[cpp] cmake-tools setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update cmake-tools.nvim",
+          vim.log.levels.WARN
+        )
       end
     end,
     keys = (function()

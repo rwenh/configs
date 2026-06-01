@@ -1,11 +1,5 @@
 -- lua/plugins/specs/lang/elixir.lua — Elixir development
 --
--- LSP:    elixirls via lsp.lua (canonical)
--- Format: mix format via lsp.lua conform
--- Lint:   none configured (credo is a popular linter — see note below)
--- DAP:    elixir-ls debugger via dap.lua
--- Test:   neotest-elixir via test.lua; <leader>ext here; runner.lua
---
 -- Test mechanism guide:
 --   <leader>ext   → mix test (this file, project root)
 --   <leader>'n    → neotest-elixir (nearest ExUnit test)
@@ -32,20 +26,20 @@ return {
         vim.notify("elixir-tools setup failed", vim.log.levels.WARN)
         return
       end
-      pcall(function()
+      local ok_elixir = pcall(function()
         elixir.setup({
-          -- elixir-ls is managed by lsp.lua; disable it here to avoid
-          -- double-attachment when elixir-tools is active.
           elixirls = { enable = false },
           nextls   = { enable = true },
         })
       end)
+      if not ok_elixir then
+        vim.notify("[elixir-tools] setup failed — check elixir-tools.nvim install",
+          vim.log.levels.WARN)
+      end
     end,
   },
 
   -- ── Keymaps ────────────────────────────────────────────────────────────────
-  -- These keymaps use toggleterm directly and do not depend on elixir-tools,
-  -- so they are available in the default setup regardless of the nextls flag.
 
   {
     "akinsho/toggleterm.nvim",

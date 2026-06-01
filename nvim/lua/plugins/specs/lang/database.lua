@@ -43,12 +43,6 @@ return {
           end)
         end,
       })
-
-      pcall(function()
-        local ok, blink = pcall(require, "blink.cmp")
-        if ok and blink.add_source then
-        end
-      end)
     end,
   },
 

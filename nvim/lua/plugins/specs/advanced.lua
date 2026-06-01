@@ -82,7 +82,6 @@ return {
       render              = "background",  -- "background" | "foreground" | "virtual"
       enable_named_colors = true,
       enable_tailwind     = true,
-      -- Exclude noisy filetypes where color highlighting adds no value.
       exclude_filetypes   = { "lazy", "mason", "lspinfo", "snacks_dashboard" },
       exclude_buftypes    = { "nofile", "prompt" },
     },
@@ -154,7 +153,13 @@ return {
       for _, mod in ipairs({
         "align", "comment", "move", "splitjoin", "surround"
       }) do
-        pcall(function() require("mini." .. mod).setup() end)
+        local ok, err = pcall(function() require("mini." .. mod).setup() end)
+        if not ok then
+          vim.notify(
+            string.format("[mini.%s] setup failed: %s", mod, tostring(err)),
+            vim.log.levels.WARN
+          )
+        end
       end
     end,
   },

@@ -4,7 +4,7 @@
 local M = {}
 
 -- ── mason-lspconfig server names ─────────────────────────────────────────────
--- Used by: plugins/specs/lsp.lua  mason-lspconfig ensure_installed
+
 M.lspconfig = {
   "lua_ls", "basedpyright",
   "html", "cssls", "jsonls", "yamlls",

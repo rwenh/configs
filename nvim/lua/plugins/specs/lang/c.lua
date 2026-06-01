@@ -21,17 +21,16 @@ return {
         return
       end
 
-      vim.api.nvim_create_autocmd("FileType", {
-        group    = vim.api.nvim_create_augroup("ClangdInlayHints", { clear = true }),
-        pattern  = { "c", "cpp" },
+      vim.api.nvim_create_autocmd("LspAttach", {
+        group   = vim.api.nvim_create_augroup("ClangdInlayHints", { clear = true }),
         callback = function(e)
-          -- get_clients() returns full client objects directly; no need for
-          -- a get_client_by_id round-trip.
-          local client = vim.lsp.get_clients({ bufnr = e.buf, name = "clangd" })[1]
-          if client then
+          local client = vim.lsp.get_client_by_id(e.data.client_id)
+          if client and client.name == "clangd"
+          and client.server_capabilities.inlayHintProvider then
             pcall(function() vim.lsp.inlay_hint.enable(true, { bufnr = e.buf }) end)
           end
         end,
+        desc = "Auto-enable clangd inlay hints on attach",
       })
     end,
   },
