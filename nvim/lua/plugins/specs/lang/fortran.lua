@@ -3,6 +3,53 @@
 
 local shared = require("plugins.specs.lang.shared")
 
+-- ── MPI Fortran filetype registration ─────────────────────────────────────
+pcall(function()
+  vim.filetype.add({
+    extension = {
+      f90  = "fortran", f95  = "fortran", f03  = "fortran",
+      f08  = "fortran", f18  = "fortran",
+      F90  = "fortran", F95  = "fortran", F03  = "fortran",
+      for_ = "fortran", fpp  = "fortran",
+    },
+  })
+end)
+
+-- ── fprettify config detection ─────────────────────────────────────────────
+--
+-- Falls back to "--indent 2 --stdout -" when no config file is present.
+
+local function fprettify_args()
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+
+  local config_candidates = {
+    root .. "/.fprettify.toml",
+    root .. "/.fprettify.rc",
+    root .. "/setup.cfg",
+  }
+
+  for _, f in ipairs(config_candidates) do
+    if vim.fn.filereadable(f) == 1 then
+      -- setup.cfg only counts if it has an [fprettify] section
+      if f:find("setup.cfg", 1, true) then
+        local lines = vim.fn.readfile(f)
+        local has_section = false
+        for _, line in ipairs(lines) do
+          if line:match("^%[fprettify%]") then has_section = true; break end
+        end
+        if not has_section then goto continue end
+      end
+      -- Config file found — let fprettify discover it automatically.
+      return { "--stdout", "-" }
+    end
+    ::continue::
+  end
+
+  -- No config found: use the default explicit args.
+  return { "--indent", "2", "--stdout", "-" }
+end
+
 return {
   -- ── Conform: fprettify custom config ──────────────────────────────────────
 
@@ -13,7 +60,7 @@ return {
       opts.formatters           = opts.formatters or {}
       opts.formatters.fprettify = {
         command = "fprettify",
-        args    = { "--indent", "2", "--stdout", "-" },
+        args    = function() return fprettify_args() end,
         stdin   = true,
         condition = function()
           if vim.fn.executable("fprettify") ~= 1 then
@@ -81,6 +128,19 @@ return {
           desc = "Fortran Make",
           ft   = "fortran",
         },
+        {
+          "<leader>ftf",
+          function()
+            local exec = require("core.util.exec")
+            if not exec.require_bin("fprettify", "pip install fprettify") then return end
+            local args = fprettify_args()
+            local cmd  = "fprettify " .. table.concat(args, " ")
+              .. " " .. vim.fn.shellescape(vim.fn.expand("%:p"))
+            require("core.util.term").float(cmd)
+          end,
+          desc = "Fortran Format (fprettify)",
+          ft   = "fortran",
+        },
       }
     end)(),
   },
@@ -120,6 +180,18 @@ return {
             t("module "), i(1, "name"),
             t({ "", "  implicit none", "  " }), i(0),
             t({ "", "end module " }), ref(1, "name"),
+          }),
+          -- MPI boilerplate
+          s("mpi_init", {
+            t({
+              "use mpi",
+              "integer :: ierr, rank, nprocs",
+              "call MPI_Init(ierr)",
+              "call MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)",
+              "call MPI_Comm_size(MPI_COMM_WORLD, nprocs, ierr)",
+            }),
+            i(0),
+            t({ "", "call MPI_Finalize(ierr)" }),
           }),
         }
       end)

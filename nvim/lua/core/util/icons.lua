@@ -76,7 +76,6 @@ M.ast = {
 }
 
 -- ── Lualine mode labels ───────────────────────────────────────────────────────
--- Keyed by the mode string returned by lualine's "mode" component.
 M.modes = {
   NORMAL      = "󰰓 N",
   INSERT      = "󰰄 I",
@@ -89,7 +88,6 @@ M.modes = {
 }
 
 -- ── Markdown heading signs (render-markdown) ──────────────────────────────────
--- Distinct icons per heading level (H1–H6).
 M.headings = {
   "󰲡 ",  -- H1
   "󰲣 ",  -- H2
@@ -97,6 +95,40 @@ M.headings = {
   "󰲧 ",  -- H4
   "󰲩 ",  -- H5
   "󰲫 ",  -- H6
+}
+
+-- ── Progress / spinner ────────────────────────────────────────────────────────
+-- Braille spinner for LSP progress indicators and async task feedback.
+M.progress = {
+  frames  = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" },
+  done    = "✓",
+  failed  = "✗",
+  pending = "○",
+  running = "◌",
+}
+
+---@param idx integer  1-based frame index (wrap with modulo)
+---@return string
+function M.progress.frame(idx)
+  local frames = M.progress.frames
+  return frames[((idx - 1) % #frames) + 1]
+end
+
+-- ── Statusline extras ─────────────────────────────────────────────────────────
+-- Small icons for optional statusline components (lualine, etc.).
+M.status = {
+  lsp_ok       = " ",
+  lsp_off      = " ",
+  format_on    = "󰉿 ",
+  format_off   = "󰉾 ",
+  focus        = "󰈈 ",
+  readonly     = " ",
+  modified     = " ",
+  saved        = " ",
+  session      = "󱂬 ",
+  auto_cd      = "󱉭 ",
+  large_file   = "󰈚 ",
+  word_count   = "󰈭 ",
 }
 
 return M

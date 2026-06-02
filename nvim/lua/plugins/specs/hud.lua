@@ -49,7 +49,7 @@ return {
     },
   },
 
-  -- tint.nvim dims inactive windows. Opt out: vim.g.disable_tint = true
+  -- tint.nvim dims inactive windows.
   {
     "levouh/tint.nvim",
     event = "VeryLazy",
@@ -65,7 +65,6 @@ return {
   },
 
   -- smear-cursor.nvim renders a motion trail on the cursor.
-  -- Opt out: vim.g.disable_smear_cursor = true  (recommended for tmux/SSH)
   {
     "sphamba/smear-cursor.nvim",
     event = "VeryLazy",
@@ -105,12 +104,12 @@ return {
         lsp_doc_border        = true,
       },
       routes = {
-        { filter = { event = "msg_show", kind = "", find = "written"           }, opts = { skip = true } },
-        { filter = { event = "msg_show", kind = "", find = "%d+ lines"         }, opts = { skip = true } },
-        { filter = { event = "msg_show",             find = "Query error"      }, opts = { skip = true } },
+        { filter = { event = "msg_show", kind = "", find = "written"            }, opts = { skip = true } },
+        { filter = { event = "msg_show", kind = "", find = "%d+ lines"          }, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Query error"       }, opts = { skip = true } },
         { filter = { event = "msg_show",             find = "Impossible pattern"}, opts = { skip = true } },
-        { filter = { event = "msg_show",             find = "Invalid node type"}, opts = { skip = true } },
-        { filter = { event = "msg_show",             find = "Invalid syntax"   }, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Invalid node type" }, opts = { skip = true } },
+        { filter = { event = "msg_show",             find = "Invalid syntax"    }, opts = { skip = true } },
       },
       views = {
         cmdline_popup = {
@@ -302,4 +301,6 @@ return {
   -- 5. MISC
   -- ═══════════════════════════════════════════════════════════════════════════
 
+  -- TodoTelescope key owned by editor.lua primary todo-comments spec.
+  -- blame.nvim owned by git.lua.
 }

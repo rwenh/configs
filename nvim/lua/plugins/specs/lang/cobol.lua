@@ -3,6 +3,78 @@
 
 local shared = require("plugins.specs.lang.shared")
 
+-- ── Dialect detection ──────────────────────────────────────────────────────
+--
+
+local function detect_dialect()
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then return "gnucobol" end
+
+  local marker = root .. "/.cobol-dialect"
+  if vim.fn.filereadable(marker) == 1 then
+    local lines = vim.fn.readfile(marker)
+    local d     = lines[1] and vim.trim(lines[1]):lower() or ""
+    local valid = { gnucobol = true, ibm = true, mf = true, acucobol = true }
+    if valid[d] then return d end
+  end
+
+  -- Heuristic:
+  if vim.fn.filereadable(root .. "/JCL") == 1
+  or vim.fn.findfile("*.jcl", root .. ";") ~= "" then
+    return "ibm"
+  end
+
+  return "gnucobol"
+end
+
+-- ── Copybook path resolution ───────────────────────────────────────────────
+--
+
+local _copybook_cache = {}
+
+local function copybook_include_flags()
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then return "" end
+
+  if _copybook_cache[root] then return _copybook_cache[root] end
+
+  local candidates = {
+    "copy", "copybook", "copybooks", "COPY", "COPYBOOK",
+    "lib", "include", "cpy",
+  }
+
+  local flags = {}
+  for _, name in ipairs(candidates) do
+    local dir = root .. "/" .. name
+    if vim.fn.isdirectory(dir) == 1 then
+      table.insert(flags, "-I " .. vim.fn.shellescape(dir))
+    end
+  end
+
+  -- Also check for a .cobol-copypath file listing extra paths (one per line).
+  local cpfile = root .. "/.cobol-copypath"
+  if vim.fn.filereadable(cpfile) == 1 then
+    for _, line in ipairs(vim.fn.readfile(cpfile)) do
+      local trimmed = vim.trim(line)
+      if trimmed ~= "" and not trimmed:match("^#") then
+        table.insert(flags, "-I " .. vim.fn.shellescape(trimmed))
+      end
+    end
+  end
+
+  local result = table.concat(flags, " ")
+  _copybook_cache[root] = result
+  return result
+end
+
+-- Invalidate on directory change.
+vim.api.nvim_create_autocmd({ "DirChanged" }, {
+  group    = vim.api.nvim_create_augroup("CobolCopybookCacheInvalidate", { clear = true }),
+  callback = function() _copybook_cache = {} end,
+})
+
 return {
   -- ── Build keymaps ──────────────────────────────────────────────────────────
   {
@@ -13,9 +85,15 @@ return {
           vim.notify("[cobol] cobc not found — install gnucobol", vim.log.levels.ERROR)
           return
         end
-        local exe = vim.fn.tempname()
+        local dialect  = detect_dialect()
+        local includes = copybook_include_flags()
+        local exe      = vim.fn.tempname()
+        local dialect_flag = (dialect ~= "gnucobol")
+          and ("-std=" .. dialect .. " ") or ""
         require("core.util.term").float(string.format(
-          "cobc -x -o %s %s && %s; rm -f %s",
+          "cobc -x %s%s -o %s %s && %s; rm -f %s",
+          dialect_flag,
+          includes,
           vim.fn.shellescape(exe),
           vim.fn.shellescape(file),
           vim.fn.shellescape(exe),
@@ -37,15 +115,26 @@ return {
               vim.notify("[cobol] cobc not found", vim.log.levels.ERROR)
               return
             end
-            local tmp_obj = vim.fn.tempname() .. ".o"
+            local includes = copybook_include_flags()
+            local tmp_obj  = vim.fn.tempname() .. ".o"
             require("core.util.term").float(string.format(
-              "cobc -Wall -c -o %s %s; EC=$?; rm -f %s; exit $EC",
+              "cobc -Wall -c %s -o %s %s; EC=$?; rm -f %s; exit $EC",
+              includes,
               vim.fn.shellescape(tmp_obj),
               vim.fn.shellescape(vim.fn.expand("%:p")),
               vim.fn.shellescape(tmp_obj)
             ))
           end,
           desc = "COBOL Syntax Check",
+          ft   = "cobol",
+        },
+        {
+          "<leader>cod",
+          function()
+            local dialect = detect_dialect()
+            vim.notify("[cobol] Detected dialect: " .. dialect, vim.log.levels.INFO)
+          end,
+          desc = "COBOL Show Dialect",
           ft   = "cobol",
         },
       }
@@ -82,6 +171,9 @@ return {
           }),
           s("display", {
             t('           DISPLAY "'), i(1, "message"), t('"'),
+          }),
+          s("copy", {
+            t("           COPY "), i(1, "COPYBOOK-NAME"), t("."),
           }),
         }
       end)

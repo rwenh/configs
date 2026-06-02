@@ -4,13 +4,56 @@
 local shared = require("plugins.specs.lang.shared")
 local CMAKE_FT = { "cpp", "cmake" }
 
-return {
-  -- ── cmake-tools ────────────────────────────────────────────────────────────
+-- ── compile_commands.json auto-symlink ─────────────────────────────────────
+--
 
+local function try_symlink_compile_commands()
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then return end
+
+  local dst = root .. "/compile_commands.json"
+  if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then return end
+
+  local build_dir = vim.g.cmake_build_dir or "build"
+  local candidates = {
+    root .. "/" .. build_dir .. "/compile_commands.json",
+    root .. "/build/Debug/compile_commands.json",
+    root .. "/build/Release/compile_commands.json",
+    root .. "/.build/compile_commands.json",
+  }
+
+  for _, src in ipairs(candidates) do
+    if vim.fn.filereadable(src) == 1 then
+      local ok = pcall(function()
+        vim.fn.system({ "ln", "-sf", src, dst })
+      end)
+      if ok and vim.fn.filereadable(dst) == 1 then
+        vim.notify(
+          "[cpp] compile_commands.json linked from " .. vim.fn.fnamemodify(src, ":~:."),
+          vim.log.levels.INFO
+        )
+      end
+      return
+    end
+  end
+end
+
+vim.api.nvim_create_autocmd("FileType", {
+  pattern  = { "c", "cpp" },
+  once     = true,
+  group    = vim.api.nvim_create_augroup("CppCompileCommands", { clear = true }),
+  callback = function() vim.schedule(try_symlink_compile_commands) end,
+  desc     = "Auto-symlink compile_commands.json from build dir to project root",
+})
+
+-- ── cmake-tools ────────────────────────────────────────────────────────────
+
+return {
   {
     "Civitasv/cmake-tools.nvim",
     ft           = CMAKE_FT,
-    dependencies = "nvim-lua/plenary.nvim",   -- used for cmake-tools async ops
+    dependencies = "nvim-lua/plenary.nvim",
     opts = {
       cmake_command         = "cmake",
       cmake_build_directory = vim.g.cmake_build_dir or "build",
@@ -28,12 +71,12 @@ return {
     end,
     keys = (function()
       local entries = {
-        { "<leader>ccg", "CMakeGenerate",    "CMake Generate"       },
-        { "<leader>ccb", "CMakeBuild",       "CMake Build"          },
-        { "<leader>ccr", "CMakeRun",         "CMake Run"            },
-        { "<leader>cct", "CMakeRunTest",     "CMake Test"           },
-        { "<leader>ccc", "CMakeClean",       "CMake Clean"          },
-        { "<leader>ccs", "CMakeSelectTarget","CMake Select Target"  },
+        { "<leader>ccg", "CMakeGenerate",     "CMake Generate"       },
+        { "<leader>ccb", "CMakeBuild",        "CMake Build"          },
+        { "<leader>ccr", "CMakeRun",          "CMake Run"            },
+        { "<leader>cct", "CMakeRunTest",      "CMake Test"           },
+        { "<leader>ccc", "CMakeClean",        "CMake Clean"          },
+        { "<leader>ccs", "CMakeSelectTarget", "CMake Select Target"  },
       }
       local keys = {}
       for _, e in ipairs(entries) do
@@ -44,6 +87,32 @@ return {
       end
       return keys
     end)(),
+  },
+
+  -- ── clangd: switch between header and implementation ──────────────────────
+  --
+  -- <leader>ch  — ClangdSwitchSourceHeader (built-in clangd command via LSP)
+
+  {
+    "neovim/nvim-lspconfig",
+    optional = true,
+    init = function()
+      vim.api.nvim_create_autocmd("LspAttach", {
+        group    = vim.api.nvim_create_augroup("ClangdSwitchHeader", { clear = true }),
+        callback = function(e)
+          local client = vim.lsp.get_client_by_id(e.data.client_id)
+          if not client or client.name ~= "clangd" then return end
+          local ft = vim.bo[e.buf].filetype
+          if not vim.tbl_contains({ "c", "cpp" }, ft) then return end
+          vim.keymap.set("n", "<leader>ch", "<cmd>ClangdSwitchSourceHeader<cr>", {
+            buffer = e.buf,
+            silent = true,
+            desc   = "C/C++ Switch header ↔ source (clangd)",
+          })
+        end,
+        desc = "Register clangd switch-header keymap on attach",
+      })
+    end,
   },
 
   -- ── Neogen docstrings ──────────────────────────────────────────────────────
