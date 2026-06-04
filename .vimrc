@@ -1444,10 +1444,10 @@ function! s:RunAction(action) abort
   endif
   if &modified | write | endif
   let l:subs = {
-    \ 'fp': shellescape(l:fp),
-    \ 'dn': shellescape(fnamemodify(l:fp, ':h')),
-    \ 'fn': expand('%:t'),
-    \ 'bn': expand('%:t:r'),
+    \ 'fp': fnameescape(l:fp),
+    \ 'dn': fnameescape(fnamemodify(l:fp, ':h')),
+    \ 'fn': fnameescape(expand('%:t')),
+    \ 'bn': fnameescape(expand('%:t:r')),
     \ }
   let l:cmd = substitute(l:cmd, '{\(\w\+\)}', '\=get(l:subs, submatch(1), submatch(0))', 'g')
   execute 'FloatermNew --autoclose=0 ' . l:cmd
