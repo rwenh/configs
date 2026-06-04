@@ -20,13 +20,8 @@ end
 --- Load snippets for *ft* using a factory function.
 --
 -- The factory receives five arguments: (s, t, i, f, ref)
---   s   = ls.snippet
---   t   = ls.text_node
---   i   = ls.insert_node
---   f   = ls.function_node
---   ref = M.ref  (the mirroring helper above)
 --
----@param ft      string    Neovim filetype (e.g. "c", "fortran", "vhdl", "cobol")
+---@param ft      string    Neovim filetype
 ---@param factory function  (s, t, i, f, ref) → snippet list
 function M.load(ft, factory)
   local ok, ls = pcall(require, "luasnip")
@@ -73,6 +68,34 @@ function M.load(ft, factory)
     return
   end
 
+  -- Conflict detection: warn when a trigger already exists for the ft.
+  local existing = M.list(ft)
+  local existing_set = {}
+  for _, snip in ipairs(existing) do
+    if type(snip.trigger) == "string" then
+      existing_set[snip.trigger] = true
+    end
+  end
+
+  local conflicts = {}
+  for _, snip in ipairs(snippets) do
+    if type(snip) == "table" and type(snip.trigger) == "string" then
+      if existing_set[snip.trigger] then
+        table.insert(conflicts, snip.trigger)
+      end
+    end
+  end
+
+  if #conflicts > 0 then
+    vim.notify(
+      string.format(
+        "[snippets] %s: trigger(s) already registered, will override: %s",
+        ft, table.concat(conflicts, ", ")
+      ),
+      vim.log.levels.DEBUG
+    )
+  end
+
   local ok_add, err = pcall(ls.add_snippets, ft, snippets)
   if not ok_add then
     vim.notify(
@@ -105,6 +128,66 @@ function M.load_vscode(path)
   pcall(function()
     require("luasnip.loaders.from_vscode").load({ paths = { path } })
   end)
+end
+
+-- ── M.list ────────────────────────────────────────────────────────────────────
+--
+-- Returns the list of LuaSnip snippet objects currently registered for *ft*.
+--
+---@param ft string
+---@return table[]
+function M.list(ft)
+  local ok, ls = pcall(require, "luasnip")
+  if not ok then return {} end
+
+  local ok_snips, snip_table = pcall(function()
+    return ls.get_snippets(ft) or {}
+  end)
+  if not ok_snips then return {} end
+
+  return snip_table
+end
+
+-- ── M.remove ─────────────────────────────────────────────────────────────────
+--
+-- Remove snippets matching *trigger* from *ft*.
+-- Returns the number of snippets removed.
+--
+---@param ft      string   Neovim filetype
+---@param trigger string   trigger string to remove (exact match)
+---@return integer         count of removed snippets
+function M.remove(ft, trigger)
+  local ok, ls = pcall(require, "luasnip")
+  if not ok then return 0 end
+
+  if type(trigger) ~= "string" or trigger == "" then
+    vim.notify("[snippets] remove(): trigger must be a non-empty string",
+      vim.log.levels.WARN)
+    return 0
+  end
+
+  local existing = M.list(ft)
+  local kept     = {}
+  local removed  = 0
+
+  for _, snip in ipairs(existing) do
+    if type(snip) == "table" and snip.trigger == trigger then
+      removed = removed + 1
+    else
+      table.insert(kept, snip)
+    end
+  end
+
+  if removed == 0 then return 0 end
+
+  -- Clear the ft list and re-add without the removed entries.
+  pcall(function()
+    -- LuaSnip does not expose a remove API; we overwrite with clean_invalidate.
+    local store = ls.get_snippets()
+    store[ft]   = kept
+  end)
+
+  return removed
 end
 
 return M

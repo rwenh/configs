@@ -18,8 +18,6 @@ opt.showbreak      = "↳ "
 opt.breakindentopt = "shift:2,min:40"
 opt.mouse          = "a"
 
--- System clipboard: every yank lands in '+' (OS clipboard).
--- Set to "" to use internal registers only and opt in with "+y explicitly.
 opt.clipboard = "unnamedplus"
 
 opt.undofile = true
@@ -78,8 +76,13 @@ opt.foldlevel      = 99
 opt.foldlevelstart = 99
 opt.foldenable     = true
 
-opt.foldmethod = "expr"
-opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+-- Override: vim.g.disable_treesitter_folds = true → use indent-based folding
+if vim.g.disable_treesitter_folds then
+  opt.foldmethod = "indent"
+else
+  opt.foldmethod = "expr"
+  opt.foldexpr   = "v:lua.vim.treesitter.foldexpr()"
+end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- WINDOW
@@ -92,8 +95,7 @@ opt.winminwidth = 10
 -- PERFORMANCE
 -- ═══════════════════════════════════════════════════════════════════════════
 
-opt.updatetime = 200
-
+opt.updatetime  = 200
 opt.timeoutlen  = 500
 opt.ttimeoutlen = 50
 
@@ -103,32 +105,80 @@ opt.ttimeoutlen = 50
 
 opt.spelllang = "en_us"
 
+-- vim.g.spell_wordlist — optional path to a personal spell file.
+-- Example in init.lua:
+--   vim.g.spell_wordlist = "~/.config/nvim/spell/en.utf-8.add"
+if type(vim.g.spell_wordlist) == "string" and vim.g.spell_wordlist ~= "" then
+  local expanded = vim.fn.expand(vim.g.spell_wordlist)
+  -- Always include the runtime default; user list checked first.
+  opt.spellfile = { expanded, vim.fn.stdpath("config") .. "/spell/en.utf-8.add" }
+end
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SESSION
 -- ═══════════════════════════════════════════════════════════════════════════
 
 opt.sessionoptions = table.concat({
-  "buffers",       -- open buffers
-  "curdir",        -- current working directory
-  "folds",         -- fold state
-  "tabpages",      -- all tab pages
-  "winsize",       -- window sizes
-  "winpos",        -- window position on screen
-  "localoptions",  -- buffer-local and window-local options
+  "buffers", "curdir", "folds", "tabpages",
+  "winsize", "winpos", "localoptions",
 }, ",")
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- GLOBAL FLAGS
+-- GLOBAL FLAGS (escape hatches)
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Opt-in: auto-cd to project root on BufEnter.
--- Toggle at runtime with :ToggleAutoCd.
--- Set to true here to enable for every session.
-g.auto_cd_root = false
-
+g.auto_cd_root    = false
 -- Opt-in: auto-save before running a file with runner.lua.
--- Set to false to disable the silent pre-run write.
 g.runner_autosave = true
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PER-FILETYPE OPTION OVERRIDES
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+--   vim.g.filetype_options = {
+--     python    = { shiftwidth = 4, tabstop = 4 },
+--     go        = { expandtab = false },
+--     markdown  = { wrap = true, spell = true, colorcolumn = "" },
+--     rust      = { colorcolumn = "100" },
+--   }
+
+local BUILTIN_FT_OPTS = {
+  -- Web / JSON / YAML: 2-space indent (mirrors autocmds.lua)
+  html            = { shiftwidth = 2, tabstop = 2 },
+  css             = { shiftwidth = 2, tabstop = 2 },
+  javascript      = { shiftwidth = 2, tabstop = 2 },
+  typescript      = { shiftwidth = 2, tabstop = 2 },
+  json            = { shiftwidth = 2, tabstop = 2 },
+  yaml            = { shiftwidth = 2, tabstop = 2 },
+  javascriptreact = { shiftwidth = 2, tabstop = 2 },
+  typescriptreact = { shiftwidth = 2, tabstop = 2 },
+  -- Go: tabs
+  go              = { shiftwidth = 4, tabstop = 4, expandtab = false },
+  -- Markdown: wrap + spell
+  markdown        = { wrap = true, spell = true },
+}
+
+-- Merge user overrides on top of builtins.
+local ft_opts = vim.tbl_deep_extend(
+  "force",
+  BUILTIN_FT_OPTS,
+  type(vim.g.filetype_options) == "table" and vim.g.filetype_options or {}
+)
+
+-- Register a single FileType autocmd that applies merged options.
+vim.api.nvim_create_autocmd("FileType", {
+  group    = vim.api.nvim_create_augroup("FiletypeOptions", { clear = true }),
+  callback = function(e)
+    local overrides = ft_opts[vim.bo[e.buf].filetype]
+    if not overrides then return end
+    for key, val in pairs(overrides) do
+      pcall(function() vim.bo[e.buf][key] = val end)
+      pcall(function() vim.wo[key]         = val end)
+    end
+  end,
+  desc = "Apply per-filetype option overrides (vim.g.filetype_options + builtins)",
+})
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DISABLE BUILT-IN PLUGINS
