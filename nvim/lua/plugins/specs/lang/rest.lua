@@ -1,11 +1,11 @@
--- lua/plugins/specs/lang/rest.lua — REST client (rest.nvim v3)
+-- lua/plugins/specs/lang/rest.lua — REST client (kulala.nvim)
 --
 
 local shared = require("plugins.specs.lang.shared")
 
 -- ── Response history store ─────────────────────────────────────────────────
 -- Persists the last N responses in memory for diffing.
-local _response_history = {}   -- { { timestamp, status, body } }
+local _response_history = {}
 local MAX_HISTORY       = 10
 
 local function store_response(status, body)
@@ -20,7 +20,6 @@ local function store_response(status, body)
 end
 
 -- ── Auth token manager ─────────────────────────────────────────────────────
--- Structure: { ["token_name"] = "Bearer abc123", ... }
 local _tokens = type(vim.g.rest_auth_tokens) == "table"
   and vim.tbl_deep_extend("keep", {}, vim.g.rest_auth_tokens)
   or {}
@@ -36,110 +35,129 @@ local function pick_token(callback)
   end)
 end
 
--- ── curl presence flag ─────────────────────────────────────────────────────
-local _curl_missing = false
-
 return {
   {
-    "rest-nvim/rest.nvim",
-    ft           = "http",
-    dependencies = { "nvim-lua/plenary.nvim", "nvim-treesitter/nvim-treesitter" },
+    "mistweaverco/kulala.nvim",
+    ft      = { "http", "rest" },
+    version = "*",
 
     init = function()
+      -- Register .rest extension as http filetype (same as before).
+      pcall(function()
+        vim.filetype.add({ extension = { rest = "http" } })
+      end)
+
       if vim.fn.executable("curl") ~= 1 then
-        _curl_missing = true
         vim.notify(
-          "[rest] curl not found — rest.nvim will not function.\n"
+          "[rest] curl not found — kulala.nvim will not function.\n"
           .. "Install: sudo zypper in curl",
           vim.log.levels.WARN
         )
       end
-
-      pcall(function()
-        vim.filetype.add({ extension = { rest = "http" } })
-      end)
     end,
 
     opts = {
-      client           = "curl",
-      env_file         = ".env",
-      env_pattern      = vim.pesc(".env") .. "$",
-      env_edit_command = "tabedit",
-      skip_ssl_verification    = false,
-      custom_dynamic_variables = {},
-      logs = { level = "info", save = true },
-      result = {
-        split = {
-          horizontal                       = false,
-          in_place                         = false,
-          stay_at_current_window_after_split = true,
-        },
-        behavior = {
-          decode_url = true,
-          show_info  = { url = true, headers = true, http_info = true, curl_command = true },
-          statistics = {
-            enable = true,
-            stats  = {
-              { "total_time",       "Time taken:"     },
-              { "size_download_t",  "Download size:"  },
-            },
-          },
-          -- jq presence is checked at config() time, not parse time.
-          formatters = {
-            html = { cmd = { "prettier", "--parser", "html" } },
-          },
-        },
+      -- Use jq for JSON formatting when available.
+      formatters = {
+        json = vim.fn.executable("jq") == 1
+          and { "jq", "." }
+          or  { "cat" },
+        html = { "prettier", "--parser", "html" },
       },
-      highlight = { enable = true, timeout = 750 },
-      request   = {
-        hooks = { encode_url = true, user_agent = "rest.nvim", set_content_type = true },
+      -- Show response headers + timing stats in the result split.
+      show_headers        = true,
+      show_stats          = true,
+      -- Split direction: vertical (same default as old rest.nvim config).
+      split_direction     = "vertical",
+      default_env         = "dev",
+      environment_scope   = "b",        -- buffer-local env selection
+      contenttypes = {
+        ["application/json"]           = { ft = "json",  formatter = "json" },
+        ["application/xml"]            = { ft = "xml",   formatter = nil    },
+        ["text/html"]                  = { ft = "html",  formatter = "html" },
+        ["text/plain"]                 = { ft = "text",  formatter = nil    },
       },
     },
 
     config = function(_, opts)
-      if _curl_missing then
-        vim.notify(
-          "[rest] rest.nvim not configured (curl missing)",
-          vim.log.levels.DEBUG
-        )
-        return
-      end
-
-      -- Resolve jq at config time (runtime $PATH is fully set by now).
-      if vim.fn.executable("jq") == 1 then
-        opts.result = opts.result or {}
-        opts.result.behavior = opts.result.behavior or {}
-        opts.result.behavior.formatters = opts.result.behavior.formatters or {}
-        opts.result.behavior.formatters.json = "jq"
-      end
-
-      local ok, err = pcall(function() require("rest-nvim").setup(opts) end)
+      local ok, err = pcall(function() require("kulala").setup(opts) end)
       if not ok then
         vim.notify(
-          "[rest] rest.nvim setup failed: " .. tostring(err)
-          .. "\nRun :Lazy update rest.nvim",
+          "[rest] kulala.nvim setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update kulala.nvim",
           vim.log.levels.WARN
         )
         return
       end
 
-      -- Hook response capture for diffing.
-      pcall(function()
-        local events = require("rest-nvim.events")
-        events.on("ResponseReceived", function(response)
-          store_response(
-            tostring(response and response.status or "?"),
-            response and response.body or ""
-          )
-        end)
-      end)
+      -- kulala fires the autocmd Http_done after every request.
+      vim.api.nvim_create_autocmd("User", {
+        pattern  = "KulalaRequestComplete",
+        group    = vim.api.nvim_create_augroup("KulalaHistory", { clear = true }),
+        callback = function()
+          local ok_k, k = pcall(require, "kulala")
+          if not ok_k then return end
+          local last = pcall(function()
+            local response = k.get_last_response()
+            if response then
+              store_response(
+                tostring(response.status or "?"),
+                response.body or ""
+              )
+            end
+          end)
+          _ = last
+        end,
+        desc = "Store kulala response in history for diff",
+      })
     end,
 
     keys = {
-      { "<leader>rer", "<cmd>Rest run<cr>",        desc = "REST Run Request",   ft = "http" },
-      { "<leader>rel", "<cmd>Rest run last<cr>",   desc = "REST Run Last",      ft = "http" },
-      { "<leader>rep", "<cmd>Rest preview<cr>",    desc = "REST Preview",       ft = "http" },
-      { "<leader>ree", "<cmd>Rest env select<cr>", desc = "REST Select Env",    ft = "http" },
+      -- Run / preview / env — mapped to the same <leader>re* prefix as before.
+      {
+        "<leader>rer",
+        function() pcall(function() require("kulala").run() end) end,
+        desc = "REST Run Request",
+        ft   = "http",
+      },
+      {
+        "<leader>rel",
+        function() pcall(function() require("kulala").replay() end) end,
+        desc = "REST Run Last",
+        ft   = "http",
+      },
+      {
+        "<leader>rep",
+        function() pcall(function() require("kulala").inspect() end) end,
+        desc = "REST Preview (inspect curl command)",
+        ft   = "http",
+      },
+      {
+        "<leader>ree",
+        function() pcall(function() require("kulala").set_selected_env() end) end,
+        desc = "REST Select Env",
+        ft   = "http",
+      },
+      -- Jump between requests in the same file.
+      {
+        "<leader>ren",
+        function() pcall(function() require("kulala").jump_next() end) end,
+        desc = "REST Jump to next request",
+        ft   = "http",
+      },
+      {
+        "<leader>reN",
+        function() pcall(function() require("kulala").jump_prev() end) end,
+        desc = "REST Jump to prev request",
+        ft   = "http",
+      },
+      -- Copy request as curl command to clipboard.
+      {
+        "<leader>rec",
+        function() pcall(function() require("kulala").copy() end) end,
+        desc = "REST Copy as curl",
+        ft   = "http",
+      },
 
       -- ── Response diff ─────────────────────────────────────────────────────
       {
@@ -153,30 +171,32 @@ return {
           for i, r in ipairs(_response_history) do
             table.insert(items, string.format("[%d] %s  %s", i, r.timestamp, r.status))
           end
-          vim.ui.select(items, { prompt = "Diff against (compare with most recent):" }, function(_, idx)
-            if not idx or idx == 1 then return end
-            local a = _response_history[1].body
-            local b = _response_history[idx].body
-
-            vim.cmd("tabnew")
-            local ba = vim.api.nvim_create_buf(false, true)
-            local bb = vim.api.nvim_create_buf(false, true)
-
-            vim.api.nvim_buf_set_lines(ba, 0, -1, false, vim.split(a, "\n"))
-            vim.api.nvim_buf_set_lines(bb, 0, -1, false, vim.split(b, "\n"))
-            vim.bo[ba].filetype = "json"
-            vim.bo[bb].filetype = "json"
-            vim.api.nvim_buf_set_name(ba, "response-latest")
-            vim.api.nvim_buf_set_name(
-              bb,
-              string.format("response-%s", _response_history[idx].timestamp)
-            )
-
-            vim.api.nvim_set_current_buf(ba)
-            vim.cmd("vsplit")
-            vim.api.nvim_set_current_buf(bb)
-            vim.cmd("windo diffthis")
-          end)
+          vim.ui.select(
+            items,
+            { prompt = "Diff against (compare with most recent):" },
+            function(_, idx)
+              if not idx or idx == 1 then return end
+              local a = _response_history[1].body
+              local b = _response_history[idx].body
+              -- Create scratch buffers after tabnew to avoid reusing existing ones.
+              vim.cmd("tabnew")
+              local ba = vim.api.nvim_create_buf(false, true)
+              local bb = vim.api.nvim_create_buf(false, true)
+              vim.api.nvim_buf_set_lines(ba, 0, -1, false, vim.split(a, "\n"))
+              vim.api.nvim_buf_set_lines(bb, 0, -1, false, vim.split(b, "\n"))
+              vim.bo[ba].filetype = "json"
+              vim.bo[bb].filetype = "json"
+              vim.api.nvim_buf_set_name(ba, "response-latest")
+              vim.api.nvim_buf_set_name(
+                bb,
+                string.format("response-%s", _response_history[idx].timestamp)
+              )
+              vim.api.nvim_set_current_buf(ba)
+              vim.cmd("vsplit")
+              vim.api.nvim_set_current_buf(bb)
+              vim.cmd("windo diffthis")
+            end
+          )
         end,
         desc = "REST Diff responses",
         ft   = "http",
@@ -205,7 +225,6 @@ return {
         "<leader>reat",
         function()
           pick_token(function(token)
-            -- Insert Authorization header on the line after the cursor.
             local row = vim.api.nvim_win_get_cursor(0)[1]
             vim.api.nvim_buf_set_lines(0, row, row, false,
               { "Authorization: " .. token })
