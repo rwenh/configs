@@ -96,7 +96,27 @@ return {
     cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
     ft    = { "markdown" },
 
-    build = "cd app && npm install --legacy-peer-deps",
+    build = function(plugin)
+      local app_dir = plugin.dir .. "/app"
+
+      if vim.fn.executable("yarn") == 1 then
+        -- yarn respects the existing yarn.lock — no lockfile conflict.
+        return "cd " .. vim.fn.shellescape(app_dir) .. " && yarn install --frozen-lockfile"
+      elseif vim.fn.executable("npm") == 1 then
+        vim.notify(
+          "[markdown-preview] yarn not found — falling back to npm.\n"
+          .. "Consider: npm install -g yarn",
+          vim.log.levels.WARN
+        )
+        return "cd " .. vim.fn.shellescape(app_dir) .. " && npm install --legacy-peer-deps"
+      else
+        vim.notify(
+          "[markdown-preview] Neither yarn nor npm found — build skipped.\n"
+          .. "Install yarn (recommended): npm install -g yarn",
+          vim.log.levels.ERROR
+        )
+      end
+    end,
 
     init = function()
       vim.g.mkdp_filetypes  = { "markdown" }
@@ -106,12 +126,11 @@ return {
         sync_scroll_type = "middle",
       }
 
-      -- Warn at startup if npm is absent so the user knows the build step
-      -- will fail before they ever try to run it.
-      if vim.fn.executable("npm") ~= 1 then
+      -- Warn early if neither yarn nor npm is present.
+      if vim.fn.executable("yarn") ~= 1 and vim.fn.executable("npm") ~= 1 then
         vim.notify(
-          "[markdown-preview] npm not found — browser preview will not work.\n"
-          .. "Install npm (nodejs) then run :Lazy build markdown-preview.nvim.",
+          "[markdown-preview] yarn and npm both missing — browser preview unavailable.\n"
+          .. "Install yarn: npm install -g yarn",
           vim.log.levels.WARN
         )
       end
