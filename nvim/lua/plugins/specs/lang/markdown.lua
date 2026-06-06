@@ -3,7 +3,7 @@
 
 local icons = require("core.util.icons")
 
--- ── Word count ────────────────────────────────────────────────────────
+-- ── Word count ────────────────────────────────────────────────────────────────
 
 local M = {}
 
@@ -17,10 +17,10 @@ function M.word_count(buf)
     return wc.words
   end
 
-  -- Fallback: count whitespace-separated tokens, skipping frontmatter.
-  local lines  = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  local count  = 0
-  local in_fm  = false
+  -- Fallback: manual count skipping YAML frontmatter.
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local count = 0
+  local in_fm = false
 
   for idx, line in ipairs(lines) do
     if idx == 1 and line == "---" then
@@ -50,7 +50,7 @@ M.lualine_wordcount = {
   end,
 }
 
--- ── Frontmatter schema hint ───────────────────────────────────────────
+-- ── Frontmatter schema hint (yamlls) ─────────────────────────────────────────
 
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("MarkdownFrontmatter", { clear = true }),
@@ -90,58 +90,151 @@ vim.api.nvim_create_autocmd("LspAttach", {
 })
 
 return {
-  -- ── Markdown Preview (browser) ─────────────────────────────────────────────
+
+  -- ── markview.nvim — inline buffer renderer ────────────────────────────────
+  --
   {
-    "iamcco/markdown-preview.nvim",
-    cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
-    ft    = { "markdown" },
+    "OXY2DEV/markview.nvim",
+    ft           = { "markdown", "markdown_inline", "quarto", "rmd" },
+    dependencies = {
+      "nvim-treesitter/nvim-treesitter",
+      "nvim-tree/nvim-web-devicons",
+    },
+    opts = {
+      -- Only render in Normal mode — avoids jitter while editing.
+      modes        = { "n", "no" },
+      hybrid_modes = { "n" },
 
-    build = function(plugin)
-      local app_dir = plugin.dir .. "/app"
+      headings = {
+        enable = true,
+        shift_width = 0,
+        heading_1 = { style = "label", sign = icons.headings[1] },
+        heading_2 = { style = "label", sign = icons.headings[2] },
+        heading_3 = { style = "label", sign = icons.headings[3] },
+        heading_4 = { style = "label", sign = icons.headings[4] },
+        heading_5 = { style = "label", sign = icons.headings[5] },
+        heading_6 = { style = "label", sign = icons.headings[6] },
+      },
 
-      if vim.fn.executable("yarn") == 1 then
-        -- yarn respects the existing yarn.lock — no lockfile conflict.
-        return "cd " .. vim.fn.shellescape(app_dir) .. " && yarn install --frozen-lockfile"
-      elseif vim.fn.executable("npm") == 1 then
+      code_blocks = {
+        enable         = true,
+        style          = "block",
+        sign           = true,
+        min_width      = 60,
+        pad_amount     = 2,
+        above          = "▄",
+        below          = "▀",
+      },
+
+      inline_codes = { enable = true },
+
+      checkboxes = {
+        enable    = true,
+        checked   = { text = "󰱒", hl = "MarkviewCheckboxChecked"   },
+        unchecked = { text = "󰄱", hl = "MarkviewCheckboxUnchecked" },
+        pending   = { text = "󰥔", hl = "MarkviewCheckboxPending"   },
+      },
+
+      bullets = {
+        enable = true,
+        markers = { "●", "○", "◆", "◇" },
+      },
+
+      tables = {
+        enable     = true,
+        style      = "rounded",
+      },
+
+      horizontal_rules = { enable = true },
+
+      links = {
+        enable       = true,
+        hyperlinks   = { enable = true },
+        images       = { enable = true },
+        emails       = { enable = true },
+      },
+    },
+
+    config = function(_, opts)
+      local ok, err = pcall(function() require("markview").setup(opts) end)
+      if not ok then
         vim.notify(
-          "[markdown-preview] yarn not found — falling back to npm.\n"
-          .. "Consider: npm install -g yarn",
-          vim.log.levels.WARN
-        )
-        return "cd " .. vim.fn.shellescape(app_dir) .. " && npm install --legacy-peer-deps"
-      else
-        vim.notify(
-          "[markdown-preview] Neither yarn nor npm found — build skipped.\n"
-          .. "Install yarn (recommended): npm install -g yarn",
-          vim.log.levels.ERROR
-        )
-      end
-    end,
-
-    init = function()
-      vim.g.mkdp_filetypes  = { "markdown" }
-      vim.g.mkdp_auto_start = 0
-      vim.g.mkdp_auto_close = 1
-      vim.g.mkdp_preview_options = {
-        sync_scroll_type = "middle",
-      }
-
-      -- Warn early if neither yarn nor npm is present.
-      if vim.fn.executable("yarn") ~= 1 and vim.fn.executable("npm") ~= 1 then
-        vim.notify(
-          "[markdown-preview] yarn and npm both missing — browser preview unavailable.\n"
-          .. "Install yarn: npm install -g yarn",
+          "[markdown] markview.nvim setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update markview.nvim",
           vim.log.levels.WARN
         )
       end
     end,
 
     keys = {
-      { "<leader>mp", "<cmd>MarkdownPreviewToggle<CR>", desc = "Markdown Preview Toggle" },
+      {
+        "<leader>mv",
+        function() pcall(function() require("markview").toggle() end) end,
+        desc = "Markdown Toggle Render (markview)",
+        ft   = "markdown",
+      },
     },
   },
 
-  -- ── vim-markdown ───────────────────────────────────────────────────────────
+  -- ── peek.nvim — browser preview ───────────────────────────────────────────
+  -- Requires: cargo install deno  OR  the deno package.
+  {
+    "toppair/peek.nvim",
+    ft    = { "markdown" },
+    build = "deno task --quiet build:fast",
+
+    init = function()
+      if vim.fn.executable("deno") ~= 1 then
+        vim.notify(
+          "[markdown] deno not found — browser preview unavailable.\n"
+          .. "Install: sudo zypper in deno  (or: cargo install deno)",
+          vim.log.levels.WARN
+        )
+      end
+    end,
+
+    config = function()
+      local ok, peek = pcall(require, "peek")
+      if not ok then return end
+      pcall(peek.setup, {
+        auto_load  = false,   -- don't open browser automatically on BufEnter
+        close_on_bdelete = true,
+        syntax     = true,
+        theme      = "dark",
+        update_on_change = true,
+        app        = "browser",
+        filetype   = { "markdown" },
+        throttle_at     = 200000,
+        throttle_time   = "auto",
+      })
+    end,
+
+    keys = {
+      {
+        "<leader>mp",
+        function()
+          if vim.fn.executable("deno") ~= 1 then
+            vim.notify(
+              "[markdown] deno not found — install deno for browser preview.",
+              vim.log.levels.WARN
+            )
+            return
+          end
+          local ok, peek = pcall(require, "peek")
+          if not ok then return end
+          if peek.is_open() then
+            pcall(peek.close)
+          else
+            pcall(peek.open)
+          end
+        end,
+        desc = "Markdown Toggle Browser Preview (peek)",
+        ft   = "markdown",
+      },
+    },
+  },
+
+  -- ── vim-markdown ──────────────────────────────────────────────────────────
   {
     "preservim/vim-markdown",
     ft   = { "markdown" },
@@ -152,7 +245,7 @@ return {
     end,
   },
 
-  -- ── Table mode ─────────────────────────────────────────────────────────────
+  -- ── Table mode ────────────────────────────────────────────────────────────
   {
     "dhruvasagar/vim-table-mode",
     ft   = { "markdown" },
@@ -160,61 +253,6 @@ return {
     keys = {
       { "<leader>tm", "<cmd>TableModeToggle<CR>", desc = "Table Mode Toggle" },
     },
-  },
-
-  -- ── render-markdown.nvim ───────────────────────────────────────────────────
-  {
-    "MeanderingProgrammer/render-markdown.nvim",
-    ft           = { "markdown" },
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      "nvim-tree/nvim-web-devicons",
-    },
-    opts = {
-      enabled      = true,
-      render_modes = { "n" },
-      anti_conceal = {
-        enabled = true,
-        ignore  = { code_background = true, sign = true },
-      },
-      heading = {
-        enabled = true,
-        signs   = icons.headings,
-        width   = "block",
-      },
-      code = {
-        enabled   = true,
-        sign      = true,
-        style     = "full",
-        border    = "thin",
-        width     = "block",
-        left_pad  = 1,
-        right_pad = 1,
-        min_width = 20,
-        above     = "▄",
-        below     = "▀",
-        highlight = "RenderMarkdownCode",
-      },
-      bullet = {
-        enabled = true,
-        icons   = { "●", "○", "◆", "◇" },
-      },
-      checkbox = {
-        enabled   = true,
-        unchecked = { icon = "󰄱 " },
-        checked   = { icon = "󰱒 " },
-      },
-    },
-    config = function(_, opts)
-      local ok, err = pcall(function() require("render-markdown").setup(opts) end)
-      if not ok then
-        vim.notify(
-          "render-markdown.nvim setup failed: " .. tostring(err)
-          .. "\nRun :Lazy update render-markdown.nvim",
-          vim.log.levels.WARN
-        )
-      end
-    end,
   },
 
   -- ── Link checker + word count keymaps ─────────────────────────────────────
@@ -245,7 +283,10 @@ return {
         function()
           local n = M.word_count()
           if n then
-            vim.notify(string.format("[markdown] Word count: %d", n), vim.log.levels.INFO)
+            vim.notify(
+              string.format("[markdown] Word count: %d", n),
+              vim.log.levels.INFO
+            )
           end
         end,
         desc = "Markdown Word Count",
