@@ -21,23 +21,19 @@ function M.word_count(buf)
   local lines  = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   local count  = 0
   local in_fm  = false
-  local fm_end = false
 
   for idx, line in ipairs(lines) do
     if idx == 1 and line == "---" then
       in_fm = true
     elseif in_fm and line == "---" then
-      in_fm  = false
-      fm_end = true
+      in_fm = false
     elseif not in_fm then
-      fm_end = true
       local plain = line
         :gsub("%[(.-)%]%(.-%)", "%1")
         :gsub("[#*_`~>]", " ")
         :gsub("%-%-%-+", "")
       for _ in plain:gmatch("%S+") do count = count + 1 end
     end
-    _ = fm_end
   end
   return count
 end
@@ -64,26 +60,31 @@ vim.api.nvim_create_autocmd("LspAttach", {
     local ft = vim.bo[e.buf].filetype
     if ft ~= "markdown" and ft ~= "yaml" then return end
 
-    local ok = pcall(function()
-      local current = client.config.settings
-        and client.config.settings.yaml
-        and client.config.settings.yaml.schemas
-        or {}
-      local name = vim.api.nvim_buf_get_name(e.buf)
-      if current[name] then return end
+    local schemas = client.config.settings
+      and client.config.settings.yaml
+      and client.config.settings.yaml.schemas
+      or {}
+    local name = vim.api.nvim_buf_get_name(e.buf)
+    if schemas[name] then return end
 
+    local ok, err = pcall(function()
       client.notify("workspace/didChangeConfiguration", {
         settings = vim.tbl_deep_extend("keep", client.config.settings or {}, {
           yaml = {
-            validate         = true,
-            hover            = true,
-            completion       = true,
-            format           = { enable = false },
+            validate   = true,
+            hover      = true,
+            completion = true,
+            format     = { enable = false },
           },
         }),
       })
     end)
-    _ = ok
+    if not ok then
+      vim.notify(
+        "[markdown] yamlls didChangeConfiguration failed: " .. tostring(err),
+        vim.log.levels.DEBUG
+      )
+    end
   end,
   desc = "Enhance yamlls for Markdown frontmatter buffers",
 })
@@ -95,46 +96,7 @@ return {
     cmd   = { "MarkdownPreviewToggle", "MarkdownPreview", "MarkdownPreviewStop" },
     ft    = { "markdown" },
 
-    build = function(plugin)
-      if vim.fn.executable("npm") ~= 1 then
-        vim.notify(
-          "[markdown-preview] npm not found — browser preview will not work.\n"
-          .. "Install npm (nodejs) and run :Lazy build markdown-preview.nvim.",
-          vim.log.levels.WARN
-        )
-        return false  -- ✅ Explicit failure indication for lazy.nvim
-      end
-
-      vim.notify(
-        "[markdown-preview] installing npm dependencies (background)…",
-        vim.log.levels.INFO
-      )
-
-      -- ✅ Async npm install with proper error handling
-      vim.system(
-        { "npm", "install", "--legacy-peer-deps" },
-        { cwd = plugin.dir .. "/app", text = true },
-        function(result)
-          vim.schedule(function()
-            if result.code ~= 0 then
-              vim.notify(
-                "[markdown-preview] npm install failed — browser preview will not work.\n"
-                .. "Run :Lazy build markdown-preview.nvim to retry.\n"
-                .. "npm output:\n"
-                .. vim.trim((result.stderr or "") .. (result.stdout or "")),
-                vim.log.levels.WARN
-              )
-            else
-              vim.notify(
-                "[markdown-preview] npm dependencies installed successfully.",
-                vim.log.levels.INFO
-              )
-            end
-          end)
-        end
-      )
-      -- ✅ No return value for async builds (lazy.nvim recognizes auto-completion)
-    end,
+    build = "cd app && npm install --legacy-peer-deps",
 
     init = function()
       vim.g.mkdp_filetypes  = { "markdown" }
@@ -143,7 +105,18 @@ return {
       vim.g.mkdp_preview_options = {
         sync_scroll_type = "middle",
       }
+
+      -- Warn at startup if npm is absent so the user knows the build step
+      -- will fail before they ever try to run it.
+      if vim.fn.executable("npm") ~= 1 then
+        vim.notify(
+          "[markdown-preview] npm not found — browser preview will not work.\n"
+          .. "Install npm (nodejs) then run :Lazy build markdown-preview.nvim.",
+          vim.log.levels.WARN
+        )
+      end
     end,
+
     keys = {
       { "<leader>mp", "<cmd>MarkdownPreviewToggle<CR>", desc = "Markdown Preview Toggle" },
     },
@@ -171,7 +144,6 @@ return {
   },
 
   -- ── render-markdown.nvim ───────────────────────────────────────────────────
-
   {
     "MeanderingProgrammer/render-markdown.nvim",
     ft           = { "markdown" },
@@ -227,7 +199,6 @@ return {
   },
 
   -- ── Link checker + word count keymaps ─────────────────────────────────────
-
   {
     "akinsho/toggleterm.nvim",
     ft   = "markdown",

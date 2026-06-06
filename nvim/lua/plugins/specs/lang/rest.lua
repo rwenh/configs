@@ -15,7 +15,7 @@ local function store_response(status, body)
     body      = body,
   })
   if #_response_history > MAX_HISTORY then
-    _response_history[MAX_HISTORY + 1] = nil
+    table.remove(_response_history)
   end
 end
 
@@ -36,6 +36,9 @@ local function pick_token(callback)
   end)
 end
 
+-- ── curl presence flag ─────────────────────────────────────────────────────
+local _curl_missing = false
+
 return {
   {
     "rest-nvim/rest.nvim",
@@ -43,55 +46,80 @@ return {
     dependencies = { "nvim-lua/plenary.nvim", "nvim-treesitter/nvim-treesitter" },
 
     init = function()
+      if vim.fn.executable("curl") ~= 1 then
+        _curl_missing = true
+        vim.notify(
+          "[rest] curl not found — rest.nvim will not function.\n"
+          .. "Install: sudo zypper in curl",
+          vim.log.levels.WARN
+        )
+      end
+
       pcall(function()
         vim.filetype.add({ extension = { rest = "http" } })
       end)
     end,
 
-    opts = (function()
-      if vim.fn.executable("curl") ~= 1 then
-        vim.notify("[rest] curl not found — rest.nvim will not function.\nInstall: sudo zypper in curl", vim.log.levels.WARN)
-        return {}
-      end
-      local env_file = ".env"
-      return {
-        client       = "curl",
-        env_file     = env_file,
-        env_pattern  = vim.pesc(env_file) .. "$",
-        env_edit_command = "tabedit",
-        skip_ssl_verification    = false,
-        custom_dynamic_variables = {},
-        logs = { level = "info", save = true },
-        result = {
-          split = { horizontal = false, in_place = false, stay_at_current_window_after_split = true },
-          behavior = {
-            decode_url = true,
-            show_info  = { url = true, headers = true, http_info = true, curl_command = true },
-            statistics = {
-              enable = true,
-              stats  = { { "total_time", "Time taken:" }, { "size_download_t", "Download size:" } },
-            },
-            formatters = {
-              json = vim.fn.executable("jq") == 1 and "jq" or nil,
-              html = { cmd = { "prettier", "--parser", "html" } },
+    opts = {
+      client           = "curl",
+      env_file         = ".env",
+      env_pattern      = vim.pesc(".env") .. "$",
+      env_edit_command = "tabedit",
+      skip_ssl_verification    = false,
+      custom_dynamic_variables = {},
+      logs = { level = "info", save = true },
+      result = {
+        split = {
+          horizontal                       = false,
+          in_place                         = false,
+          stay_at_current_window_after_split = true,
+        },
+        behavior = {
+          decode_url = true,
+          show_info  = { url = true, headers = true, http_info = true, curl_command = true },
+          statistics = {
+            enable = true,
+            stats  = {
+              { "total_time",       "Time taken:"     },
+              { "size_download_t",  "Download size:"  },
             },
           },
+          -- jq presence is checked at config() time, not parse time.
+          formatters = {
+            html = { cmd = { "prettier", "--parser", "html" } },
+          },
         },
-        highlight = { enable = true, timeout = 750 },
-        request   = { hooks = { encode_url = true, user_agent = "rest.nvim", set_content_type = true } },
-      }
-    end)(),
+      },
+      highlight = { enable = true, timeout = 750 },
+      request   = {
+        hooks = { encode_url = true, user_agent = "rest.nvim", set_content_type = true },
+      },
+    },
 
     config = function(_, opts)
-      -- Skip setup if no curl or opts is empty after defaults
-      if type(opts) ~= "table" or vim.tbl_isempty(opts) then
-        vim.notify("[rest] rest.nvim not configured (curl missing or no options)", vim.log.levels.DEBUG)
+      if _curl_missing then
+        vim.notify(
+          "[rest] rest.nvim not configured (curl missing)",
+          vim.log.levels.DEBUG
+        )
         return
+      end
+
+      -- Resolve jq at config time (runtime $PATH is fully set by now).
+      if vim.fn.executable("jq") == 1 then
+        opts.result = opts.result or {}
+        opts.result.behavior = opts.result.behavior or {}
+        opts.result.behavior.formatters = opts.result.behavior.formatters or {}
+        opts.result.behavior.formatters.json = "jq"
       end
 
       local ok, err = pcall(function() require("rest-nvim").setup(opts) end)
       if not ok then
-        vim.notify("[rest] rest.nvim setup failed: " .. tostring(err) .. "\nRun :Lazy update rest.nvim", vim.log.levels.WARN)
+        vim.notify(
+          "[rest] rest.nvim setup failed: " .. tostring(err)
+          .. "\nRun :Lazy update rest.nvim",
+          vim.log.levels.WARN
+        )
         return
       end
 
@@ -118,7 +146,8 @@ return {
         "<leader>red",
         function()
           if #_response_history < 2 then
-            vim.notify("[rest] Need at least 2 responses to diff", vim.log.levels.INFO); return
+            vim.notify("[rest] Need at least 2 responses to diff", vim.log.levels.INFO)
+            return
           end
           local items = {}
           for i, r in ipairs(_response_history) do
@@ -128,15 +157,21 @@ return {
             if not idx or idx == 1 then return end
             local a = _response_history[1].body
             local b = _response_history[idx].body
-            -- Open two scratch buffers in a vertical split for diff.
+
+            vim.cmd("tabnew")
             local ba = vim.api.nvim_create_buf(false, true)
             local bb = vim.api.nvim_create_buf(false, true)
+
             vim.api.nvim_buf_set_lines(ba, 0, -1, false, vim.split(a, "\n"))
             vim.api.nvim_buf_set_lines(bb, 0, -1, false, vim.split(b, "\n"))
-            vim.bo[ba].filetype = "json"; vim.bo[bb].filetype = "json"
+            vim.bo[ba].filetype = "json"
+            vim.bo[bb].filetype = "json"
             vim.api.nvim_buf_set_name(ba, "response-latest")
-            vim.api.nvim_buf_set_name(bb, string.format("response-%s", _response_history[idx].timestamp))
-            vim.cmd("tabnew")
+            vim.api.nvim_buf_set_name(
+              bb,
+              string.format("response-%s", _response_history[idx].timestamp)
+            )
+
             vim.api.nvim_set_current_buf(ba)
             vim.cmd("vsplit")
             vim.api.nvim_set_current_buf(bb)
@@ -156,7 +191,10 @@ return {
             vim.ui.input({ prompt = "Token value (e.g. Bearer abc123): " }, function(val)
               if not val or val == "" then return end
               _tokens[name] = val
-              vim.notify("[rest] Token '" .. name .. "' stored (session only)", vim.log.levels.INFO)
+              vim.notify(
+                "[rest] Token '" .. name .. "' stored (session only)",
+                vim.log.levels.INFO
+              )
             end)
           end)
         end,
@@ -167,7 +205,7 @@ return {
         "<leader>reat",
         function()
           pick_token(function(token)
-            -- Insert token as Authorization header at cursor.
+            -- Insert Authorization header on the line after the cursor.
             local row = vim.api.nvim_win_get_cursor(0)[1]
             vim.api.nvim_buf_set_lines(0, row, row, false,
               { "Authorization: " .. token })
