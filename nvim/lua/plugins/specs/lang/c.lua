@@ -4,36 +4,17 @@
 local shared = require("plugins.specs.lang.shared")
 
 -- ── compile_commands.json detection ──────────────────────────────────────
--- Mirrors cpp.lua's approach for C projects without CMake.
-local function try_symlink_compile_commands()
-  local ok_path, path_util = pcall(require, "core.util.path")
-  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-  if not root or root == "" then return end
-  local dst = root .. "/compile_commands.json"
-  if vim.fn.filereadable(dst) == 1 then return end
-  local build_dir = vim.g.cmake_build_dir or "build"
-  local candidates = {
-    root .. "/" .. build_dir .. "/compile_commands.json",
-    root .. "/build/Debug/compile_commands.json",
-    root .. "/.build/compile_commands.json",
-  }
-  for _, src in ipairs(candidates) do
-    if vim.fn.filereadable(src) == 1 then
-      local ok = pcall(function() vim.fn.system({ "ln", "-sf", src, dst }) end)
-      if ok and vim.fn.filereadable(dst) == 1 then
-        vim.notify("[c] compile_commands.json linked from " .. vim.fn.fnamemodify(src, ":~:."), vim.log.levels.INFO)
-      end
-      return
-    end
-  end
-end
 
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = "c",
   once     = true,
   group    = vim.api.nvim_create_augroup("CCompileCommands", { clear = true }),
-  callback = function() vim.schedule(try_symlink_compile_commands) end,
-  desc     = "Auto-symlink compile_commands.json for C projects",
+  callback = function()
+    vim.schedule(function()
+      shared.symlink_compile_commands("c")
+    end)
+  end,
+  desc = "Auto-symlink compile_commands.json for C projects",
 })
 
 return {
@@ -104,7 +85,6 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           local build_dir = vim.g.cmake_build_dir or "build"
-          -- If no build dir yet, run cmake + build first.
           if vim.fn.isdirectory(root .. "/" .. build_dir) ~= 1 then
             vim.notify("[c] build/ not found — run <leader>ccb (CMake Build) first", vim.log.levels.WARN)
             return
@@ -125,7 +105,6 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           local build_dir = vim.g.cmake_build_dir or "build"
-          -- cmake --build then ctest
           require("core.util.term").float(
             "cd " .. vim.fn.shellescape(root)
             .. " && cmake -B " .. build_dir .. " -DCMAKE_EXPORT_COMPILE_COMMANDS=1"

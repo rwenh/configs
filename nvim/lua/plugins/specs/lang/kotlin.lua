@@ -4,22 +4,36 @@
 local shared = require("plugins.specs.lang.shared")
 
 -- ── Spring Boot detection ─────────────────────────────────────────────────
+
+local _spring_cache = {}
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("KotlinSpringCacheClear", { clear = true }),
+  callback = function() _spring_cache = {} end,
+  desc     = "Invalidate Kotlin Spring Boot detection cache on directory change",
+})
+
 local function is_spring_project()
   local ok_path, path = pcall(require, "core.util.path")
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
   if not root or root == "" then return false end
-  -- Check build.gradle(.kts) or pom.xml for Spring Boot dependency.
+
+  if _spring_cache[root] ~= nil then return _spring_cache[root] end
+
   for _, fname in ipairs({ "build.gradle", "build.gradle.kts", "pom.xml" }) do
     local f = root .. "/" .. fname
     if vim.fn.filereadable(f) == 1 then
       local lines = vim.fn.readfile(f)
       for _, line in ipairs(lines) do
         if line:find("spring%-boot", 1, true) or line:find("springframework", 1, true) then
+          _spring_cache[root] = true
           return true
         end
       end
     end
   end
+
+  _spring_cache[root] = false
   return false
 end
 
@@ -82,7 +96,7 @@ return {
         mk_gradle_key("<leader>ktt", "test", "Kotlin Test"),
         mk_gradle_key("<leader>ktr", "run",  "Kotlin Run"),
 
-        -- ── KDoc generation (direct, not via <leader>xg) ──────────────────
+        -- ── KDoc generation ───────────────────────────────────────────────
         {
           "<leader>ktd",
           function()
@@ -107,7 +121,7 @@ return {
           ft   = "kotlin",
         },
 
-        -- ── Spring Boot keymaps (conditional) ────────────────────────────
+        -- ── Spring Boot keymaps (conditional on cached detection) ─────────
         {
           "<leader>kts",
           function()

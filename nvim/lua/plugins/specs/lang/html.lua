@@ -28,7 +28,7 @@ vim.api.nvim_create_autocmd("FileType", {
   once     = true,
   group    = vim.api.nvim_create_augroup("HtmlHintConditional", { clear = true }),
   callback = function()
-    if not vim.fn.executable("htmlhint") == 1 then return end
+    if vim.fn.executable("htmlhint") ~= 1 then return end
     if not has_htmlhint_config() then
       vim.notify(
         "[html] htmlhint found but no .htmlhintrc detected — linter skipped.\n"

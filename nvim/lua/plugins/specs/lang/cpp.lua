@@ -5,46 +5,17 @@ local shared = require("plugins.specs.lang.shared")
 local CMAKE_FT = { "cpp", "cmake" }
 
 -- ── compile_commands.json auto-symlink ─────────────────────────────────────
---
-
-local function try_symlink_compile_commands()
-  local ok_path, path_util = pcall(require, "core.util.path")
-  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-  if not root or root == "" then return end
-
-  local dst = root .. "/compile_commands.json"
-  if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then return end
-
-  local build_dir = vim.g.cmake_build_dir or "build"
-  local candidates = {
-    root .. "/" .. build_dir .. "/compile_commands.json",
-    root .. "/build/Debug/compile_commands.json",
-    root .. "/build/Release/compile_commands.json",
-    root .. "/.build/compile_commands.json",
-  }
-
-  for _, src in ipairs(candidates) do
-    if vim.fn.filereadable(src) == 1 then
-      local ok = pcall(function()
-        vim.fn.system({ "ln", "-sf", src, dst })
-      end)
-      if ok and vim.fn.filereadable(dst) == 1 then
-        vim.notify(
-          "[cpp] compile_commands.json linked from " .. vim.fn.fnamemodify(src, ":~:."),
-          vim.log.levels.INFO
-        )
-      end
-      return
-    end
-  end
-end
 
 vim.api.nvim_create_autocmd("FileType", {
-  pattern  = { "c", "cpp" },
+  pattern  = "cpp",
   once     = true,
   group    = vim.api.nvim_create_augroup("CppCompileCommands", { clear = true }),
-  callback = function() vim.schedule(try_symlink_compile_commands) end,
-  desc     = "Auto-symlink compile_commands.json from build dir to project root",
+  callback = function()
+    vim.schedule(function()
+      shared.symlink_compile_commands("cpp")
+    end)
+  end,
+  desc = "Auto-symlink compile_commands.json from build dir to project root",
 })
 
 -- ── cmake-tools ────────────────────────────────────────────────────────────

@@ -23,7 +23,6 @@ local function check_bundler_env()
   local lockfile = root .. "/Gemfile.lock"
   if vim.fn.filereadable(lockfile) ~= 1 then return end
 
-  -- Check that `bundle` itself is present;
   if vim.fn.executable("bundle") ~= 1 then
     vim.notify(
       "[ruby] `bundle` not found — install with: gem install bundler\n"
@@ -33,7 +32,6 @@ local function check_bundler_env()
     return
   end
 
-  -- Check that rdbg is available (needed for DAP).
   if vim.fn.executable("rdbg") ~= 1 then
     local has_rdbg_in_bundle = vim.fn.system(
       "cd " .. vim.fn.shellescape(root)
@@ -107,6 +105,15 @@ return {
   -- ── Rails generator keymaps ────────────────────────────────────────────────
   --
   -- Only registered when a Rails project is detected (config/application.rb).
+  -- Keymap layout:
+  --   <leader>rgm  generate model
+  --   <leader>rgc  generate controller
+  --   <leader>rgs  generate scaffold
+  --   <leader>rgj  generate job
+  --   <leader>rgM  generate migration
+  --   <leader>rgS  rails server
+  --   <leader>rgd  db:migrate
+  --   <leader>rgr  rails console
 
   {
     "akinsho/toggleterm.nvim",
@@ -140,7 +147,7 @@ return {
             { "n", "<leader>rgj", function() rails_generate("job")        end, "Rails generate job"        },
             { "n", "<leader>rgM", function() rails_generate("migration")  end, "Rails generate migration"  },
             {
-              "n", "<leader>rgs",
+              "n", "<leader>rgS",
               function() require("core.util.term").float_at_root("bundle exec rails server") end,
               "Rails server",
             },

@@ -202,6 +202,9 @@ return vim.tbl_extend("keep", M, {
         {"<leader>jp",group="js-packages"},{"<leader>db",group="database"},{"<leader>re",group="rest"},
         {"<leader>tc",group="test-coverage"},{"<leader>r",group="rust"},  {"<leader>c",group="c/code"},
         {"<leader>gc",group="git-conflict"},{"<leader>m",group="markdown"},
+        -- Git sub-groups (keymaps defined in git.lua; registered here so
+        -- which-key shows labeled groups instead of bare key sequences)
+        {"<leader>.z",group="stash"},      {"<leader>.w",group="worktree"},
       },
     } },
 

@@ -13,11 +13,10 @@ local function toggle_cargo_features()
   local ok_r, lines = pcall(vim.fn.readfile, cargo)
   if not ok_r then return end
 
-  -- Parse feature names from [features] section.
   local features   = {}
   local in_section = false
   for _, line in ipairs(lines) do
-    if     line:match("^%[features%]")  then in_section = true
+    if     line:match("^%[features%]")       then in_section = true
     elseif in_section and line:match("^%[") then in_section = false
     elseif in_section then
       local name = line:match("^(%w[%w_%-]*)%s*=")
@@ -33,9 +32,14 @@ local function toggle_cargo_features()
   local enabled = {}
   for _, f in ipairs(current) do enabled[f] = true end
 
-  local items = vim.tbl_map(function(f) return (enabled[f] and "✓ " or "  ") .. f end, features)
+  local items = vim.tbl_map(
+    function(f) return (enabled[f] and "✓ " or "  ") .. f end,
+    features
+  )
 
-  vim.ui.select(items, { prompt = "Toggle Cargo feature (✓ = enabled):" }, function(choice, idx)
+  vim.ui.select(items, {
+    prompt = "Toggle one Cargo feature (✓ = currently enabled) — repeat <leader>rf to toggle more:",
+  }, function(choice, idx)
     if not choice or not idx then return end
     local feat = features[idx]
     if enabled[feat] then
@@ -58,8 +62,11 @@ local function toggle_cargo_features()
       end
     end)
 
+    -- Show the full active set so users know the cumulative state.
+    local active_str = #new_list > 0 and table.concat(new_list, ", ") or "(none)"
     vim.notify(
-      "[rust] Active features: " .. (#new_list > 0 and table.concat(new_list, ", ") or "(none)"),
+      "[rust] Active features: " .. active_str
+      .. "\nPress <leader>rf again to toggle another feature.",
       vim.log.levels.INFO
     )
   end)
@@ -89,7 +96,6 @@ return {
               assist            = { importMergeBehavior = "last", importPrefix = "by_self" },
               cargo             = {
                 loadOutDirsFromCheck = true,
-                -- Honour the user's feature toggle selection.
                 features = type(vim.g.rustaceanvim_features) == "table"
                   and vim.g.rustaceanvim_features or "all",
               },
@@ -120,15 +126,13 @@ return {
         table.insert(keys, { e[1], "<cmd>" .. e[2] .. "<cr>", desc = e[3], ft = "rust" })
       end
 
-      -- Feature flag toggle
       table.insert(keys, {
         "<leader>rf",
         function() toggle_cargo_features() end,
-        desc = "Rust Toggle Cargo feature flags",
+        desc = "Rust Toggle one Cargo feature flag (repeat to toggle more)",
         ft   = "rust",
       })
 
-      -- cargo expand macro viewer
       table.insert(keys, {
         "<leader>rx",
         function()
@@ -139,7 +143,6 @@ return {
             )
             return
           end
-          -- Find the macro / item name under cursor (best-effort).
           local word = vim.fn.expand("<cword>")
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
@@ -149,13 +152,9 @@ return {
             cmd = cmd .. " " .. vim.fn.shellescape(word)
           end
 
-          -- Open in a scratch buffer via toggleterm so it can be scrolled.
           local ok_term, term = pcall(require, "core.util.term")
-          if ok_term then
-            term.float(cmd)
-          else
-            vim.cmd("split | terminal " .. cmd)
-          end
+          if ok_term then term.float(cmd)
+          else vim.cmd("split | terminal " .. cmd) end
         end,
         desc = "Rust cargo expand (macro viewer)",
         ft   = "rust",

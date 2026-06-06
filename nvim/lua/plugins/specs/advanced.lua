@@ -48,6 +48,7 @@ return {
   { "gbprod/stay-in-place.nvim", event = "VeryLazy", opts = {} },
 
   -- ── mini.nvim — unified spec ───────────────────────────────────────────────
+  --
   {
     "echasnovski/mini.nvim",
     event = "VeryLazy",
@@ -86,8 +87,7 @@ return {
         end)
       end
 
-      -- ── mini.visits — frecency tracking (config also in editor.lua) ──────
-      -- Setup is idempotent;
+      -- ── mini.visits — frecency tracking ──────────────────────────────────
       pcall(function()
         require("mini.visits").setup({
           store = { path = vim.fn.stdpath("data") .. "/mini-visits.json" },
@@ -97,11 +97,6 @@ return {
   },
 
   -- ── mini.files — file explorer alternative ────────────────────────────────
-  --
-  -- Lightweight file manager: directory tree in a floating buffer.
-  -- <leader>em  open mini.files at the current file's directory.
-  -- <leader>eM  open mini.files at the project root.
-  -- Coexists with neo-tree; use whichever fits the task.
   {
     "echasnovski/mini.nvim",
     keys = {

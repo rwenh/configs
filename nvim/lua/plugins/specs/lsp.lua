@@ -32,13 +32,6 @@ return {
       end
 
       -- ── Per-server on_attach override table ───────────────────────────────
-      --
-      --   vim.g.lsp_on_attach_overrides = {
-      --     gopls = function(client, bufnr)
-      --       vim.keymap.set("n", "<leader>go!", ..., { buffer = bufnr })
-      --     end,
-      --   }
-      --
       local function run_user_on_attach(server_name, client, bufnr)
         local overrides = type(vim.g.lsp_on_attach_overrides) == "table"
           and vim.g.lsp_on_attach_overrides or {}
@@ -49,13 +42,6 @@ return {
       end
 
       -- ── Per-project .lspconfig.lua loader ─────────────────────────────────
-      --
-      --   -- .lspconfig.lua example:
-      --   return {
-      --     gopls = { settings = { gopls = { gofumpt = false } } },
-      --     lua_ls = { settings = { Lua = { diagnostics = { globals = { "vim","hs" } } } } },
-      --   }
-      --
       local _project_lsp_cache = {}
 
       local function load_project_lsp_config()
@@ -82,7 +68,6 @@ return {
         return result
       end
 
-      -- Invalidate project config cache on DirChanged.
       vim.api.nvim_create_autocmd({ "DirChanged" }, {
         group    = vim.api.nvim_create_augroup("LspProjectConfigCache", { clear = true }),
         callback = function() _project_lsp_cache = {} end,
@@ -92,7 +77,6 @@ return {
       local function lsp_setup(server, config)
         config = config or {}
 
-        -- Merge project-level overrides for this server.
         local project_overrides = load_project_lsp_config()
         if project_overrides[server] then
           config = vim.tbl_deep_extend("force", config, project_overrides[server])
@@ -100,7 +84,6 @@ return {
 
         config.capabilities = vim.tbl_deep_extend("force", get_capabilities(), config.capabilities or {})
 
-        -- Wrap on_attach to also run user overrides.
         local user_on_attach = config.on_attach
         config.on_attach = function(client, bufnr)
           if type(user_on_attach) == "function" then pcall(user_on_attach, client, bufnr) end
@@ -189,21 +172,51 @@ return {
 
       -- ── Servers ───────────────────────────────────────────────────────────
       local servers = {
-        lua_ls = { settings = { Lua = { diagnostics = { globals = { "vim" } }, workspace = { checkThirdParty = false }, telemetry = { enable = false } } } },
-        basedpyright = { settings = { basedpyright = { analysis = { typeCheckingMode = "basic" } } } },
-        gopls = { settings = { gopls = { analyses = { unusedparams = true }, staticcheck = true, gofumpt = true } } },
-        solargraph = { settings = { solargraph = { diagnostics = true, completion = true } } },
+        lua_ls = {
+          settings = {
+            Lua = {
+              diagnostics = { globals = { "vim" } },
+              workspace   = { checkThirdParty = false },
+              telemetry   = { enable = false },
+            },
+          },
+        },
+        basedpyright = {
+          settings = { basedpyright = { analysis = { typeCheckingMode = "basic" } } },
+        },
+        gopls = {
+          settings = { gopls = { analyses = { unusedparams = true }, staticcheck = true, gofumpt = true } },
+        },
+        solargraph = {
+          settings = { solargraph = { diagnostics = true, completion = true } },
+        },
+
+        -- ── elixirls ──────────────────────────────────────────────────────
+        --
+        --   cmd = (function()
+        --     local mason_ls = data .. "/mason/packages/elixir-ls/..."
+        --     if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
+        --     ...
+        --   end)(),
         elixirls = {
-          cmd = (function()
-            local data = vim.fn.stdpath("data")
+          cmd = function()
+            local data     = vim.fn.stdpath("data")
             local mason_ls = data .. "/mason/packages/elixir-ls/language_server.sh"
             if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
             local sys = vim.fn.exepath("elixir-ls")
             return sys ~= "" and { sys } or { "elixir-ls" }
-          end)(),
-          settings = { elixirLS = { dialyzerEnabled = true, fetchDeps = false, enableTestLenses = true, suggestSpecs = true } },
+          end,
+          settings = {
+            elixirLS = {
+              dialyzerEnabled  = true,
+              fetchDeps        = false,
+              enableTestLenses = true,
+              suggestSpecs     = true,
+            },
+          },
         },
       }
+
       for server, config in pairs(servers) do lsp_setup(server, config) end
       for _, s in ipairs({ "tailwindcss","cssls","jsonls","yamlls","clangd","kotlin_language_server","zls" }) do
         lsp_setup(s, {})
@@ -240,7 +253,12 @@ return {
       local icons = require("core.util.icons")
       vim.diagnostic.config({
         virtual_text  = { prefix = "●", spacing = 4 },
-        signs         = { text = { Error = icons.diagnostics.Error, Warn = icons.diagnostics.Warn, Hint = icons.diagnostics.Hint, Info = icons.diagnostics.Info } },
+        signs         = { text = {
+          Error = icons.diagnostics.Error,
+          Warn  = icons.diagnostics.Warn,
+          Hint  = icons.diagnostics.Hint,
+          Info  = icons.diagnostics.Info,
+        }},
         underline = true, severity_sort = true, update_in_insert = false,
         float     = { border = "rounded", source = "always" },
       })
@@ -270,7 +288,10 @@ return {
       end,
     },
     config = function(_, opts)
-      if vim.fn.executable("sqlfmt") == 1 then opts.formatters_by_ft.sql = { "sqlfmt" }; opts.formatters_by_ft.mysql = { "sqlfmt" } end
+      if vim.fn.executable("sqlfmt") == 1 then
+        opts.formatters_by_ft.sql   = { "sqlfmt" }
+        opts.formatters_by_ft.mysql = { "sqlfmt" }
+      end
       local ok, conform = pcall(require, "conform")
       if ok then pcall(conform.setup, opts) end
     end,
@@ -286,15 +307,26 @@ return {
         lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
         local seen = {}
         for _, l in ipairs(lint.linters_by_ft[ft]) do seen[l] = true end
-        for _, l in ipairs(linters) do if not seen[l] then table.insert(lint.linters_by_ft[ft], l); seen[l] = true end end
+        for _, l in ipairs(linters) do
+          if not seen[l] then table.insert(lint.linters_by_ft[ft], l); seen[l] = true end
+        end
       end
-      merge_linters("python", { "ruff" }); merge_linters("javascript", { "eslint_d" })
-      merge_linters("typescript", { "eslint_d" }); merge_linters("ruby", { "rubocop" })
-      if vim.fn.executable("pylint")    == 1 then merge_linters("python", { "pylint" }) end
-      if vim.fn.executable("eslint_d")  == 1 then for _, ft in ipairs({"javascript","typescript","javascriptreact","typescriptreact"}) do merge_linters(ft, {"eslint_d"}) end end
-      if vim.fn.executable("shellcheck")== 1 then merge_linters("sh",{"shellcheck"}); merge_linters("bash",{"shellcheck"}) end
-      if vim.fn.executable("htmlhint")  == 1 then merge_linters("html",{"htmlhint"}) end
-      if vim.fn.executable("clang-tidy")== 1 then merge_linters("c",{"clang-tidy"}) end
+      merge_linters("python",     { "ruff" })
+      merge_linters("javascript", { "eslint_d" })
+      merge_linters("typescript", { "eslint_d" })
+      merge_linters("ruby",       { "rubocop" })
+      if vim.fn.executable("pylint")     == 1 then merge_linters("python", { "pylint" }) end
+      if vim.fn.executable("eslint_d")   == 1 then
+        for _, ft in ipairs({ "javascript","typescript","javascriptreact","typescriptreact" }) do
+          merge_linters(ft, { "eslint_d" })
+        end
+      end
+      if vim.fn.executable("shellcheck") == 1 then
+        merge_linters("sh",   { "shellcheck" })
+        merge_linters("bash", { "shellcheck" })
+      end
+      if vim.fn.executable("htmlhint")   == 1 then merge_linters("html", { "htmlhint" }) end
+      if vim.fn.executable("clang-tidy") == 1 then merge_linters("c",    { "clang-tidy" }) end
       vim.api.nvim_create_autocmd({ "BufWritePost","InsertLeave" }, {
         group    = vim.api.nvim_create_augroup("NvimLint", { clear = true }),
         callback = function() pcall(function() lint.try_lint() end) end,

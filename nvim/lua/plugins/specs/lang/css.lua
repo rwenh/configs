@@ -33,7 +33,7 @@ vim.api.nvim_create_autocmd("FileType", {
   once     = true,
   group    = vim.api.nvim_create_augroup("StylelintConditional", { clear = true }),
   callback = function()
-    if not vim.fn.executable("stylelint") == 1 then return end
+    if vim.fn.executable("stylelint") ~= 1 then return end
     if not has_stylelint_config() then
       vim.notify(
         "[css] stylelint found but no config detected — linter skipped.\n"
@@ -105,13 +105,11 @@ return {
           if not vim.tbl_contains({ "css","scss","less" }, ft) then return end
 
           vim.keymap.set("n", "<leader>cv", function()
-            -- Get the word under cursor; if it starts with -- treat as CSS variable.
             local word = vim.fn.expand("<cword>")
             if not word:match("^%-%-") then
               vim.notify("[css] cursor is not on a CSS custom property (--var)", vim.log.levels.INFO)
               return
             end
-            -- Use Telescope live_grep to find the definition.
             local ok, tb = pcall(require, "telescope.builtin")
             if ok then
               local ok_path, path = pcall(require, "core.util.path")

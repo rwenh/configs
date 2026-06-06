@@ -4,10 +4,6 @@
 local icons = require("core.util.icons")
 
 -- ── Word count ────────────────────────────────────────────────────────────
---
--- Provides M.word_count(buf) → integer.
---
--- Uses Neovim's built-in wordcount() when available (fast, C-level);
 
 local M = {}
 
@@ -16,7 +12,6 @@ function M.word_count(buf)
   local ft = vim.bo[buf].filetype
   if ft ~= "markdown" and ft ~= "markdown_inline" then return nil end
 
-  -- vim.fn.wordcount() is synchronous and covers the whole buffer.
   local ok, wc = pcall(vim.fn.wordcount)
   if ok and type(wc) == "table" and type(wc.words) == "number" then
     return wc.words
@@ -36,19 +31,17 @@ function M.word_count(buf)
       fm_end = true
     elseif not in_fm then
       fm_end = true
-      -- Strip Markdown syntax before counting.
       local plain = line
-        :gsub("%[(.-)%]%(.-%)", "%1")   -- links
-        :gsub("[#*_`~>]", " ")          -- headings, emphasis, code, blockquote
-        :gsub("%-%-%-+", "")            -- hr
+        :gsub("%[(.-)%]%(.-%)", "%1")
+        :gsub("[#*_`~>]", " ")
+        :gsub("%-%-%-+", "")
       for _ in plain:gmatch("%S+") do count = count + 1 end
     end
-    _ = fm_end  -- suppress unused warning
+    _ = fm_end
   end
   return count
 end
 
---   lualine_z = { require("plugins.specs.lang.markdown").lualine_wordcount }
 M.lualine_wordcount = {
   function()
     local n = M.word_count()
@@ -62,9 +55,6 @@ M.lualine_wordcount = {
 }
 
 -- ── Frontmatter schema hint ───────────────────────────────────────────────
---
--- When yamlls is active, associate common frontmatter schemas so keys like
--- `title`, `date`, `tags`, `draft` get completion and validation.
 
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("MarkdownFrontmatter", { clear = true }),
@@ -74,18 +64,14 @@ vim.api.nvim_create_autocmd("LspAttach", {
     local ft = vim.bo[e.buf].filetype
     if ft ~= "markdown" and ft ~= "yaml" then return end
 
-    -- Add Jekyll/Hugo/Zola frontmatter schema if not already present.
     local ok = pcall(function()
       local current = client.config.settings
         and client.config.settings.yaml
         and client.config.settings.yaml.schemas
         or {}
-      -- Only inject when no schema is already set for the buffer's file.
       local name = vim.api.nvim_buf_get_name(e.buf)
       if current[name] then return end
 
-      -- Request the server to use the generic YAML schema.
-      -- Projects with stricter schemas should configure yamlls themselves.
       client.notify("workspace/didChangeConfiguration", {
         settings = vim.tbl_deep_extend("keep", client.config.settings or {}, {
           yaml = {
@@ -97,7 +83,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
         }),
       })
     end)
-    _ = ok  -- non-fatal
+    _ = ok
   end,
   desc = "Enhance yamlls for Markdown frontmatter buffers",
 })
@@ -119,19 +105,33 @@ return {
         return
       end
 
-      local out = vim.fn.system(
-        "cd " .. vim.fn.shellescape(plugin.dir) .. "/app"
-        .. " && npm install --legacy-peer-deps"
+      vim.notify(
+        "[markdown-preview] installing npm dependencies (background)…",
+        vim.log.levels.INFO
       )
 
-      if vim.v.shell_error ~= 0 then
-        vim.notify(
-          "[markdown-preview] npm install failed — browser preview will not work.\n"
-          .. "Run :Lazy build markdown-preview.nvim to retry.\n"
-          .. "npm output:\n" .. vim.trim(out),
-          vim.log.levels.WARN
-        )
-      end
+      vim.system(
+        { "npm", "install", "--legacy-peer-deps" },
+        { cwd = plugin.dir .. "/app", text = true },
+        function(result)
+          vim.schedule(function()
+            if result.code ~= 0 then
+              vim.notify(
+                "[markdown-preview] npm install failed — browser preview will not work.\n"
+                .. "Run :Lazy build markdown-preview.nvim to retry.\n"
+                .. "npm output:\n"
+                .. vim.trim((result.stderr or "") .. (result.stdout or "")),
+                vim.log.levels.WARN
+              )
+            else
+              vim.notify(
+                "[markdown-preview] npm dependencies installed successfully.",
+                vim.log.levels.INFO
+              )
+            end
+          end)
+        end
+      )
     end,
 
     init = function()
@@ -224,9 +224,7 @@ return {
     end,
   },
 
-  -- ── Link checker keymap ────────────────────────────────────────────────────
-  --
-  -- Runs markdown-link-check (npm i -g markdown-link-check) on the current file.
+  -- ── Link checker + word count keymaps ─────────────────────────────────────
 
   {
     "akinsho/toggleterm.nvim",

@@ -215,6 +215,22 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>.S` | Stage hunk |
 | `<leader>.r` / `<leader>.S` | Reset / stage (visual) |
 
+### Stash
+
+| Key | Action |
+|-----|--------|
+| `<leader>.zz` | Stash push (prompts for optional message) |
+| `<leader>.zp` | Stash pop |
+| `<leader>.zl` | List stashes (Telescope) |
+| `<leader>.zh` | File history with rename tracking (`--follow`) |
+
+### Worktree
+
+| Key | Action |
+|-----|--------|
+| `<leader>.wl` | List / switch worktrees (Telescope) |
+| `<leader>.wc` | Create new worktree |
+
 ### GitHub — Octo
 
 | Key | Action |
@@ -584,6 +600,19 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 ---
 
 ## Language: Ruby
+
+| Key | Action |
+|-----|--------|
+| `<leader>rgm` | Rails generate model |
+| `<leader>rgc` | Rails generate controller |
+| `<leader>rgs` | Rails generate scaffold |
+| `<leader>rgj` | Rails generate job |
+| `<leader>rgM` | Rails generate migration |
+| `<leader>rgS` | Rails server (`bundle exec rails server`) |
+| `<leader>rgd` | Rails db:migrate |
+| `<leader>rgr` | Rails console |
+
+### vim-test
 
 | Key | Action |
 |-----|--------|

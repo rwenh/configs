@@ -34,8 +34,12 @@ return {
         function()
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-          local candidates = { root .. "/tsconfig.json", root .. "/tsconfig.base.json",
-                               root .. "/tsconfig.app.json", root .. "/tsconfig.node.json" }
+          local candidates = {
+            root .. "/tsconfig.json",
+            root .. "/tsconfig.base.json",
+            root .. "/tsconfig.app.json",
+            root .. "/tsconfig.node.json",
+          }
           for _, f in ipairs(candidates) do
             if vim.fn.filereadable(f) == 1 then
               vim.cmd("edit " .. vim.fn.fnameescape(f)); return
@@ -51,8 +55,8 @@ return {
       {
         "<leader>tsb",
         function()
-          local dir  = vim.fn.expand("%:p:h")
-          local files = vim.fn.globpath(dir, "*.ts", false, true)
+          local dir   = vim.fn.expand("%:p:h")
+          local files = vim.fn.globpath(dir, "*.ts",  false, true)
           local tsx   = vim.fn.globpath(dir, "*.tsx", false, true)
           vim.list_extend(files, tsx)
 
@@ -71,15 +75,33 @@ return {
 
           table.sort(exports)
           local barrel = dir .. "/index.ts"
-          local ok = pcall(vim.fn.writefile, exports, barrel)
-          if ok then
-            vim.notify("[ts] Barrel written: " .. barrel, vim.log.levels.INFO)
-            vim.cmd("edit " .. vim.fn.fnameescape(barrel))
+
+          local function do_write()
+            local ok = pcall(vim.fn.writefile, exports, barrel)
+            if ok then
+              vim.notify("[ts] Barrel written: " .. barrel, vim.log.levels.INFO)
+              vim.cmd("edit " .. vim.fn.fnameescape(barrel))
+            else
+              vim.notify("[ts] Failed to write barrel file", vim.log.levels.ERROR)
+            end
+          end
+
+          if vim.fn.filereadable(barrel) == 1 then
+            vim.ui.input(
+              { prompt = "index.ts already exists — overwrite? [y/N]: " },
+              function(ans)
+                if ans == "y" or ans == "Y" then
+                  do_write()
+                else
+                  vim.notify("[ts] Barrel generation cancelled.", vim.log.levels.INFO)
+                end
+              end
+            )
           else
-            vim.notify("[ts] Failed to write barrel file", vim.log.levels.ERROR)
+            do_write()
           end
         end,
-        desc = "TS Generate barrel (index.ts)",
+        desc = "TS Generate barrel (index.ts) — prompts before overwrite",
         ft   = shared.JS_TS_FT,
       },
 

@@ -17,18 +17,30 @@ return {
     config = function(_, opts)
       local ok, vs = pcall(require, "venv-selector")
       if not ok then return end
+
       opts.post_set_venv = function()
-        -- Re-initialise nvim-dap-python with the new interpreter.
+        -- Re-initialise nvim-dap-python with the interpreter from the new venv.
         local ok_dpy, dpy = pcall(require, "dap-python")
         if ok_dpy then
           local venv   = os.getenv("VIRTUAL_ENV")
           local python = (venv and venv ~= "") and (venv .. "/bin/python")
                          or vim.fn.exepath("python3")
           if python and python ~= "" then
-            pcall(dpy.setup, python)
+            local ok_setup, err = pcall(dpy.setup, python)
+            if not ok_setup then
+              vim.notify(
+                "[python] dap-python re-init failed after venv switch.\n"
+                .. "Interpreter: " .. python .. "\n"
+                .. "Reason: " .. tostring(err) .. "\n"
+                .. "Debug sessions in this venv may not work.\n"
+                .. "Fix: pip install debugpy  (inside the selected venv)",
+                vim.log.levels.WARN
+              )
+            end
           end
         end
       end
+
       vs.setup(opts)
     end,
   },
@@ -44,11 +56,12 @@ return {
       -- ── Debugpy interpreter resolution ───────────────────────────────────
       --
       -- Auto-detection precedence (first match wins):
-      --   1. VIRTUAL_ENV env var  — active venv always wins, even over pyenv.
-      --   2. Non-shim PATH python — direct system or conda python with debugpy.
-      --   3. Pyenv version file   — resolves via .python-version walking upward.
-      --   4. User site-packages   — pip3 install --user debugpy scenario.
-      --   5. Any executable python — last resort; warns that debugpy is missing.
+      --   0. vim.g.debugpy_python        — explicit escape hatch
+      --   1. VIRTUAL_ENV env var          — active venv always wins
+      --   2. Non-shim PATH python         — direct system or conda python with debugpy
+      --   3. Pyenv version file           — resolves via .python-version walking upward
+      --   4. User site-packages           — pip3 install --user debugpy scenario
+      --   5. Any executable python        — last resort; warns that debugpy is missing
 
       local function find_debugpy_python()
         -- 0. Escape hatch — explicit override via vim.g.

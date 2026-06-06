@@ -19,11 +19,6 @@ local ROOT_MARKERS = {
 }
 
 -- ── Per-project ignore patterns ───────────────────────────────────────────────
---
--- Set via vim.g.path_ignore_dirs in init.lua:
---
---   vim.g.path_ignore_dirs = { "vendor", "node_modules", "third_party" }
---
 local IGNORE_DIRS = (function()
   local t = { ".cache", "__pycache__" }
   if type(vim.g.path_ignore_dirs) == "table" then
@@ -107,7 +102,6 @@ end
 function M.find_root_async(start_path, callback)
   if type(callback) ~= "function" then return end
 
-  -- Fast path: synchronous result available from cache.
   start_path = start_path or vim.fn.expand("%:p:h")
   local cache_key = normalize(start_path)
   local entry = _cache[cache_key]
@@ -116,7 +110,6 @@ function M.find_root_async(start_path, callback)
     return
   end
 
-  -- If vim.uv async fs_stat is available, use it.
   if not (vim.uv and vim.uv.fs_stat) then
     vim.schedule(function() callback(M.find_root(start_path)) end)
     return
@@ -126,16 +119,21 @@ function M.find_root_async(start_path, callback)
   local depth      = 0
   local marker_idx = 1
 
+  --   if marker_idx > #ROOT_MARKERS then  -- advance to parent1
+  --     current = parent1; marker_idx = 1; depth++
+  --   end                                 -- falls through ↓
+  --   if is_ignored(current) then         -- parent1 is ignored → advance to parent2
+  --     current = parent2; marker_idx = 1; depth++
+  --   end                                 -- depth incremented TWICE in one call
+
   local function check_next()
     if depth > MAX_WALK_DEPTH then
-      vim.schedule(function()
-        callback(vim.fn.getcwd())
-      end)
+      vim.schedule(function() callback(vim.fn.getcwd()) end)
       return
     end
 
+    -- All markers exhausted for the current directory — walk up one level.
     if marker_idx > #ROOT_MARKERS then
-      -- All markers exhausted for this directory; walk up.
       local parent = vim.fn.fnamemodify(current, ":h")
       if parent == current or parent == "" then
         vim.schedule(function() callback(vim.fn.getcwd()) end)
@@ -144,8 +142,11 @@ function M.find_root_async(start_path, callback)
       current    = parent
       marker_idx = 1
       depth      = depth + 1
+      check_next()
+      return
     end
 
+    -- Current directory is on the ignore list — skip it entirely.
     if is_ignored(current) then
       local parent = vim.fn.fnamemodify(current, ":h")
       if parent == current then
@@ -155,12 +156,14 @@ function M.find_root_async(start_path, callback)
       current    = parent
       marker_idx = 1
       depth      = depth + 1
+      check_next()
+      return
     end
 
-    local path = current .. "/" .. ROOT_MARKERS[marker_idx]
-    vim.uv.fs_stat(path, function(err, stat)
+    -- Probe the next marker in the current directory.
+    local probe = current .. "/" .. ROOT_MARKERS[marker_idx]
+    vim.uv.fs_stat(probe, function(err, stat)
       if not err and stat then
-        -- Found a root marker.
         _cache[cache_key] = { root = current, time = os.time() }
         vim.schedule(function() callback(current) end)
       else

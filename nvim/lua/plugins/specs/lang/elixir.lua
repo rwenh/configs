@@ -22,20 +22,28 @@ local function check_elixir_env()
     return
   end
 
-  -- Warn when hex is absent; most mix tasks need it.
-  local hex_check = vim.fn.system("mix hex.info 2>&1")
-  if hex_check:find("Could not find Hex") or hex_check:find("not available") then
-    vim.notify(
-      "[elixir] Hex package manager not installed.\n"
-      .. "Run: mix local.hex --force",
-      vim.log.levels.WARN
-    )
-  end
+  vim.system(
+    { "mix", "hex.info" },
+    { text = true },
+    function(result)
+      local output = (result.stdout or "") .. (result.stderr or "")
+      if output:find("Could not find Hex", 1, true)
+      or output:find("not available",      1, true)
+      or result.code ~= 0 then
+        vim.schedule(function()
+          vim.notify(
+            "[elixir] Hex package manager not installed.\n"
+            .. "Run: mix local.hex --force",
+            vim.log.levels.WARN
+          )
+        end)
+      end
+    end
+  )
 end
 
 return {
   -- ── elixir-tools (NextLS) ─────────────────────────────────────────────────
-  --
   {
     "elixir-tools/elixir-tools.nvim",
     ft           = { "elixir", "eex", "heex", "surface" },
@@ -44,7 +52,6 @@ return {
     cond = function() return vim.g.elixir_use_nextls == true end,
 
     init = function()
-      -- Validate that a Next LS binary is resolvable before attempting setup.
       if vim.fn.executable("nextls") ~= 1 then
         vim.notify(
           "[elixir] vim.g.elixir_use_nextls = true but `nextls` binary not found.\n"
@@ -67,7 +74,6 @@ return {
           elixirls = { enable = false },
           nextls   = {
             enable = true,
-            -- Resolve the binary from PATH or a user-specified path.
             cmd    = vim.g.nextls_bin or "nextls",
           },
         })
@@ -92,6 +98,8 @@ return {
         pattern  = "elixir",
         once     = true,
         group    = vim.api.nvim_create_augroup("ElixirEnvCheck", { clear = true }),
+        -- check_elixir_env is now async internally; vim.schedule wrapper here
+        -- is kept for consistency but is no longer load-critical.
         callback = function() vim.schedule(check_elixir_env) end,
       })
     end,

@@ -28,13 +28,13 @@ M.TAILWIND_FT = {
 M.ft_to_lsp = {
   lua             = "lua_ls",
   python          = "basedpyright",
-  rust            = "rust-analyzer",   -- managed by rustaceanvim
+  rust            = "rust-analyzer",
   go              = "gopls",
   javascript      = "typescript-tools",
   typescript      = "typescript-tools",
   javascriptreact = "typescript-tools",
   typescriptreact = "typescript-tools",
-  java            = "jdtls",           -- managed by nvim-jdtls
+  java            = "jdtls",
   kotlin          = "kotlin_language_server",
   ruby            = "solargraph",
   elixir          = "elixirls",
@@ -53,7 +53,6 @@ M.ft_to_lsp = {
 }
 
 -- ── FT → formatter name(s) ────────────────────────────────────────────────
--- Lang specs can read this to display the active formatter or build guards.
 M.ft_to_formatter = {
   lua             = { "stylua" },
   python          = { "black", "isort" },
@@ -78,7 +77,7 @@ M.ft_to_formatter = {
   fortran         = { "fprettify" },
   zig             = { "zigfmt" },
   vhdl            = { "vsg" },
-  elixir          = { "mix" },
+  elixir          = { "mix format" },
 }
 
 -- ── Spec helpers ───────────────────────────────────────────────────────────
@@ -101,9 +100,6 @@ function M.treesitter(parsers)
   }
 end
 
--- Usage (from any lang spec):
---   shared.conform("mylang", { "myformatter" })
---
 ---@param ft         string    Neovim filetype
 ---@param formatters string[]  list of conform formatter names
 function M.conform(ft, formatters)
@@ -122,9 +118,6 @@ function M.conform(ft, formatters)
   }
 end
 
--- Usage (from any lang spec):
---   shared.lint("mylang", { "mylinter" })
---
 ---@param ft      string    Neovim filetype
 ---@param linters string[]  list of nvim-lint linter names
 function M.lint(ft, linters)
@@ -143,6 +136,55 @@ function M.lint(ft, linters)
       end
     end,
   }
+end
+
+-- ── symlink_compile_commands ───────────────────────────────────────────────
+--
+-- Usage:
+--   shared.symlink_compile_commands("c")    -- called from c.lua
+--   shared.symlink_compile_commands("cpp")  -- called from cpp.lua
+--
+---@param prefix     string    log prefix, e.g. "c" or "cpp"
+---@param extra      string[]? additional candidate paths to append
+function M.symlink_compile_commands(prefix, extra)
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then return end
+
+  local dst = root .. "/compile_commands.json"
+  -- Guard: already present as a file or an existing symlink directory.
+  if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then return end
+
+  local build_dir = vim.g.cmake_build_dir or "build"
+  local candidates = {
+    root .. "/" .. build_dir .. "/compile_commands.json",
+    root .. "/build/Debug/compile_commands.json",
+    root .. "/build/Release/compile_commands.json",
+    root .. "/.build/compile_commands.json",
+  }
+
+  -- Append any caller-supplied extras (e.g. custom build dir variants).
+  if type(extra) == "table" then
+    for _, c in ipairs(extra) do
+      table.insert(candidates, c)
+    end
+  end
+
+  for _, src in ipairs(candidates) do
+    if vim.fn.filereadable(src) == 1 then
+      local ok = pcall(function()
+        vim.fn.system({ "ln", "-sf", src, dst })
+      end)
+      if ok and vim.fn.filereadable(dst) == 1 then
+        vim.notify(
+          "[" .. prefix .. "] compile_commands.json linked from "
+          .. vim.fn.fnamemodify(src, ":~:."),
+          vim.log.levels.INFO
+        )
+      end
+      return
+    end
+  end
 end
 
 return M

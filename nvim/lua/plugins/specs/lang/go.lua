@@ -13,8 +13,8 @@ local GO_FT = { "go", "gomod" }
 -- ── Go environment guard ────────────────────────────────────────────────────
 
 local function check_go_env()
-  if not vim.fn.executable("goimports") == 1
-  and not vim.fn.executable("gofumpt")  == 1 then
+  if vim.fn.executable("goimports") ~= 1
+  and vim.fn.executable("gofumpt") ~= 1 then
     local gopath = vim.fn.trim(vim.fn.system("go env GOPATH 2>/dev/null"))
     if gopath and gopath ~= "" then
       local bin_dir = gopath .. "/bin"

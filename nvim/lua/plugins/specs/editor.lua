@@ -64,9 +64,6 @@ return {
   },
 
   -- ── Project-scoped Telescope search ────────────────────────────────────────
-  --
-  -- <leader>fP  live_grep scoped to the current project root.
-  -- <leader>fp  find_files scoped to the current project root.
   {
     "nvim-telescope/telescope.nvim",
     keys = {
@@ -95,22 +92,8 @@ return {
 
   -- ── mini.visits — frecency-based file switching ───────────────────────────
   --
-  -- <leader>fv  opens a Telescope-style picker of frequent/recent files.
   {
     "echasnovski/mini.nvim",
-    event = "VeryLazy",
-    config = function()
-      local ok, visits = pcall(require, "mini.visits")
-      if not ok then return end
-      pcall(function()
-        visits.setup({
-          -- Store visits per git root so monorepo sub-projects stay separate.
-          store = {
-            path = vim.fn.stdpath("data") .. "/mini-visits.json",
-          },
-        })
-      end)
-    end,
     keys = {
       {
         "<leader>fv",
@@ -123,7 +106,7 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
 
-          -- Build a list of recent+frequent paths under this project root.
+          -- Build a list of recent+frequent paths scoped to this project root.
           local paths = vim.tbl_filter(function(p)
             return vim.startswith(p, root)
           end, visits.list_paths() or {})
@@ -133,15 +116,26 @@ return {
             return
           end
 
-          -- Show in Telescope find_files picker with frecency-sorted input.
           local ok_tb, tb = pcall(require, "telescope.builtin")
-          if ok_tb then
-            pcall(tb.find_files, {
-              find_command = vim.list_extend({ "echo" }, paths),
-              prompt_title = "Recent files (frecency)",
-              cwd          = root,
-            })
+          if not ok_tb then
+            vim.notify("[visits] telescope not available", vim.log.levels.WARN)
+            return
           end
+
+          local tmpfile = vim.fn.tempname()
+          if not pcall(vim.fn.writefile, paths, tmpfile) then
+            vim.notify("[visits] failed to build frecency file list", vim.log.levels.WARN)
+            return
+          end
+
+          pcall(tb.find_files, {
+            find_command = { "cat", tmpfile },
+            prompt_title = "Recent files (frecency)",
+            cwd          = root,
+          })
+
+          -- Clean up temp file after a short delay (picker is async).
+          vim.defer_fn(function() pcall(os.remove, tmpfile) end, 5000)
         end,
         desc = "Frequent/recent files (mini.visits)",
       },
