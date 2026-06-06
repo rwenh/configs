@@ -83,7 +83,12 @@ return {
     end)(),
 
     config = function(_, opts)
-      if vim.tbl_isempty(opts) then return end
+      -- Skip setup if no curl or opts is empty after defaults
+      if type(opts) ~= "table" or vim.tbl_isempty(opts) then
+        vim.notify("[rest] rest.nvim not configured (curl missing or no options)", vim.log.levels.DEBUG)
+        return
+      end
+
       local ok, err = pcall(function() require("rest-nvim").setup(opts) end)
       if not ok then
         vim.notify("[rest] rest.nvim setup failed: " .. tostring(err) .. "\nRun :Lazy update rest.nvim", vim.log.levels.WARN)

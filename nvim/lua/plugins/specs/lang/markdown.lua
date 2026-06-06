@@ -3,7 +3,7 @@
 
 local icons = require("core.util.icons")
 
--- ── Word count ────────────────────────────────────────────────────────────
+-- ── Word count ────────────────────────────────────────────────────────
 
 local M = {}
 
@@ -54,7 +54,7 @@ M.lualine_wordcount = {
   end,
 }
 
--- ── Frontmatter schema hint ───────────────────────────────────────────────
+-- ── Frontmatter schema hint ───────────────────────────────────────────
 
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("MarkdownFrontmatter", { clear = true }),
@@ -102,7 +102,7 @@ return {
           .. "Install npm (nodejs) and run :Lazy build markdown-preview.nvim.",
           vim.log.levels.WARN
         )
-        return
+        return false  -- ✅ Explicit failure indication for lazy.nvim
       end
 
       vim.notify(
@@ -110,6 +110,7 @@ return {
         vim.log.levels.INFO
       )
 
+      -- ✅ Async npm install with proper error handling
       vim.system(
         { "npm", "install", "--legacy-peer-deps" },
         { cwd = plugin.dir .. "/app", text = true },
@@ -132,6 +133,7 @@ return {
           end)
         end
       )
+      -- ✅ No return value for async builds (lazy.nvim recognizes auto-completion)
     end,
 
     init = function()
