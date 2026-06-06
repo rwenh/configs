@@ -93,37 +93,39 @@ return {
 
   -- ── markview.nvim — inline buffer renderer ────────────────────────────────
   --
+  -- event = "VeryLazy" ensures treesitter is fully initialised before markview
+  -- loads, preventing the "nvim-treesitter not ready" startup warning.
   {
     "OXY2DEV/markview.nvim",
     ft           = { "markdown", "markdown_inline", "quarto", "rmd" },
+    event        = "VeryLazy",
     dependencies = {
       "nvim-treesitter/nvim-treesitter",
       "nvim-tree/nvim-web-devicons",
     },
     opts = {
-      -- Only render in Normal mode — avoids jitter while editing.
       modes        = { "n", "no" },
       hybrid_modes = { "n" },
 
       headings = {
-        enable = true,
+        enable      = true,
         shift_width = 0,
-        heading_1 = { style = "label", sign = icons.headings[1] },
-        heading_2 = { style = "label", sign = icons.headings[2] },
-        heading_3 = { style = "label", sign = icons.headings[3] },
-        heading_4 = { style = "label", sign = icons.headings[4] },
-        heading_5 = { style = "label", sign = icons.headings[5] },
-        heading_6 = { style = "label", sign = icons.headings[6] },
+        heading_1   = { style = "label", sign = icons.headings[1] },
+        heading_2   = { style = "label", sign = icons.headings[2] },
+        heading_3   = { style = "label", sign = icons.headings[3] },
+        heading_4   = { style = "label", sign = icons.headings[4] },
+        heading_5   = { style = "label", sign = icons.headings[5] },
+        heading_6   = { style = "label", sign = icons.headings[6] },
       },
 
       code_blocks = {
-        enable         = true,
-        style          = "block",
-        sign           = true,
-        min_width      = 60,
-        pad_amount     = 2,
-        above          = "▄",
-        below          = "▀",
+        enable     = true,
+        style      = "block",
+        sign       = true,
+        min_width  = 60,
+        pad_amount = 2,
+        above      = "▄",
+        below      = "▀",
       },
 
       inline_codes = { enable = true },
@@ -136,22 +138,18 @@ return {
       },
 
       bullets = {
-        enable = true,
+        enable  = true,
         markers = { "●", "○", "◆", "◇" },
       },
 
-      tables = {
-        enable     = true,
-        style      = "rounded",
-      },
-
+      tables           = { enable = true, style = "rounded" },
       horizontal_rules = { enable = true },
 
       links = {
-        enable       = true,
-        hyperlinks   = { enable = true },
-        images       = { enable = true },
-        emails       = { enable = true },
+        enable     = true,
+        hyperlinks = { enable = true },
+        images     = { enable = true },
+        emails     = { enable = true },
       },
     },
 
@@ -177,35 +175,34 @@ return {
   },
 
   -- ── peek.nvim — browser preview ───────────────────────────────────────────
-  -- Requires: cargo install deno  OR  the deno package.
+  --
   {
     "toppair/peek.nvim",
     ft    = { "markdown" },
     build = "deno task --quiet build:fast",
 
-    init = function()
+    config = function()
       if vim.fn.executable("deno") ~= 1 then
         vim.notify(
           "[markdown] deno not found — browser preview unavailable.\n"
           .. "Install: sudo zypper in deno  (or: cargo install deno)",
           vim.log.levels.WARN
         )
+        return
       end
-    end,
 
-    config = function()
       local ok, peek = pcall(require, "peek")
       if not ok then return end
       pcall(peek.setup, {
-        auto_load  = false,   -- don't open browser automatically on BufEnter
+        auto_load        = false,
         close_on_bdelete = true,
-        syntax     = true,
-        theme      = "dark",
+        syntax           = true,
+        theme            = "dark",
         update_on_change = true,
-        app        = "browser",
-        filetype   = { "markdown" },
-        throttle_at     = 200000,
-        throttle_time   = "auto",
+        app              = "browser",
+        filetype         = { "markdown" },
+        throttle_at      = 200000,
+        throttle_time    = "auto",
       })
     end,
 
@@ -213,13 +210,6 @@ return {
       {
         "<leader>mp",
         function()
-          if vim.fn.executable("deno") ~= 1 then
-            vim.notify(
-              "[markdown] deno not found — install deno for browser preview.",
-              vim.log.levels.WARN
-            )
-            return
-          end
           local ok, peek = pcall(require, "peek")
           if not ok then return end
           if peek.is_open() then
