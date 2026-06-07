@@ -45,7 +45,7 @@ end
 
 ---@param prefix string   key prefix (e.g. "<leader>kt")
 ---@param label  string   group label shown in which-key (e.g. "kotlin")
-function M_keymaps_register_group(prefix, label)
+local function M_keymaps_register_group(prefix, label)
   table.insert(_group_queue, { prefix = prefix, label = label })
 end
 

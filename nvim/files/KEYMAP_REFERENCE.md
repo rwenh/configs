@@ -1,8 +1,7 @@
 # KEYMAP REFERENCE — v2.4.1
 
-**Leader:** `Space`
-
-Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` or `FileType` event for that buffer. Plugin-backed keymaps notify if the plugin is not loaded.
+**Leader:** `Space`  
+Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 
 ---
 
@@ -13,7 +12,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 - [Buffers](#buffers)
 - [Navigation](#navigation)
 - [Find — Telescope](#find--telescope)
-- [File Explorer — Neo-tree](#file-explorer--neo-tree)
+- [File Explorer](#file-explorer)
 - [LSP](#lsp)
 - [Git](#git)
 - [Debug — DAP](#debug--dap)
@@ -22,7 +21,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 - [UI & Focus](#ui--focus)
 - [Search & Replace](#search--replace)
 - [Harpoon](#harpoon)
-- [Editing Enhancements — mini.*](#editing-enhancements--mini)
+- [Editing Enhancements](#editing-enhancements--mini)
 - [Treesitter Text Objects](#treesitter-text-objects)
 - [Folding](#folding)
 - [Utilities](#utilities)
@@ -46,21 +45,17 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 - [Language: Database](#language-database)
 - [Language: REST](#language-rest)
 - [Language: Markdown](#language-markdown)
-- [Language: HTML / CSS / Emmet](#language-html--css--emmet)
+- [Language: HTML / CSS / Web](#language-html--css--web)
 
 ---
 
 ## Editing
 
-> `jk` / `kj` insert-mode escape is handled by **better-escape.nvim** (timeout 200 ms).
-> It is not a hard keymap and does not appear in `:map`.
-
 | Key | Mode | Action |
 |-----|------|--------|
-| `jk` / `kj` | Insert | Exit insert mode (better-escape.nvim) |
+| `jk` / `kj` | Insert | Exit insert mode (better-escape.nvim, 200 ms timeout) |
 | `<Esc>` | Normal | Clear search highlight |
-| `Alt+j` | Normal / Visual | Move line / selection down |
-| `Alt+k` | Normal / Visual | Move line / selection up |
+| `Alt+j` / `Alt+k` | Normal, Visual | Move line / selection down / up |
 | `<` / `>` | Visual | Indent left / right, keep selection |
 
 ---
@@ -74,16 +69,9 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>se` | Equal splits |
 | `<leader>sx` | Close current split |
 | `<leader>sm` | Maximize / restore split |
-| `Ctrl+h` | Move to left split |
-| `Ctrl+j` | Move to lower split |
-| `Ctrl+k` | Move to upper split |
-| `Ctrl+l` | Move to right split |
-| `Ctrl+↑` | Increase split height |
-| `Ctrl+↓` | Decrease split height |
-| `Ctrl+←` | Decrease split width |
-| `Ctrl+→` | Increase split width |
-
-> `Ctrl+j` / `Ctrl+k` are Normal-mode only. blink.cmp owns them in Insert mode — there is no conflict.
+| `Ctrl+h/j/k/l` | Move to left / lower / upper / right split |
+| `Ctrl+↑/↓` | Increase / decrease split height |
+| `Ctrl+←/→` | Decrease / increase split width |
 
 ---
 
@@ -115,7 +103,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `]c` / `[c` | Next / prev class start |
 | `]a` / `[a` | Next / prev parameter start |
 | `<leader>uc` | Jump to enclosing treesitter context |
-| `-` | Open Oil (parent directory) |
+| `-` | Oil: open parent directory |
 
 ---
 
@@ -133,20 +121,25 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>fc` | Browse user commands |
 | `<leader>fo` | Recent files |
 | `<leader>fr` | Resume last search |
-| `Ctrl+s` | Live grep (shortcut) |
+| `<leader>fp` | Find files (project root) |
+| `<leader>fP` | Live grep (project root) |
+| `<leader>fv` | Frequent / recent files (mini.visits frecency) |
+| `Ctrl+s` | Live grep shortcut |
 
 ---
 
-## File Explorer — Neo-tree
+## File Explorer
 
 | Key | Action |
 |-----|--------|
-| `<leader>ee` | Toggle / reveal current file |
-| `<leader>ef` | Focus explorer |
-| `<leader>ec` | Close explorer |
-| `<leader>er` | Refresh explorer |
+| `<leader>ee` | Toggle / reveal current file in Neo-tree |
+| `<leader>ef` | Focus Neo-tree |
+| `<leader>ec` | Close Neo-tree |
+| `<leader>er` | Refresh Neo-tree |
 | `<leader>eo` | Open Oil |
-| `-` | Open Oil at parent directory |
+| `<leader>em` | mini.files at current file's directory |
+| `<leader>eM` | mini.files at project root |
+| `-` | Oil: parent directory |
 
 ### Inside Neo-tree
 
@@ -205,7 +198,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>.v` | Commit graph (GV) |
 | `<leader>.B` | Toggle per-line blame |
 
-### Hunk operations (buffer-local)
+### Hunks
 
 | Key | Action |
 |-----|--------|
@@ -228,7 +221,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Action |
 |-----|--------|
-| `<leader>.wl` | List / switch worktrees (Telescope) |
+| `<leader>.wl` | List / switch worktrees |
 | `<leader>.wc` | Create new worktree |
 
 ### GitHub — Octo
@@ -273,25 +266,27 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>;B` | Conditional breakpoint |
 | `<leader>;l` | Log point |
 | `<leader>;c` | Continue |
-| `<leader>;i/o/O` | Step into / over / out |
+| `<leader>;i` / `;o` / `;O` | Step into / over / out |
 | `<leader>;L` | Run last config |
 | `<leader>;r` | Toggle REPL |
 | `<leader>;t` | Toggle DAP UI |
 | `<leader>;x` | Terminate |
 | `<leader>;h` | Hover variable |
 | `<leader>;p` | Preview variable |
+| `<leader>;E` | Configure exception breakpoints (active session only) |
 
 ---
 
 ## Run & Test
 
-### Runner (`<leader>'`)
+### Runner
 
 | Key | Mode | Action |
 |-----|------|--------|
 | `<leader>'r` | Normal | Run current file |
 | `<leader>'s` | Visual | Run selected lines |
 | `<leader>'t` | Normal | Run project test suite |
+| `<leader>'F` | Normal | Run nearest function (Treesitter detection) |
 
 ### Neotest
 
@@ -302,7 +297,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>'a` | Run entire suite |
 | `<leader>'P` | Run suite in parallel (concurrency=4) |
 | `<leader>'d` | Debug nearest test |
-| `<leader>'w` / `<leader>'W` | Watch file / watch nearest |
+| `<leader>'w` / `'W` | Watch file / watch suite |
 | `<leader>'o` | Open test output |
 | `<leader>'p` | Toggle output panel |
 | `<leader>'u` | Toggle summary tree |
@@ -311,9 +306,12 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Action |
 |-----|--------|
-| `<leader>tcv` | Load coverage |
-| `<leader>tcs` | Coverage summary |
-| `<leader>tct` | Toggle coverage highlights |
+| `<leader>'cv` | Load coverage and show |
+| `<leader>'cs` | Coverage summary |
+| `<leader>'ct` | Toggle coverage highlights |
+| `<leader>tcv` | Load coverage (alias) |
+| `<leader>tcs` | Coverage summary (alias) |
+| `<leader>tct` | Toggle highlights (alias) |
 
 ---
 
@@ -321,20 +319,14 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Mode | Action |
 |-----|------|--------|
-| `<C-\>` | Normal / Terminal | Toggle terminal |
+| `<C-\>` | Normal, Terminal | Toggle terminal |
 | `<leader>\t` | Normal | Open terminal |
 | `<leader>\f` | Normal | Float terminal |
 | `<leader>\h` | Normal | Horizontal terminal |
 | `<leader>\v` | Normal | Vertical terminal |
 | `<Esc>` | Terminal | Exit terminal mode |
 
-> **`<Esc>` in terminal mode** exits back to Normal before the running program
-> receives the key. This is intentional for most use cases but breaks nested
-> TUI programs (ranger, vim, fzf). To use double-escape instead, add to `init.lua`:
-> ```lua
-> vim.keymap.del("t", "<Esc>")
-> vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { noremap = true })
-> ```
+> To use double-escape instead (for nested TUIs): `vim.keymap.del("t","<Esc>")` then map `<Esc><Esc>` to `<C-\><C-n>`.
 
 ---
 
@@ -346,13 +338,11 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>uw` | Toggle line wrap |
 | `<leader>us` | Toggle spell check |
 | `<leader>ul` | Toggle line numbers |
-| `<leader>uz` | ZenMode |
+| `<leader>uz` | ZenMode only |
 | `<leader>uF` | Deep focus (ZenMode + Twilight + strip chrome) |
-| `<leader>uT` | Twilight |
+| `<leader>uT` | Twilight only |
 | `<leader>un` | Dismiss notifications |
 | `<leader>uN` | Notification history |
-
-> `<leader>uF` snapshots all UI options and restores them exactly on exit. `<leader>uz` is ZenMode only — chrome stays visible.
 
 ---
 
@@ -383,7 +373,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Mode | Action |
 |-----|------|--------|
-| `gc` | Normal / Visual | Toggle comment |
+| `gc` | Normal, Visual | Toggle comment |
 | `gcc` | Normal | Toggle line comment |
 
 ### Surround
@@ -400,9 +390,9 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Mode | Action |
 |-----|------|--------|
-| `ga` / `gA` | Normal / Visual | Align / align with preview |
+| `ga` / `gA` | Normal, Visual | Align / align with preview |
 | `gS` | Normal | Toggle split / join |
-| `Alt+h/j/k/l` | Normal / Visual | Move selection |
+| `Alt+h/j/k/l` | Normal, Visual | Move selection |
 
 ---
 
@@ -462,8 +452,9 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>xp` | LCD to project root |
 | `<leader>xl` | Lazy |
 | `<leader>xn` | Mason |
-| `<leader>xx` / `<leader>xX` | Trouble: all / buffer diagnostics |
-| `<leader>xL` / `<leader>xQ` | Trouble: location list / quickfix |
+| `<leader>xK` | Show global keymap conflicts |
+| `<leader>xx` / `xX` | Trouble: all / buffer diagnostics |
+| `<leader>xL` / `xQ` | Trouble: location list / quickfix |
 | `<leader>xu` | Undo tree |
 | `<leader>xg` | Generate docstring (Neogen) |
 | `<leader>xT` | Find TODOs (Telescope) |
@@ -504,18 +495,13 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>pyds` | Debug selection (visual) |
 | `<leader>pyrs` | Start REPL |
 | `<leader>pyrr` | Restart REPL |
-| `<leader>pyrc` | Send motion to REPL |
+| `<leader>pyrc` | Send motion to REPL (operator-pending) |
 | `<leader>pyrv` | Send selection to REPL (visual) |
 | `<leader>pyrl` | Send line to REPL |
 | `<leader>pyru` | Send top-to-cursor to REPL |
 | `<leader>pyri` | Interrupt REPL |
 | `<leader>pyrq` | Quit REPL |
 | `<leader>pyrx` | Clear REPL |
-
-> **`<leader>pyrc` (send motion):** enters operator-pending mode — press a motion
-> (`ip`, `aw`, `3j`, etc.) to send that range to the REPL. The operatorfunc is
-> restored after the motion completes via a `ModeChanged` autocmd rather than a
-> fixed-delay timer, so the motion selection is always captured correctly.
 
 ---
 
@@ -527,6 +513,8 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>ra` | Code action |
 | `<leader>rd` | Debuggables |
 | `<leader>rt` | Testables |
+| `<leader>rf` | Toggle one Cargo feature flag (repeat to toggle more) |
+| `<leader>rx` | cargo expand (macro viewer) |
 
 ---
 
@@ -541,15 +529,17 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>gob` | Build |
 | `<leader>goi` | Implement interface |
 | `<leader>goa` | Add struct tags |
+| `<leader>goA` | Remove struct tags |
 | `<leader>gom` | Go mod operations |
+| `<leader>gog` | go generate ./... |
+| `<leader>goe` | Show go env |
+| `<leader>gov` | go vet ./... |
 
 ---
 
 ## Language: TypeScript / JavaScript
 
-> These keymaps are active in **all four filetypes**: `typescript`, `typescriptreact`,
-> `javascript`, and `javascriptreact`. All TypeScript Tools commands work for
-> JavaScript files when TypeScript's JS support is active.
+> Active in `typescript`, `typescriptreact`, `javascript`, `javascriptreact`.
 
 | Key | Action |
 |-----|--------|
@@ -558,6 +548,10 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>tsr` | Remove unused imports |
 | `<leader>tsf` | Fix all auto-fixable |
 | `<leader>tsd` | Go to source definition (not `.d.ts`) |
+| `<leader>tsc` | Jump to tsconfig.json |
+| `<leader>tsb` | Generate barrel index.ts (prompts before overwrite) |
+| `<leader>tsp` | Show tsconfig paths aliases |
+| `<leader>jsm` | Show module type (ESM / CJS) |
 
 ---
 
@@ -586,6 +580,9 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>jvt` | Test class |
 | `<leader>jvn` | Test nearest method |
 | `<leader>jvg` | Generate Javadoc |
+| `<leader>jvR` | Hot-reload (update project config) |
+| `<leader>jvs` | Spring Boot run — Spring projects only |
+| `<leader>jvS` | Spring Boot package (bootJar) — Spring projects only |
 
 ---
 
@@ -596,6 +593,10 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>ktb` | Build (Gradle / Maven / kotlinc) |
 | `<leader>ktt` | Test |
 | `<leader>ktr` | Run |
+| `<leader>ktd` | Generate KDoc (function) |
+| `<leader>ktD` | Generate KDoc (class) |
+| `<leader>kts` | Spring Boot run — Spring projects only |
+| `<leader>ktS` | Spring Boot package (bootJar) — Spring projects only |
 
 ---
 
@@ -629,21 +630,27 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | Key | Action |
 |-----|--------|
 | `<leader>ext` | `mix test` |
+| `<leader>exC` | `mix test --cover` |
+| `<leader>exw` | `mix test --stale` (watch mode) |
 | `<leader>exf` | `mix format` |
 | `<leader>exp` | Phoenix server |
-| `<leader>exi` | IEx REPL |
+| `<leader>exi` | IEx session |
+| `<leader>exd` | `mix deps.get` |
+| `<leader>exc` | `mix compile` |
 
 ---
 
 ## Language: C
+
+> Override build flags: `vim.g.c_build_flags = "-Wall -O2 -std=c11"`
 
 | Key | Action |
 |-----|--------|
 | `<leader>cb` | Build & run (gcc) |
 | `<leader>cm` | `make` |
 | `<leader>csy` | Syntax check |
-
-> Override flags: `vim.g.c_build_flags = "-Wall -O2 -std=c11"`
+| `<leader>ctt` | CTest run (requires build/) |
+| `<leader>ctb` | CMake configure + build + CTest |
 
 ---
 
@@ -658,6 +665,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>ccc` | CMake clean |
 | `<leader>ccs` | Select target |
 | `<leader>ccd` | Generate docstring |
+| `<leader>ch` | Switch header ↔ source (clangd) |
 
 ---
 
@@ -668,6 +676,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>ftb` | Build & run |
 | `<leader>ftc` | Syntax check |
 | `<leader>ftm` | `make` |
+| `<leader>ftf` | Format (fprettify) |
 
 ---
 
@@ -678,20 +687,22 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>zb` | `zig build run` |
 | `<leader>zt` | `zig build test` |
 | `<leader>zc` | `zig run <file>` |
+| `<leader>zf` | `zig fetch --save <url>` (prompts for URL) |
+| `<leader>ze` | Show zig env (floating window) |
 
 ---
 
 ## Language: VHDL
 
-> Requires `ghdl` on PATH. Formatter requires `vsg` (`pip install vsg`).
-> Format-on-save uses `--stdin` so unsaved buffer changes are formatted correctly.
+> Requires `ghdl`. Formatter requires `vsg` (`pip install vsg`).
 
 | Key | Action |
 |-----|--------|
 | `<leader>vha` | Analyze (`ghdl -a`) |
-| `<leader>vhe` | Elaborate (prompts entity) |
+| `<leader>vhe` | Elaborate (prompts entity name) |
 | `<leader>vhr` | Run simulation + GTKWave |
 | `<leader>vhc` | Syntax check |
+| `<leader>vht` | Generate testbench skeleton |
 
 ---
 
@@ -703,6 +714,7 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 |-----|--------|
 | `<leader>cob` | Compile & run |
 | `<leader>coc` | Syntax check |
+| `<leader>cod` | Show detected dialect |
 
 ---
 
@@ -713,6 +725,8 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>dbu` | Toggle DB UI |
 | `<leader>dba` | Add connection |
 | `<leader>dbf` | Find query buffer |
+| `<leader>dbs` | Schema introspection (scratch buffer) |
+| `<leader>dbc` | Clear auto-loaded connection |
 
 ---
 
@@ -726,6 +740,12 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 | `<leader>rep` | Preview (show curl command) |
 | `<leader>rel` | Re-run last request |
 | `<leader>ree` | Select environment file |
+| `<leader>ren` | Jump to next request |
+| `<leader>reN` | Jump to prev request |
+| `<leader>rec` | Copy request as curl |
+| `<leader>red` | Diff two recent responses |
+| `<leader>reA` | Add / store auth token (session) |
+| `<leader>reat` | Insert stored auth token at cursor |
 
 ---
 
@@ -733,15 +753,19 @@ Buffer-local keymaps (LSP, language-specific) activate on the first `LspAttach` 
 
 | Key | Action |
 |-----|--------|
-| `<leader>mp` | Toggle browser preview |
+| `<leader>mp` | Toggle browser preview (peek.nvim) |
+| `<leader>mv` | Toggle inline render (markview) |
+| `<leader>ml` | Check links (markdown-link-check) |
+| `<leader>mw` | Show word count |
 | `<leader>tm` | Toggle table mode |
 
 ---
 
-## Language: HTML / CSS / Emmet
+## Language: HTML / CSS / Web
 
 | Key | Mode | Action |
 |-----|------|--------|
 | `Ctrl+e` | Insert | Expand Emmet abbreviation |
-
-> Auto-close and auto-rename HTML/JSX tags via nvim-ts-autotag requires no keymap.
+| `<leader>cv` | Normal | Jump to CSS variable definition |
+| `<leader>wv` | Normal | Start Vite dev server |
+| `<leader>wb` | Normal | Run build (npm / pnpm / yarn / bun) |

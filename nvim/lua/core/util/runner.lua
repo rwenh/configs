@@ -147,10 +147,10 @@ function M.run_nearest_function()
     if not ts_ok then return end
     local node = ts.get_node_at_cursor()
     while node do
-      local type = node:type()
-      if type == "function_definition" or type == "method_definition"
-      or type == "function_declaration" or type == "method_declaration"
-      or type == "arrow_function" then
+      local node_type = node:type()
+      if node_type == "function_definition" or node_type == "method_definition"
+      or node_type == "function_declaration" or node_type == "method_declaration"
+      or node_type == "arrow_function" then
         -- Get the name child node.
         for i = 0, node:named_child_count() - 1 do
           local child = node:named_child(i)

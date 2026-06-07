@@ -21,7 +21,8 @@ local function detect_dialect()
 
   -- Heuristic:
   if vim.fn.filereadable(root .. "/JCL") == 1
-  or vim.fn.findfile("*.jcl", root .. ";") ~= "" then
+  or vim.fn.glob(root .. "/*.jcl") ~= ""
+  or vim.fn.glob(root .. "/*.JCL") ~= "" then
     return "ibm"
   end
 
