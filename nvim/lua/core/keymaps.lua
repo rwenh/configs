@@ -128,10 +128,9 @@ map("n", "<leader>sm", function()
   end
 end, { desc = "Maximize / restore split" })
 
-map("n", "<C-h>", "<C-w>h", { noremap=true, silent=true, desc="Move to left split"  })
-map("n", "<C-j>", "<C-w>j", { noremap=true, silent=true, desc="Move to lower split" })
-map("n", "<C-k>", "<C-w>k", { noremap=true, silent=true, desc="Move to upper split" })
-map("n", "<C-l>", "<C-w>l", { noremap=true, silent=true, desc="Move to right split" })
+-- <C-h/j/k/l> — split / tmux-pane navigation is owned by vim-tmux-navigator
+--               (plugins/specs/editor.lua).  Outside tmux the plugin degrades to
+--               the same <C-w>h/j/k/l behaviour, so non-tmux users are unaffected.
 map("n", "<C-Up>",    "<cmd>resize +2<cr>",          { noremap=true, silent=true, desc="Increase split height" })
 map("n", "<C-Down>",  "<cmd>resize -2<cr>",          { noremap=true, silent=true, desc="Decrease split height" })
 map("n", "<C-Left>",  "<cmd>vertical resize -2<cr>", { noremap=true, silent=true, desc="Decrease split width"  })

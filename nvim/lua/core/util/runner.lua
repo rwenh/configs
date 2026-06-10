@@ -65,9 +65,52 @@ local runners = {
     if vim.fn.executable("ts-node") == 1 then return "ts-node " .. vim.fn.shellescape(file) end
   end,
   lua    = function(file) return vim.fn.executable("lua") == 1 and "lua " .. vim.fn.shellescape(file) or nil end,
-  c      = function(file) if vim.fn.executable("gcc") ~= 1 then return nil end; local exe = vim.fn.fnamemodify(file, ":r"); return "gcc -Wall -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe) end,
-  cpp    = function(file) if vim.fn.executable("g++") ~= 1 then return nil end; local exe = vim.fn.fnamemodify(file, ":r"); return "g++ -Wall -std=c++17 -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe) end,
-  java   = function(file) if vim.fn.executable("javac") ~= 1 or vim.fn.executable("java") ~= 1 then return nil end; local dir = vim.fn.fnamemodify(file, ":h"); local name = vim.fn.fnamemodify(file, ":t:r"); return "cd " .. vim.fn.shellescape(dir) .. " && javac " .. vim.fn.shellescape(file) .. " && java " .. name end,
+
+  -- ── Compiled languages ─────────────────────────────────────────────────────
+  --   vim.g.c_build_flags      (default: "-Wall -Wextra -g")
+  --   vim.g.cpp_build_flags    (default: "-Wall -std=c++17 -g")
+  --   vim.g.fortran_build_flags (default: "-Wall")
+
+  c = function(file)
+    if vim.fn.executable("gcc") ~= 1 then return nil end
+    local exe   = vim.fn.fnamemodify(file, ":r")
+    local flags = vim.g.c_build_flags or "-Wall -Wextra -g"
+    return string.format(
+      "gcc %s -o %s %s && %s",
+      flags,
+      vim.fn.shellescape(exe),
+      vim.fn.shellescape(file),
+      vim.fn.shellescape(exe)
+    )
+  end,
+
+  cpp = function(file)
+    if vim.fn.executable("g++") ~= 1 then return nil end
+    local exe   = vim.fn.fnamemodify(file, ":r")
+    local flags = vim.g.cpp_build_flags or "-Wall -std=c++17 -g"
+    return string.format(
+      "g++ %s -o %s %s && %s",
+      flags,
+      vim.fn.shellescape(exe),
+      vim.fn.shellescape(file),
+      vim.fn.shellescape(exe)
+    )
+  end,
+
+  java = function(file)
+    if vim.fn.executable("javac") ~= 1 or vim.fn.executable("java") ~= 1 then
+      return nil
+    end
+    local dir  = vim.fn.fnamemodify(file, ":h")
+    local name = vim.fn.fnamemodify(file, ":t:r")
+    return string.format(
+      "cd %s && javac %s && java %s",
+      vim.fn.shellescape(dir),
+      vim.fn.shellescape(file),
+      name
+    )
+  end,
+
   sh     = function(file) return "bash " .. vim.fn.shellescape(file) end,
   bash   = function(file) return "bash " .. vim.fn.shellescape(file) end,
   julia  = function(file) return vim.fn.executable("julia")  == 1 and "julia "  .. vim.fn.shellescape(file) or nil end,
@@ -77,25 +120,73 @@ local runners = {
   elixir = function(file) return vim.fn.executable("elixir") == 1 and "elixir " .. vim.fn.shellescape(file) or nil end,
   kotlin = function(file)
     if vim.fn.executable("kotlinc") ~= 1 then return nil end
-    local dir = vim.fn.fnamemodify(file, ":h"); local name = vim.fn.fnamemodify(file, ":t:r")
-    local jar = vim.fn.shellescape(name .. ".jar")
-    return "cd " .. vim.fn.shellescape(dir) .. " && kotlinc " .. vim.fn.shellescape(file) .. " -include-runtime -d " .. jar .. " && java -jar " .. jar
+    local dir  = vim.fn.fnamemodify(file, ":h")
+    local name = vim.fn.fnamemodify(file, ":t:r")
+    local jar  = vim.fn.shellescape(name .. ".jar")
+    return string.format(
+      "cd %s && kotlinc %s -include-runtime -d %s && java -jar %s",
+      vim.fn.shellescape(dir),
+      vim.fn.shellescape(file),
+      jar,
+      jar
+    )
   end,
-  cobol   = function(file) if vim.fn.executable("cobc") ~= 1 then return nil end; local exe = vim.fn.fnamemodify(file, ":r"); return "cobc -x -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe) end,
-  fortran = function(file) if vim.fn.executable("gfortran") ~= 1 then return nil end; local exe = vim.fn.fnamemodify(file, ":r"); return "gfortran -Wall -o " .. vim.fn.shellescape(exe) .. " " .. vim.fn.shellescape(file) .. " && " .. vim.fn.shellescape(exe) end,
-  vhdl    = function(file)
+
+  cobol = function(file)
+    if vim.fn.executable("cobc") ~= 1 then return nil end
+    local exe = vim.fn.fnamemodify(file, ":r")
+    return string.format(
+      "cobc -x -o %s %s && %s",
+      vim.fn.shellescape(exe),
+      vim.fn.shellescape(file),
+      vim.fn.shellescape(exe)
+    )
+  end,
+
+  fortran = function(file)
+    if vim.fn.executable("gfortran") ~= 1 then return nil end
+    local exe   = vim.fn.fnamemodify(file, ":r")
+    local flags = vim.g.fortran_build_flags or "-Wall"
+    return string.format(
+      "gfortran %s -o %s %s && %s",
+      flags,
+      vim.fn.shellescape(exe),
+      vim.fn.shellescape(file),
+      vim.fn.shellescape(exe)
+    )
+  end,
+
+  vhdl = function(file)
     if vim.fn.executable("ghdl") ~= 1 then return nil end
+
     local entity = nil
     local ok_rf, lines = pcall(vim.fn.readfile, file)
     if ok_rf and lines then
-      for _, line in ipairs(lines) do entity = line:match("entity%s+(%w+)%s+is"); if entity then break end end
+      for _, line in ipairs(lines) do
+        -- Match case-insensitively then extract from the original line.
+        if line:lower():match("^%s*entity%s+%w+%s+is") then
+          entity = line:match("[Ee][Nn][Tt][Ii][Tt][Yy]%s+(%w+)")
+          if entity then break end
+        end
+      end
     end
+
     if entity then
       local vcd = "/tmp/nvim_ghdl_wave.vcd"
-      local cmd = string.format("ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s", vim.fn.shellescape(file), vim.fn.shellescape(entity), vim.fn.shellescape(entity), vim.fn.shellescape(vcd))
-      if vim.fn.executable("gtkwave") == 1 then cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd) end
+      local cmd = string.format(
+        "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
+        vim.fn.shellescape(file),
+        vim.fn.shellescape(entity),
+        vim.fn.shellescape(entity),
+        vim.fn.shellescape(vcd)
+      )
+      if vim.fn.executable("gtkwave") == 1 then
+        cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
+      end
       return cmd
     end
+
+    -- No entity found — fall back to syntax check so the user still gets feedback.
     return "ghdl -s " .. vim.fn.shellescape(file)
   end,
 }

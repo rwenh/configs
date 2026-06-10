@@ -151,11 +151,12 @@ end
 -- ── M.remove ─────────────────────────────────────────────────────────────────
 --
 -- Remove snippets matching *trigger* from *ft*.
--- Returns the number of snippets removed.
+-- Returns the number of snippets removed, or 0 if no match was found or if
+-- the internal LuaSnip store mutation failed or could not be verified.
 --
 ---@param ft      string   Neovim filetype
 ---@param trigger string   trigger string to remove (exact match)
----@return integer         count of removed snippets
+---@return integer         count of removed snippets (0 on failure)
 function M.remove(ft, trigger)
   local ok, ls = pcall(require, "luasnip")
   if not ok then return 0 end
@@ -180,12 +181,39 @@ function M.remove(ft, trigger)
 
   if removed == 0 then return 0 end
 
-  -- Clear the ft list and re-add without the removed entries.
-  pcall(function()
-    -- LuaSnip does not expose a remove API; we overwrite with clean_invalidate.
+  local mutation_ok = pcall(function()
     local store = ls.get_snippets()
     store[ft]   = kept
   end)
+
+  if not mutation_ok then
+    vim.notify(
+      string.format(
+        "[snippets] remove(): internal store mutation failed for ft='%s', trigger='%s'.\n"
+        .. "This may occur after a LuaSnip update that changes the internal API.\n"
+        .. "Snippets for '%s' are unchanged.",
+        ft, trigger, ft
+      ),
+      vim.log.levels.WARN
+    )
+    return 0
+  end
+
+  -- Return 0 if the trigger is still present so callers are not misled.
+  local post = M.list(ft)
+  for _, snip in ipairs(post) do
+    if type(snip) == "table" and snip.trigger == trigger then
+      vim.notify(
+        string.format(
+          "[snippets] remove(): trigger '%s' still present in ft='%s' after mutation.\n"
+          .. "The internal store write did not propagate — no snippets removed.",
+          trigger, ft
+        ),
+        vim.log.levels.WARN
+      )
+      return 0
+    end
+  end
 
   return removed
 end

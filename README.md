@@ -53,6 +53,7 @@
 | VHDL | `ghdl`, `gtkwave`; `cargo install vhdl_ls`; `pip install vsg` |
 | REST | `curl`, optionally `jq` |
 | SQL | `sqlfmt` (formatter, optional) |
+| tmux integration | **optional** — `tmux >= 3.2`; enables seamless `Ctrl+h/j/k/l` pane navigation via `vim-tmux-navigator` |
 
 ---
 
@@ -248,6 +249,7 @@ Set in `init.lua` **before** `require("core.bootstrap")`:
 | telescope.nvim | Fuzzy finder |
 | neo-tree.nvim | File explorer |
 | flash.nvim | Motion jump (`s`) |
+| vim-tmux-navigator | Seamless `Ctrl+h/j/k/l` across Neovim splits and tmux panes (transparent outside tmux) |
 | harpoon2 | File bookmarks |
 | mini.files | Lightweight file manager |
 | mini.visits | Frecency-based file switching |
@@ -382,6 +384,7 @@ rm -rf ~/.local/share/nvim ~/.cache/nvim && nvim
 | VHDL format applies stale on-disk content | Confirm vsg formatter uses `--stdin` flag |
 | Iron send-motion wrong range | ModeChanged operatorfunc guard handles this — check `python.lua` |
 | `<Esc>` exits terminal before nested TUI | By design; see keymaps.lua terminal note |
+| `Ctrl+h/j/k/l` doesn't cross into tmux pane | `is_vim` check missing from `.tmux.conf`; ensure the `bind -n C-h if-shell "$is_vim"` block is present |
 | tint / smear-cursor artefacts | `vim.g.disable_tint = true` / `vim.g.disable_smear_cursor = true` |
 | Highlight colours wrong on non-TN theme | `vim.g.disable_highlight_overrides = true` |
 | `:MasonInstallAll` times out | `vim.g.mason_install_timeout_ms = 240000` |

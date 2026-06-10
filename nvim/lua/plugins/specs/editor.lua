@@ -209,6 +209,32 @@ return {
     config = function(_, opts) pcall(function() require("flash").setup(opts) end) end,
   },
 
+  -- ── vim-tmux-navigator ────────────────────────────────────────────────────
+  --
+  {
+    "christoomey/vim-tmux-navigator",
+    cmd = {
+      "TmuxNavigateLeft",
+      "TmuxNavigateDown",
+      "TmuxNavigateUp",
+      "TmuxNavigateRight",
+    },
+    init = function()
+      vim.g.tmux_navigator_no_mappings   = 1
+      vim.g.tmux_navigator_no_wrap       = 1
+      vim.g.tmux_navigator_preserve_zoom = 1
+    end,
+    keys = {
+      { "<C-h>", "<cmd>TmuxNavigateLeft<cr>",  mode = "n", noremap = true, silent = true, desc = "Navigate left  (split/pane)" },
+      { "<C-j>", "<cmd>TmuxNavigateDown<cr>",  mode = "n", noremap = true, silent = true, desc = "Navigate down  (split/pane)" },
+      { "<C-k>", "<cmd>TmuxNavigateUp<cr>",    mode = "n", noremap = true, silent = true, desc = "Navigate up    (split/pane)" },
+      { "<C-l>", "<cmd>TmuxNavigateRight<cr>", mode = "n", noremap = true, silent = true, desc = "Navigate right (split/pane)" },
+      -- TmuxNavigatePrevious (<C-\>) is intentionally omitted: toggleterm
+      -- already owns <C-\> as its open_mapping.  Use tmux's own M-o binding
+      -- (bind -n M-o select-pane -t :.+) to cycle panes without prefix.
+    },
+  },
+
   -- ── Sessions ───────────────────────────────────────────────────────────────
   {
     "folke/persistence.nvim",

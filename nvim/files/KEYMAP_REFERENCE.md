@@ -69,9 +69,11 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>se` | Equal splits |
 | `<leader>sx` | Close current split |
 | `<leader>sm` | Maximize / restore split |
-| `Ctrl+h/j/k/l` | Move to left / lower / upper / right split |
+| `Ctrl+h/j/k/l` | Navigate left / down / up / right (Neovim split **or** tmux pane) |
 | `Ctrl+↑/↓` | Increase / decrease split height |
 | `Ctrl+←/→` | Decrease / increase split width |
+
+> **tmux pane navigation** — when running inside tmux, `Ctrl+h/j/k/l` cross seamlessly into adjacent tmux panes via `vim-tmux-navigator`. Outside tmux the keys behave identically to standard `<C-w>h/j/k/l` split movement; no errors, no configuration needed.
 
 ---
 

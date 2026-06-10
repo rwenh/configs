@@ -53,6 +53,7 @@ M.ft_to_lsp = {
 }
 
 -- ── FT → formatter name(s) ────────────────────────────────────────────────
+--
 M.ft_to_formatter = {
   lua             = { "stylua" },
   python          = { "black", "isort" },
@@ -77,7 +78,7 @@ M.ft_to_formatter = {
   fortran         = { "fprettify" },
   zig             = { "zigfmt" },
   vhdl            = { "vsg" },
-  elixir          = { "mix format" },
+  elixir          = { "mix" },   -- conform formatter name is "mix", not "mix format"
 }
 
 -- ── Spec helpers ───────────────────────────────────────────────────────────

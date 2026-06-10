@@ -281,6 +281,7 @@ Set at the **top of `init.lua`** before `require("core.bootstrap")`.
 | Kotlin tests not running | `chmod +x gradlew` in project root |
 | Large file slow | Expected — auto-protection at 500 KB |
 | Plugins not loading | `rm -rf ~/.local/share/nvim ~/.cache/nvim && nvim` |
+| `Ctrl+h/j/k/l` stays inside Neovim | `is_vim` check missing from `.tmux.conf`; ensure the `bind -n C-h if-shell "$is_vim"` block is present |
 
 ### Nuclear reset
 
