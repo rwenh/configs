@@ -18,6 +18,30 @@ local function is_spring_project(root)
   return false
 end
 
+-- ── java-test bundle presence check ──────────────────────────────────────
+--
+--
+local function detect_java_test(bundles, mason_root)
+  -- Primary: the Mason java-test package directory exists and has JARs.
+  local java_test_pkg = mason_root:gsub("jdtls$", "java-test")
+  if vim.fn.isdirectory(java_test_pkg) == 1 then
+    local jars = vim.fn.glob(java_test_pkg .. "/extension/server/*.jar")
+    if jars ~= "" then return true end
+  end
+
+  for _, jar_path in ipairs(bundles) do
+    local lower = jar_path:lower()
+    if lower:find("java%-test", 1, true)
+    or lower:find("junit", 1, true)
+    or lower:find("testrunner", 1, true)
+    or lower:find("com.microsoft.java.test", 1, true) then
+      return true
+    end
+  end
+
+  return false
+end
+
 return {
   {
     "mfussenegger/nvim-jdtls",
@@ -28,7 +52,13 @@ return {
         pattern  = "java",
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
         callback = function(e)
-          if vim.b[e.buf].jdtls_started then return end
+          if vim.b[e.buf].jdtls_started then
+            -- Verify a jdtls client is actually attached to this buffer.
+            local clients = vim.lsp.get_clients({ bufnr = e.buf, name = "jdtls" })
+            if #clients > 0 then return end
+            -- No active client — clear the stale flag and re-attach.
+            vim.b[e.buf].jdtls_started = nil
+          end
 
           local ok_jdtls, jdtls = pcall(require, "jdtls")
           if not ok_jdtls then vim.notify("nvim-jdtls failed to load", vim.log.levels.ERROR); return end
@@ -75,6 +105,8 @@ return {
           local launcher = vim.fn.glob(mason_root .. "/plugins/org.eclipse.equinox.launcher_*.jar")
           if launcher == "" then vim.notify("[java] jdtls launcher not found — run :MasonInstall jdtls", vim.log.levels.ERROR); return end
 
+          local has_java_test = detect_java_test(bundles, mason_root)
+
           local function build_jdtls_config()
             return {
               cmd = { "java",
@@ -90,7 +122,7 @@ return {
               root_dir     = root_dir,
               settings     = { java = { signatureHelp = { enabled = true }, completion = { enabled = true }, format = { enabled = true } } },
               init_options = { bundles = bundles },
-              on_attach = function(_, bufnr)
+              on_attach = function(client, bufnr)
                 local bkm = require("core.util.buf_keymap")
 
                 local _dap_ready = false
@@ -101,10 +133,6 @@ return {
                   pcall(function() require("jdtls.dap").setup_dap_main_class_configs() end)
                 end
 
-                local has_java_test = #vim.tbl_filter(function(b)
-                  return b:find("junit", 1, true) or b:find("java%-test", 1, true)
-                end, bundles) > 0
-
                 local java_maps = {
                   { "n", "<leader>jvo", function() pcall(function() jdtls.organize_imports() end) end, "Java Organize Imports" },
                   { "n", "<leader>jvv", function() pcall(function() jdtls.extract_variable() end) end, "Java Extract Variable" },
@@ -112,7 +140,6 @@ return {
                   { "n", "<leader>jvc", function() pcall(function() jdtls.extract_constant() end) end, "Java Extract Constant" },
                   { "v", "<leader>jvc", function() pcall(function() jdtls.extract_constant(true) end) end, "Java Extract Constant (visual)" },
                   { "v", "<leader>jvm", function() pcall(function() jdtls.extract_method(true) end) end, "Java Extract Method" },
-                  -- Hot-reload: re-applies changes to running JVM without restart
                   { "n", "<leader>jvR", function()
                       local ok_r, err = pcall(function() jdtls.update_project_config() end)
                       if ok_r then vim.notify("[java] Project config reloaded", vim.log.levels.INFO)
@@ -125,9 +152,17 @@ return {
                     { "n", "<leader>jvt", function() ensure_dap(); pcall(function() jdtls.test_class() end) end, "Java Test Class" },
                     { "n", "<leader>jvn", function() ensure_dap(); pcall(function() jdtls.test_nearest_method() end) end, "Java Test Nearest Method" },
                   })
+                else
+                  -- Inform the user why test keymaps are absent.
+                  vim.schedule(function()
+                    vim.notify(
+                      "[java] java-test adapter not detected — <leader>jvt and <leader>jvn unavailable.\n"
+                      .. "Run: :MasonInstall java-test  then restart Neovim.",
+                      vim.log.levels.DEBUG
+                    )
+                  end)
                 end
 
-                -- Spring Boot keymaps (only when Spring is detected)
                 if is_spring_project(root_dir) then
                   local ok_runner, runner = pcall(require, "core.util.runner")
                   if ok_runner then
@@ -147,6 +182,17 @@ return {
                 end
 
                 bkm.batch(bufnr, java_maps)
+
+                vim.api.nvim_create_autocmd("LspDetach", {
+                  buffer   = bufnr,
+                  once     = true,
+                  callback = function(ev)
+                    if ev.data and ev.data.client_id == client.id then
+                      vim.b[bufnr].jdtls_started = nil
+                    end
+                  end,
+                  desc = "Clear jdtls_started flag on client detach",
+                })
               end,
             }
           end

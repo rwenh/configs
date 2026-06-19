@@ -3,8 +3,6 @@
 
 local M = {}
 
--- ── mason-lspconfig server names ─────────────────────────────────────────────
-
 M.lspconfig = {
   "lua_ls", "basedpyright",
   "html", "cssls", "jsonls", "yamlls",
@@ -13,8 +11,6 @@ M.lspconfig = {
   "zls", "tailwindcss", "elixirls",
   "fortls", "sqls",
 }
-
--- ── Mason registry package names ─────────────────────────────────────────────
 
 M.mason = {
   lsp = {
@@ -40,47 +36,33 @@ M.mason = {
   linters = {
     "ruff", "eslint_d", "shellcheck", "htmlhint", "stylelint",
   },
-  -- Optional extras: installed on demand, not part of MasonInstallAll.
   extras = {
-    "vale",                   -- prose linter for markdown/rst
-    "marksman",               -- markdown LSP
-    "taplo",                  -- TOML LSP / formatter
-    "buf",                    -- protobuf formatter / linter
-    "hadolint",               -- Dockerfile linter
-    "actionlint",             -- GitHub Actions linter
-    "terraform-ls",           -- Terraform LSP
+    "vale",
+    "marksman",
+    "taplo",
+    "buf",
+    "hadolint",
+    "actionlint",
+    "terraform-ls",
     "ansible-language-server",
   },
 }
 
--- ── Version pins ──────────────────────────────────────────────────────────────
---
-
 M.versions = {
-  ["lua-language-server"]       = nil,    -- latest
-  ["basedpyright"]              = nil,    -- latest
-  ["prettier"]                  = nil,    -- latest
-  ["stylua"]                    = nil,    -- latest
-  ["black"]                     = nil,    -- latest
-  ["ruff"]                      = nil,    -- latest
-  ["eslint_d"]                  = nil,    -- latest
-  ["debugpy"]                   = nil,    -- latest
-  ["codelldb"]                  = nil,    -- latest
-  ["delve"]                     = nil,    -- latest
-  ["js-debug-adapter"]          = nil,    -- latest
-  -- Example of a pinned package:
-  -- ["kotlin-language-server"] = "1.3.4",
+  ["lua-language-server"] = nil,
+  ["basedpyright"]        = nil,
+  ["prettier"]            = nil,
+  ["stylua"]              = nil,
+  ["black"]               = nil,
+  ["ruff"]                = nil,
+  ["eslint_d"]            = nil,
+  ["debugpy"]             = nil,
+  ["codelldb"]            = nil,
+  ["delve"]               = nil,
+  ["js-debug-adapter"]    = nil,
 }
 
--- ── Public: M.get ─────────────────────────────────────────────────────────────
---
--- Usage:
---   M.get()              → all core packages (lsp + dap + formatters + linters)
---   M.get("lsp")         → LSP servers only
---   M.get("formatters")  → formatters only
---   M.get("extras")      → optional extras list
---   M.get("all")         → core + extras
---
+-- ── M.get ─────────────────────────────────────────────────────────────────────
 ---@param  category string?
 ---@return string[]
 function M.get(category)
@@ -88,12 +70,9 @@ function M.get(category)
 
   if category == "extras" then
     local result = vim.deepcopy(M.mason.extras or {})
-    -- Merge user-defined extras from vim.g.
     local user = type(vim.g.mason_extras) == "table" and vim.g.mason_extras or {}
     for _, pkg in ipairs(user) do
-      if not vim.tbl_contains(result, pkg) then
-        table.insert(result, pkg)
-      end
+      if not vim.tbl_contains(result, pkg) then table.insert(result, pkg) end
     end
     return result
   end
@@ -101,35 +80,80 @@ function M.get(category)
   if category == "all" then
     local result = M.get()
     for _, pkg in ipairs(M.get("extras")) do
-      if not vim.tbl_contains(result, pkg) then
-        table.insert(result, pkg)
-      end
+      if not vim.tbl_contains(result, pkg) then table.insert(result, pkg) end
     end
     return result
   end
 
-  if category then
-    return vim.deepcopy(M.mason[category] or {})
-  end
+  if category then return vim.deepcopy(M.mason[category] or {}) end
 
-  -- Default: all core sections flat.
   local result = {}
   for _, section in ipairs(core_sections) do
     for _, pkg in ipairs(M.mason[section] or {}) do
-      if not vim.tbl_contains(result, pkg) then
-        table.insert(result, pkg)
-      end
+      if not vim.tbl_contains(result, pkg) then table.insert(result, pkg) end
     end
   end
   return result
 end
 
--- ── Public: M.version_pin ─────────────────────────────────────────────────────
---
+-- ── M.version_pin ─────────────────────────────────────────────────────────────
 ---@param  name string
 ---@return string|nil
 function M.version_pin(name)
   return M.versions[name]
+end
+
+-- ── M.validate ────────────────────────────────────────────────────────────────
+--
+-- Servers managed externally (rustaceanvim, nvim-jdtls) are excluded.
+--
+-- Call once at startup (e.g. from init.lua after core modules load):
+--   require("core.util.packages").validate()
+--
+local EXTERNALLY_MANAGED = {
+  -- rust-analyzer managed by rustaceanvim
+  ["rust-analyzer"] = true,
+  -- jdtls managed by nvim-jdtls
+  ["jdtls"]         = true,
+}
+
+function M.validate()
+  -- Normalise: strip hyphens, underscores, "language", "server", "ls", "lsp".
+  local function normalise(s)
+    s = s:lower()
+    s = s:gsub("%-", ""):gsub("_", "")
+    s = s:gsub("languageserver", ""):gsub("language", "")
+    s = s:gsub("server", ""):gsub("^ls$", ""):gsub("lsp", "")
+    return s
+  end
+
+  local mason_norm = {}
+  for _, pkg in ipairs(M.mason.lsp) do
+    mason_norm[normalise(pkg)] = pkg
+  end
+
+  local issues = {}
+  for _, server in ipairs(M.lspconfig) do
+    if not EXTERNALLY_MANAGED[server] then
+      local norm = normalise(server)
+      if not mason_norm[norm] then
+        table.insert(issues, string.format(
+          "  lspconfig '%s' has no matching Mason package (norm: '%s')", server, norm
+        ))
+      end
+    end
+  end
+
+  if #issues > 0 then
+    vim.notify(
+      "[packages] M.validate(): possible lspconfig↔Mason naming drift:\n"
+      .. table.concat(issues, "\n")
+      .. "\n\nUpdate M.lspconfig or M.mason.lsp in packages.lua.",
+      vim.log.levels.DEBUG
+    )
+  else
+    vim.notify("[packages] M.validate(): all lspconfig entries have Mason counterparts.", vim.log.levels.DEBUG)
+  end
 end
 
 return M

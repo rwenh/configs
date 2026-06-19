@@ -1,18 +1,7 @@
 -- lua/plugins/specs/workflow.lua — Overseer task runner
 --
 
--- ── Shared win opts ────────────────────────────────────────────────────────
-
 local WIN_OPTS = { border = "rounded", win_opts = { winblend = 5 } }
-
--- ── Per-project template loader ────────────────────────────────────────────
---
---   return {
---     {
---       name    = "dev server",
---       builder = function() return { cmd = { "npm", "run", "dev" } } end,
---     },
---   }
 
 local _project_templates_loaded = {}
 
@@ -32,10 +21,7 @@ local function load_project_templates()
 
   local ok_chunk, chunk = pcall(loadfile, tmpl_file)
   if not ok_chunk or type(chunk) ~= "function" then
-    vim.notify(
-      "[workflow] .overseer.lua parse error in: " .. root,
-      vim.log.levels.WARN
-    )
+    vim.notify("[workflow] .overseer.lua parse error in: " .. root, vim.log.levels.WARN)
     _project_templates_loaded[root] = true
     return
   end
@@ -67,9 +53,25 @@ local function load_project_templates()
   _project_templates_loaded[root] = true
 end
 
--- ── Inline shell-command runner ────────────────────────────────────────────
+-- ── Debounced BufEnter loader ─────────────────────────────────────────────
 --
+local _buf_enter_timer = nil
+local DEBOUNCE_MS = (type(vim.g.workflow_template_debounce_ms) == "number"
+  and vim.g.workflow_template_debounce_ms > 0)
+  and vim.g.workflow_template_debounce_ms or 300
 
+local function schedule_template_load()
+  if _buf_enter_timer then
+    pcall(function() _buf_enter_timer:stop() end)
+    _buf_enter_timer = nil
+  end
+  _buf_enter_timer = vim.defer_fn(function()
+    _buf_enter_timer = nil
+    load_project_templates()
+  end, DEBOUNCE_MS)
+end
+
+-- ── Inline shell-command runner ────────────────────────────────────────────
 local function run_shell_command_interactive()
   local ok_ov, overseer = pcall(require, "overseer")
   if not ok_ov then
@@ -85,21 +87,17 @@ local function run_shell_command_interactive()
 
     local ok_task = pcall(function()
       overseer.run_template({
-        name  = "shell",
-        params = {
-          cmd = input,
-          cwd = cwd,
-        },
+        name   = "shell",
+        params = { cmd = input, cwd = cwd },
       })
     end)
 
     if not ok_task then
-      -- Fallback: wrap in a one-shot task directly.
       pcall(function()
         overseer.new_task({
-          name    = input,
-          cmd     = { "sh", "-c", input },
-          cwd     = cwd,
+          name       = input,
+          cmd        = { "sh", "-c", input },
+          cwd        = cwd,
           components = { "default" },
         }):start()
       end)
@@ -126,8 +124,7 @@ return {
           end
           local ok = pcall(function() overseer.run_template({ name = "build" }) end)
           if not ok then
-            vim.notify("[overseer] no 'build' template — opening task picker",
-              vim.log.levels.INFO)
+            vim.notify("[overseer] no 'build' template — opening task picker", vim.log.levels.INFO)
             vim.cmd("OverseerRun")
           end
         end,
@@ -189,17 +186,26 @@ return {
         return
       end
 
-      -- Load per-project templates after DirChanged or on first load.
+      -- Load templates for the current directory immediately on setup.
       load_project_templates()
-      vim.api.nvim_create_autocmd({ "DirChanged", "BufEnter" }, {
-        group    = vim.api.nvim_create_augroup("OverseerProjectTemplates", { clear = true }),
-        once     = false,
+
+      vim.api.nvim_create_autocmd("DirChanged", {
+        group    = vim.api.nvim_create_augroup("OverseerDirChanged", { clear = true }),
+        callback = function()
+          _project_templates_loaded = {}
+          load_project_templates()
+        end,
+        desc = "Reload .overseer.lua templates on directory change",
+      })
+
+      vim.api.nvim_create_autocmd("BufEnter", {
+        group    = vim.api.nvim_create_augroup("OverseerBufEnter", { clear = true }),
         callback = function()
           if vim.bo.buftype == "" then
-            vim.schedule(load_project_templates)
+            schedule_template_load()
           end
         end,
-        desc = "Load per-project .overseer.lua templates on directory change",
+        desc = "Debounced .overseer.lua template load on buffer enter",
       })
     end,
   },

@@ -3,9 +3,6 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── htmlhint config detection ──────────────────────────────────────────────
---
-
 local function has_htmlhint_config()
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
@@ -20,6 +17,17 @@ local function has_htmlhint_config()
   for _, f in ipairs(candidates) do
     if vim.fn.filereadable(f) == 1 then return true end
   end
+
+  local pkg = root .. "/package.json"
+  if vim.fn.filereadable(pkg) == 1 then
+    local ok, lines = pcall(vim.fn.readfile, pkg)
+    if ok then
+      local content = table.concat(lines, "\n")
+      local ok_j, obj = pcall(vim.json.decode, content)
+      if ok_j and type(obj) == "table" and obj["htmlhint"] then return true end
+    end
+  end
+
   return false
 end
 
@@ -31,13 +39,12 @@ vim.api.nvim_create_autocmd("FileType", {
     if vim.fn.executable("htmlhint") ~= 1 then return end
     if not has_htmlhint_config() then
       vim.notify(
-        "[html] htmlhint found but no .htmlhintrc detected — linter skipped.\n"
-        .. "Create a .htmlhintrc to enable: https://htmlhint.com/docs/user-guide/configuration",
+        "[html] htmlhint found but no config detected (checked .htmlhintrc and package.json) — linter skipped.\n"
+        .. "Create a .htmlhintrc or add an 'htmlhint' key in package.json.",
         vim.log.levels.DEBUG
       )
       return
     end
-    -- Patch nvim-lint if it is loaded.
     local ok, lint = pcall(require, "lint")
     if not ok then return end
     lint.linters_by_ft = lint.linters_by_ft or {}
@@ -46,17 +53,13 @@ vim.api.nvim_create_autocmd("FileType", {
     for _, l in ipairs(lint.linters_by_ft.html) do
       if l == "htmlhint" then already = true; break end
     end
-    if not already then
-      table.insert(lint.linters_by_ft.html, "htmlhint")
-    end
+    if not already then table.insert(lint.linters_by_ft.html, "htmlhint") end
   end,
-  desc = "Conditionally register htmlhint when .htmlhintrc is present",
+  desc = "Conditionally register htmlhint when config is present",
 })
 
 return {
   shared.treesitter({ "html" }),
-
-  -- ── LSP: html-lsp — SOLE owner of html server config ──────────────────────
 
   {
     "neovim/nvim-lspconfig",
@@ -64,9 +67,7 @@ return {
     init = function()
       local cfg = {
         filetypes    = { "html", "htmldjango", "jinja.html" },
-        init_options = {
-          provideFormatter = false,
-        },
+        init_options = { provideFormatter = false },
       }
 
       if vim.fn.executable("vscode-html-language-server") ~= 1 then
@@ -80,10 +81,7 @@ return {
       end
 
       if vim.fn.has("nvim-0.11") == 1 then
-        pcall(function()
-          vim.lsp.config("html", cfg)
-          vim.lsp.enable("html")
-        end)
+        pcall(function() vim.lsp.config("html", cfg); vim.lsp.enable("html") end)
       else
         vim.api.nvim_create_autocmd("BufReadPost", {
           pattern  = { "*.html", "*.htmldjango", "*.jinja" },
@@ -93,56 +91,29 @@ return {
             local ok, lspconfig = pcall(require, "lspconfig")
             if ok then pcall(function() lspconfig.html.setup(cfg) end) end
           end,
-          desc = "Register html-lsp on first HTML buffer (legacy path)",
         })
       end
     end,
   },
 
-  -- ── LuaSnip snippets ────────────────────────────────────────────────────────
-
   {
-    "L3MON4D3/LuaSnip",
-    optional = true,
-    ft       = { "html", "htmldjango" },
-    config   = function()
+    "L3MON4D3/LuaSnip", optional = true, ft = { "html", "htmldjango" },
+    config = function()
       require("core.util.snippets").load("html", function(s, t, i, _, ref)
         return {
           s("html5", {
-            t({
-              "<!DOCTYPE html>",
-              '<html lang="',
-            }),
-            i(1, "en"),
-            t({ '">',
-              "<head>",
-              '  <meta charset="UTF-8" />',
-              '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
-              "  <title>",
-            }),
-            i(2, "Document"),
-            t({ "</title>",
-              "</head>",
-              "<body>",
-              "  ",
-            }),
-            i(0),
-            t({ "",
-              "</body>",
-              "</html>",
-            }),
+            t({ "<!DOCTYPE html>", '<html lang="' }), i(1, "en"), t({ '">', "<head>",
+              '  <meta charset="UTF-8" />', '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+              "  <title>" }), i(2, "Document"), t({ "</title>", "</head>", "<body>", "  " }),
+            i(0), t({ "", "</body>", "</html>" }),
           }),
           s("tag", {
-            t("<"), i(1, "div"),
-            t(' class="'), i(2), t('">'),
-            t({ "", "  " }), i(0),
-            t({ "", "</" }), ref(1, "div"), t(">"),
+            t("<"), i(1, "div"), t(' class="'), i(2), t('">'),
+            t({ "", "  " }), i(0), t({ "", "</" }), ref(1, "div"), t(">"),
           }),
           s("inp", {
-            t('<input type="'), i(1, "text"),
-            t('" name="'), i(2),
-            t('" id="'), ref(2),
-            t('" placeholder="'), i(3), t('" />'),
+            t('<input type="'), i(1, "text"), t('" name="'), i(2),
+            t('" id="'), ref(2), t('" placeholder="'), i(3), t('" />'),
           }),
         }
       end)

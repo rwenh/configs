@@ -4,10 +4,6 @@
 local au = vim.api.nvim_create_autocmd
 local ag = vim.api.nvim_create_augroup
 
--- ── Shared helpers ─────────────────────────────────────────────────────────────
-
----@param buf integer
----@return boolean
 local function is_real_buf(buf)
   local ok, bt = pcall(function() return vim.bo[buf].buftype end)
   return ok and bt == ""
@@ -18,19 +14,13 @@ local EPHEMERAL_FT = {
   "notify", "startuptime", "OverseerList",
 }
 
--- ═══════════════════════════════════════════════════════════════════════════
--- HIGHLIGHT ON YANK
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Highlight on yank ─────────────────────────────────────────────────────────
 au("TextYankPost", {
   group    = ag("HighlightYank", { clear = true }),
   callback = function() pcall(vim.highlight.on_yank, { timeout = 200 }) end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- RESTORE CURSOR POSITION
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Restore cursor position ───────────────────────────────────────────────────
 au("BufReadPost", {
   group    = ag("RestoreCursor", { clear = true }),
   callback = function(e)
@@ -45,27 +35,24 @@ au("BufReadPost", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- RESIZE SPLITS ON WINDOW RESIZE
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Resize splits (phase 2 fix #2: no tab flicker) ───────────────────────────
 au("VimResized", {
   group    = ag("ResizeSplits", { clear = true }),
   callback = function()
-    local tab_before = vim.fn.tabpagenr()
-    pcall(function()
-      vim.cmd("tabdo wincmd =")
-      local total  = vim.fn.tabpagenr("$")
-      local target = math.min(tab_before, total)
-      if target > 0 then vim.cmd("tabnext " .. target) end
-    end)
+    local current_tab = vim.api.nvim_get_current_tabpage()
+    for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+      local wins = vim.api.nvim_tabpage_list_wins(tabpage)
+      if #wins > 1 then
+        pcall(vim.api.nvim_win_call, wins[1], function()
+          vim.cmd("wincmd =")
+        end)
+      end
+    end
+    pcall(vim.api.nvim_set_current_tabpage, current_tab)
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- CLOSE CERTAIN WINDOWS WITH 'q'
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Close ephemeral windows with 'q' ─────────────────────────────────────────
 au("FileType", {
   group    = ag("CloseWithQ", { clear = true }),
   pattern  = EPHEMERAL_FT,
@@ -77,9 +64,13 @@ au("FileType", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- REMOVE TRAILING WHITESPACE ON SAVE
--- ═══════════════════════════════════════════════════════════════════════════
+-- ── Trim trailing whitespace (phase 2 fix #3: in-memory byte count) ──────────
+local function buf_byte_size(buf)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  local total = 0
+  for _, line in ipairs(lines) do total = total + #line + 1 end
+  return total
+end
 
 au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
@@ -87,25 +78,14 @@ au("BufWritePre", {
     if not is_real_buf(e.buf) then return end
     if vim.bo[e.buf].binary then return end
     if vim.b[e.buf] and vim.b[e.buf].large_file then return end
-
-    local fname = vim.api.nvim_buf_get_name(e.buf)
-    if fname ~= "" then
-      local ok_stat, stat = pcall(vim.uv.fs_stat, fname)
-      if ok_stat and stat and stat.size > 500 * 1024 then return end
-    end
-
+    if buf_byte_size(e.buf) > 500 * 1024 then return end
     local ft = vim.bo[e.buf].filetype
-    if vim.tbl_contains(
-      { "markdown", "markdown_inline", "diff", "rst", "asciidoc", "mail" }, ft
-    ) then return end
-
+    if vim.tbl_contains({ "markdown","markdown_inline","diff","rst","asciidoc","mail" }, ft) then return end
     if #vim.api.nvim_buf_get_lines(e.buf, 0, -1, false) == 0 then return end
-
     local scan_ok, match_line = pcall(vim.api.nvim_buf_call, e.buf, function()
       return vim.fn.search([[\s\+$]], "nw")
     end)
     if not scan_ok or match_line == 0 then return end
-
     pcall(function()
       local lines   = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
       local trimmed = {}
@@ -120,23 +100,29 @@ au("BufWritePre", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- CHECK FOR EXTERNAL FILE CHANGES
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Check for external file changes (phase 3 fix #22) ────────────────────────
+--
 au({ "FocusGained", "TermClose", "TermLeave" }, {
   group    = ag("Checktime", { clear = true }),
   callback = function(e)
     local buf = e.buf or vim.api.nvim_get_current_buf()
     local ok, bt = pcall(function() return vim.bo[buf].buftype end)
-    if ok and bt == "" then pcall(vim.cmd, "checktime") end
+    if not ok or bt ~= "" then return end
+
+    if vim.bo[buf].modified then
+      vim.notify(
+        "[autocmds] Skipped automatic checktime — buffer has unsaved changes.\n"
+        .. "Run :checktime manually when you are ready to reload.",
+        vim.log.levels.DEBUG
+      )
+      return
+    end
+
+    pcall(vim.cmd, "checktime")
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- LANGUAGE-SPECIFIC INDENT SETTINGS
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Language-specific indent settings ────────────────────────────────────────
 au("FileType", {
   group   = ag("WebDev", { clear = true }),
   pattern = { "html","css","javascript","typescript","json","yaml","javascriptreact","typescriptreact" },
@@ -144,7 +130,6 @@ au("FileType", {
     pcall(function() vim.opt_local.shiftwidth = 2; vim.opt_local.tabstop = 2 end)
   end,
 })
-
 au("FileType", {
   group    = ag("GoDev", { clear = true }),
   pattern  = { "go" },
@@ -154,7 +139,6 @@ au("FileType", {
     end)
   end,
 })
-
 au("FileType", {
   group    = ag("Markdown", { clear = true }),
   pattern  = { "markdown", "markdown_inline" },
@@ -163,10 +147,7 @@ au("FileType", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- TERMINAL UI CLEANUP
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Terminal UI cleanup ───────────────────────────────────────────────────────
 au("TermOpen", {
   group    = ag("Terminal", { clear = true }),
   callback = function()
@@ -178,10 +159,7 @@ au("TermOpen", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- AUTO CD TO PROJECT ROOT
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Auto CD to project root ───────────────────────────────────────────────────
 au("BufEnter", {
   group    = ag("AutoCdRoot", { clear = true }),
   callback = function(e)
@@ -197,24 +175,17 @@ au("BufEnter", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- FILETYPE DETECTION FOR COBOL AND VHDL
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Filetype detection for COBOL and VHDL ────────────────────────────────────
 pcall(function()
   vim.filetype.add({
     extension = {
-      cob = "cobol", cbl = "cobol", cpy = "cobol",
-      CBL = "cobol", COB = "cobol",
-      vhd = "vhdl",  vhdl = "vhdl", vho = "vhdl",
+      cob="cobol", cbl="cobol", cpy="cobol", CBL="cobol", COB="cobol",
+      vhd="vhdl",  vhdl="vhdl", vho="vhdl",
     },
   })
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════
--- LARGE FILE OPTIMISATION
--- ═══════════════════════════════════════════════════════════════════════════
-
+-- ── Large file optimisation ───────────────────────────────────────────────────
 local large_file_group = ag("LargeFile", { clear = true })
 
 au("BufReadPre", {
@@ -236,14 +207,12 @@ au("BufReadPre", {
     end
   end,
 })
-
 au("BufReadPost", {
   group    = large_file_group,
   callback = function(e)
     if vim.b[e.buf] and vim.b[e.buf].large_file then pcall(vim.treesitter.stop, e.buf) end
   end,
 })
-
 au("BufWinEnter", {
   group    = large_file_group,
   callback = function(e)
@@ -253,16 +222,13 @@ au("BufWinEnter", {
   end,
 })
 
--- ═══════════════════════════════════════════════════════════════════════════
--- NVIMIDEREADY USER EVENT
--- ═══════════════════════════════════════════════════════════════════════════
---
---   vim.api.nvim_create_autocmd("User", {
---     pattern  = "NvimIdeReady",
---     once     = true,
---     callback = function() ... end,
---   })
---
-vim.schedule(function()
-  vim.api.nvim_exec_autocmds("User", { pattern = "NvimIdeReady", modeline = false })
-end)
+-- ── NvimIdeReady user event (phase 2 fix #1: fires after LazyDone) ───────────
+vim.api.nvim_create_autocmd("User", {
+  pattern  = "LazyDone",
+  once     = true,
+  group    = ag("NvimIdeReadyBridge", { clear = true }),
+  callback = function()
+    vim.api.nvim_exec_autocmds("User", { pattern = "NvimIdeReady", modeline = false })
+  end,
+  desc = "Fire User NvimIdeReady after all lazy.nvim plugins are initialised",
+})

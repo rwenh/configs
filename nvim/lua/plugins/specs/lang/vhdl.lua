@@ -3,7 +3,7 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── vhdl_ls config file detection ─────────────────────────────────────────
+-- ── vhdl_ls config file detection ─────────────────────────────────────────────
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = "vhdl",
   once     = true,
@@ -23,30 +23,21 @@ vim.api.nvim_create_autocmd("FileType", {
   desc = "Check for vhdl_ls.toml on first VHDL buffer open",
 })
 
--- ── Port section parser ────────────────────────────────────────────────────
+-- ── VHDL inline-comment stripper ─────────────────────────────────────────────
 --
--- FIX: the original parser matched one port per line using a single pattern:
---
---   local sig, dir, typ = line:match("(%w+)%s*:%s*(%w+)%s+([%w_]+)")
---
--- This silently skipped any port whose declaration was split across lines,
--- e.g.:
---
---   data_bus : in
---     std_logic_vector(7 downto 0);
---
--- The new parser uses paren-depth tracking to extract the entire port section
--- as a single string, then splits on semicolons to get each declaration.
--- This correctly handles:
---   - Multi-line port declarations
---   - Types with generics/ranges: std_logic_vector(N-1 downto 0)
---   - Last port (no trailing semicolon before closing paren)
---
----@param  lines string[]  all lines of the source file
----@return string|nil      entity name
----@return table           list of { name, dir, typ } tables
+---@param  line string  one line of VHDL source
+---@return string       the line with the comment and everything after it removed
+local function strip_vhdl_comment(line)
+  local idx = line:find("%-%-", 1, true)
+  if idx then return line:sub(1, idx - 1) end
+  return line
+end
+
+-- ── Port section parser ────────────────────────────────────────────────────────
+---@param  lines string[]
+---@return string|nil  entity name
+---@return table       list of { name, dir, typ } tables
 local function parse_entity_ports(lines)
-  -- ── Pass 1: extract entity name ──────────────────────────────────────────
   local entity_name = nil
   for _, line in ipairs(lines) do
     entity_name = line:match("^%s*entity%s+(%w+)%s+is")
@@ -54,18 +45,17 @@ local function parse_entity_ports(lines)
   end
   if not entity_name then return nil, {} end
 
-  -- ── Pass 2: collect port section using paren-depth tracking ──────────────
-  -- We look for `port (` and accumulate text until the matching `)` closes.
   local port_parts = {}
   local collecting = false
   local depth      = 0
 
   for _, line in ipairs(lines) do
+    local safe_line = strip_vhdl_comment(line)
+
     if not collecting then
-      if line:find("port%s*%(") then
+      if safe_line:find("port%s*%(") then
         collecting = true
-        -- Trim everything before 'port' so we start counting parens cleanly.
-        local after_port = line:match("port%s*%((.*)$") or ""
+        local after_port = safe_line:match("port%s*%((.*)$") or ""
         table.insert(port_parts, after_port)
         depth = 1
         for c in after_port:gmatch(".") do
@@ -77,8 +67,8 @@ local function parse_entity_ports(lines)
         end
       end
     else
-      table.insert(port_parts, line)
-      for c in line:gmatch(".") do
+      table.insert(port_parts, safe_line)
+      for c in safe_line:gmatch(".") do
         if c == "(" then depth = depth + 1
         elseif c == ")" then
           depth = depth - 1
@@ -88,24 +78,17 @@ local function parse_entity_ports(lines)
     end
   end
 
-  -- ── Pass 3: normalise whitespace and split on semicolons ─────────────────
   local port_text = table.concat(port_parts, " ")
-  -- Strip trailing ); which closes the port list itself.
   port_text = port_text:gsub("%s*%)%s*;?%s*$", "")
-  -- Normalise runs of whitespace to single spaces.
   port_text = port_text:gsub("%s+", " ")
 
   local ports = {}
-  -- Split on semicolons to get individual declarations.
-  -- Append a trailing semicolon so the last entry (which may lack one) is caught.
   for decl in (port_text .. ";"):gmatch("(.-)%s*;") do
     decl = vim.trim(decl)
     if decl ~= "" then
-      -- Match: identifier : direction type_expression
       local sig, dir, typ = decl:match("^(%w+)%s*:%s*(%w+)%s+(.+)$")
       if sig and dir and typ then
         typ = vim.trim(typ)
-        -- Skip "signal" keyword prefix used by some VHDL styles.
         sig = sig:gsub("^signal%s+", "")
         table.insert(ports, { name = sig, dir = dir:lower(), typ = typ })
       end
@@ -155,33 +138,48 @@ return {
             "ghdl -a " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
         end,
-        desc = "GHDL Analyze", ft = "vhdl" },
+        desc = "GHDL Analyze current file", ft = "vhdl" },
 
       { "<leader>vhe",
         function()
           local exec = require("core.util.exec")
           if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-          local entity = vim.fn.input("Entity name: ")
+          local entity = vim.fn.input("Entity name to elaborate: ")
           if entity == "" then return end
           require("core.util.term").float("ghdl -e " .. vim.fn.shellescape(entity))
         end,
-        desc = "GHDL Elaborate", ft = "vhdl" },
+        desc = "GHDL Elaborate (prompt entity)", ft = "vhdl" },
 
       { "<leader>vhr",
         function()
           local exec = require("core.util.exec")
           if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-          local entity = vim.fn.input("Entity name: ")
+
+          local file   = vim.fn.expand("%:p")
+          local entity = vim.fn.input("Entity name to simulate: ")
           if entity == "" then return end
+
           local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
-          require("core.util.term").float(string.format(
-            "ghdl -r %s --vcd=%s && gtkwave %s",
+
+          -- Chain: analyze current file → elaborate entity → run + VCD output
+          local cmd = string.format(
+            "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
+            vim.fn.shellescape(file),
             vim.fn.shellescape(entity),
-            vim.fn.shellescape(vcd),
+            vim.fn.shellescape(entity),
             vim.fn.shellescape(vcd)
-          ))
+          )
+
+          if vim.fn.executable("gtkwave") == 1 then
+            cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
+          else
+            cmd = cmd
+              .. string.format(" && echo 'VCD written to %s (gtkwave not found)'", vcd)
+          end
+
+          require("core.util.term").float(cmd)
         end,
-        desc = "GHDL Run & View (gtkwave)", ft = "vhdl" },
+        desc = "GHDL Analyze + Elaborate + Run + View (gtkwave)", ft = "vhdl" },
 
       { "<leader>vhc",
         function()
@@ -225,7 +223,6 @@ return {
             "architecture sim of " .. tb_name .. " is",
           }
 
-          -- Signal declarations (use the full type string from the parser)
           for _, p in ipairs(ports) do
             table.insert(tb_lines, "  signal " .. p.name .. " : " .. p.typ .. ";")
           end

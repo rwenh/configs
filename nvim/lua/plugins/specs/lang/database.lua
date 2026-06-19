@@ -3,22 +3,13 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── DATABASE_URL auto-load ────────────────────────────────────────────────
---
--- Priority:
---   1. DATABASE_URL env var (already exported in the shell)
---   2. DB_URL env var (common alternate name)
---   3. .env file at the project root (first matching KEY=value line)
-
 local function load_database_url()
-  -- Respect an explicit user override; don't clobber it.
   if vim.g.db and vim.g.db ~= "" then return end
 
-  -- 1 & 2: environment variables
   for _, env_key in ipairs({ "DATABASE_URL", "DB_URL", "DATABASE_URI" }) do
     local val = os.getenv(env_key)
     if val and val ~= "" then
-      vim.g.db = val
+      vim.g.db = vim.trim(val)
       vim.notify(
         string.format("[database] Connection loaded from $%s", env_key),
         vim.log.levels.INFO
@@ -27,7 +18,6 @@ local function load_database_url()
     end
   end
 
-  -- 3: .env file at project root
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
   if not root or root == "" then return end
@@ -40,10 +30,12 @@ local function load_database_url()
     if not ok_r then goto continue end
 
     for _, line in ipairs(lines) do
-      local key, val = line:match("^%s*([%w_]+)%s*=%s*(.+)%s*$")
+      local key, val = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
       if key and vim.tbl_contains({ "DATABASE_URL", "DB_URL", "DATABASE_URI" }, key) then
         -- Strip surrounding quotes if present.
         val = val:gsub('^["\']', ""):gsub('["\']$', "")
+        -- Final trim to catch any residual whitespace.
+        val = vim.trim(val)
         if val ~= "" then
           vim.g.db = val
           vim.notify(
@@ -60,7 +52,6 @@ local function load_database_url()
   end
 end
 
--- Run once when dadbod-ui is first opened, and again on DirChanged.
 vim.api.nvim_create_autocmd({ "User" }, {
   pattern  = "DBUIOpening",
   group    = vim.api.nvim_create_augroup("DatabaseUrlLoad", { clear = true }),
@@ -71,7 +62,6 @@ vim.api.nvim_create_autocmd({ "User" }, {
 vim.api.nvim_create_autocmd("DirChanged", {
   group    = vim.api.nvim_create_augroup("DatabaseUrlReload", { clear = true }),
   callback = function()
-    -- Only reload if the user hasn't set a manual connection.
     if not vim.g.db or vim.g.db == "" then
       vim.schedule(load_database_url)
     end
@@ -79,7 +69,6 @@ vim.api.nvim_create_autocmd("DirChanged", {
 })
 
 return {
-  -- ── vim-dadbod-ui ──────────────────────────────────────────────────────────
   {
     "kristijanhusak/vim-dadbod-ui",
     dependencies = {
@@ -94,7 +83,6 @@ return {
       {
         "<leader>dbs",
         function()
-          -- Schema introspection:
           local schema_query = table.concat({
             "-- Schema introspection",
             "-- PostgreSQL",
@@ -128,10 +116,8 @@ return {
       {
         "<leader>dbc",
         function()
-          -- Clear the auto-loaded connection so the user can set a new one.
           vim.g.db = ""
-          vim.notify("[database] Connection cleared — reopen DBUI to reconnect",
-            vim.log.levels.INFO)
+          vim.notify("[database] Connection cleared — reopen DBUI to reconnect", vim.log.levels.INFO)
         end,
         desc = "DB Clear Connection",
       },
@@ -147,8 +133,6 @@ return {
       vim.schedule(load_database_url)
     end,
   },
-
-  -- ── vim-dadbod-completion ──────────────────────────────────────────────────
 
   {
     "kristijanhusak/vim-dadbod-completion",

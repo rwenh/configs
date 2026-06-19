@@ -3,25 +3,31 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── MPI Fortran filetype registration ─────────────────────────────────────
+-- ── Fortran filetype registration ──────────────────────────────────────────
+--
 pcall(function()
   vim.filetype.add({
     extension = {
       f90  = "fortran", f95  = "fortran", f03  = "fortran",
       f08  = "fortran", f18  = "fortran",
       F90  = "fortran", F95  = "fortran", F03  = "fortran",
-      for_ = "fortran", fpp  = "fortran",
+      -- FIX: was 'for_', now 'for' (standard fixed-form Fortran extension)
+      ["for"] = "fortran",
+      fpp  = "fortran",
     },
   })
 end)
 
 -- ── fprettify config detection ─────────────────────────────────────────────
---
--- Falls back to "--indent 2 --stdout -" when no config file is present.
+
+local _fprettify_args_cache = {}
 
 local function fprettify_args()
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+
+  -- Cache per project root to avoid repeated filesystem reads on every format.
+  if _fprettify_args_cache[root] then return _fprettify_args_cache[root] end
 
   local config_candidates = {
     root .. "/.fprettify.toml",
@@ -31,7 +37,6 @@ local function fprettify_args()
 
   for _, f in ipairs(config_candidates) do
     if vim.fn.filereadable(f) == 1 then
-      -- setup.cfg only counts if it has an [fprettify] section
       if f:find("setup.cfg", 1, true) then
         local lines = vim.fn.readfile(f)
         local has_section = false
@@ -40,19 +45,26 @@ local function fprettify_args()
         end
         if not has_section then goto continue end
       end
-      -- Config file found — let fprettify discover it automatically.
-      return { "--stdout", "-" }
+      local result = { "--stdout", "-" }
+      _fprettify_args_cache[root] = result
+      return result
     end
     ::continue::
   end
 
-  -- No config found: use the default explicit args.
-  return { "--indent", "2", "--stdout", "-" }
+  local result = { "--indent", "2", "--stdout", "-" }
+  _fprettify_args_cache[root] = result
+  return result
 end
+
+-- Invalidate the cache when the working directory changes.
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("FortranFprettifyCache", { clear = true }),
+  callback = function() _fprettify_args_cache = {} end,
+})
 
 return {
   -- ── Conform: fprettify custom config ──────────────────────────────────────
-
   {
     "stevearc/conform.nvim",
     optional = true,
@@ -77,8 +89,6 @@ return {
     end,
   },
 
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
-
   shared.treesitter({ "fortran" }),
 
   -- ── Build keymaps ──────────────────────────────────────────────────────────
@@ -87,9 +97,7 @@ return {
     keys = (function()
       local function build_and_run(file)
         local exec = require("core.util.exec")
-        if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
-          return
-        end
+        if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
         local exe = vim.fn.tempname()
         require("core.util.term").float(string.format(
           "gfortran -Wall -o %s %s && %s; rm -f %s",
@@ -111,9 +119,7 @@ return {
           "<leader>ftc",
           function()
             local exec = require("core.util.exec")
-            if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
-              return
-            end
+            if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
             require("core.util.term").float(
               "gfortran -Wall -fsyntax-only "
               .. vim.fn.shellescape(vim.fn.expand("%:p"))
@@ -146,7 +152,6 @@ return {
   },
 
   -- ── LuaSnip snippets ───────────────────────────────────────────────────────
-
   {
     "L3MON4D3/LuaSnip",
     optional = true,
@@ -181,7 +186,6 @@ return {
             t({ "", "  implicit none", "  " }), i(0),
             t({ "", "end module " }), ref(1, "name"),
           }),
-          -- MPI boilerplate
           s("mpi_init", {
             t({
               "use mpi",

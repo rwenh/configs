@@ -48,7 +48,6 @@ return {
   { "gbprod/stay-in-place.nvim", event = "VeryLazy", opts = {} },
 
   -- ── mini.nvim — unified spec ───────────────────────────────────────────────
-  --
   {
     "echasnovski/mini.nvim",
     event = "VeryLazy",
@@ -61,13 +60,11 @@ return {
       { "<A-k>", mode = { "n","v","i" } }, { "<A-l>", mode = { "n","v","i" } },
     },
     config = function()
-      -- Core editing modules
       for _, mod in ipairs({ "align","comment","move","splitjoin","surround" }) do
         local ok, err = pcall(function() require("mini." .. mod).setup() end)
         if not ok then vim.notify(string.format("[mini.%s] setup failed: %s", mod, tostring(err)), vim.log.levels.WARN) end
       end
 
-      -- ── mini.pairs — auto-close brackets, quotes, etc. ───────────────────
       if vim.g.disable_mini_pairs ~= true then
         pcall(function()
           require("mini.pairs").setup({
@@ -87,7 +84,6 @@ return {
         end)
       end
 
-      -- ── mini.visits — frecency tracking ──────────────────────────────────
       pcall(function()
         require("mini.visits").setup({
           store = { path = vim.fn.stdpath("data") .. "/mini-visits.json" },
@@ -96,7 +92,7 @@ return {
     end,
   },
 
-  -- ── mini.files — file explorer alternative ────────────────────────────────
+  -- ── mini.files ────────────────────────────────────────────────────────────
   {
     "echasnovski/mini.nvim",
     keys = {
@@ -170,8 +166,10 @@ return {
         open_fold_hl_timeout    = 400,
         close_fold_kinds_for_ft = { _ = { "imports","comment" } },
         provider_selector = function(bufnr)
-          if vim.b[bufnr] and vim.b[bufnr].large_file then return "" end
-          return { "treesitter","indent" }
+          if vim.b[bufnr] and vim.b[bufnr].large_file then
+            return { "indent" }
+          end
+          return { "treesitter", "indent" }
         end,
       }
     end,
@@ -193,16 +191,66 @@ return {
     opts = {
       snippet_engine = "luasnip",
       languages = {
-        lua = { template = { annotation_convention = "emmylua" } },
-        typescript = { template = { annotation_convention = "tsdoc" } },
-        javascript = { template = { annotation_convention = "jsdoc" } },
-        rust  = { template = { annotation_convention = "nightly" } },
-        go    = { template = { annotation_convention = "go" } },
-        cpp   = { template = { annotation_convention = "doxygen" } },
-        c     = { template = { annotation_convention = "doxygen" } },
-        python = { template = { annotation_convention = "google_docstrings" } },
-        java  = { template = { annotation_convention = "javadoc" } },
-        kotlin = { template = { annotation_convention = "kdoc" } },
+        lua        = { template = { annotation_convention = "emmylua"           } },
+        typescript = { template = { annotation_convention = "tsdoc"             } },
+        javascript = { template = { annotation_convention = "jsdoc"             } },
+        rust       = { template = { annotation_convention = "nightly"           } },
+        go         = { template = { annotation_convention = "go"                } },
+        cpp        = { template = { annotation_convention = "doxygen"           } },
+        c          = { template = { annotation_convention = "doxygen"           } },
+        python     = { template = { annotation_convention = "google_docstrings" } },
+        java       = { template = { annotation_convention = "javadoc"           } },
+        kotlin     = { template = { annotation_convention = "kdoc"              } },
       },
     } },
+
+  -- ── mini.animate ──────────────────────────────────────────────────────────
+  --
+  { "echasnovski/mini.animate", event = "VeryLazy",
+    config = function()
+      local ok, animate = pcall(require, "mini.animate")
+      if not ok then return end
+
+      local neoscroll_active = package.loaded["neoscroll"]
+        or #vim.api.nvim_get_runtime_file("lua/neoscroll.lua", false) > 0
+        or #vim.api.nvim_get_runtime_file("lua/neoscroll/init.lua", false) > 0
+
+      local mouse_scrolled = false
+      for _, dir in ipairs({ "Up","Down" }) do
+        local key = "<ScrollWheel" .. dir .. ">"
+        vim.keymap.set({ "","i" }, key, function()
+          mouse_scrolled = true; return key
+        end, { expr = true })
+      end
+
+      -- Build scroll config: disable if neoscroll owns those keymaps.
+      local scroll_cfg
+      if neoscroll_active and vim.g.force_mini_animate_scroll ~= true then
+        -- Disable mini.animate scroll to avoid double-animation with neoscroll.
+        scroll_cfg = { enable = false }
+        vim.notify(
+          "[advanced] mini.animate scroll disabled — neoscroll.nvim is active.\n"
+          .. "Set vim.g.force_mini_animate_scroll = true to override.",
+          vim.log.levels.DEBUG
+        )
+      else
+        scroll_cfg = {
+          timing    = animate.gen_timing.linear({ duration = 80, unit = "total" }),
+          subscroll = animate.gen_subscroll.equal({
+            predicate = function(total_scroll)
+              if vim.b[0] and vim.b[0].large_file then return false end
+              if mouse_scrolled then mouse_scrolled = false; return false end
+              return math.abs(total_scroll) > 5
+            end,
+          }),
+        }
+      end
+
+      animate.setup({
+        resize = { timing = animate.gen_timing.linear({ duration = 50,  unit = "total" }) },
+        open   = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
+        close  = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
+        scroll = scroll_cfg,
+      })
+    end },
 }

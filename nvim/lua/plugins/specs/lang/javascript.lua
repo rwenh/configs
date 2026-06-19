@@ -3,9 +3,6 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── ESM / CJS module system detection ─────────────────────────────────────
---
-
 local _module_type_cache = {}
 
 local function detect_module_type()
@@ -13,24 +10,26 @@ local function detect_module_type()
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
   if not root or root == "" then return nil end
 
-  if _module_type_cache[root] ~= nil then return _module_type_cache[root] end
+  if _module_type_cache[root] ~= nil then
+    return _module_type_cache[root] or nil   -- return nil for false sentinel
+  end
 
   local pkg_file = root .. "/package.json"
   if vim.fn.filereadable(pkg_file) ~= 1 then
-    _module_type_cache[root] = nil
+    _module_type_cache[root] = false   -- sentinel: no package.json
     return nil
   end
 
   local ok_read, lines = pcall(vim.fn.readfile, pkg_file)
   if not ok_read then
-    _module_type_cache[root] = nil
+    _module_type_cache[root] = false
     return nil
   end
 
   local content = table.concat(lines, "\n")
   local ok_json, pkg = pcall(vim.json.decode, content)
   if not ok_json or type(pkg) ~= "table" then
-    _module_type_cache[root] = nil
+    _module_type_cache[root] = false
     return nil
   end
 
@@ -39,7 +38,6 @@ local function detect_module_type()
   return t
 end
 
--- Show the module type in a notification when requested.
 local function notify_module_type()
   local t = detect_module_type()
   if not t then
@@ -50,14 +48,10 @@ local function notify_module_type()
   end
 end
 
--- Invalidate on directory change.
 vim.api.nvim_create_autocmd("DirChanged", {
   group    = vim.api.nvim_create_augroup("JsModuleTypeCache", { clear = true }),
   callback = function() _module_type_cache = {} end,
 })
-
--- ── Node version check ─────────────────────────────────────────────────────
--- Warn once per session if the active Node version is below 18.
 
 local _node_checked = false
 local function check_node_version()
@@ -77,8 +71,6 @@ local function check_node_version()
 end
 
 return {
-  -- ── Package.json dependency management ─────────────────────────────────────
-
   {
     "vuki656/package-info.nvim",
     dependencies = "MunifTanjim/nui.nvim",
@@ -90,43 +82,17 @@ return {
     config = function(_, opts)
       local ok, err = pcall(function() require("package-info").setup(opts) end)
       if not ok then
-        vim.notify(
-          "[javascript] package-info setup failed: " .. tostring(err)
-          .. "\nRun :Lazy update package-info.nvim",
-          vim.log.levels.WARN
-        )
+        vim.notify("[javascript] package-info setup failed: " .. tostring(err), vim.log.levels.WARN)
       end
     end,
     keys = {
-      {
-        "<leader>jps",
-        function() pcall(function() require("package-info").show() end) end,
-        desc = "Show package versions (requires network)",
-      },
-      {
-        "<leader>jpu",
-        function() pcall(function() require("package-info").update() end) end,
-        desc = "Update package",
-      },
-      {
-        "<leader>jpd",
-        function() pcall(function() require("package-info").delete() end) end,
-        desc = "Delete package",
-      },
-      {
-        "<leader>jpi",
-        function() pcall(function() require("package-info").install() end) end,
-        desc = "Install package",
-      },
-      {
-        "<leader>jpc",
-        function() pcall(function() require("package-info").change_version() end) end,
-        desc = "Change version",
-      },
+      { "<leader>jps", function() pcall(function() require("package-info").show()           end) end, desc = "Show package versions" },
+      { "<leader>jpu", function() pcall(function() require("package-info").update()         end) end, desc = "Update package"        },
+      { "<leader>jpd", function() pcall(function() require("package-info").delete()         end) end, desc = "Delete package"        },
+      { "<leader>jpi", function() pcall(function() require("package-info").install()        end) end, desc = "Install package"       },
+      { "<leader>jpc", function() pcall(function() require("package-info").change_version() end) end, desc = "Change version"        },
     },
   },
-
-  -- ── Module type + Node version info ────────────────────────────────────────
 
   {
     "akinsho/toggleterm.nvim",
@@ -140,73 +106,44 @@ return {
       })
     end,
     keys = {
-      {
-        "<leader>jsm",
-        function() notify_module_type() end,
-        desc = "JS Show module type (ESM / CJS)",
-        ft   = shared.JS_FT,
-      },
+      { "<leader>jsm", function() notify_module_type() end, desc = "JS Show module type (ESM / CJS)", ft = shared.JS_FT },
     },
   },
 
-  -- ── LuaSnip snippets ───────────────────────────────────────────────────────
-
   {
-    "L3MON4D3/LuaSnip",
-    optional = true,
-    ft       = { "javascript", "javascriptreact" },
-    config   = function()
+    "L3MON4D3/LuaSnip", optional = true, ft = { "javascript", "javascriptreact" },
+    config = function()
       require("core.util.snippets").load("javascript", function(s, t, i, _, ref)
         local module_type = detect_module_type()
         local use_esm     = (module_type == "esm")
-
         return {
-          -- import / require (adapts to ESM vs CJS)
           s("imp", use_esm and {
             t("import "), i(1, "name"), t(" from '"), i(2, "module"), t("'"),
           } or {
             t("const "), i(1, "name"), t(" = require('"), i(2, "module"), t("')"),
           }),
-
-          -- async arrow function
           s("afn", {
             t("const "), i(1, "name"), t(" = async ("), i(2), t(") => {"),
-            t({ "", "  " }), i(0),
-            t({ "", "}" }),
+            t({ "", "  " }), i(0), t({ "", "}" }),
           }),
-
-          -- Promise.all pattern
           s("pall", {
             t("const ["), i(1, "a"), t(", "), i(2, "b"), t("] = await Promise.all(["),
             t({ "", "  " }), ref(1, "a"), t(","),
             t({ "", "  " }), ref(2, "b"), t(","),
             t({ "", "])" }),
           }),
-
-          -- try/catch
           s("tc", {
-            t("try {"),
-            t({ "", "  " }), i(1, "// ..."),
+            t("try {"), t({ "", "  " }), i(1, "// ..."),
             t({ "", "} catch (" }), i(2, "err"), t(") {"),
             t({ "", "  console.error(" }), ref(2, "err"), t(")"),
             t({ "", "}" }),
           }),
-
-          -- console.log with label
-          s("cl", {
-            t('console.log("'), i(1, "label"), t(':", '), i(2, "value"), t(")"),
-          }),
-
-          -- remove console.log (comment it out in place)
-          s("rcl", {
-            t("// console.log("), i(0), t(")"),
-          }),
+          s("cl", { t('console.log("'), i(1, "label"), t(':", '), i(2, "value"), t(")") }),
+          s("rcl", { t("// console.log("), i(0), t(")") }),
         }
       end)
     end,
   },
-
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
 
   shared.treesitter({ "javascript", "jsdoc" }),
 }

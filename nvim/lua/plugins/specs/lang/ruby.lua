@@ -1,24 +1,19 @@
 -- lua/plugins/specs/lang/ruby.lua — Ruby language support
 --
--- Test mechanism guide:
---   <leader>rbn/f/s  → vim-test (buffer-local, toggleterm strategy)
---   <leader>'n       → neotest-rspec (nearest test with rich output)
---   <leader>'t       → runner.lua (bundle exec rspec from project root)
---
 
 local shared = require("plugins.specs.lang.shared")
 
 -- ── Bundler version guard ─────────────────────────────────────────────────
 --
-
-local _bundler_checked = false
+local _bundler_checked_root = nil
 
 local function check_bundler_env()
-  if _bundler_checked then return end
-  _bundler_checked = true
-
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+
+  -- Skip if we already checked this exact project root.
+  if root == _bundler_checked_root then return end
+  _bundler_checked_root = root
 
   local lockfile = root .. "/Gemfile.lock"
   if vim.fn.filereadable(lockfile) ~= 1 then return end
@@ -57,7 +52,6 @@ end
 
 return {
   -- ── vim-test ───────────────────────────────────────────────────────────────
-
   {
     "vim-test/vim-test",
     ft   = "ruby",
@@ -79,6 +73,17 @@ return {
           vim.schedule(check_bundler_env)
         end,
       })
+
+      vim.api.nvim_create_autocmd("DirChanged", {
+        group    = vim.api.nvim_create_augroup("RubyBundlerRecheck", { clear = true }),
+        callback = function()
+          -- Only re-check when a Ruby buffer is currently active.
+          local ft = vim.bo[vim.api.nvim_get_current_buf()].filetype
+          if ft == "ruby" then
+            vim.schedule(check_bundler_env)
+          end
+        end,
+      })
     end,
     keys = (function()
       local function rkey(lhs, cmd, desc)
@@ -95,7 +100,6 @@ return {
   },
 
   -- ── vim-rails ──────────────────────────────────────────────────────────────
-
   {
     "tpope/vim-rails",
     ft   = "ruby",
@@ -103,18 +107,6 @@ return {
   },
 
   -- ── Rails generator keymaps ────────────────────────────────────────────────
-  --
-  -- Only registered when a Rails project is detected (config/application.rb).
-  -- Keymap layout:
-  --   <leader>rgm  generate model
-  --   <leader>rgc  generate controller
-  --   <leader>rgs  generate scaffold
-  --   <leader>rgj  generate job
-  --   <leader>rgM  generate migration
-  --   <leader>rgS  rails server
-  --   <leader>rgd  db:migrate
-  --   <leader>rgr  rails console
-
   {
     "akinsho/toggleterm.nvim",
     ft   = "ruby",
@@ -171,9 +163,9 @@ return {
             end
           end
 
-          -- And future ones.
           vim.api.nvim_create_autocmd("FileType", {
             pattern  = "ruby",
+            once     = false,
             group    = vim.api.nvim_create_augroup("RailsGeneratorFuture", { clear = true }),
             callback = function(e)
               if is_rails_project() then
@@ -187,14 +179,11 @@ return {
   },
 
   -- ── endwise ────────────────────────────────────────────────────────────────
-
   {
     "RRethy/nvim-treesitter-endwise",
     event        = "InsertEnter",
     dependencies = "nvim-treesitter/nvim-treesitter",
   },
-
-  -- ── Treesitter ─────────────────────────────────────────────────────────────
 
   shared.treesitter({ "ruby" }),
 }

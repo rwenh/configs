@@ -1,15 +1,5 @@
 -- lua/core/focus.lua — deep focus mode
 --
--- Fires User events:
---   User FocusEnter  — after focus mode is activated
---   User FocusLeave  — after focus mode is deactivated
---
--- Other modules can hook these:
---   vim.api.nvim_create_autocmd("User", {
---     pattern = "FocusEnter", once = false,
---     callback = function() ... end,
---   })
---
 
 local M = {}
 
@@ -27,15 +17,56 @@ local _active = false
 local _snap   = {}
 
 local function apply_spec(active)
+  local applied = {}   -- track which keys were successfully set this pass
+
   for _, s in ipairs(SPEC) do
     local scope, key, off_value, default = s[1], s[2], s[3], s[4]
-    if active then
-      _snap[key]      = vim[scope][key]
-      vim[scope][key] = off_value
+
+    local ok, err = pcall(function()
+      if active then
+        _snap[key]      = vim[scope][key]
+        vim[scope][key] = off_value
+      else
+        vim[scope][key] = (_snap[key] ~= nil) and _snap[key] or default
+      end
+    end)
+
+    if ok then
+      table.insert(applied, { scope = scope, key = key })
     else
-      vim[scope][key] = (_snap[key] ~= nil) and _snap[key] or default
+      -- Roll back the options already applied in this pass.
+      vim.notify(
+        string.format(
+          "[focus] apply_spec() failed on %s.%s: %s\n"
+          .. "Rolling back %d already-applied option(s).",
+          scope, key, tostring(err), #applied
+        ),
+        vim.log.levels.WARN
+      )
+      for i = #applied, 1, -1 do
+        local a = applied[i]
+        local prev = active and _snap[a.key] or nil
+        -- On activate-rollback restore the snapshotted value;
+        -- on deactivate-rollback restore the focus value (off_value for this key).
+        pcall(function()
+          if active then
+            -- Restore from snapshot (which we already set above).
+            if prev ~= nil then vim[a.scope][a.key] = prev end
+          else
+            -- Restore to focus-off value (we tried to restore but failed partway).
+            for _, ss in ipairs(SPEC) do
+              if ss[2] == a.key then vim[a.scope][a.key] = ss[3]; break end
+            end
+          end
+        end)
+      end
+      -- Clear the partial snapshot so future calls don't use stale values.
+      if active then _snap = {} end
+      return false
     end
   end
+
+  return true
 end
 
 local function set_zen(want_on)
@@ -45,8 +76,13 @@ local function set_zen(want_on)
 end
 
 local function set_twilight(want_on)
-  if want_on then pcall(vim.cmd, "TwilightEnable")
-  else            pcall(vim.cmd, "TwilightDisable") end
+  if want_on then
+    local ok, err = pcall(vim.cmd, "TwilightEnable")
+    if not ok then vim.notify("[focus] TwilightEnable failed: " .. tostring(err), vim.log.levels.DEBUG) end
+  else
+    local ok, err = pcall(vim.cmd, "TwilightDisable")
+    if not ok then vim.notify("[focus] TwilightDisable failed: " .. tostring(err), vim.log.levels.DEBUG) end
+  end
 end
 
 local function fire_event(pattern)
@@ -59,7 +95,16 @@ end
 function M.set(active)
   if active == _active then return end
   _active = active
-  apply_spec(active)
+  local ok = apply_spec(active)
+  if not ok then
+    -- Partial failure: stay in the previous state to avoid a half-applied mode.
+    _active = not active
+    vim.notify(
+      "[focus] Mode change aborted due to option-set failure. State unchanged.",
+      vim.log.levels.WARN
+    )
+    return
+  end
   set_twilight(active)
   set_zen(active)
   fire_event(active and "FocusEnter" or "FocusLeave")

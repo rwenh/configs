@@ -76,7 +76,6 @@ opt.foldlevel      = 99
 opt.foldlevelstart = 99
 opt.foldenable     = true
 
--- Override: vim.g.disable_treesitter_folds = true → use indent-based folding
 if vim.g.disable_treesitter_folds then
   opt.foldmethod = "indent"
 else
@@ -105,12 +104,8 @@ opt.ttimeoutlen = 50
 
 opt.spelllang = "en_us"
 
--- vim.g.spell_wordlist — optional path to a personal spell file.
--- Example in init.lua:
---   vim.g.spell_wordlist = "~/.config/nvim/spell/en.utf-8.add"
 if type(vim.g.spell_wordlist) == "string" and vim.g.spell_wordlist ~= "" then
   local expanded = vim.fn.expand(vim.g.spell_wordlist)
-  -- Always include the runtime default; user list checked first.
   opt.spellfile = { expanded, vim.fn.stdpath("config") .. "/spell/en.utf-8.add" }
 end
 
@@ -127,24 +122,42 @@ opt.sessionoptions = table.concat({
 -- GLOBAL FLAGS (escape hatches)
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- Opt-in: auto-cd to project root on BufEnter.
 g.auto_cd_root    = false
--- Opt-in: auto-save before running a file with runner.lua.
 g.runner_autosave = true
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PER-FILETYPE OPTION OVERRIDES
 -- ═══════════════════════════════════════════════════════════════════════════
 --
---   vim.g.filetype_options = {
---     python    = { shiftwidth = 4, tabstop = 4 },
---     go        = { expandtab = false },
---     markdown  = { wrap = true, spell = true, colorcolumn = "" },
---     rust      = { colorcolumn = "100" },
---   }
+
+local BUFFER_LOCAL_OPTS = {
+  shiftwidth = true, tabstop = true, softtabstop = true,
+  expandtab  = true, autoindent = true, cindent = true,
+  textwidth  = true, commentstring = true, fileformat = true,
+  fileencoding = true,
+}
+
+-- Known window-local option names (non-exhaustive).
+local WINDOW_LOCAL_OPTS = {
+  wrap = true, spell = true, number = true, relativenumber = true,
+  cursorline = true, signcolumn = true, colorcolumn = true,
+  foldcolumn = true, conceallevel = true, concealcursor = true,
+  list = true, linebreak = true,
+}
+
+local function apply_ft_opt(buf, key, val)
+  if BUFFER_LOCAL_OPTS[key] then
+    pcall(function() vim.bo[buf][key] = val end)
+  elseif WINDOW_LOCAL_OPTS[key] then
+    pcall(function() vim.wo[key] = val end)
+  else
+    -- Unknown scope: try buffer first, fall back to window.
+    local ok = pcall(function() vim.bo[buf][key] = val end)
+    if not ok then pcall(function() vim.wo[key] = val end) end
+  end
+end
 
 local BUILTIN_FT_OPTS = {
-  -- Web / JSON / YAML: 2-space indent (mirrors autocmds.lua)
   html            = { shiftwidth = 2, tabstop = 2 },
   css             = { shiftwidth = 2, tabstop = 2 },
   javascript      = { shiftwidth = 2, tabstop = 2 },
@@ -153,31 +166,26 @@ local BUILTIN_FT_OPTS = {
   yaml            = { shiftwidth = 2, tabstop = 2 },
   javascriptreact = { shiftwidth = 2, tabstop = 2 },
   typescriptreact = { shiftwidth = 2, tabstop = 2 },
-  -- Go: tabs
   go              = { shiftwidth = 4, tabstop = 4, expandtab = false },
-  -- Markdown: wrap + spell
   markdown        = { wrap = true, spell = true },
 }
 
--- Merge user overrides on top of builtins.
 local ft_opts = vim.tbl_deep_extend(
   "force",
   BUILTIN_FT_OPTS,
   type(vim.g.filetype_options) == "table" and vim.g.filetype_options or {}
 )
 
--- Register a single FileType autocmd that applies merged options.
 vim.api.nvim_create_autocmd("FileType", {
   group    = vim.api.nvim_create_augroup("FiletypeOptions", { clear = true }),
   callback = function(e)
     local overrides = ft_opts[vim.bo[e.buf].filetype]
     if not overrides then return end
     for key, val in pairs(overrides) do
-      pcall(function() vim.bo[e.buf][key] = val end)
-      pcall(function() vim.wo[key]         = val end)
+      apply_ft_opt(e.buf, key, val)
     end
   end,
-  desc = "Apply per-filetype option overrides (vim.g.filetype_options + builtins)",
+  desc = "Apply per-filetype option overrides (scope-aware)",
 })
 
 -- ═══════════════════════════════════════════════════════════════════════════

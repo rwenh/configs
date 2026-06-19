@@ -3,81 +3,67 @@
 
 local M = {}
 
--- ── Path resolution ───────────────────────────────────────────────────────────
-
----@param name string  binary name (e.g. "codelldb", "dlv", "debugpy")
----@return string      absolute path (may not exist — callers must check)
-function M.bin(name)
-  local p = vim.fn.exepath(name)
-  if p ~= "" then return p end
-  return vim.fn.stdpath("data") .. "/mason/bin/" .. name
+local function normalize(p)
+  local n = vim.fn.exepath(p)
+  if n ~= "" then return n end
+  return vim.fn.stdpath("data") .. "/mason/bin/" .. p
 end
 
----@param rel string  path relative to mason/packages/
----                   (e.g. "js-debug-adapter/js-debug/src/dapDebugServer.js")
+---@param name string
+---@return string
+function M.bin(name)
+  return normalize(name)
+end
+
+---@param rel string
 ---@return string
 function M.pkg(rel)
   return vim.fn.stdpath("data") .. "/mason/packages/" .. rel
 end
 
---- Return the Mason packages root directory.
 ---@return string
 function M.packages_root()
   return vim.fn.stdpath("data") .. "/mason/packages"
 end
 
--- ── Existence guards ──────────────────────────────────────────────────────────
-
----@param name string  binary name passed to M.bin()
+---@param name string
 ---@return boolean
 function M.bin_ok(name)
   local p = M.bin(name)
   return vim.fn.executable(p) == 1
 end
 
----@param rel string  path relative to mason/packages/
+---@param rel string
 ---@return boolean
 function M.script_ok(rel)
   return vim.fn.filereadable(M.pkg(rel)) == 1
 end
 
----@param name string
----@return boolean
-function M.bin_exists(name)
-  return M.bin_ok(name)
-end
+M.bin_exists  = M.bin_ok
+M.pkg_exists  = M.script_ok
 
----@param rel string
----@return boolean
-function M.pkg_exists(rel)
-  return M.script_ok(rel)
-end
-
--- ── Version query ─────────────────────────────────────────────────────────────
--- Cached results live for the session — binaries do not upgrade mid-session.
+-- ── Version cache ─────────────────────────────────────────────────────────────
 
 local _version_cache = {}
 
--- Known version flags per binary name.
--- Unlisted binaries fall back to "--version".
 local VERSION_FLAGS = {
-  stylua     = { "--version" },
-  black      = { "--version" },
-  prettier   = { "--version" },
-  ruff       = { "--version" },
-  eslint_d   = { "--version" },
-  shfmt      = { "--version" },
-  gofumpt    = { "--version" },
-  rubocop    = { "--version" },
-  ktlint     = { "--version" },
-  ["clang-format"] = { "--version" },
-  fprettify  = { "--version" },
-  sqlfmt     = { "--version" },
-  vsg        = { "--version" },
-  isort      = { "--version" },
+  stylua          = { "--version" },
+  black           = { "--version" },
+  prettier        = { "--version" },
+  ruff            = { "--version" },
+  eslint_d        = { "--version" },
+  shfmt           = { "--version" },
+  gofumpt         = { "--version" },
+  rubocop         = { "--version" },
+  ktlint          = { "--version" },
+  ["clang-format"]= { "--version" },
+  fprettify       = { "--version" },
+  sqlfmt          = { "--version" },
+  vsg             = { "--version" },
+  isort           = { "--version" },
 }
 
----@param name string   binary name (e.g. "stylua", "black", "prettier")
+---@param name string
 ---@return string|nil
 function M.version(name)
   if _version_cache[name] ~= nil then return _version_cache[name] end
@@ -106,9 +92,19 @@ function M.version(name)
   return ver
 end
 
---- Clear the version cache (useful after :MasonUpdate).
+--- Clear the version cache (call after :MasonUpdate or tool upgrades).
 function M.clear_version_cache()
   _version_cache = {}
 end
+
+vim.api.nvim_create_autocmd("User", {
+  pattern  = "MasonUpdateCompleted",
+  group    = vim.api.nvim_create_augroup("MasonVersionCacheClear", { clear = true }),
+  callback = function()
+    M.clear_version_cache()
+    vim.notify("[mason] Version cache cleared after :MasonUpdate.", vim.log.levels.DEBUG)
+  end,
+  desc = "Auto-clear mason.lua version cache after :MasonUpdate completes",
+})
 
 return M

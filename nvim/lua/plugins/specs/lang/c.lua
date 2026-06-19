@@ -3,18 +3,40 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── compile_commands.json detection ──────────────────────────────────────
+-- ── Build-flag sanitiser ──────────────────────────────────────────────────────
+---@param  flags string  raw flag string from vim.g.c_build_flags
+---@return string        safe flag string
+local function sanitize_flags(flags)
+  -- Remove known shell-dangerous characters while preserving valid flag syntax.
+  return (flags or ""):gsub("[;&|`$<>()\n\r\"'\\]", "")
+end
+
+-- ── compile_commands.json detection ──────────────────────────────────────────
+
+local function maybe_symlink()
+  shared.symlink_compile_commands("c")
+end
 
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = "c",
   once     = true,
-  group    = vim.api.nvim_create_augroup("CCompileCommands", { clear = true }),
+  group    = vim.api.nvim_create_augroup("CCompileCommandsInit", { clear = true }),
+  callback = function() vim.schedule(maybe_symlink) end,
+  desc     = "Symlink compile_commands.json for C on first buffer open",
+})
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("CCompileCommandsDir", { clear = true }),
   callback = function()
-    vim.schedule(function()
-      shared.symlink_compile_commands("c")
-    end)
+    -- Only act when a C file is currently open.
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "c" then
+        vim.schedule(maybe_symlink)
+        return
+      end
+    end
   end,
-  desc = "Auto-symlink compile_commands.json for C projects",
+  desc = "Re-symlink compile_commands.json when working directory changes",
 })
 
 return {
@@ -49,12 +71,28 @@ return {
         function()
           local exec = require("core.util.exec")
           if not exec.require_bin("gcc", "sudo zypper in gcc") then return end
+
           local file  = vim.fn.expand("%:p")
           local exe   = vim.fn.expand("%:p:r")
-          local flags = vim.g.c_build_flags or "-Wall -Wextra -g"
+
+          local raw_flags = vim.g.c_build_flags or "-Wall -Wextra -g"
+          local flags     = sanitize_flags(raw_flags)
+
+          if flags ~= raw_flags then
+            vim.notify(
+              "[c] c_build_flags contained unsafe characters that were stripped.\n"
+              .. "  original : " .. raw_flags .. "\n"
+              .. "  sanitised: " .. flags,
+              vim.log.levels.WARN
+            )
+          end
+
           require("core.util.term").float(string.format(
-            "gcc %s -o %s %s && %s", flags,
-            vim.fn.shellescape(exe), vim.fn.shellescape(file), vim.fn.shellescape(exe)
+            "gcc %s -o %s %s && %s",
+            flags,
+            vim.fn.shellescape(exe),
+            vim.fn.shellescape(file),
+            vim.fn.shellescape(exe)
           ))
         end,
         desc = "C Build & Run (gcc)", ft = "c",

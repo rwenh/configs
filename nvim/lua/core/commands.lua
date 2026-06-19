@@ -1,4 +1,5 @@
 -- lua/core/commands.lua — user commands
+--
 
 local cmd = vim.api.nvim_create_user_command
 if vim.g.disable_autoformat == nil then vim.g.disable_autoformat = false end
@@ -40,14 +41,19 @@ cmd("Health", function()
 end, { desc = "Show health status" })
 
 -- ── :Format ───────────────────────────────────────────────────────────────────
+--
 cmd("Format", function(opts)
   local ok, conform = pcall(require, "conform")
   if not ok then vim.notify("conform.nvim not available", vim.log.levels.ERROR); return end
   if opts.range > 0 then
     local last_lines = vim.api.nvim_buf_get_lines(0, opts.line2 - 1, opts.line2, false)
-    local end_col    = #(last_lines[1] or "")
+    local last_line  = last_lines[1] or ""
+    local end_col    = vim.fn.strchars(last_line)
     pcall(function()
-      conform.format({ lsp_format = "fallback", range = { start = { opts.line1, 0 }, ["end"] = { opts.line2, end_col } } })
+      conform.format({
+        lsp_format = "fallback",
+        range      = { start = { opts.line1, 0 }, ["end"] = { opts.line2, end_col } },
+      })
     end)
   else
     pcall(function() conform.format({ lsp_format = "fallback" }) end)
@@ -67,25 +73,63 @@ cmd("CopyPath",    copy_path("%:p", "CopyPath"),   { desc = "Copy absolute file 
 cmd("CopyRelPath", copy_path("%:.", "CopyRelPath"), { desc = "Copy relative file path" })
 
 -- ── :BufOnly ──────────────────────────────────────────────────────────────────
+-- The user is prompted (y/n/c) for each unsaved buffer:
+--   y — save and delete
+--   n — delete without saving (force)
+--   c — cancel the entire BufOnly operation
+--
 cmd("BufOnly", function()
   local current = vim.api.nvim_get_current_buf()
   local ok, buffers = pcall(vim.api.nvim_list_bufs)
   if not ok then vim.notify("Failed to list buffers", vim.log.levels.ERROR); return end
-  local deleted, skipped = 0, {}
+
+  local deleted = 0
+  local cancelled = false
+
   for _, buf in ipairs(buffers) do
-    if buf ~= current and vim.api.nvim_buf_is_loaded(buf) then
-      local del_ok = pcall(vim.api.nvim_buf_delete, buf, { force = false })
-      if del_ok then deleted = deleted + 1
+    if cancelled then break end
+    if buf == current or not vim.api.nvim_buf_is_loaded(buf) then goto continue end
+
+    local modified = vim.bo[buf].modified
+    if not modified then
+      pcall(vim.api.nvim_buf_delete, buf, { force = false })
+      deleted = deleted + 1
+    else
+      local name = vim.api.nvim_buf_get_name(buf)
+      local label = name ~= "" and vim.fn.fnamemodify(name, ":~:.") or ("[buf " .. buf .. "]")
+
+      local answer = vim.fn.input(
+        "BufOnly: '" .. label .. "' has unsaved changes. Save? [y]es / [n]o (discard) / [c]ancel: "
+      )
+      vim.cmd("redraw")  -- clear the cmdline
+
+      if answer == "y" or answer == "Y" then
+        local save_ok, save_err = pcall(vim.api.nvim_buf_call, buf, function()
+          vim.cmd("write")
+        end)
+        if not save_ok then
+          vim.notify("[BufOnly] Could not save '" .. label .. "': " .. tostring(save_err), vim.log.levels.WARN)
+          goto continue
+        end
+        pcall(vim.api.nvim_buf_delete, buf, { force = false })
+        deleted = deleted + 1
+      elseif answer == "n" or answer == "N" then
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+        deleted = deleted + 1
       else
-        local name = vim.api.nvim_buf_get_name(buf)
-        table.insert(skipped, name ~= "" and vim.fn.fnamemodify(name, ":t") or ("[buf " .. buf .. "]"))
+        -- 'c', empty, or any other input cancels the entire operation.
+        vim.notify(string.format("[BufOnly] Cancelled. %d buffer(s) deleted so far.", deleted))
+        cancelled = true
+        goto continue
       end
     end
+    ::continue::
   end
-  local msg = string.format("Deleted %d buffer(s).", deleted)
-  if #skipped > 0 then msg = msg .. " Skipped (modified): " .. table.concat(skipped, ", ") end
-  vim.notify(msg)
-end, { desc = "Delete all other buffers" })
+
+  if not cancelled then
+    vim.notify(string.format("[BufOnly] Deleted %d buffer(s).", deleted))
+  end
+end, { desc = "Delete all other buffers (prompts for unsaved)" })
 
 cmd("CleanUp", function()
   pcall(function() collectgarbage("collect"); vim.notify(string.format("Memory: %.1fMB", collectgarbage("count") / 1024)) end)
@@ -130,10 +174,6 @@ end, { desc = "Resume last telescope picker" })
 
 -- ── :MasonInstallAll ──────────────────────────────────────────────────────────
 --
--- Supports an optional --dry-run flag:
---   :MasonInstallAll          — install everything not yet installed
---   :MasonInstallAll dry-run  — print what would be installed, do nothing
---
 if vim.g._mason_install_running == nil then vim.g._mason_install_running = false end
 
 cmd("MasonInstallAll", function(opts)
@@ -146,7 +186,7 @@ cmd("MasonInstallAll", function(opts)
     vim.notify("MasonInstallAll is already running — please wait", vim.log.levels.WARN); return
   end
 
-  local pkgs = MASON_PACKAGES.get()   -- flat list via new M.get() API
+  local pkgs = MASON_PACKAGES.get()
 
   -- ── Dry-run mode ──────────────────────────────────────────────────────────
   if dry_run then
@@ -185,7 +225,6 @@ cmd("MasonInstallAll", function(opts)
   local failed  = {}
   local timer   = nil
 
-  -- Progress notification (replace-in-place via vim.notify id when available).
   local function progress_msg()
     return string.format("MasonInstallAll: %d / %d done%s",
       done, total, #failed > 0 and (" | failed: " .. #failed) or "")
@@ -193,7 +232,7 @@ cmd("MasonInstallAll", function(opts)
 
   local function finish()
     if timer then pcall(function() timer:stop(); timer:close() end); timer = nil end
-    vim.g._mason_install_running = false
+    vim.g._mason_install_running = false   -- safe: pending is 0 here
     if #failed > 0 then
       vim.notify(string.format("MasonInstallAll: %d/%d done. Failed: %s", done, total, table.concat(failed, ", ")), vim.log.levels.WARN)
     else
@@ -201,13 +240,26 @@ cmd("MasonInstallAll", function(opts)
     end
   end
 
-  local function check_done() if pending <= 0 then finish() end end
+  local function check_done()
+    if pending <= 0 then finish() end
+  end
 
   timer = vim.uv.new_timer()
   timer:start(TIMEOUT_MS, 0, vim.schedule_wrap(function()
-    vim.notify(string.format("MasonInstallAll: timed out after %ds (%d pending).\nIncrease: vim.g.mason_install_timeout_ms = %d",
-      math.floor(TIMEOUT_MS / 1000), pending, TIMEOUT_MS * 2), vim.log.levels.WARN)
-    finish()
+    vim.notify(
+      string.format(
+        "MasonInstallAll: timed out after %ds (%d pending).\n"
+        .. "Pending installs may still complete in the background.\n"
+        .. "Increase timeout: vim.g.mason_install_timeout_ms = %d",
+        math.floor(TIMEOUT_MS / 1000), pending, TIMEOUT_MS * 2
+      ),
+      vim.log.levels.WARN
+    )
+    if timer then pcall(function() timer:stop(); timer:close() end); timer = nil end
+    if pending <= 0 then
+      vim.g._mason_install_running = false
+    end
+    -- If pending > 0 the mutex remains locked until the callbacks settle.
   end))
 
   for _, pkg_name in ipairs(pkgs) do

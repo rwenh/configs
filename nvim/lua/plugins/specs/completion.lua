@@ -1,12 +1,5 @@
 -- lua/plugins/specs/completion.lua — blink.cmp completion
 --
--- Per-filetype source overrides (set in init.lua before plugins load):
---
---     vim.g.completion_sources_by_ft = {
---       sql      = { "lsp", "dadbod", "buffer" },
---       markdown = { "lsp", "path", "buffer" },
---     }
---
 
 return {
   {
@@ -48,7 +41,6 @@ return {
           buffer   = { name = "Buffer",   module = "blink.cmp.sources.buffer",   min_keyword_length = 2, score_offset = -3 },
           cmdline  = { name = "cmdline",  module = "blink.cmp.sources.cmdline",  min_keyword_length = 0 },
         },
-        -- Per-filetype source list; merged from vim.g.completion_sources_by_ft.
         per_filetype = type(vim.g.completion_sources_by_ft) == "table"
           and vim.g.completion_sources_by_ft or {},
       },
@@ -79,6 +71,24 @@ return {
     },
 
     config = function(_, opts)
+      pcall(function()
+        local ok, blink_meta = pcall(require, "blink.cmp.version")
+        if ok and type(blink_meta) == "table" and blink_meta.version then
+          local major = tonumber(tostring(blink_meta.version):match("^(%d+)"))
+          if major and major ~= 1 then
+            vim.notify(
+              string.format(
+                "[completion] blink.cmp major version is %d (expected 1).\n"
+                .. "The '1.*' pin no longer applies — update completion.lua.\n"
+                .. "Set: version = '%d.*'  or pin to a specific release.",
+                major, major
+              ),
+              vim.log.levels.WARN
+            )
+          end
+        end
+      end)
+
       local has_ls = pcall(require, "luasnip")
       local ls     = has_ls and require("luasnip") or nil
 

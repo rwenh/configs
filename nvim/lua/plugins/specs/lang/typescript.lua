@@ -3,6 +3,42 @@
 
 local shared = require("plugins.specs.lang.shared")
 
+-- ── JSONC parser ──────────────────────────────────────────────────────────────
+---@param  text string  raw file contents (possibly JSONC)
+---@return table|nil    decoded table, or nil on parse failure
+local function decode_jsonc(text)
+  if not text or text == "" then return nil end
+
+  -- 1. Remove /* ... */ block comments (non-greedy, may span lines).
+  local stripped = text:gsub("/%*.-%*/", "")
+
+  -- 2. Remove // line comments.  We only remove to the end of the line so that
+  --    URLs inside strings (https://…) are preserved — they contain // but the
+  --    pattern anchors to whitespace-or-start before the //.
+  stripped = stripped:gsub("([^:])//[^\n]*", "%1")
+
+  -- 3. Remove trailing commas before ] or } (common JSONC pattern).
+  stripped = stripped:gsub(",%s*([%]%}])", "%1")
+
+  local ok, result = pcall(vim.json.decode, stripped)
+  if ok and type(result) == "table" then return result end
+  return nil
+end
+
+-- ── tsconfig resolver ─────────────────────────────────────────────────────────
+local function find_tsconfig(root)
+  local candidates = {
+    root .. "/tsconfig.json",
+    root .. "/tsconfig.base.json",
+    root .. "/tsconfig.app.json",
+    root .. "/tsconfig.node.json",
+  }
+  for _, f in ipairs(candidates) do
+    if vim.fn.filereadable(f) == 1 then return f end
+  end
+  return nil
+end
+
 return {
   {
     "pmizio/typescript-tools.nvim",
@@ -34,18 +70,12 @@ return {
         function()
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-          local candidates = {
-            root .. "/tsconfig.json",
-            root .. "/tsconfig.base.json",
-            root .. "/tsconfig.app.json",
-            root .. "/tsconfig.node.json",
-          }
-          for _, f in ipairs(candidates) do
-            if vim.fn.filereadable(f) == 1 then
-              vim.cmd("edit " .. vim.fn.fnameescape(f)); return
-            end
+          local f = find_tsconfig(root)
+          if f then
+            vim.cmd("edit " .. vim.fn.fnameescape(f))
+          else
+            vim.notify("[ts] No tsconfig.json found in project root", vim.log.levels.WARN)
           end
-          vim.notify("[ts] No tsconfig.json found in project root", vim.log.levels.WARN)
         end,
         desc = "TS Jump to tsconfig.json",
         ft   = shared.JS_TS_FT,
@@ -60,10 +90,25 @@ return {
           local tsx   = vim.fn.globpath(dir, "*.tsx", false, true)
           vim.list_extend(files, tsx)
 
+          local exclude_patterns = {
+            "%.test%.[tj]sx?$",
+            "%.spec%.[tj]sx?$",
+            "%.stories%.[tj]sx?$",
+            "%.d%.ts$",
+          }
+          local function is_excluded(path)
+            local base = vim.fn.fnamemodify(path, ":t")
+            if base == "index.ts" or base == "index.tsx" then return true end
+            for _, pat in ipairs(exclude_patterns) do
+              if path:match(pat) then return true end
+            end
+            return false
+          end
+
           local exports = {}
           for _, f in ipairs(files) do
-            local base = vim.fn.fnamemodify(f, ":t:r")
-            if base ~= "index" then
+            if not is_excluded(f) then
+              local base = vim.fn.fnamemodify(f, ":t:r")
               table.insert(exports, 'export * from "./' .. base .. '";')
             end
           end
@@ -90,18 +135,15 @@ return {
             vim.ui.input(
               { prompt = "index.ts already exists — overwrite? [y/N]: " },
               function(ans)
-                if ans == "y" or ans == "Y" then
-                  do_write()
-                else
-                  vim.notify("[ts] Barrel generation cancelled.", vim.log.levels.INFO)
-                end
+                if ans == "y" or ans == "Y" then do_write()
+                else vim.notify("[ts] Barrel generation cancelled.", vim.log.levels.INFO) end
               end
             )
           else
             do_write()
           end
         end,
-        desc = "TS Generate barrel (index.ts) — prompts before overwrite",
+        desc = "TS Generate barrel (index.ts) — excludes test/spec/stories files",
         ft   = shared.JS_TS_FT,
       },
 
@@ -111,16 +153,27 @@ return {
         function()
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-          local tsconfig = vim.fn.findfile("tsconfig.json", root .. ";")
-          if tsconfig == "" then
+
+          local tsconfig = find_tsconfig(root)
+          if not tsconfig then
             vim.notify("[ts] tsconfig.json not found", vim.log.levels.WARN); return
           end
+
           local ok_r, lines = pcall(vim.fn.readfile, tsconfig)
-          if not ok_r then return end
-          local ok_j, cfg = pcall(vim.json.decode, table.concat(lines, "\n"))
-          if not ok_j or type(cfg) ~= "table" then
-            vim.notify("[ts] Could not parse tsconfig.json", vim.log.levels.WARN); return
+          if not ok_r then
+            vim.notify("[ts] Could not read " .. tsconfig, vim.log.levels.WARN); return
           end
+
+          local cfg = decode_jsonc(table.concat(lines, "\n"))
+          if not cfg then
+            vim.notify(
+              "[ts] Could not parse " .. vim.fn.fnamemodify(tsconfig, ":t")
+              .. " — check for syntax errors beyond standard JSONC.",
+              vim.log.levels.WARN
+            )
+            return
+          end
+
           local paths = cfg.compilerOptions and cfg.compilerOptions.paths
           if not paths or vim.tbl_isempty(paths) then
             vim.notify("[ts] No paths aliases defined in tsconfig.json", vim.log.levels.INFO)
@@ -133,7 +186,7 @@ return {
           end
           vim.notify(table.concat(lines_out, "\n"), vim.log.levels.INFO)
         end,
-        desc = "TS Show tsconfig paths aliases",
+        desc = "TS Show tsconfig paths aliases (JSONC-aware)",
         ft   = shared.JS_TS_FT,
       },
     },

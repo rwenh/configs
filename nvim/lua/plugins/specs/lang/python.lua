@@ -19,7 +19,6 @@ return {
       if not ok then return end
 
       opts.post_set_venv = function()
-        -- Re-initialise nvim-dap-python with the interpreter from the new venv.
         local ok_dpy, dpy = pcall(require, "dap-python")
         if ok_dpy then
           local venv   = os.getenv("VIRTUAL_ENV")
@@ -32,7 +31,6 @@ return {
                 "[python] dap-python re-init failed after venv switch.\n"
                 .. "Interpreter: " .. python .. "\n"
                 .. "Reason: " .. tostring(err) .. "\n"
-                .. "Debug sessions in this venv may not work.\n"
                 .. "Fix: pip install debugpy  (inside the selected venv)",
                 vim.log.levels.WARN
               )
@@ -53,18 +51,26 @@ return {
     config = function()
       local bkm = require("core.util.buf_keymap")
 
-      -- ── Debugpy interpreter resolution ───────────────────────────────────
+      -- ── Debugpy interpreter resolution ─────────────────────────────────
       --
-      -- Auto-detection precedence (first match wins):
-      --   0. vim.g.debugpy_python        — explicit escape hatch
-      --   1. VIRTUAL_ENV env var          — active venv always wins
-      --   2. Non-shim PATH python         — direct system or conda python with debugpy
-      --   3. Pyenv version file           — resolves via .python-version walking upward
-      --   4. User site-packages           — pip3 install --user debugpy scenario
-      --   5. Any executable python        — last resort; warns that debugpy is missing
+      -- Priority (first match wins):
+      --   0. vim.g.debugpy_python          — explicit escape hatch
+      --   1. VIRTUAL_ENV env var           — active venv
+      --   2. PATH python with debugpy      — includes shim-path Pythons that
+      --                                      have debugpy installed in their env
+      --   3. Pyenv .python-version         — project-level pyenv version
+      --   4. User site-packages debugpy    — pip install --user debugpy
+      --   5. Any python on PATH            — last resort with warning
+
+      local function has_debugpy(python_path)
+        -- Check whether the interpreter has debugpy available.
+        local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(python_path, ":h"), ":h")
+        return vim.fn.executable(prefix .. "/bin/debugpy") == 1
+          or vim.fn.glob(prefix .. "/lib/python*/site-packages/debugpy") ~= ""
+      end
 
       local function find_debugpy_python()
-        -- 0. Escape hatch — explicit override via vim.g.
+        -- 0. Explicit override.
         if type(vim.g.debugpy_python) == "string" and vim.g.debugpy_python ~= "" then
           local override = vim.g.debugpy_python
           if vim.fn.executable(override) == 1 then return override end
@@ -82,13 +88,19 @@ return {
           if vim.fn.executable(p) == 1 then return p end
         end
 
-        -- 2. Non-shim PATH python with debugpy present.
+        -- 2. PATH python with debugpy.
         for _, name in ipairs({ "python3", "python" }) do
           local p = vim.fn.exepath(name)
-          if p ~= "" and not p:find("shims", 1, true) then
-            local prefix = vim.fn.fnamemodify(vim.fn.fnamemodify(p, ":h"), ":h")
-            if vim.fn.executable(prefix .. "/bin/debugpy") == 1
-            or vim.fn.glob(prefix .. "/lib/python*/site-packages/debugpy") ~= "" then
+          if p ~= "" then
+            if has_debugpy(p) then
+              -- Warn when using a shim so the user is aware.
+              if p:find("shims", 1, true) then
+                vim.notify(
+                  "[python] Using pyenv shim Python with debugpy: " .. p .. "\n"
+                  .. "If you see DAP issues, set vim.g.debugpy_python to the explicit interpreter path.",
+                  vim.log.levels.DEBUG
+                )
+              end
               return p
             end
           end
@@ -121,7 +133,7 @@ return {
           and vim.fn.exepath("python3") or "python3"
         vim.schedule(function()
           vim.notify(
-            "[python] debugpy not found in any interpreter.\n"
+            "[python] debugpy not found in any Python interpreter.\n"
             .. "Install with: pip install debugpy\n"
             .. "Or pin an interpreter: vim.g.debugpy_python = '/path/to/python'",
             vim.log.levels.WARN
@@ -130,8 +142,7 @@ return {
         return fallback
       end
 
-      -- ── DAP keymaps ───────────────────────────────────────────────────────
-
+      -- ── DAP keymaps ────────────────────────────────────────────────────────
       local DAP_MAPS = {
         { "n",       "<leader>pydm", function()
             pcall(function() require("dap-python").test_method() end)
@@ -143,7 +154,6 @@ return {
             pcall(function() require("dap-python").debug_selection() end)
           end, "Python Debug Selection" },
       }
-
       bkm.on_ft("python", DAP_MAPS, "python_dap_keymaps_registered")
 
       local python = find_debugpy_python()
@@ -158,7 +168,6 @@ return {
   },
 
   -- ── Neogen docstrings ──────────────────────────────────────────────────────
-
   {
     "danymat/neogen",
     optional = true,
@@ -202,14 +211,36 @@ return {
         })
       end)
 
+      _G._nvim_ide_iron_send_motion = function(motion_type)
+        local ok, iron = pcall(require, "iron.core")
+        if not ok then
+          vim.notify(
+            "[python] iron.nvim not available — REPL send_motion failed.\n"
+            .. "Run :Lazy install Vigemus/iron.nvim",
+            vim.log.levels.ERROR
+          )
+          return
+        end
+        if type(iron.send_motion) ~= "function" then
+          vim.notify(
+            "[python] iron.core.send_motion not found.\n"
+            .. "iron.nvim API may have changed. Check :Lazy update Vigemus/iron.nvim",
+            vim.log.levels.ERROR
+          )
+          return
+        end
+        pcall(iron.send_motion, motion_type)
+      end
+
       local bkm = require("core.util.buf_keymap")
 
-      -- ── REPL keymaps ─────────────────────────────────────────────────────
-
       local IRON_MAPS = {
-        { "n", "<leader>pyrc", function()
-            local prev_opfunc = vim.o.operatorfunc
-            vim.o.operatorfunc = "v:lua.require'iron.core'.send_motion"
+        { "n", "<leader>pyrc",
+          function()
+            local prev_opfunc    = vim.o.operatorfunc
+            -- Use the stable wrapper — operatorfunc now references a guaranteed
+            -- global rather than a deep module path.
+            vim.o.operatorfunc   = "v:lua._nvim_ide_iron_send_motion"
             vim.api.nvim_feedkeys("g@", "n", false)
             vim.api.nvim_create_autocmd("ModeChanged", {
               pattern  = "no:*",
@@ -254,13 +285,12 @@ return {
       bkm.on_ft("python", IRON_MAPS, "python_iron_keymaps_registered")
     end,
     keys = {
-      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"     },
-      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"   },
-      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt"  },
+      { "<leader>pyrs", "<cmd>IronRepl<cr>",      desc = "Python REPL Start"    },
+      { "<leader>pyrr", "<cmd>IronRestart<cr>",   desc = "Python REPL Restart"  },
+      { "<leader>pyri", "<cmd>IronInterrupt<cr>", desc = "Python REPL Interrupt" },
     },
   },
 
   -- ── PEP8 indent ────────────────────────────────────────────────────────────
-
   { "Vimjas/vim-python-pep8-indent", ft = "python" },
 }

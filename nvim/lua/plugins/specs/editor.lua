@@ -44,23 +44,57 @@ return {
           },
           extensions = { fzf = { fuzzy = true, override_generic_sorter = true, override_file_sorter = true, case_mode = "smart_case" } },
         })
-        pcall(function() require("telescope").load_extension("fzf") end)
+        -- Only load fzf extension if the native library was actually built.
+        local ok_fzf = pcall(function() require("telescope").load_extension("fzf") end)
+        if not ok_fzf then
+          vim.notify(
+            "[telescope] fzf-native extension failed to load.\n"
+            .. "The native library may not have been compiled. Run:\n"
+            .. "  cd ~/.local/share/nvim/lazy/telescope-fzf-native.nvim && make\n"
+            .. "Falling back to built-in sorter.",
+            vim.log.levels.DEBUG
+          )
+        end
         pcall(function() require("telescope").load_extension("git_worktree") end)
       end)
       if not ok then vim.notify("telescope setup failed", vim.log.levels.WARN) end
     end,
   },
 
+  -- ── telescope-fzf-native ──────────────────────────────────────────────────
+  --
   {
     "nvim-telescope/telescope-fzf-native.nvim",
     lazy  = true,
     build = function()
       if vim.fn.executable("cmake") == 1 then
         return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build"
-      elseif vim.fn.executable("make") == 1 then return "make"
-      else vim.notify("[telescope-fzf-native] cmake/make unavailable", vim.log.levels.WARN); return "" end
+      elseif vim.fn.executable("make") == 1 then
+        return "make"
+      else
+        vim.notify("[telescope-fzf-native] cmake/make unavailable — native sorter will not be built", vim.log.levels.WARN)
+        return ""
+      end
     end,
-    cond = function() return true end,
+    cond = function()
+      local plugin_dir = vim.fn.stdpath("data") .. "/lazy/telescope-fzf-native.nvim"
+      -- Check for the built shared library under build/.
+      local lib_so  = plugin_dir .. "/build/libfzf.so"
+      local lib_dyl = plugin_dir .. "/build/libfzf.dylib"
+      local lib_dll = plugin_dir .. "/build/libfzf.dll"
+      if vim.fn.filereadable(lib_so)  == 1 then return true end
+      if vim.fn.filereadable(lib_dyl) == 1 then return true end
+      if vim.fn.filereadable(lib_dll) == 1 then return true end
+      -- Also accept the root-level build that `make` produces.
+      if vim.fn.filereadable(plugin_dir .. "/libfzf.so")  == 1 then return true end
+      if vim.fn.filereadable(plugin_dir .. "/libfzf.dylib")== 1 then return true end
+      vim.notify(
+        "[telescope-fzf-native] compiled library not found — using built-in sorter.\n"
+        .. "To build: cd " .. plugin_dir .. " && make",
+        vim.log.levels.DEBUG
+      )
+      return false
+    end,
   },
 
   -- ── Project-scoped Telescope search ────────────────────────────────────────
@@ -91,7 +125,6 @@ return {
   },
 
   -- ── mini.visits — frecency-based file switching ───────────────────────────
-  --
   {
     "echasnovski/mini.nvim",
     keys = {
@@ -106,7 +139,6 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
 
-          -- Build a list of recent+frequent paths scoped to this project root.
           local paths = vim.tbl_filter(function(p)
             return vim.startswith(p, root)
           end, visits.list_paths() or {})
@@ -134,8 +166,11 @@ return {
             cwd          = root,
           })
 
-          -- Clean up temp file after a short delay (picker is async).
-          vim.defer_fn(function() pcall(os.remove, tmpfile) end, 5000)
+          vim.defer_fn(function()
+            -- Only delete if the file still exists (not already cleaned up).
+            local ok_stat, _ = pcall(vim.uv.fs_stat, tmpfile)
+            if ok_stat then pcall(os.remove, tmpfile) end
+          end, 30000)
         end,
         desc = "Frequent/recent files (mini.visits)",
       },
@@ -149,7 +184,7 @@ return {
     dependencies = "nvim-lua/plenary.nvim",
     opts = {
       color_devicons = true, open_cmd = "noswapfile vnew",
-      find_engine = { rg = { cmd = "rg", args = { "--color=never","--no-heading","--with-filename","--line-number","--column" } } },
+      find_engine  = { rg = { cmd = "rg", args = { "--color=never","--no-heading","--with-filename","--line-number","--column" } } },
       replace_engine = { sed = { cmd = "sed", args = nil } },
     },
   },
@@ -181,10 +216,10 @@ return {
     cmd          = "Neotree",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-tree/nvim-web-devicons", "MunifTanjim/nui.nvim" },
     keys = {
-      { "<leader>ee", "<cmd>Neotree reveal<cr>",  desc = "Toggle explorer" },
-      { "<leader>ef", "<cmd>Neotree focus<cr>",   desc = "Focus explorer"  },
-      { "<leader>ec", "<cmd>Neotree close<cr>",   desc = "Close explorer"  },
-      { "<leader>er", "<cmd>Neotree refresh<cr>", desc = "Refresh explorer"},
+      { "<leader>ee", "<cmd>Neotree reveal<cr>",  desc = "Toggle explorer"  },
+      { "<leader>ef", "<cmd>Neotree focus<cr>",   desc = "Focus explorer"   },
+      { "<leader>ec", "<cmd>Neotree close<cr>",   desc = "Close explorer"   },
+      { "<leader>er", "<cmd>Neotree refresh<cr>", desc = "Refresh explorer" },
     },
     opts = {
       close_if_last_window = false, popup_border_style = "rounded",
@@ -210,15 +245,9 @@ return {
   },
 
   -- ── vim-tmux-navigator ────────────────────────────────────────────────────
-  --
   {
     "christoomey/vim-tmux-navigator",
-    cmd = {
-      "TmuxNavigateLeft",
-      "TmuxNavigateDown",
-      "TmuxNavigateUp",
-      "TmuxNavigateRight",
-    },
+    cmd = { "TmuxNavigateLeft","TmuxNavigateDown","TmuxNavigateUp","TmuxNavigateRight" },
     init = function()
       vim.g.tmux_navigator_no_mappings   = 1
       vim.g.tmux_navigator_no_wrap       = 1
@@ -229,9 +258,6 @@ return {
       { "<C-j>", "<cmd>TmuxNavigateDown<cr>",  mode = "n", noremap = true, silent = true, desc = "Navigate down  (split/pane)" },
       { "<C-k>", "<cmd>TmuxNavigateUp<cr>",    mode = "n", noremap = true, silent = true, desc = "Navigate up    (split/pane)" },
       { "<C-l>", "<cmd>TmuxNavigateRight<cr>", mode = "n", noremap = true, silent = true, desc = "Navigate right (split/pane)" },
-      -- TmuxNavigatePrevious (<C-\>) is intentionally omitted: toggleterm
-      -- already owns <C-\> as its open_mapping.  Use tmux's own M-o binding
-      -- (bind -n M-o select-pane -t :.+) to cycle panes without prefix.
     },
   },
 
@@ -243,9 +269,9 @@ return {
       require("persistence").setup({ dir = vim.fn.stdpath("state") .. "/sessions/", options = vim.opt.sessionoptions:get() })
     end,
     keys = {
-      { "<leader>qs", function() require("persistence").load() end,               desc = "Restore session"      },
+      { "<leader>qs", function() require("persistence").load() end,                desc = "Restore session"      },
       { "<leader>ql", function() require("persistence").load({ last = true }) end, desc = "Restore last session" },
-      { "<leader>qd", function() require("persistence").stop() end,               desc = "Stop session saving"  },
+      { "<leader>qd", function() require("persistence").stop() end,                desc = "Stop session saving"  },
     },
   },
 

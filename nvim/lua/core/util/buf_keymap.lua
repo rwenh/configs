@@ -3,19 +3,16 @@
 
 local M = {}
 
---- Register a single buffer-local keymap with optional conflict detection.
 ---@param buf   integer
 ---@param mode  string|table
 ---@param lhs   string
 ---@param rhs   function|string
 ---@param desc  string
 function M.set(buf, mode, lhs, rhs, desc)
-  -- Conflict detection: warn when the lhs is already mapped in the same mode.
   local modes = type(mode) == "table" and mode or { mode }
   for _, m in ipairs(modes) do
     local existing = vim.fn.maparg(lhs, m, false, true)
     if existing and existing.buffer == 1 and existing.lhs then
-      -- Only warn when the RHS differs (re-registering the same mapping is fine).
       local existing_rhs = existing.callback and "<callback>" or (existing.rhs or "")
       local new_rhs      = type(rhs) == "function" and "<callback>" or tostring(rhs)
       if existing_rhs ~= new_rhs then
@@ -39,13 +36,44 @@ function M.set(buf, mode, lhs, rhs, desc)
 end
 
 ---@param buf        integer
----@param maps       table    list of { mode, lhs, rhs, desc }
----@param flag_name  string?  deduplication key stored in vim.b[buf]
+---@param maps       table
+---@param flag_name  string?
 function M.batch(buf, maps, flag_name)
   if flag_name then
-    local ok, already = pcall(function() return vim.b[buf][flag_name] end)
-    if ok and already then return end
-    pcall(function() vim.b[buf][flag_name] = true end)
+    -- FIX (low) #4: check existing flag.
+    local ok_read, already = pcall(function() return vim.b[buf][flag_name] end)
+    if ok_read and already then return end
+
+    -- Attempt to write the dedup flag.
+    local ok_write = pcall(function() vim.b[buf][flag_name] = true end)
+
+    if not ok_write then
+      -- The buffer is invalid or the write failed. Emit a debug notice and
+      -- abort — registering keymaps on an invalid buffer would also fail.
+      vim.notify(
+        string.format(
+          "[buf_keymap] batch(): could not set dedup flag '%s' on buf=%d "
+          .. "(buffer may be invalid). Skipping keymap registration.",
+          flag_name, buf
+        ),
+        vim.log.levels.DEBUG
+      )
+      return
+    end
+
+    -- Verify the write actually persisted (defensive check).
+    local ok_verify, written = pcall(function() return vim.b[buf][flag_name] end)
+    if not ok_verify or not written then
+      vim.notify(
+        string.format(
+          "[buf_keymap] batch(): dedup flag '%s' write did not persist on buf=%d. "
+          .. "Skipping to avoid duplicate registrations.",
+          flag_name, buf
+        ),
+        vim.log.levels.DEBUG
+      )
+      return
+    end
   end
 
   for _, spec in ipairs(maps) do
@@ -76,21 +104,14 @@ function M.on_ft(ft, maps, flag_name, group)
   })
 end
 
--- ── M.clear ───────────────────────────────────────────────────────────────────
---
--- Usage:
---   M.clear(buf, "python_iron_keymaps_registered")
---
 ---@param buf       integer
----@param flag_name string   the deduplication flag used when registering
----@param maps      table?   optional: the original maps table for targeted del
+---@param flag_name string
+---@param maps      table?
 function M.clear(buf, flag_name, maps)
   if not vim.api.nvim_buf_is_valid(buf) then return end
 
-  -- Reset the deduplication flag so the next batch() call re-registers.
   pcall(function() vim.b[buf][flag_name] = nil end)
 
-  -- If the original maps table is provided, delete each lhs explicitly.
   if type(maps) == "table" then
     for _, spec in ipairs(maps) do
       local mode, lhs = spec[1], spec[2]

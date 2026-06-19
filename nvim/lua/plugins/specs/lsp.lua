@@ -18,7 +18,7 @@ return {
     config = function()
       local nvim_011 = vim.fn.has("nvim-0.11") == 1
 
-      -- ── Capabilities (memoised) ──────────────────────────────────────────
+      -- ── Capabilities (memoised) ────────────────────────────────────────────
       local _caps = nil
       local function get_capabilities()
         if _caps then return _caps end
@@ -36,9 +36,7 @@ return {
         local overrides = type(vim.g.lsp_on_attach_overrides) == "table"
           and vim.g.lsp_on_attach_overrides or {}
         local fn = overrides[server_name]
-        if type(fn) == "function" then
-          pcall(fn, client, bufnr)
-        end
+        if type(fn) == "function" then pcall(fn, client, bufnr) end
       end
 
       -- ── Per-project .lspconfig.lua loader ─────────────────────────────────
@@ -52,15 +50,13 @@ return {
 
         local cfg_file = root .. "/.lspconfig.lua"
         if vim.fn.filereadable(cfg_file) ~= 1 then
-          _project_lsp_cache[root] = {}
-          return {}
+          _project_lsp_cache[root] = {}; return {}
         end
 
         local ok, result = pcall(dofile, cfg_file)
         if not ok or type(result) ~= "table" then
           vim.notify("[lsp] .lspconfig.lua error: " .. tostring(result), vim.log.levels.WARN)
-          _project_lsp_cache[root] = {}
-          return {}
+          _project_lsp_cache[root] = {}; return {}
         end
 
         vim.notify("[lsp] loaded project overrides from .lspconfig.lua", vim.log.levels.INFO)
@@ -73,23 +69,19 @@ return {
         callback = function() _project_lsp_cache = {} end,
       })
 
-      -- ── lsp_setup ────────────────────────────────────────────────────────
+      -- ── lsp_setup ─────────────────────────────────────────────────────────
       local function lsp_setup(server, config)
         config = config or {}
-
         local project_overrides = load_project_lsp_config()
         if project_overrides[server] then
           config = vim.tbl_deep_extend("force", config, project_overrides[server])
         end
-
         config.capabilities = vim.tbl_deep_extend("force", get_capabilities(), config.capabilities or {})
-
         local user_on_attach = config.on_attach
         config.on_attach = function(client, bufnr)
           if type(user_on_attach) == "function" then pcall(user_on_attach, client, bufnr) end
           run_user_on_attach(server, client, bufnr)
         end
-
         if nvim_011 then
           pcall(function() vim.lsp.config(server, config); vim.lsp.enable(server) end)
         else
@@ -98,7 +90,7 @@ return {
         end
       end
 
-      -- ── diag_jump ────────────────────────────────────────────────────────
+      -- ── diag_jump ─────────────────────────────────────────────────────────
       local function diag_jump(count)
         if nvim_011 then pcall(function() vim.diagnostic.jump({ count = count, float = true }) end)
         else
@@ -109,6 +101,20 @@ return {
 
       local function cmd_or_fallback(cmd_str, fallback_fn)
         if not pcall(vim.cmd, cmd_str) then pcall(fallback_fn) end
+      end
+
+      -- ── Format timeout helper ─────────────────────────────────────────────
+      --
+      local DEFAULT_TIMEOUT_MS = 3000   -- raised from 1500 ms
+
+      local function get_format_timeout(bufnr)
+        local ft = vim.bo[bufnr or 0].filetype
+        local by_ft = type(vim.g.format_timeout_by_ft) == "table"
+          and vim.g.format_timeout_by_ft or {}
+        return by_ft[ft]
+          or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0
+              and vim.g.format_timeout_ms)
+          or DEFAULT_TIMEOUT_MS
       end
 
       -- ── LspAttach keymaps ─────────────────────────────────────────────────
@@ -135,12 +141,36 @@ return {
           end, "Rename Symbol")
 
           local function fmt()
-            pcall(function()
-              require("conform").format({ bufnr = e.buf, timeout_ms = vim.g.format_timeout_ms or 1500, lsp_format = "fallback" })
+            local timeout_ms = get_format_timeout(e.buf)
+            local ok, err = pcall(function()
+              require("conform").format({
+                bufnr        = e.buf,
+                timeout_ms   = timeout_ms,
+                lsp_format   = "fallback",
+              })
             end)
+            if not ok then
+              local msg = tostring(err or "")
+              if msg:lower():find("timeout") or msg:lower():find("timed out") then
+                local ft = vim.bo[e.buf].filetype
+                vim.notify(
+                  string.format(
+                    "[lsp] Format timed out after %d ms for filetype '%s'.\n"
+                    .. "To increase the timeout:\n"
+                    .. "  vim.g.format_timeout_by_ft = { %s = %d }\n"
+                    .. "  or: vim.g.format_timeout_ms = %d",
+                    timeout_ms, ft, ft, timeout_ms * 2, timeout_ms * 2
+                  ),
+                  vim.log.levels.WARN
+                )
+              else
+                vim.notify("[lsp] Format error: " .. msg, vim.log.levels.WARN)
+              end
+            end
           end
           map("<leader>,f", fmt, "Format")
           map("<leader>,f", fmt, "Format Range", "v")
+
           map("<leader>,d", vim.diagnostic.open_float, "Diagnostic Float")
           map("<leader>,l", vim.diagnostic.setloclist, "Diagnostic List")
           map("<leader>,t", function()
@@ -173,13 +203,7 @@ return {
       -- ── Servers ───────────────────────────────────────────────────────────
       local servers = {
         lua_ls = {
-          settings = {
-            Lua = {
-              diagnostics = { globals = { "vim" } },
-              workspace   = { checkThirdParty = false },
-              telemetry   = { enable = false },
-            },
-          },
+          settings = { Lua = { diagnostics = { globals = { "vim" } }, workspace = { checkThirdParty = false }, telemetry = { enable = false } } },
         },
         basedpyright = {
           settings = { basedpyright = { analysis = { typeCheckingMode = "basic" } } },
@@ -190,14 +214,6 @@ return {
         solargraph = {
           settings = { solargraph = { diagnostics = true, completion = true } },
         },
-
-        -- ── elixirls ──────────────────────────────────────────────────────
-        --
-        --   cmd = (function()
-        --     local mason_ls = data .. "/mason/packages/elixir-ls/..."
-        --     if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
-        --     ...
-        --   end)(),
         elixirls = {
           cmd = function()
             local data     = vim.fn.stdpath("data")
@@ -206,14 +222,7 @@ return {
             local sys = vim.fn.exepath("elixir-ls")
             return sys ~= "" and { sys } or { "elixir-ls" }
           end,
-          settings = {
-            elixirLS = {
-              dialyzerEnabled  = true,
-              fetchDeps        = false,
-              enableTestLenses = true,
-              suggestSpecs     = true,
-            },
-          },
+          settings = { elixirLS = { dialyzerEnabled = true, fetchDeps = false, enableTestLenses = true, suggestSpecs = true } },
         },
       }
 
@@ -222,7 +231,7 @@ return {
         lsp_setup(s, {})
       end
 
-      -- ── TypeScript fallback ───────────────────────────────────────────────
+      -- ── TypeScript fallback ────────────────────────────────────────────────
       do
         local ts_tools_present = (function()
           if package.loaded["typescript-tools"] then return true end
@@ -239,12 +248,12 @@ return {
         end
       end
 
-      -- ── Optional servers ──────────────────────────────────────────────────
+      -- ── Optional servers ───────────────────────────────────────────────────
       for _, entry in ipairs({
-        { server = "vhdl_ls",   binary = "vhdl_ls",               config = { filetypes = { "vhdl","vhd" } } },
-        { server = "fortls",    binary = "fortls",                 config = { filetypes = { "fortran" }, settings = { fortls = { notifyInit = true, nthreads = 4, hover_signature = true, use_signature_help = true } } } },
-        { server = "sqls",      binary = "sqls",                   config = { filetypes = { "sql","mysql" }, on_attach = function(client, _) client.server_capabilities.renameProvider = false end } },
-        { server = "cobol_ls",  binary = "cobol-language-server",  config = { filetypes = { "cobol" }, settings = { cobol = { dialects = { "gnucobol","ibm" } } } } },
+        { server = "vhdl_ls",   binary = "vhdl_ls",              config = { filetypes = { "vhdl","vhd" } } },
+        { server = "fortls",    binary = "fortls",                config = { filetypes = { "fortran" }, settings = { fortls = { notifyInit = true, nthreads = 4, hover_signature = true, use_signature_help = true } } } },
+        { server = "sqls",      binary = "sqls",                  config = { filetypes = { "sql","mysql" }, on_attach = function(client, _) client.server_capabilities.renameProvider = false end } },
+        { server = "cobol_ls",  binary = "cobol-language-server", config = { filetypes = { "cobol" }, settings = { cobol = { dialects = { "gnucobol","ibm" } } } } },
       }) do
         if vim.fn.executable(entry.binary or entry.server) == 1 then lsp_setup(entry.server, entry.config) end
       end
@@ -253,12 +262,7 @@ return {
       local icons = require("core.util.icons")
       vim.diagnostic.config({
         virtual_text  = { prefix = "●", spacing = 4 },
-        signs         = { text = {
-          Error = icons.diagnostics.Error,
-          Warn  = icons.diagnostics.Warn,
-          Hint  = icons.diagnostics.Hint,
-          Info  = icons.diagnostics.Info,
-        }},
+        signs         = { text = { Error = icons.diagnostics.Error, Warn = icons.diagnostics.Warn, Hint = icons.diagnostics.Hint, Info = icons.diagnostics.Info } },
         underline = true, severity_sort = true, update_in_insert = false,
         float     = { border = "rounded", source = "always" },
       })
@@ -284,7 +288,12 @@ return {
         if vim.g.disable_autoformat then return nil end
         local ok, v = pcall(function() return vim.b[bufnr].disable_autoformat end)
         if ok and v then return nil end
-        return { timeout_ms = vim.g.format_timeout_ms or 1500, lsp_format = "fallback" }
+        local ft = vim.bo[bufnr].filetype
+        local by_ft = type(vim.g.format_timeout_by_ft) == "table" and vim.g.format_timeout_by_ft or {}
+        local timeout = by_ft[ft]
+          or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0 and vim.g.format_timeout_ms)
+          or 3000   -- FIX: raised from 1500 ms
+        return { timeout_ms = timeout, lsp_format = "fallback" }
       end,
     },
     config = function(_, opts)
@@ -315,8 +324,12 @@ return {
       merge_linters("javascript", { "eslint_d" })
       merge_linters("typescript", { "eslint_d" })
       merge_linters("ruby",       { "rubocop" })
-      if vim.fn.executable("pylint")     == 1 then merge_linters("python", { "pylint" }) end
-      if vim.fn.executable("eslint_d")   == 1 then
+
+      if vim.g.enable_pylint == true and vim.fn.executable("pylint") == 1 then
+        merge_linters("python", { "pylint" })
+      end
+
+      if vim.fn.executable("eslint_d") == 1 then
         for _, ft in ipairs({ "javascript","typescript","javascriptreact","typescriptreact" }) do
           merge_linters(ft, { "eslint_d" })
         end
@@ -325,7 +338,7 @@ return {
         merge_linters("sh",   { "shellcheck" })
         merge_linters("bash", { "shellcheck" })
       end
-      if vim.fn.executable("htmlhint")   == 1 then merge_linters("html", { "htmlhint" }) end
+      if vim.fn.executable("htmlhint")   == 1 then merge_linters("html", { "htmlhint" })   end
       if vim.fn.executable("clang-tidy") == 1 then merge_linters("c",    { "clang-tidy" }) end
       vim.api.nvim_create_autocmd({ "BufWritePost","InsertLeave" }, {
         group    = vim.api.nvim_create_augroup("NvimLint", { clear = true }),

@@ -65,12 +65,6 @@ local runners = {
     if vim.fn.executable("ts-node") == 1 then return "ts-node " .. vim.fn.shellescape(file) end
   end,
   lua    = function(file) return vim.fn.executable("lua") == 1 and "lua " .. vim.fn.shellescape(file) or nil end,
-
-  -- ── Compiled languages ─────────────────────────────────────────────────────
-  --   vim.g.c_build_flags      (default: "-Wall -Wextra -g")
-  --   vim.g.cpp_build_flags    (default: "-Wall -std=c++17 -g")
-  --   vim.g.fortran_build_flags (default: "-Wall")
-
   c = function(file)
     if vim.fn.executable("gcc") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
@@ -83,7 +77,6 @@ local runners = {
       vim.fn.shellescape(exe)
     )
   end,
-
   cpp = function(file)
     if vim.fn.executable("g++") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
@@ -96,7 +89,6 @@ local runners = {
       vim.fn.shellescape(exe)
     )
   end,
-
   java = function(file)
     if vim.fn.executable("javac") ~= 1 or vim.fn.executable("java") ~= 1 then
       return nil
@@ -110,7 +102,6 @@ local runners = {
       name
     )
   end,
-
   sh     = function(file) return "bash " .. vim.fn.shellescape(file) end,
   bash   = function(file) return "bash " .. vim.fn.shellescape(file) end,
   julia  = function(file) return vim.fn.executable("julia")  == 1 and "julia "  .. vim.fn.shellescape(file) or nil end,
@@ -127,11 +118,9 @@ local runners = {
       "cd %s && kotlinc %s -include-runtime -d %s && java -jar %s",
       vim.fn.shellescape(dir),
       vim.fn.shellescape(file),
-      jar,
-      jar
+      jar, jar
     )
   end,
-
   cobol = function(file)
     if vim.fn.executable("cobc") ~= 1 then return nil end
     local exe = vim.fn.fnamemodify(file, ":r")
@@ -142,7 +131,6 @@ local runners = {
       vim.fn.shellescape(exe)
     )
   end,
-
   fortran = function(file)
     if vim.fn.executable("gfortran") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
@@ -155,22 +143,18 @@ local runners = {
       vim.fn.shellescape(exe)
     )
   end,
-
   vhdl = function(file)
     if vim.fn.executable("ghdl") ~= 1 then return nil end
-
     local entity = nil
     local ok_rf, lines = pcall(vim.fn.readfile, file)
     if ok_rf and lines then
       for _, line in ipairs(lines) do
-        -- Match case-insensitively then extract from the original line.
         if line:lower():match("^%s*entity%s+%w+%s+is") then
           entity = line:match("[Ee][Nn][Tt][Ii][Tt][Yy]%s+(%w+)")
           if entity then break end
         end
       end
     end
-
     if entity then
       local vcd = "/tmp/nvim_ghdl_wave.vcd"
       local cmd = string.format(
@@ -185,8 +169,6 @@ local runners = {
       end
       return cmd
     end
-
-    -- No entity found — fall back to syntax check so the user still gets feedback.
     return "ghdl -s " .. vim.fn.shellescape(file)
   end,
 }
@@ -223,26 +205,18 @@ end
 
 -- ── Public: run_nearest_function ──────────────────────────────────────────────
 --
--- Currently supported: Python (pytest -k), JavaScript/
--- TypeScript (vitest/jest --testNamePattern), Go (GoTestFunc), Rust (cargo test).
--- Falls back to run_file for unsupported filetypes.
---
 function M.run_nearest_function()
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
 
-  -- Try to extract the function name via Treesitter.
   local function_name = nil
   pcall(function()
-    local ts_ok, ts = pcall(require, "nvim-treesitter.ts_utils")
-    if not ts_ok then return end
-    local node = ts.get_node_at_cursor()
+    local node = vim.treesitter.get_node()
     while node do
       local node_type = node:type()
       if node_type == "function_definition" or node_type == "method_definition"
       or node_type == "function_declaration" or node_type == "method_declaration"
       or node_type == "arrow_function" then
-        -- Get the name child node.
         for i = 0, node:named_child_count() - 1 do
           local child = node:named_child(i)
           if child:type() == "identifier" or child:type() == "name" then
@@ -305,6 +279,7 @@ function M.run_nearest_function()
 end
 
 -- ── Public: run_selection ──────────────────────────────────────────────────────
+--
 function M.run_selection(start_line, end_line)
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
@@ -337,29 +312,32 @@ function M.run_selection(start_line, end_line)
 
   local cmd     = interpreter .. " " .. vim.fn.shellescape(tmpfile)
   local cleaned = false
-  local function cleanup() if not cleaned then cleaned = true; pcall(os.remove, tmpfile) end end
+  local function cleanup()
+    if not cleaned then
+      cleaned = true
+      pcall(os.remove, tmpfile)
+    end
+  end
+
   local t = term()
-  if t then t.float(cmd, { on_exit = function() vim.schedule(cleanup) end })
+  if t then
+    t.float(cmd, { on_exit = function() vim.schedule(cleanup) end })
+    vim.defer_fn(cleanup, 30000)
   else
     local aug = "RunnerSelectionCleanup_" .. vim.fn.sha256(tmpfile):sub(1, 8)
     vim.api.nvim_create_autocmd("TermClose", {
       once = true, group = vim.api.nvim_create_augroup(aug, { clear = true }),
       callback = function() vim.schedule(cleanup); pcall(vim.api.nvim_del_augroup_by_name, aug) end,
     })
-    vim.defer_fn(cleanup, 2000)
+    vim.defer_fn(cleanup, 30000)
     vim.cmd("split | terminal " .. cmd)
   end
 end
 
 -- ── Public: pipe ──────────────────────────────────────────────────────────────
---
--- Example:
---   runner.pipe("jq .", '{"name":"test"}')
---   runner.pipe("prettier --parser typescript", buffer_content)
---
----@param cmd        string   shell command that reads stdin and writes stdout
----@param stdin_text string   text to pipe into the command
----@param opts       table?   { title = string? }
+---@param cmd        string
+---@param stdin_text string
+---@param opts       table?
 function M.pipe(cmd, stdin_text, opts)
   if type(cmd) ~= "string" or cmd == "" then
     vim.notify("[runner] pipe(): cmd must be non-empty", vim.log.levels.ERROR); return
@@ -371,7 +349,8 @@ function M.pipe(cmd, stdin_text, opts)
     vim.notify("[runner] pipe(): failed to write stdin temp file", vim.log.levels.ERROR); return
   end
 
-  local full_cmd = "cat " .. vim.fn.shellescape(tmpfile) .. " | " .. cmd
+  -- Use shell redirection (cmd < file) rather than cat | cmd.
+  local full_cmd = cmd .. " < " .. vim.fn.shellescape(tmpfile)
   local t = term()
   if t then
     t.float(full_cmd, {
@@ -379,7 +358,7 @@ function M.pipe(cmd, stdin_text, opts)
     })
   else
     vim.cmd("split | terminal " .. full_cmd)
-    vim.defer_fn(function() pcall(os.remove, tmpfile) end, 3000)
+    vim.defer_fn(function() pcall(os.remove, tmpfile) end, 10000)
   end
 end
 

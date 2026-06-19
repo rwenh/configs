@@ -11,8 +11,6 @@ local DEFAULTS = {
 }
 
 -- ── Named terminal registry ───────────────────────────────────────────────────
---
--- Registry shape: { [name] = Terminal instance }
 local _registry = {}
 
 -- ── Public helpers ─────────────────────────────────────────────────────────────
@@ -62,8 +60,13 @@ function M.float_at_root(cmd, opts)
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
 
   if not root or root == "" then
-    vim.notify("[term] could not resolve project root — command not launched",
-      vim.log.levels.WARN)
+    vim.notify(
+      "[term] float_at_root(): could not resolve project root.\n"
+      .. "The command was not launched. Possible causes:\n"
+      .. "  • No root markers (Cargo.toml, package.json, .git, …) found above the current file.\n"
+      .. "  • vim.g.path_debug = true  shows the detection trace in :messages.",
+      vim.log.levels.WARN
+    )
     return
   end
 
@@ -72,12 +75,8 @@ end
 
 -- ── Named terminal API ────────────────────────────────────────────────────────
 
--- Usage:
---   M.open("rails-server", "bundle exec rails server")
---   M.open("rails-server")   -- toggle the already-running server terminal
---
 ---@param name string   registry key — any non-empty string
----@param cmd  string?  shell command; required on first call, ignored thereafter
+---@param cmd  string?  shell command; required on first call, optional thereafter
 ---@param opts table?   Terminal:new() overrides (merged over DEFAULTS)
 function M.open(name, cmd, opts)
   if type(name) ~= "string" or name == "" then
@@ -92,11 +91,20 @@ function M.open(name, cmd, opts)
   end
 
   if _registry[name] then
-    -- Reuse existing terminal.
     local ok = pcall(function() _registry[name]:toggle() end)
     if not ok then
-      -- Terminal object became stale (e.g. after :qa); recreate.
       _registry[name] = nil
+
+      if type(cmd) ~= "string" or cmd == "" then
+        vim.notify(
+          "[term] open('" .. name .. "'): terminal became stale.\n"
+          .. "Re-call M.open('" .. name .. "', '<your-command>') to restart it.",
+          vim.log.levels.WARN
+        )
+        return
+      end
+
+      -- Safe to re-enter: cmd is now guaranteed to be a non-empty string.
       M.open(name, cmd, opts)
     end
     return
@@ -104,17 +112,16 @@ function M.open(name, cmd, opts)
 
   if type(cmd) ~= "string" or cmd == "" then
     vim.notify(
-      "[term] open('" .. name .. "'): cmd required for first invocation",
+      "[term] open('" .. name .. "'): cmd is required for the first invocation",
       vim.log.levels.ERROR
     )
     return
   end
 
   local cfg = vim.tbl_extend("force", DEFAULTS, opts or {}, {
-    cmd         = cmd,
+    cmd          = cmd,
     display_name = name,
-    on_close    = function()
-      -- Do NOT remove from registry on close — the user may want to reopen.
+    on_close     = function()
     end,
   })
 
@@ -130,7 +137,7 @@ function M.open(name, cmd, opts)
   end
 end
 
---- Send text to a named terminal that is already running.
+---Send text to a named terminal that is already running.
 ---@param name string   registry key of an existing named terminal
 ---@param text string   text to send
 ---@param nl   boolean? append newline (default true)
@@ -160,14 +167,12 @@ function M.send(name, text, nl)
   end
 end
 
---- Return the Terminal instance for a named terminal, or nil if not registered.
 ---@param  name string
 ---@return table|nil
 function M.get(name)
   return _registry[name]
 end
 
---- Close and deregister a named terminal.
 ---@param name string
 function M.close(name)
   local t = _registry[name]
@@ -177,7 +182,6 @@ function M.close(name)
   end
 end
 
---- List all currently registered terminal names.
 ---@return string[]
 function M.list()
   local names = {}

@@ -1,4 +1,5 @@
 -- lua/plugins/specs/treesitter.lua
+--
 
 local CAPTURES = {
   func    = "@function.outer",  func_i  = "@function.inner",
@@ -21,11 +22,6 @@ local PARSERS = {
   meta     = { "comment" },
 }
 
--- ── vim.g.ts_disable escape hatch ────────────────────────────────────────────
---
--- Usage in init.lua:
---   vim.g.ts_disable = { "vhdl", "cobol", "fortran" }
---
 local _ts_disable_set = {}
 if type(vim.g.ts_disable) == "table" then
   for _, p in ipairs(vim.g.ts_disable) do _ts_disable_set[p] = true end
@@ -35,7 +31,6 @@ local function is_disabled_parser(lang)
   return _ts_disable_set[lang] == true
 end
 
--- Flatten all parsers, excluding disabled ones.
 local function all_parsers()
   local result = {}
   local seen   = {}
@@ -51,6 +46,17 @@ end
 
 local nvim_011 = vim.fn.has("nvim-0.11") == 1
 local nvim_012 = vim.fn.has("nvim-0.12") == 1
+
+vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
+  group    = vim.api.nvim_create_augroup("TsSizeCheckInvalidate", { clear = true }),
+  callback = function(e)
+    pcall(function()
+      vim.b[e.buf]._ts_size_checked = nil
+      vim.b[e.buf]._ts_large        = nil
+    end)
+  end,
+  desc = "Clear Treesitter size-check cache on buffer reload/write",
+})
 
 return {
   {
@@ -70,11 +76,6 @@ return {
       end
       ts_configs.setup(opts)
 
-      -- ── :TSToggle runtime command ─────────────────────────────────────────
-      --
-      --   :TSToggle python    — disable TS highlighting for python in this buf
-      --   :TSToggle python    — re-enable it
-      --
       vim.api.nvim_create_user_command("TSToggle", function(cmd_opts)
         local lang = vim.trim(cmd_opts.args)
         if lang == "" then lang = vim.bo.filetype end
@@ -94,7 +95,7 @@ return {
           vim.notify("[ts] " .. lang .. " highlighting disabled", vim.log.levels.INFO)
         end
       end, {
-        nargs = "?",
+        nargs    = "?",
         complete = function()
           local ok_p, parsers = pcall(require, "nvim-treesitter.parsers")
           if ok_p then return parsers.available_parsers() end
@@ -116,12 +117,12 @@ return {
         disable = function(lang, buf)
           if is_disabled_parser(lang) then return true end
           if vim.b[buf] and vim.b[buf].large_file then return true end
-          -- Check per-buffer TSToggle state.
           if vim.b[buf] and vim.b[buf]["ts_disabled_" .. lang] then return true end
 
           if vim.b[buf] ~= nil and vim.b[buf]._ts_size_checked then
             return (vim.b[buf]._ts_large == true) or (not nvim_012 and lang == "vim")
           end
+
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
           local is_large  = ok and stats and stats.size > (500 * 1024)
           vim.b[buf]._ts_size_checked = true
@@ -150,11 +151,11 @@ return {
         select = {
           enable = true, lookahead = true,
           keymaps = {
-            ["af"] = CAPTURES.func,   ["if"] = CAPTURES.func_i,
-            ["ac"] = CAPTURES.class,  ["ic"] = CAPTURES.class_i,
-            ["al"] = CAPTURES.loop,   ["il"] = CAPTURES.loop_i,
-            ["aa"] = CAPTURES.param,  ["ia"] = CAPTURES.param_i,
-            ["ai"] = CAPTURES.cond,   ["ii"] = CAPTURES.cond_i,
+            ["af"] = CAPTURES.func,  ["if"] = CAPTURES.func_i,
+            ["ac"] = CAPTURES.class, ["ic"] = CAPTURES.class_i,
+            ["al"] = CAPTURES.loop,  ["il"] = CAPTURES.loop_i,
+            ["aa"] = CAPTURES.param, ["ia"] = CAPTURES.param_i,
+            ["ai"] = CAPTURES.cond,  ["ii"] = CAPTURES.cond_i,
           },
         },
         move = {

@@ -3,7 +3,6 @@
 
 local M = {}
 
--- ── Color constants (TokyoNight palette) ──────────────────────────────────────
 local BG     = "#0d1117"
 local BLUE   = "#7aa2f7"
 local PURPLE = "#bb9af7"
@@ -15,19 +14,13 @@ local SCOPE  = "#3d59a1"
 local GREEN  = "#9ece6a"
 local RED    = "#f7768e"
 
--- ── Built-in per-theme override tables ────────────────────────────────────────
---
--- Each key is a theme name as stored in vim.g._nvim_active_theme.
-
 local _builtin = {
-  -- DAP signs: applied for every theme.
   __default = {
     DapBreakpoint  = { fg = RED },
     DapStopped     = { fg = GREEN, bold = true },
     DapStoppedLine = { bg = "#1a2b1a" },
   },
 
-  -- TokyoNight: full accent palette.
   tokyonight = {
     LineNr                  = { fg = GREY },
     CursorLineNr            = { fg = CYAN,   bold = true },
@@ -51,13 +44,12 @@ local _builtin = {
     WhichKeySeparator       = { fg = SCOPE  },
   },
 
-  -- Catppuccin: subtle border accents using mocha palette.
   catppuccin = {
-    FloatBorder             = { fg = "#89b4fa" },   -- blue
-    FloatTitle              = { fg = "#cba6f7", bold = true },   -- mauve
+    FloatBorder             = { fg = "#89b4fa" },
+    FloatTitle              = { fg = "#cba6f7", bold = true },
     TelescopeBorder         = { fg = "#89b4fa" },
     TelescopePromptBorder   = { fg = "#cba6f7" },
-    TelescopePromptPrefix   = { fg = "#fab387" },   -- peach
+    TelescopePromptPrefix   = { fg = "#fab387" },
     TelescopeResultsTitle   = { fg = "#1e1e2e", bg = "#89b4fa" },
     TelescopePreviewTitle   = { fg = "#1e1e2e", bg = "#cba6f7" },
     IblIndent               = { fg = "#313244" },
@@ -66,60 +58,44 @@ local _builtin = {
     WhichKeyGroup           = { fg = "#cba6f7" },
   },
 
-  -- Rose-pine: earthy tones.
   ["rose-pine"] = {
-    FloatBorder             = { fg = "#31748f" },   -- pine
-    FloatTitle              = { fg = "#c4a7e7", bold = true },   -- iris
+    FloatBorder             = { fg = "#31748f" },
+    FloatTitle              = { fg = "#c4a7e7", bold = true },
     TelescopeBorder         = { fg = "#31748f" },
     TelescopePromptBorder   = { fg = "#c4a7e7" },
-    TelescopePromptPrefix   = { fg = "#ebbcba" },   -- rose
+    TelescopePromptPrefix   = { fg = "#ebbcba" },
     IblIndent               = { fg = "#21202e" },
     IblScope                = { fg = "#403d52" },
     WhichKeyGroup           = { fg = "#c4a7e7" },
   },
 
-  -- Kanagawa: ink-wash accents.
   kanagawa = {
-    FloatBorder             = { fg = "#7e9cd8" },   -- crystalBlue
-    FloatTitle              = { fg = "#957fb8", bold = true },   -- oniViolet
+    FloatBorder             = { fg = "#7e9cd8" },
+    FloatTitle              = { fg = "#957fb8", bold = true },
     TelescopeBorder         = { fg = "#7e9cd8" },
     TelescopePromptBorder   = { fg = "#957fb8" },
-    TelescopePromptPrefix   = { fg = "#ffa066" },   -- surimiOrange
+    TelescopePromptPrefix   = { fg = "#ffa066" },
     IblIndent               = { fg = "#1f1f28" },
     IblScope                = { fg = "#363646" },
     WhichKeyGroup           = { fg = "#957fb8" },
   },
 
-  -- Gruvbox-material: warm amber.
   ["gruvbox-material"] = {
-    FloatBorder             = { fg = "#7daea3" },   -- aqua
-    FloatTitle              = { fg = "#d3869b", bold = true },   -- purple
+    FloatBorder             = { fg = "#7daea3" },
+    FloatTitle              = { fg = "#d3869b", bold = true },
     TelescopeBorder         = { fg = "#7daea3" },
     TelescopePromptBorder   = { fg = "#d3869b" },
-    TelescopePromptPrefix   = { fg = "#e78a4e" },   -- orange
+    TelescopePromptPrefix   = { fg = "#e78a4e" },
     IblIndent               = { fg = "#282828" },
     IblScope                = { fg = "#3c3836" },
     WhichKeyGroup           = { fg = "#d3869b" },
   },
 }
 
--- ── User-registered overrides ─────────────────────────────────────────────────
--- Shape: { [theme_name] = { GroupName = {attrs}, ... } }
-
 local _user_overrides = {}
 
--- ── Public: M.register ────────────────────────────────────────────────────────
---
--- Usage (from any lang spec or plugin config):
---   require("core.highlights").register("tokyonight", {
---     VhdlSignal = { fg = "#7aa2f7" },
---   })
---   require("core.highlights").register("__default", {
---     MyCustomSign = { fg = "#ff0000" },
---   })
---
----@param theme    string  theme name or "__default" for all themes
----@param groups   table   { GroupName = { attrs } }
+---@param theme  string
+---@param groups table
 function M.register(theme, groups)
   if type(theme) ~= "string" or type(groups) ~= "table" then
     vim.notify(
@@ -134,14 +110,11 @@ function M.register(theme, groups)
   )
 end
 
--- ── Public: M.apply ───────────────────────────────────────────────────────────
-
 function M.apply()
   if vim.g.disable_highlight_overrides then return end
 
   local theme = tostring(vim.g._nvim_active_theme or "")
 
-  -- Resolve the canonical theme name: "tokyonight-moon" → "tokyonight".
   local canonical = theme
   for key in pairs(_builtin) do
     if key ~= "__default" and theme:find(key, 1, true) then
@@ -150,9 +123,7 @@ function M.apply()
     end
   end
 
-  -- Build the merged set: __default < named builtin < user __default < user named.
   local merged = {}
-
   local function merge_into(tbl)
     if type(tbl) == "table" then
       for group, attrs in pairs(tbl) do
@@ -166,18 +137,29 @@ function M.apply()
   merge_into(_user_overrides.__default)
   merge_into(_user_overrides[canonical])
 
-  local ok, err = pcall(function()
-    for group, attrs in pairs(merged) do
-      vim.api.nvim_set_hl(0, group, attrs)
+  local failed = {}
+  for group, attrs in pairs(merged) do
+    local ok, err = pcall(vim.api.nvim_set_hl, 0, group, attrs)
+    if not ok then
+      table.insert(failed, { group = group, err = tostring(err) })
     end
-  end)
+  end
 
-  if not ok then
-    vim.notify("[highlights] override failed: " .. tostring(err), vim.log.levels.WARN)
+  if #failed > 0 then
+    local msgs = {}
+    for _, f in ipairs(failed) do
+      table.insert(msgs, string.format("  %s: %s", f.group, f.err))
+    end
+    vim.notify(
+      string.format(
+        "[highlights] %d group(s) failed to apply:\n%s",
+        #failed, table.concat(msgs, "\n")
+      ),
+      vim.log.levels.DEBUG
+    )
   end
 end
 
--- ── Auto-reapply on ColorScheme ───────────────────────────────────────────────
 vim.api.nvim_create_autocmd("ColorScheme", {
   group    = vim.api.nvim_create_augroup("HighlightOverrides", { clear = true }),
   callback = function()

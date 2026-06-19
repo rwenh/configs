@@ -1,15 +1,21 @@
 -- lua/core/util/snippets.lua — LuaSnip snippet factory helpers
---
 
 local M = {}
 
+-- ── M.ref ─────────────────────────────────────────────────────────────────────
+--
 ---@param  n       integer   insert_node index to mirror
 ---@param  default string?   fallback when node n is empty (defaults to "")
----@return table             LuaSnip function_node, or {} on LuaSnip failure
+---@return table|nil         valid LuaSnip node, or nil if LuaSnip unavailable
 function M.ref(n, default)
   local ok, ls = pcall(require, "luasnip")
   if not ok then
-    return { type = "textNode", static_text = { default or "" } }
+    vim.notify(
+      "[snippets] M.ref(): LuaSnip unavailable — returning nil.\n"
+      .. "M.ref() must only be called from a factory passed to M.load().",
+      vim.log.levels.DEBUG
+    )
+    return nil
   end
   return ls.function_node(function(args)
     local val = args[1] and args[1][1]
@@ -17,8 +23,9 @@ function M.ref(n, default)
   end, { n })
 end
 
---- Load snippets for *ft* using a factory function.
+-- ── M.load ────────────────────────────────────────────────────────────────────
 --
+-- Load snippets for *ft* using a factory function.
 -- The factory receives five arguments: (s, t, i, f, ref)
 --
 ---@param ft      string    Neovim filetype
@@ -68,8 +75,10 @@ function M.load(ft, factory)
     return
   end
 
+  local clean_snippets = vim.tbl_filter(function(s) return s ~= nil end, snippets)
+
   -- Conflict detection: warn when a trigger already exists for the ft.
-  local existing = M.list(ft)
+  local existing     = M.list(ft)
   local existing_set = {}
   for _, snip in ipairs(existing) do
     if type(snip.trigger) == "string" then
@@ -78,7 +87,7 @@ function M.load(ft, factory)
   end
 
   local conflicts = {}
-  for _, snip in ipairs(snippets) do
+  for _, snip in ipairs(clean_snippets) do
     if type(snip) == "table" and type(snip.trigger) == "string" then
       if existing_set[snip.trigger] then
         table.insert(conflicts, snip.trigger)
@@ -96,7 +105,7 @@ function M.load(ft, factory)
     )
   end
 
-  local ok_add, err = pcall(ls.add_snippets, ft, snippets)
+  local ok_add, err = pcall(ls.add_snippets, ft, clean_snippets)
   if not ok_add then
     vim.notify(
       string.format("[snippets] add_snippets failed for '%s': %s", ft, tostring(err)),
@@ -131,9 +140,6 @@ function M.load_vscode(path)
 end
 
 -- ── M.list ────────────────────────────────────────────────────────────────────
---
--- Returns the list of LuaSnip snippet objects currently registered for *ft*.
---
 ---@param ft string
 ---@return table[]
 function M.list(ft)
@@ -144,19 +150,13 @@ function M.list(ft)
     return ls.get_snippets(ft) or {}
   end)
   if not ok_snips then return {} end
-
   return snip_table
 end
 
 -- ── M.remove ─────────────────────────────────────────────────────────────────
---
--- Remove snippets matching *trigger* from *ft*.
--- Returns the number of snippets removed, or 0 if no match was found or if
--- the internal LuaSnip store mutation failed or could not be verified.
---
----@param ft      string   Neovim filetype
----@param trigger string   trigger string to remove (exact match)
----@return integer         count of removed snippets (0 on failure)
+---@param ft      string
+---@param trigger string
+---@return integer  count of removed snippets (0 on failure or not-found)
 function M.remove(ft, trigger)
   local ok, ls = pcall(require, "luasnip")
   if not ok then return 0 end
@@ -179,7 +179,13 @@ function M.remove(ft, trigger)
     end
   end
 
-  if removed == 0 then return 0 end
+  if removed == 0 then
+    vim.notify(
+      string.format("[snippets] remove(): trigger '%s' not found in ft='%s'.", trigger, ft),
+      vim.log.levels.DEBUG
+    )
+    return 0
+  end
 
   local mutation_ok = pcall(function()
     local store = ls.get_snippets()
@@ -190,8 +196,9 @@ function M.remove(ft, trigger)
     vim.notify(
       string.format(
         "[snippets] remove(): internal store mutation failed for ft='%s', trigger='%s'.\n"
-        .. "This may occur after a LuaSnip update that changes the internal API.\n"
-        .. "Snippets for '%s' are unchanged.",
+        .. "  Cause: LuaSnip's get_snippets() no longer returns a mutable reference,\n"
+        .. "  likely due to an internal API change after a LuaSnip update.\n"
+        .. "  Snippets for '%s' are UNCHANGED. Run ':Lazy update LuaSnip' and retry.",
         ft, trigger, ft
       ),
       vim.log.levels.WARN
@@ -199,14 +206,15 @@ function M.remove(ft, trigger)
     return 0
   end
 
-  -- Return 0 if the trigger is still present so callers are not misled.
+  -- Post-mutation verification: confirm the trigger is actually gone.
   local post = M.list(ft)
   for _, snip in ipairs(post) do
     if type(snip) == "table" and snip.trigger == trigger then
       vim.notify(
         string.format(
           "[snippets] remove(): trigger '%s' still present in ft='%s' after mutation.\n"
-          .. "The internal store write did not propagate — no snippets removed.",
+          .. "  The store write did not propagate. This is a LuaSnip internal invariant\n"
+          .. "  violation. No snippets were removed.",
           trigger, ft
         ),
         vim.log.levels.WARN

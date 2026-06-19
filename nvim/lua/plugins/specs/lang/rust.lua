@@ -1,8 +1,6 @@
 -- lua/plugins/specs/lang/rust.lua — Rust language support
 --
 
--- ── Cargo feature flag toggle ─────────────────────────────────────────────
-
 local function toggle_cargo_features()
   local ok_path, path = pcall(require, "core.util.path")
   local root  = (ok_path and path.find_root()) or vim.fn.getcwd()
@@ -42,27 +40,23 @@ local function toggle_cargo_features()
   }, function(choice, idx)
     if not choice or not idx then return end
     local feat = features[idx]
-    if enabled[feat] then
-      enabled[feat] = nil
-    else
-      enabled[feat] = true
-    end
+    if enabled[feat] then enabled[feat] = nil else enabled[feat] = true end
     local new_list = {}
     for f, _ in pairs(enabled) do table.insert(new_list, f) end
     table.sort(new_list)
     vim.g.rustaceanvim_features = new_list
 
-    -- Live-patch rust-analyzer if a session is active.
-    pcall(function()
-      local clients = vim.lsp.get_clients({ name = "rust-analyzer" })
-      if #clients > 0 then
-        clients[1].notify("workspace/didChangeConfiguration", {
-          settings = { ["rust-analyzer"] = { cargo = { features = new_list } } },
-        })
+    local clients = vim.lsp.get_clients({ name = "rust-analyzer" })
+    if #clients > 0 then
+      for _, client in ipairs(clients) do
+        pcall(function()
+          client.notify("workspace/didChangeConfiguration", {
+            settings = { ["rust-analyzer"] = { cargo = { features = new_list } } },
+          })
+        end)
       end
-    end)
+    end
 
-    -- Show the full active set so users know the cumulative state.
     local active_str = #new_list > 0 and table.concat(new_list, ", ") or "(none)"
     vim.notify(
       "[rust] Active features: " .. active_str
@@ -116,55 +110,43 @@ return {
 
     keys = (function()
       local entries = {
-        { "<leader>rh", "RustLsp hover",        "Rust Hover Actions" },
-        { "<leader>ra", "RustLsp codeAction",   "Rust Code Action"   },
-        { "<leader>rd", "RustLsp debuggables",  "Rust Debuggables"   },
-        { "<leader>rt", "RustLsp testables",    "Rust Testables"     },
+        { "<leader>rh", "RustLsp hover",      "Rust Hover Actions" },
+        { "<leader>ra", "RustLsp codeAction", "Rust Code Action"   },
+        { "<leader>rd", "RustLsp debuggables","Rust Debuggables"   },
+        { "<leader>rt", "RustLsp testables",  "Rust Testables"     },
       }
       local keys = {}
       for _, e in ipairs(entries) do
         table.insert(keys, { e[1], "<cmd>" .. e[2] .. "<cr>", desc = e[3], ft = "rust" })
       end
-
       table.insert(keys, {
         "<leader>rf",
         function() toggle_cargo_features() end,
         desc = "Rust Toggle one Cargo feature flag (repeat to toggle more)",
         ft   = "rust",
       })
-
       table.insert(keys, {
         "<leader>rx",
         function()
           if vim.fn.executable("cargo-expand") ~= 1 then
-            vim.notify(
-              "[rust] cargo-expand not found.\nInstall: cargo install cargo-expand",
-              vim.log.levels.WARN
-            )
+            vim.notify("[rust] cargo-expand not found.\nInstall: cargo install cargo-expand", vim.log.levels.WARN)
             return
           end
-          local word = vim.fn.expand("<cword>")
+          local word    = vim.fn.expand("<cword>")
           local ok_path, path = pcall(require, "core.util.path")
-          local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-
-          local cmd = "cd " .. vim.fn.shellescape(root) .. " && cargo expand"
-          if word and word ~= "" then
-            cmd = cmd .. " " .. vim.fn.shellescape(word)
-          end
-
+          local root    = (ok_path and path.find_root()) or vim.fn.getcwd()
+          local cmd     = "cd " .. vim.fn.shellescape(root) .. " && cargo expand"
+          if word and word ~= "" then cmd = cmd .. " " .. vim.fn.shellescape(word) end
           local ok_term, term = pcall(require, "core.util.term")
-          if ok_term then term.float(cmd)
-          else vim.cmd("split | terminal " .. cmd) end
+          if ok_term then term.float(cmd) else vim.cmd("split | terminal " .. cmd) end
         end,
         desc = "Rust cargo expand (macro viewer)",
         ft   = "rust",
       })
-
       return keys
     end)(),
   },
 
-  -- ── Conform: rustfmt edition detection ─────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,

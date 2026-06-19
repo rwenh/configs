@@ -25,15 +25,18 @@ M.TAILWIND_FT = {
 }
 
 -- ── FT → LSP server name ──────────────────────────────────────────────────
+--
 M.ft_to_lsp = {
   lua             = "lua_ls",
   python          = "basedpyright",
+  -- NOTE: rust-analyzer is managed by rustaceanvim, NOT lspconfig.
   rust            = "rust-analyzer",
   go              = "gopls",
   javascript      = "typescript-tools",
   typescript      = "typescript-tools",
   javascriptreact = "typescript-tools",
   typescriptreact = "typescript-tools",
+  -- NOTE: jdtls is managed by nvim-jdtls, NOT lspconfig.
   java            = "jdtls",
   kotlin          = "kotlin_language_server",
   ruby            = "solargraph",
@@ -52,8 +55,14 @@ M.ft_to_lsp = {
   cobol           = "cobol_ls",
 }
 
+-- If M.lsp_managed_externally[ft] is true, skip lspconfig setup for that ft.
+M.lsp_managed_externally = {
+  rust = true,  -- managed by rustaceanvim
+  java = true,  -- managed by nvim-jdtls
+}
+
 -- ── FT → formatter name(s) ────────────────────────────────────────────────
---
+
 M.ft_to_formatter = {
   lua             = { "stylua" },
   python          = { "black", "isort" },
@@ -78,13 +87,13 @@ M.ft_to_formatter = {
   fortran         = { "fprettify" },
   zig             = { "zigfmt" },
   vhdl            = { "vsg" },
-  elixir          = { "mix" },   -- conform formatter name is "mix", not "mix format"
+  elixir          = { "mix" },
 }
 
 -- ── Spec helpers ───────────────────────────────────────────────────────────
 
 ---@param parsers string[]
----@return table  lazy.nvim plugin spec
+---@return table
 function M.treesitter(parsers)
   return {
     "nvim-treesitter/nvim-treesitter",
@@ -101,8 +110,8 @@ function M.treesitter(parsers)
   }
 end
 
----@param ft         string    Neovim filetype
----@param formatters string[]  list of conform formatter names
+---@param ft         string
+---@param formatters string[]
 function M.conform(ft, formatters)
   return {
     "stevearc/conform.nvim",
@@ -119,8 +128,8 @@ function M.conform(ft, formatters)
   }
 end
 
----@param ft      string    Neovim filetype
----@param linters string[]  list of nvim-lint linter names
+---@param ft      string
+---@param linters string[]
 function M.lint(ft, linters)
   return {
     "mfussenegger/nvim-lint",
@@ -128,7 +137,7 @@ function M.lint(ft, linters)
     config = function()
       local ok, lint = pcall(require, "lint")
       if not ok then return end
-      lint.linters_by_ft    = lint.linters_by_ft or {}
+      lint.linters_by_ft     = lint.linters_by_ft or {}
       lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
       for _, l in ipairs(linters) do
         if not vim.tbl_contains(lint.linters_by_ft[ft], l) then
@@ -140,20 +149,15 @@ function M.lint(ft, linters)
 end
 
 -- ── symlink_compile_commands ───────────────────────────────────────────────
---
--- Usage:
---   shared.symlink_compile_commands("c")    -- called from c.lua
---   shared.symlink_compile_commands("cpp")  -- called from cpp.lua
---
----@param prefix     string    log prefix, e.g. "c" or "cpp"
----@param extra      string[]? additional candidate paths to append
+
+---@param prefix string
+---@param extra  string[]?
 function M.symlink_compile_commands(prefix, extra)
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
   if not root or root == "" then return end
 
   local dst = root .. "/compile_commands.json"
-  -- Guard: already present as a file or an existing symlink directory.
   if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then return end
 
   local build_dir = vim.g.cmake_build_dir or "build"
@@ -164,18 +168,13 @@ function M.symlink_compile_commands(prefix, extra)
     root .. "/.build/compile_commands.json",
   }
 
-  -- Append any caller-supplied extras (e.g. custom build dir variants).
   if type(extra) == "table" then
-    for _, c in ipairs(extra) do
-      table.insert(candidates, c)
-    end
+    for _, c in ipairs(extra) do table.insert(candidates, c) end
   end
 
   for _, src in ipairs(candidates) do
     if vim.fn.filereadable(src) == 1 then
-      local ok = pcall(function()
-        vim.fn.system({ "ln", "-sf", src, dst })
-      end)
+      local ok = pcall(function() vim.fn.system({ "ln", "-sf", src, dst }) end)
       if ok and vim.fn.filereadable(dst) == 1 then
         vim.notify(
           "[" .. prefix .. "] compile_commands.json linked from "

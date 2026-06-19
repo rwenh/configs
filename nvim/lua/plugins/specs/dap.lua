@@ -14,7 +14,7 @@ return {
       local dapui = require("dapui")
       local mason = require("core.util.mason")
 
-      -- ── DAP UI ──────────────────────────────────────────────────────────────
+      -- ── DAP UI ─────────────────────────────────────────────────────────────
       pcall(function()
         dapui.setup({
           icons    = { expanded = "▾", collapsed = "▸", current_frame = "▸" },
@@ -57,29 +57,22 @@ return {
       end
 
       -- ── Per-project .nvim-dap.lua override ─────────────────────────────────
-      --
-      --   return {
-      --     python = {
-      --       { type = "debugpy", request = "launch", name = "My App",
-      --         program = "${workspaceFolder}/src/main.py",
-      --         args    = { "--port", "8080" },
-      --       },
-      --     },
-      --   }
-      --
-      -- These override (replace) the default dap.configurations entries.
-
       local _project_dap_cache = {}
 
+      local _project_dap_loaded = false
+
       local function load_project_dap_config()
+        if _project_dap_loaded then return end
+
         local ok_path, path_util = pcall(require, "core.util.path")
         local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-        if not root or root == "" then return end
-        if _project_dap_cache[root] then return end
+        if not root or root == "" then _project_dap_loaded = true; return end
+        if _project_dap_cache[root] then _project_dap_loaded = true; return end
 
         local cfg_file = root .. "/.nvim-dap.lua"
         if vim.fn.filereadable(cfg_file) ~= 1 then
           _project_dap_cache[root] = true
+          _project_dap_loaded = true
           return
         end
 
@@ -87,6 +80,7 @@ return {
         if not ok or type(result) ~= "table" then
           vim.notify("[dap] .nvim-dap.lua error: " .. tostring(result), vim.log.levels.WARN)
           _project_dap_cache[root] = true
+          _project_dap_loaded = true
           return
         end
 
@@ -98,27 +92,24 @@ return {
         end
 
         _project_dap_cache[root] = true
+        _project_dap_loaded = true
       end
 
-      -- Load project config on first DAP use and on DirChanged.
       vim.api.nvim_create_autocmd({ "DirChanged" }, {
         group    = vim.api.nvim_create_augroup("DapProjectConfig", { clear = true }),
-        callback = function() _project_dap_cache = {} end,
+        callback = function()
+          _project_dap_cache  = {}
+          _project_dap_loaded = false
+        end,
       })
 
-      -- Hook into dap.continue so project config is loaded before every session.
       local orig_continue = dap.continue
       dap.continue = function(...)
-        load_project_dap_config()
+        load_project_dap_config()   -- no-op after first call per cwd
         return orig_continue(...)
       end
 
       -- ── Exception breakpoint UI helper ─────────────────────────────────────
-      --
-      -- <leader>;E  — prompt the user to configure exception breakpoints for
-      --               the active debug adapter (what to break on: raised, caught, etc.)
-      --
-
       vim.keymap.set("n", "<leader>;E", function()
         local session = dap.session()
         if not session then
@@ -126,7 +117,7 @@ return {
           return
         end
 
-        local caps = session.capabilities or {}
+        local caps    = session.capabilities or {}
         local filters = caps.exceptionBreakpointFilters or {}
 
         if #filters == 0 then
@@ -135,7 +126,7 @@ return {
         end
 
         local items = vim.tbl_map(function(f)
-          local label = f.label or f.filter
+          local label   = f.label or f.filter
           local default = f.default and " (default)" or ""
           return { id = f.filter, label = label .. default }
         end, filters)
@@ -143,11 +134,10 @@ return {
         local labels = vim.tbl_map(function(i) return i.label end, items)
 
         vim.ui.select(labels, {
-          prompt   = "Exception breakpoints (space to toggle, enter to confirm):",
+          prompt    = "Exception breakpoints (space to toggle, enter to confirm):",
           telescope = { multi_select = true },
         }, function(choice, idx)
           if not choice then return end
-          -- Set the selected exception breakpoint filter.
           local selected_filter = items[idx] and items[idx].id or choice
           pcall(function()
             session:request("setExceptionBreakpoints", {
@@ -163,7 +153,7 @@ return {
         end)
       end, { desc = "DAP: Configure exception breakpoints" })
 
-      -- ── Deferred adapter setup ──────────────────────────────────────────────
+      -- ── Deferred adapter setup ─────────────────────────────────────────────
 
       local function setup_java()
         dap.configurations.java = {
@@ -211,16 +201,64 @@ return {
         )
       end
 
+      -- ── js-debug-adapter path resolver ──────────────────────────────────────
+      --
+      -- Mason has restructured this package before and may do so again.
+      -- The resolver now:
+      --   1. Tries the known Mason layout (primary)
+      --   2. Searches common relative paths inside the Mason js-debug-adapter pkg root
+      --   3. Falls back to a PATH search for dapDebugServer.js
+      -- This makes JS/TS debugging resilient to Mason package directory changes.
+      --
+      local function find_js_debug_script()
+        -- Primary: current known Mason layout
+        local primary = mason.pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
+        if vim.fn.filereadable(primary) == 1 then return primary end
+
+        -- Secondary: search common alternate layouts within the Mason package root
+        local pkg_root = mason.packages_root() .. "/js-debug-adapter"
+        if vim.fn.isdirectory(pkg_root) == 1 then
+          local candidates = {
+            pkg_root .. "/js-debug/src/dapDebugServer.js",      -- current
+            pkg_root .. "/extension/src/dapDebugServer.js",     -- some older builds
+            pkg_root .. "/out/src/dapDebugServer.js",           -- compiled variants
+            pkg_root .. "/dist/src/dapDebugServer.js",
+          }
+          for _, path in ipairs(candidates) do
+            if vim.fn.filereadable(path) == 1 then
+              vim.notify("[dap] js-debug-adapter found at alternate path: " .. path, vim.log.levels.DEBUG)
+              return path
+            end
+          end
+        end
+
+        return nil
+      end
+
       local function setup_js()
-        local js_debug_script = mason.pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
+        local js_debug_script = find_js_debug_script()
         local node_bin        = vim.fn.exepath("node")
-        if node_bin == "" or vim.fn.filereadable(js_debug_script) ~= 1 then
+
+        if node_bin == "" then
           vim.schedule(function()
-            local msg = node_bin == "" and "[dap] node not found" or "[dap] js-debug-adapter not installed — run :MasonInstall js-debug-adapter"
-            vim.notify(msg, vim.log.levels.WARN)
+            vim.notify("[dap] node not found — JS/TS debugging unavailable", vim.log.levels.WARN)
           end)
           return
         end
+
+        if not js_debug_script then
+          vim.schedule(function()
+            vim.notify(
+              "[dap] js-debug-adapter not installed or path not found.\n"
+              .. "Run: :MasonInstall js-debug-adapter\n"
+              .. "If already installed, the Mason package layout may have changed.\n"
+              .. "Check: " .. mason.packages_root() .. "/js-debug-adapter/",
+              vim.log.levels.WARN
+            )
+          end)
+          return
+        end
+
         dap.adapters["pwa-node"] = { type = "server", host = "localhost", port = "${port}",
           executable = { command = node_bin, args = { js_debug_script, "${port}" } } }
         local js_launch = {
@@ -281,13 +319,13 @@ return {
 
       -- ── Deferred registration loop ─────────────────────────────────────────
       local deferred = {
-        { pattern = "java",                                                             fn = setup_java,     suffix = "Java"     },
-        { pattern = "kotlin",                                                           fn = setup_kotlin,   suffix = "Kotlin"   },
-        { pattern = { "c","cpp","rust" },                                               fn = setup_codelldb, suffix = "Codelldb"  },
-        { pattern = "go",                                                               fn = setup_go,       suffix = "Go"       },
-        { pattern = { "javascript","typescript","javascriptreact","typescriptreact" },   fn = setup_js,       suffix = "Js"       },
-        { pattern = "ruby",                                                             fn = setup_ruby,     suffix = "Ruby"     },
-        { pattern = "elixir",                                                           fn = setup_elixir,   suffix = "Elixir"   },
+        { pattern = "java",                                                           fn = setup_java,     suffix = "Java"    },
+        { pattern = "kotlin",                                                         fn = setup_kotlin,   suffix = "Kotlin"  },
+        { pattern = { "c","cpp","rust" },                                             fn = setup_codelldb, suffix = "Codelldb"},
+        { pattern = "go",                                                             fn = setup_go,       suffix = "Go"      },
+        { pattern = { "javascript","typescript","javascriptreact","typescriptreact"}, fn = setup_js,       suffix = "Js"      },
+        { pattern = "ruby",                                                           fn = setup_ruby,     suffix = "Ruby"    },
+        { pattern = "elixir",                                                         fn = setup_elixir,   suffix = "Elixir"  },
       }
       for _, entry in ipairs(deferred) do
         vim.api.nvim_create_autocmd("FileType", {
@@ -306,7 +344,9 @@ return {
           local ok_name, path = pcall(vim.api.nvim_buf_get_name, bufnr)
           if not ok_name then path = "" end
           if path ~= "" and #buf_bps > 0 then
-            bps[path] = vim.tbl_map(function(bp) return { line = bp.line, condition = bp.condition, log_message = bp.log_message } end, buf_bps)
+            bps[path] = vim.tbl_map(function(bp)
+              return { line = bp.line, condition = bp.condition, log_message = bp.log_message }
+            end, buf_bps)
           end
         end
         return bps
@@ -349,20 +389,48 @@ return {
               callback = function(e)
                 if vim.api.nvim_buf_get_name(e.buf) ~= path then return end
                 set_bps_scheduled(e.buf, entries)
-                pcall(vim.api.nvim_del_augroup_by_id, aug)
+                pcall(vim.api.nvim_del_augroup_id, aug)
               end,
             })
           end
         end
       end
 
+      -- Save on clean exit
       vim.api.nvim_create_autocmd("VimLeavePre", {
         group    = vim.api.nvim_create_augroup("DapBreakpointsSave", { clear = true }),
         callback = save_breakpoints,
       })
+
+      local _bp_autosave_timer = nil
+      local autosave_ms = (type(vim.g.dap_bp_autosave_ms) == "number" and vim.g.dap_bp_autosave_ms > 0)
+        and vim.g.dap_bp_autosave_ms or 60000
+
+      local function start_bp_autosave()
+        if _bp_autosave_timer then return end
+        _bp_autosave_timer = vim.uv.new_timer()
+        _bp_autosave_timer:start(autosave_ms, autosave_ms, vim.schedule_wrap(function()
+          save_breakpoints()
+        end))
+      end
+
+      dap.listeners.after.event_initialized["bp_autosave"] = function()
+        start_bp_autosave()
+      end
+
+      vim.api.nvim_create_autocmd("VimLeavePre", {
+        group    = vim.api.nvim_create_augroup("DapBpAutosaveStop", { clear = true }),
+        callback = function()
+          if _bp_autosave_timer then
+            pcall(function() _bp_autosave_timer:stop(); _bp_autosave_timer:close() end)
+            _bp_autosave_timer = nil
+          end
+        end,
+      })
+
       local load_group = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true })
-      vim.api.nvim_create_autocmd("User", { pattern = "LazyDone", once = true, group = load_group, callback = load_breakpoints })
-      vim.api.nvim_create_autocmd("SessionLoadPost", { once = true, group = load_group, callback = load_breakpoints })
+      vim.api.nvim_create_autocmd("User",            { pattern = "LazyDone", once = true, group = load_group, callback = load_breakpoints })
+      vim.api.nvim_create_autocmd("SessionLoadPost", { once = true,                       group = load_group, callback = load_breakpoints })
     end,
   },
 

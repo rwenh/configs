@@ -18,7 +18,6 @@ local ROOT_MARKERS = {
   "setup.py", "setup.cfg",
 }
 
--- ── Per-project ignore patterns ───────────────────────────────────────────────
 local IGNORE_DIRS = (function()
   local t = { ".cache", "__pycache__" }
   if type(vim.g.path_ignore_dirs) == "table" then
@@ -90,6 +89,7 @@ function M.find_root(start_path)
         )
       end)
     end
+    _cache[cache_key] = { root = cwd, time = os.time() }
     return cwd
   end
   return nil
@@ -119,43 +119,46 @@ function M.find_root_async(start_path, callback)
   local depth      = 0
   local marker_idx = 1
 
-  --   if marker_idx > #ROOT_MARKERS then  -- advance to parent1
-  --     current = parent1; marker_idx = 1; depth++
-  --   end                                 -- falls through ↓
-  --   if is_ignored(current) then         -- parent1 is ignored → advance to parent2
-  --     current = parent2; marker_idx = 1; depth++
-  --   end                                 -- depth incremented TWICE in one call
+  local function fallback_cwd()
+    local ok_cwd, cwd = pcall(vim.fn.getcwd)
+    local result = (ok_cwd and cwd ~= "") and cwd or nil
+    if result then
+      -- FIX (medium): cache the cwd fallback in the async path too.
+      _cache[cache_key] = { root = result, time = os.time() }
+    end
+    vim.schedule(function() callback(result) end)
+  end
 
   local function check_next()
     if depth > MAX_WALK_DEPTH then
-      vim.schedule(function() callback(vim.fn.getcwd()) end)
+      fallback_cwd()
       return
     end
 
     -- All markers exhausted for the current directory — walk up one level.
+    -- This DOES increment depth because we checked a real directory.
     if marker_idx > #ROOT_MARKERS then
       local parent = vim.fn.fnamemodify(current, ":h")
       if parent == current or parent == "" then
-        vim.schedule(function() callback(vim.fn.getcwd()) end)
+        fallback_cwd()
         return
       end
       current    = parent
       marker_idx = 1
-      depth      = depth + 1
+      depth      = depth + 1   -- counted: we just finished checking `current`
       check_next()
       return
     end
 
-    -- Current directory is on the ignore list — skip it entirely.
     if is_ignored(current) then
       local parent = vim.fn.fnamemodify(current, ":h")
       if parent == current then
-        vim.schedule(function() callback(vim.fn.getcwd()) end)
+        fallback_cwd()
         return
       end
       current    = parent
       marker_idx = 1
-      depth      = depth + 1
+      -- depth intentionally NOT incremented here
       check_next()
       return
     end

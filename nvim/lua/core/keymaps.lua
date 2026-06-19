@@ -4,7 +4,6 @@
 local map  = vim.keymap.set
 local opts = { noremap = true, silent = true }
 
--- ── Lazy-require factory ──────────────────────────────────────────────────────
 local function lazy(mod, tag)
   return function(fn)
     return function()
@@ -24,12 +23,6 @@ local todo_call    = lazy("todo-comments",  "[todo-comments]")
 local flash_call   = lazy("flash",          "[flash] not loaded")
 local focus_call   = lazy("core.focus",     "[focus]")
 
--- ── Which-key group registry ──────────────────────────────────────────────────
---
--- Usage (from any lang spec or plugin config):
---   require("core.keymaps").register_group("<leader>kt", "kotlin")
---   require("core.keymaps").register_group("<leader>sp", "spring")
-
 local _group_queue = {}
 
 local function flush_groups()
@@ -43,13 +36,10 @@ local function flush_groups()
   _group_queue = {}
 end
 
----@param prefix string   key prefix (e.g. "<leader>kt")
----@param label  string   group label shown in which-key (e.g. "kotlin")
 local function M_keymaps_register_group(prefix, label)
   table.insert(_group_queue, { prefix = prefix, label = label })
 end
 
--- Expose on the module so callers can require("core.keymaps").register_group(...)
 local M = {}
 M.register_group = M_keymaps_register_group
 
@@ -60,9 +50,6 @@ vim.api.nvim_create_autocmd("User", {
   desc     = "Flush which-key group registrations queued by lang specs",
 })
 
--- ── :KeymapHealth ─────────────────────────────────────────────────────────────
---
--- Buffer-local maps are excluded.
 vim.api.nvim_create_user_command("KeymapHealth", function()
   local maps = vim.api.nvim_get_keymap("n")
   local by_lhs = {}
@@ -73,9 +60,7 @@ vim.api.nvim_create_user_command("KeymapHealth", function()
   end
   local conflicts = {}
   for lhs, rhs_list in pairs(by_lhs) do
-    if #rhs_list > 1 then
-      table.insert(conflicts, { lhs = lhs, rhs = rhs_list })
-    end
+    if #rhs_list > 1 then table.insert(conflicts, { lhs = lhs, rhs = rhs_list }) end
   end
   if #conflicts == 0 then
     vim.notify("[keymaps] No conflicts found in global normal-mode keymaps.", vim.log.levels.INFO)
@@ -128,9 +113,6 @@ map("n", "<leader>sm", function()
   end
 end, { desc = "Maximize / restore split" })
 
--- <C-h/j/k/l> — split / tmux-pane navigation is owned by vim-tmux-navigator
---               (plugins/specs/editor.lua).  Outside tmux the plugin degrades to
---               the same <C-w>h/j/k/l behaviour, so non-tmux users are unaffected.
 map("n", "<C-Up>",    "<cmd>resize +2<cr>",          { noremap=true, silent=true, desc="Increase split height" })
 map("n", "<C-Down>",  "<cmd>resize -2<cr>",          { noremap=true, silent=true, desc="Decrease split height" })
 map("n", "<C-Left>",  "<cmd>vertical resize -2<cr>", { noremap=true, silent=true, desc="Decrease split width"  })
@@ -209,8 +191,8 @@ map("n", "<F10>", dap_call(function(d) d.run_to_cursor()     end), { desc = "DAP
 map("n", "<F11>", dap_call(function(d) d.terminate()         end), { desc = "DAP: Terminate"         })
 
 -- ── Run & test ────────────────────────────────────────────────────────────────
-map("n", "<leader>'r", function() pcall(function() require("core.util.runner").run_file() end) end,   { desc = "Run file"      })
-map("n", "<leader>'t", function() pcall(function() require("core.util.runner").run_tests() end) end,  { desc = "Run tests"     })
+map("n", "<leader>'r", function() pcall(function() require("core.util.runner").run_file()   end) end, { desc = "Run file"   })
+map("n", "<leader>'t", function() pcall(function() require("core.util.runner").run_tests()  end) end, { desc = "Run tests" })
 map("x", "<leader>'s", function()
   local s = vim.fn.line("'<"); local e = vim.fn.line("'>")
   if s == 0 or e == 0 then vim.notify("[runner] no visual selection", vim.log.levels.WARN); return end
@@ -225,7 +207,21 @@ map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>",                      { desc = "Te
 map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Float terminal"      })
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal"   })
-map("t", "<Esc>", "<C-\\><C-n>", { noremap=true, silent=true, desc="Exit terminal mode" })
+
+-- WORKAROUND for nested TUIs (e.g. lazygit):
+--   Option A — delete this mapping globally and use <C-\><C-n> to exit:
+--     vim.keymap.del("t", "<Esc>")
+--
+--   Option B — use double-Escape for Normal, single-Escape for TUI:
+--     vim.keymap.del("t", "<Esc>")
+--     vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { noremap=true, silent=true })
+--
+--   Option C — configure toggleterm to use a different close_on_esc key:
+--     In toggleterm.nvim opts: close_on_esc = false
+--     Then bind <C-\> explicitly per terminal.
+--
+map("t", "<Esc>", "<C-\\><C-n>", { noremap=true, silent=true,
+  desc = "Exit terminal mode (see keymaps.lua comment for nested TUI workarounds)" })
 
 -- ── UI toggles ────────────────────────────────────────────────────────────────
 map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>", { desc = "Toggle theme"        })
