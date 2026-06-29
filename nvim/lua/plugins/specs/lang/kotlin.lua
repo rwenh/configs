@@ -3,9 +3,8 @@
 
 local shared = require("plugins.specs.lang.shared")
 
-local SPRING_CACHE_TTL = (type(vim.g.kotlin_spring_cache_ttl) == "number"
-  and vim.g.kotlin_spring_cache_ttl > 0)
-  and vim.g.kotlin_spring_cache_ttl or 300   -- seconds
+local SPRING_CACHE_TTL = (type(vim.g.kotlin_spring_cache_ttl) == "number")
+  and vim.g.kotlin_spring_cache_ttl or 300   -- seconds; 0 = no cache
 
 local _spring_cache = {}
 
@@ -15,7 +14,7 @@ vim.api.nvim_create_autocmd("DirChanged", {
     -- Only invalidate stale entries; fresh ones survive directory changes.
     local now = os.time()
     for root, entry in pairs(_spring_cache) do
-      if (now - entry.time) >= SPRING_CACHE_TTL then
+      if SPRING_CACHE_TTL == 0 or (now - entry.time) >= SPRING_CACHE_TTL then
         _spring_cache[root] = nil
       end
     end
@@ -28,9 +27,12 @@ local function is_spring_project()
   local root = (ok_path and path.find_root()) or vim.fn.getcwd()
   if not root or root == "" then return false end
 
-  local entry = _spring_cache[root]
-  if entry and (os.time() - entry.time) < SPRING_CACHE_TTL then
-    return entry.result
+  -- Honour TTL=0 by skipping the cache entirely.
+  if SPRING_CACHE_TTL > 0 then
+    local entry = _spring_cache[root]
+    if entry and (os.time() - entry.time) < SPRING_CACHE_TTL then
+      return entry.result
+    end
   end
 
   local result = false

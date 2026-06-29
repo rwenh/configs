@@ -156,7 +156,7 @@ local runners = {
       end
     end
     if entity then
-      local vcd = "/tmp/nvim_ghdl_wave.vcd"
+      local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
       local cmd = string.format(
         "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
         vim.fn.shellescape(file),
@@ -255,6 +255,30 @@ function M.run_nearest_function()
     rust = function()
       if not function_name then return "cd " .. er .. " && cargo test" end
       return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(function_name)
+    end,
+    ruby = function()
+      if not function_name then return "cd " .. er .. " && bundle exec rspec" end
+      return "cd " .. er .. " && bundle exec rspec --example " .. vim.fn.shellescape(function_name)
+    end,
+    elixir = function()
+      if not function_name then return "cd " .. er .. " && mix test" end
+      return "cd " .. er .. " && mix test --only " .. vim.fn.shellescape(function_name)
+    end,
+    java = function()
+      if not function_name then
+        local thunk = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+        return thunk or ("cd " .. er .. " && mvn test")
+      end
+      local thunk = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+      if thunk then return thunk .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
+      return "cd " .. er .. " && mvn -Dtest=" .. vim.fn.shellescape(function_name) .. " test"
+    end,
+    kotlin = function()
+      if not function_name then
+        return M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+      end
+      local base = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+      if base then return base .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
     end,
   }
 

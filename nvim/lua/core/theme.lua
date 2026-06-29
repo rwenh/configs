@@ -29,8 +29,8 @@ local _builtin_patches = {
   kanagawa         = { background = "dark"  },
   ["rose-pine"]    = { background = "dark"  },
   ["gruvbox-material"] = { background = "dark" },
-  solarized        = {},
-  ["solarized-osaka"] = {},
+  solarized           = { background = "light" },
+  ["solarized-osaka"] = { background = "dark"  },
 }
 
 local function get_patches(theme_name)

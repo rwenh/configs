@@ -90,6 +90,28 @@ local _builtin = {
     IblScope                = { fg = "#3c3836" },
     WhichKeyGroup           = { fg = "#d3869b" },
   },
+
+  solarized = {
+    FloatBorder           = { fg = "#268bd2" },
+    FloatTitle            = { fg = "#6c71c4", bold = true },
+    TelescopeBorder       = { fg = "#268bd2" },
+    TelescopePromptBorder = { fg = "#6c71c4" },
+    TelescopePromptPrefix = { fg = "#cb4b16" },
+    IblIndent             = { fg = "#073642" },
+    IblScope              = { fg = "#0d4a57" },
+    WhichKeyGroup         = { fg = "#6c71c4" },
+  },
+
+  ["solarized-osaka"] = {
+    FloatBorder           = { fg = "#268bd2" },
+    FloatTitle            = { fg = "#6c71c4", bold = true },
+    TelescopeBorder       = { fg = "#268bd2" },
+    TelescopePromptBorder = { fg = "#6c71c4" },
+    TelescopePromptPrefix = { fg = "#cb4b16" },
+    IblIndent             = { fg = "#073642" },
+    IblScope              = { fg = "#0d4a57" },
+    WhichKeyGroup         = { fg = "#6c71c4" },
+  },
 }
 
 local _user_overrides = {}

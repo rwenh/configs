@@ -165,12 +165,11 @@ return {
   },
 
   -- ── Tailwind CSS ───────────────────────────────────────────────────────────
-  --
-  -- MAINTAINER NOTE: Verify the repository exists before upgrading this config:
-  --   https://github.com/luckasRanaringer/tailwind-tools.nvim
+  ---- MAINTAINER NOTE: Verify the repository exists before upgrading this config:
+  --   https://github.com/laytan/tailwind-tools.nvim
   --
   {
-    "luckasRanaringer/tailwind-tools.nvim",
+    "laytan/tailwind-tools.nvim",
     cond = function()
       return vim.fn.findfile("tailwind.config.js",  ".;") ~= ""
           or vim.fn.findfile("tailwind.config.ts",  ".;") ~= ""
@@ -190,7 +189,7 @@ return {
           "[css] tailwind-tools.nvim failed to load: " .. tostring(err) .. "\n"
           .. "Possible causes:\n"
           .. "  1. The plugin repository name is incorrect.\n"
-          .. "     Expected: https://github.com/luckasRanaringer/tailwind-tools.nvim\n"
+          .. "     Expected: https://github.com/laytan/tailwind-tools.nvim\n"
           .. "  2. The plugin has not been installed. Run: :Lazy install\n"
           .. "  3. The plugin has been renamed. Update the spec name in css.lua.",
           vim.log.levels.WARN

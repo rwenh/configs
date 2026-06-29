@@ -149,9 +149,19 @@ local function apply_ft_opt(buf, key, val)
   if BUFFER_LOCAL_OPTS[key] then
     pcall(function() vim.bo[buf][key] = val end)
   elseif WINDOW_LOCAL_OPTS[key] then
-    pcall(function() vim.wo[key] = val end)
+    -- Apply to every window that is currently showing this buffer so the
+    -- option takes effect regardless of which window has focus.
+    local wins = vim.fn.win_findbuf(buf)
+    if #wins == 0 then
+      -- Buffer not yet displayed; fall back to current window (first open).
+      pcall(function() vim.wo[key] = val end)
+    else
+      for _, win in ipairs(wins) do
+        pcall(vim.api.nvim_set_option_value, key, val, { win = win, scope = "local" })
+      end
+    end
   else
-    -- Unknown scope: try buffer first, fall back to window.
+    -- Unknown scope: try buffer first, fall back to current window.
     local ok = pcall(function() vim.bo[buf][key] = val end)
     if not ok then pcall(function() vim.wo[key] = val end) end
   end

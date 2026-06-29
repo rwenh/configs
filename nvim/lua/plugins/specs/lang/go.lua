@@ -4,38 +4,48 @@
 local shared = require("plugins.specs.lang.shared")
 local GO_FT = { "go", "gomod" }
 
+local _go_env_checked = false
+
 local function check_go_env()
+  if _go_env_checked then return end
+  _go_env_checked = true
+
   local has_goimports = vim.fn.executable("goimports") == 1
   local has_gofumpt   = vim.fn.executable("gofumpt")   == 1
   if has_goimports and has_gofumpt then return end
 
-  local gopath = vim.fn.trim(vim.fn.system("go env GOPATH 2>/dev/null"))
-  if not gopath or gopath == "" then return end
-  local bin_dir = gopath .. "/bin"
-  local path    = os.getenv("PATH") or ""
+  vim.system({ "go", "env", "GOPATH" }, { text = true }, function(result)
+    if result.code ~= 0 or not result.stdout or vim.trim(result.stdout) == "" then return end
 
-  if not path:find(bin_dir, 1, true) then
-    vim.notify(
-      "[go] " .. bin_dir .. " is not in $PATH.\n"
-      .. "goimports / gofumpt may not be found by formatters.\n"
-      .. "Add to your shell profile: export PATH=$PATH:" .. bin_dir,
-      vim.log.levels.WARN
-    )
-    return
-  end
+    local gopath  = vim.trim(result.stdout)
+    local bin_dir = gopath .. "/bin"
+    local path    = os.getenv("PATH") or ""
 
-  if not has_goimports then
-    vim.notify(
-      "[go] goimports not found.\nInstall: go install golang.org/x/tools/cmd/goimports@latest",
-      vim.log.levels.WARN
-    )
-  end
-  if not has_gofumpt then
-    vim.notify(
-      "[go] gofumpt not found.\nInstall: go install mvdan.cc/gofumpt@latest",
-      vim.log.levels.WARN
-    )
-  end
+    vim.schedule(function()
+      if not path:find(bin_dir, 1, true) then
+        vim.notify(
+          "[go] " .. bin_dir .. " is not in $PATH.\n"
+          .. "goimports / gofumpt may not be found by formatters.\n"
+          .. "Add to your shell profile: export PATH=$PATH:" .. bin_dir,
+          vim.log.levels.WARN
+        )
+        return
+      end
+
+      if not has_goimports then
+        vim.notify(
+          "[go] goimports not found.\nInstall: go install golang.org/x/tools/cmd/goimports@latest",
+          vim.log.levels.WARN
+        )
+      end
+      if not has_gofumpt then
+        vim.notify(
+          "[go] gofumpt not found.\nInstall: go install mvdan.cc/gofumpt@latest",
+          vim.log.levels.WARN
+        )
+      end
+    end)
+  end)
 end
 
 return {

@@ -1,6 +1,8 @@
 -- lua/plugins/specs/test.lua — neotest + coverage
 --
 
+local _vitest_cache = {}
+
 return {
   {
     "nvim-neotest/neotest",
@@ -15,6 +17,7 @@ return {
       "marilari88/neotest-vitest",
       "haydenmeade/neotest-jest",
       "rcasia/neotest-java",
+      "codymikol/neotest-kotlin",
     },
     keys = {
       { "<leader>'n", function() pcall(function() require("neotest").run.run() end) end,                         desc = "Test nearest"        },
@@ -46,6 +49,12 @@ return {
       if not ok then
         vim.notify("[neotest] setup failed: " .. tostring(err) .. "\nRun :checkhealth neotest", vim.log.levels.ERROR)
       end
+
+      vim.api.nvim_create_autocmd("DirChanged", {
+        group    = vim.api.nvim_create_augroup("NeotestVitestCacheInvalidate", { clear = true }),
+        callback = function() _vitest_cache = {} end,
+        desc     = "Invalidate vitest config-detection cache on directory change",
+      })
     end,
 
     opts = function()
@@ -55,13 +64,12 @@ return {
         if not ok_runner then return "npm test --" end
         local root = (ok_path and path.find_root(vim.fn.expand("%:p:h"))) or vim.fn.getcwd()
         local cmd  = runner.detect_js_test_cmd(root)
-        -- FIX (medium) #21: bun test does not use "--" separator.
         if cmd == "bun test" then return cmd end
         return cmd .. " --"
       end
 
       local VITEST_CONFIGS = { "vitest.config.ts","vitest.config.js","vitest.config.mts","vitest.config.mjs","vitest.config.cjs" }
-      local _vitest_cache  = {}
+
       local function is_vitest_root(root)
         if _vitest_cache[root] ~= nil then return _vitest_cache[root] end
         for _, pat in ipairs(VITEST_CONFIGS) do
@@ -88,10 +96,12 @@ return {
 
       local adapters = {}
       local function load_adapter(name, loader)
-        -- Probe 1: runtime path (works for eager-loaded plugins).
-        local mod     = name:gsub("%-", "/")
-        local in_rtp  = #vim.api.nvim_get_runtime_file("lua/" .. mod .. ".lua",       false) > 0
-                     or #vim.api.nvim_get_runtime_file("lua/" .. mod .. "/init.lua",   false) > 0
+        -- Probe 1: runtime path.
+        local mod = name:gsub("%-", "/")
+        local in_rtp = #vim.api.nvim_get_runtime_file("lua/" .. name .. ".lua",       false) > 0
+                    or #vim.api.nvim_get_runtime_file("lua/" .. name .. "/init.lua",   false) > 0
+                    or #vim.api.nvim_get_runtime_file("lua/" .. mod  .. ".lua",        false) > 0
+                    or #vim.api.nvim_get_runtime_file("lua/" .. mod  .. "/init.lua",   false) > 0
 
         local in_lazy = not in_rtp and lazy_knows_plugin(name)
 
@@ -130,6 +140,9 @@ return {
         return jest
       end)
       load_adapter("neotest-java",    function() return require("neotest-java")({ ignore_wrapper = false }) end)
+      load_adapter("neotest-kotlin", function()
+        return require("neotest-kotlin")
+      end)
 
       return {
         adapters   = adapters,

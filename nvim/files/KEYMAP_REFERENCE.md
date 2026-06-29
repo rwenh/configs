@@ -1,4 +1,4 @@
-# KEYMAP REFERENCE — v2.4.1
+# KEYMAP REFERENCE — v2.5.0
 
 **Leader:** `Space`  
 Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
@@ -55,8 +55,16 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 |-----|------|--------|
 | `jk` / `kj` | Insert | Exit insert mode (better-escape.nvim, 200 ms timeout) |
 | `<Esc>` | Normal | Clear search highlight |
+| `<Esc>` | Terminal | Exit terminal mode (see note below) |
 | `Alt+j` / `Alt+k` | Normal, Visual | Move line / selection down / up |
 | `<` / `>` | Visual | Indent left / right, keep selection |
+
+> **Terminal `<Esc>` note** — exits to Normal mode, which interferes with nested
+> TUIs (lazygit, htop, etc.). Workarounds: delete the binding and use
+> `<C-\><C-n>`, map `<Esc><Esc>` for Normal and keep single `<Esc>` for the TUI,
+> or set `close_on_esc = false` in toggleterm opts. See `keymaps.lua` for full
+> options. LazyGit (`<leader>.g`) is unaffected — it uses a dedicated terminal
+> with its own escape mapping.
 
 ---
 
@@ -73,7 +81,9 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `Ctrl+↑/↓` | Increase / decrease split height |
 | `Ctrl+←/→` | Decrease / increase split width |
 
-> **tmux pane navigation** — when running inside tmux, `Ctrl+h/j/k/l` cross seamlessly into adjacent tmux panes via `vim-tmux-navigator`. Outside tmux the keys behave identically to standard `<C-w>h/j/k/l` split movement; no errors, no configuration needed.
+> **tmux pane navigation** — when running inside tmux, `Ctrl+h/j/k/l` cross
+> seamlessly into adjacent tmux panes via `vim-tmux-navigator`. Outside tmux
+> the keys behave identically to `<C-w>h/j/k/l`.
 
 ---
 
@@ -88,7 +98,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>bn` / `]b` | Next buffer |
 | `<leader>bp` / `[b` | Previous buffer |
 | `<leader>bd` | Delete buffer |
-| `<leader>bo` | Delete all other buffers |
+| `<leader>bo` | Delete all other buffers (prompts per modified buffer) |
 
 ---
 
@@ -174,7 +184,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>k` | Signature help |
 | `<leader>,a` | Code action |
 | `<leader>,r` | Rename symbol |
-| `<leader>,f` | Format buffer or range |
+| `<leader>,f` | Format buffer or range (timeout: `vim.g.format_timeout_ms`) |
 | `<leader>,o` | Code outline (Trouble) |
 | `<leader>,i` | Toggle inlay hints |
 | `<leader>,d` | Diagnostic float |
@@ -277,6 +287,9 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>;p` | Preview variable |
 | `<leader>;E` | Configure exception breakpoints (active session only) |
 
+> Breakpoints are auto-saved every `vim.g.dap_bp_autosave_ms` ms (default 60 s)
+> and restored on next session via `~/.local/share/nvim/dap-breakpoints.json`.
+
 ---
 
 ## Run & Test
@@ -297,7 +310,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>'n` | Run nearest test |
 | `<leader>'f` | Run tests in file |
 | `<leader>'a` | Run entire suite |
-| `<leader>'P` | Run suite in parallel (concurrency=4) |
+| `<leader>'P` | Run suite in parallel (concurrency: `vim.g.neotest_concurrency`, default 4) |
 | `<leader>'d` | Debug nearest test |
 | `<leader>'w` / `'W` | Watch file / watch suite |
 | `<leader>'o` | Open test output |
@@ -328,7 +341,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>\v` | Normal | Vertical terminal |
 | `<Esc>` | Terminal | Exit terminal mode |
 
-> To use double-escape instead (for nested TUIs): `vim.keymap.del("t","<Esc>")` then map `<Esc><Esc>` to `<C-\><C-n>`.
+> To use double-escape instead: `vim.keymap.del("t","<Esc>")` then map `<Esc><Esc>` to `<C-\><C-n>`.
 
 ---
 
@@ -341,7 +354,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>us` | Toggle spell check |
 | `<leader>ul` | Toggle line numbers |
 | `<leader>uz` | ZenMode only |
-| `<leader>uF` | Deep focus (ZenMode + Twilight + strip chrome) |
+| `<leader>uF` | Deep focus (ZenMode + Twilight + strip chrome; atomic with rollback) |
 | `<leader>uT` | Twilight only |
 | `<leader>un` | Dismiss notifications |
 | `<leader>uN` | Notification history |
@@ -484,6 +497,10 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>oc` | Clear cache |
 | `<leader>os` | Run shell command as task |
 
+> Per-project tasks: place `.overseer.lua` at the project root returning a list
+> of task specs. Templates are loaded on first `BufEnter` (debounced) and on
+> `DirChanged`.
+
 ---
 
 ## Language: Python
@@ -515,7 +532,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>ra` | Code action |
 | `<leader>rd` | Debuggables |
 | `<leader>rt` | Testables |
-| `<leader>rf` | Toggle one Cargo feature flag (repeat to toggle more) |
+| `<leader>rf` | Toggle one Cargo feature flag (all active rust-analyzer instances updated) |
 | `<leader>rx` | cargo expand (macro viewer) |
 
 ---
@@ -551,7 +568,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>tsf` | Fix all auto-fixable |
 | `<leader>tsd` | Go to source definition (not `.d.ts`) |
 | `<leader>tsc` | Jump to tsconfig.json |
-| `<leader>tsb` | Generate barrel index.ts (prompts before overwrite) |
+| `<leader>tsb` | Generate barrel index.ts (prompts before overwrite; excludes test/spec/stories files) |
 | `<leader>tsp` | Show tsconfig paths aliases |
 | `<leader>jsm` | Show module type (ESM / CJS) |
 
@@ -585,6 +602,8 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>jvR` | Hot-reload (update project config) |
 | `<leader>jvs` | Spring Boot run — Spring projects only |
 | `<leader>jvS` | Spring Boot package (bootJar) — Spring projects only |
+
+> `:LspRestart` now correctly re-attaches jdtls without closing the buffer (v2.5.0).
 
 ---
 
@@ -648,7 +667,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 
 | Key | Action |
 |-----|--------|
-| `<leader>cb` | Build & run (gcc) |
+| `<leader>cb` | Build & run (gcc; flags sanitised against shell injection) |
 | `<leader>cm` | `make` |
 | `<leader>csy` | Syntax check |
 | `<leader>ctt` | CTest run (requires build/) |
@@ -678,7 +697,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>ftb` | Build & run |
 | `<leader>ftc` | Syntax check |
 | `<leader>ftm` | `make` |
-| `<leader>ftf` | Format (fprettify) |
+| `<leader>ftf` | Format (fprettify; config auto-detected per project root) |
 
 ---
 
@@ -702,15 +721,15 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 |-----|--------|
 | `<leader>vha` | Analyze (`ghdl -a`) |
 | `<leader>vhe` | Elaborate (prompts entity name) |
-| `<leader>vhr` | Run simulation + GTKWave |
+| `<leader>vhr` | Analyze → Elaborate → Run + GTKWave |
 | `<leader>vhc` | Syntax check |
-| `<leader>vht` | Generate testbench skeleton |
+| `<leader>vht` | Generate testbench skeleton (multi-line port declarations supported) |
 
 ---
 
 ## Language: COBOL
 
-> Requires `cobc` (GnuCOBOL).
+> Requires `cobc` (GnuCOBOL). Compiled executables written to `~/.cache/nvim/cobol-run/`.
 
 | Key | Action |
 |-----|--------|
@@ -745,7 +764,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>ren` | Jump to next request |
 | `<leader>reN` | Jump to prev request |
 | `<leader>rec` | Copy request as curl |
-| `<leader>red` | Diff two recent responses |
+| `<leader>red` | Diff two recent responses (`:diffoff` auto-called on window close) |
 | `<leader>reA` | Add / store auth token (session) |
 | `<leader>reat` | Insert stored auth token at cursor |
 

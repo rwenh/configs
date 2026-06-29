@@ -7,7 +7,7 @@
 --   4. Clone lazy.nvim if missing, with SHA integrity check + offline fallback.
 --
 
-local VERSION  = "2.4.1"
+local VERSION  = "2.5.0"
 local LAZY_URL = "https://github.com/folke/lazy.nvim.git"
 
 vim.g.nvim_ide_version = VERSION

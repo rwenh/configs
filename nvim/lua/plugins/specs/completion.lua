@@ -71,6 +71,7 @@ return {
     },
 
     config = function(_, opts)
+      -- ── Version pin check ───────────────────────────────────────────────────
       pcall(function()
         local ok, blink_meta = pcall(require, "blink.cmp.version")
         if ok and type(blink_meta) == "table" and blink_meta.version then
@@ -89,10 +90,10 @@ return {
         end
       end)
 
-      local has_ls = pcall(require, "luasnip")
-      local ls     = has_ls and require("luasnip") or nil
-
+      -- ── LuaSnip integration ─────────────────────────────────────────────────
+      local has_ls, ls = pcall(require, "luasnip")
       if not has_ls then
+        ls = nil
         vim.notify(
           "[completion] LuaSnip not loaded — snippets will use native vim.snippet.\n"
           .. "Run :Lazy install to ensure LuaSnip is installed.",

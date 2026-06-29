@@ -123,7 +123,7 @@ function M.validate()
     s = s:lower()
     s = s:gsub("%-", ""):gsub("_", "")
     s = s:gsub("languageserver", ""):gsub("language", "")
-    s = s:gsub("server", ""):gsub("^ls$", ""):gsub("lsp", "")
+    s = s:gsub("server", ""):gsub("lsp$", ""):gsub("ls$", "")
     return s
   end
 

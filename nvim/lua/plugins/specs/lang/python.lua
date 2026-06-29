@@ -211,7 +211,7 @@ return {
         })
       end)
 
-      _G._nvim_ide_iron_send_motion = function(motion_type)
+      _G._nvide_iron_opfunc = function(motion_type)
         local ok, iron = pcall(require, "iron.core")
         if not ok then
           vim.notify(
@@ -240,7 +240,7 @@ return {
             local prev_opfunc    = vim.o.operatorfunc
             -- Use the stable wrapper — operatorfunc now references a guaranteed
             -- global rather than a deep module path.
-            vim.o.operatorfunc   = "v:lua._nvim_ide_iron_send_motion"
+            vim.o.operatorfunc = "v:lua._nvide_iron_opfunc"
             vim.api.nvim_feedkeys("g@", "n", false)
             vim.api.nvim_create_autocmd("ModeChanged", {
               pattern  = "no:*",

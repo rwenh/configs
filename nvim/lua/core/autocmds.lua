@@ -122,31 +122,6 @@ au({ "FocusGained", "TermClose", "TermLeave" }, {
   end,
 })
 
--- ── Language-specific indent settings ────────────────────────────────────────
-au("FileType", {
-  group   = ag("WebDev", { clear = true }),
-  pattern = { "html","css","javascript","typescript","json","yaml","javascriptreact","typescriptreact" },
-  callback = function()
-    pcall(function() vim.opt_local.shiftwidth = 2; vim.opt_local.tabstop = 2 end)
-  end,
-})
-au("FileType", {
-  group    = ag("GoDev", { clear = true }),
-  pattern  = { "go" },
-  callback = function()
-    pcall(function()
-      vim.opt_local.shiftwidth = 4; vim.opt_local.tabstop = 4; vim.opt_local.expandtab = false
-    end)
-  end,
-})
-au("FileType", {
-  group    = ag("Markdown", { clear = true }),
-  pattern  = { "markdown", "markdown_inline" },
-  callback = function()
-    pcall(function() vim.opt_local.wrap = true; vim.opt_local.spell = true end)
-  end,
-})
-
 -- ── Terminal UI cleanup ───────────────────────────────────────────────────────
 au("TermOpen", {
   group    = ag("Terminal", { clear = true }),

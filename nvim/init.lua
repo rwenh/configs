@@ -1,4 +1,4 @@
--- ~/.config/nvim/init.lua — v2.4.1 entry point
+-- ~/.config/nvim/init.lua — v2.5.0 entry point
 --
 -- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → highlights
 
@@ -66,6 +66,9 @@ if _plugins_ok then
     pattern  = "LazyDone",
     once     = true,
     callback = function()
+      -- Cross-check lspconfig ↔ Mason naming drift (logs at DEBUG level only)
+      pcall(function() require("core.util.packages").validate() end)
+
       local ok_lazy, lazy = pcall(require, "lazy")
       if ok_lazy then
         local s = lazy.stats()

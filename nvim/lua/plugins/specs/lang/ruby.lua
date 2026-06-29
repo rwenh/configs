@@ -28,17 +28,22 @@ local function check_bundler_env()
   end
 
   if vim.fn.executable("rdbg") ~= 1 then
-    local has_rdbg_in_bundle = vim.fn.system(
-      "cd " .. vim.fn.shellescape(root)
-      .. " && bundle list 2>/dev/null | grep debug"
+    vim.system(
+      { "bundle", "list" },
+      { text = true, cwd = root },
+      function(result)
+        local output = (result.stdout or "") .. (result.stderr or "")
+        if not output:find("debug") then
+          vim.schedule(function()
+            vim.notify(
+              "[ruby] rdbg not found and not in bundle — DAP unavailable.\n"
+              .. "Add to Gemfile: gem 'debug' OR run: gem install rdbg",
+              vim.log.levels.WARN
+            )
+          end)
+        end
+      end
     )
-    if not has_rdbg_in_bundle:find("debug") then
-      vim.notify(
-        "[ruby] rdbg not found and not in bundle — DAP unavailable.\n"
-        .. "Add to Gemfile: gem 'debug' OR run: gem install rdbg",
-        vim.log.levels.WARN
-      )
-    end
   end
 end
 

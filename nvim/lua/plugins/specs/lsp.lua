@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua — v2.4.1
+-- lua/plugins/specs/lsp.lua — v2.5.0
 --
 
 return {
@@ -105,7 +105,7 @@ return {
 
       -- ── Format timeout helper ─────────────────────────────────────────────
       --
-      local DEFAULT_TIMEOUT_MS = 3000   -- raised from 1500 ms
+      local DEFAULT_TIMEOUT_MS = 3000
 
       local function get_format_timeout(bufnr)
         local ft = vim.bo[bufnr or 0].filetype
@@ -200,7 +200,8 @@ return {
         end,
       })
 
-      -- ── Servers ───────────────────────────────────────────────────────────
+-- ── Servers ───────────────────────────────────────────────────────────────
+
       local servers = {
         lua_ls = {
           settings = { Lua = { diagnostics = { globals = { "vim" } }, workspace = { checkThirdParty = false }, telemetry = { enable = false } } },
@@ -214,7 +215,13 @@ return {
         solargraph = {
           settings = { solargraph = { diagnostics = true, completion = true } },
         },
-        elixirls = {
+      }
+
+      for server, config in pairs(servers) do lsp_setup(server, config) end
+
+      -- ── Elixir: only start elixir-ls when NextLS is NOT wanted ────────────
+      if not vim.g.elixir_use_nextls then
+        lsp_setup("elixirls", {
           cmd = function()
             local data     = vim.fn.stdpath("data")
             local mason_ls = data .. "/mason/packages/elixir-ls/language_server.sh"
@@ -222,11 +229,15 @@ return {
             local sys = vim.fn.exepath("elixir-ls")
             return sys ~= "" and { sys } or { "elixir-ls" }
           end,
-          settings = { elixirLS = { dialyzerEnabled = true, fetchDeps = false, enableTestLenses = true, suggestSpecs = true } },
-        },
-      }
+          settings = { elixirLS = {
+            dialyzerEnabled  = true,
+            fetchDeps        = false,
+            enableTestLenses = true,
+            suggestSpecs     = true,
+          }},
+        })
+      end
 
-      for server, config in pairs(servers) do lsp_setup(server, config) end
       for _, s in ipairs({ "tailwindcss","cssls","jsonls","yamlls","clangd","kotlin_language_server","zls" }) do
         lsp_setup(s, {})
       end
@@ -292,7 +303,7 @@ return {
         local by_ft = type(vim.g.format_timeout_by_ft) == "table" and vim.g.format_timeout_by_ft or {}
         local timeout = by_ft[ft]
           or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0 and vim.g.format_timeout_ms)
-          or 3000   -- FIX: raised from 1500 ms
+          or 3000
         return { timeout_ms = timeout, lsp_format = "fallback" }
       end,
     },
@@ -321,8 +332,6 @@ return {
         end
       end
       merge_linters("python",     { "ruff" })
-      merge_linters("javascript", { "eslint_d" })
-      merge_linters("typescript", { "eslint_d" })
       merge_linters("ruby",       { "rubocop" })
 
       if vim.g.enable_pylint == true and vim.fn.executable("pylint") == 1 then

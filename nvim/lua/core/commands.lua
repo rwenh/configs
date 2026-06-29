@@ -186,7 +186,7 @@ cmd("MasonInstallAll", function(opts)
     vim.notify("MasonInstallAll is already running — please wait", vim.log.levels.WARN); return
   end
 
-  local pkgs = MASON_PACKAGES.get()
+  local pkgs = MASON_PACKAGES.get("all")
 
   -- ── Dry-run mode ──────────────────────────────────────────────────────────
   if dry_run then

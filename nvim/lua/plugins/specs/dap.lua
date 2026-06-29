@@ -157,7 +157,9 @@ return {
 
       local function setup_java()
         dap.configurations.java = {
-          { type = "java", request = "attach", name = "Debug (Attach)", hostName = "127.0.0.1", port = 5005 },
+          { type = "java", request = "attach", name = "Debug (Attach)",
+  hostName = "127.0.0.1",
+  port = function() return tonumber(vim.fn.input("JDWP port [5005]: ")) or 5005 end },
           { type = "java", request = "launch", name = "Debug (Launch)", mainClass = "${file}" },
         }
       end
@@ -321,7 +323,7 @@ return {
       local deferred = {
         { pattern = "java",                                                           fn = setup_java,     suffix = "Java"    },
         { pattern = "kotlin",                                                         fn = setup_kotlin,   suffix = "Kotlin"  },
-        { pattern = { "c","cpp","rust" },                                             fn = setup_codelldb, suffix = "Codelldb"},
+        { pattern = { "c","cpp","rust","zig" },                                       fn = setup_codelldb, suffix = "Codelldb"},
         { pattern = "go",                                                             fn = setup_go,       suffix = "Go"      },
         { pattern = { "javascript","typescript","javascriptreact","typescriptreact"}, fn = setup_js,       suffix = "Js"      },
         { pattern = "ruby",                                                           fn = setup_ruby,     suffix = "Ruby"    },
@@ -417,6 +419,14 @@ return {
       dap.listeners.after.event_initialized["bp_autosave"] = function()
         start_bp_autosave()
       end
+      local function stop_bp_autosave()
+        if _bp_autosave_timer then
+          pcall(function() _bp_autosave_timer:stop(); _bp_autosave_timer:close() end)
+          _bp_autosave_timer = nil
+        end
+      end
+      dap.listeners.before.event_terminated["bp_autosave"] = stop_bp_autosave
+      dap.listeners.before.event_exited["bp_autosave"]     = stop_bp_autosave
 
       vim.api.nvim_create_autocmd("VimLeavePre", {
         group    = vim.api.nvim_create_augroup("DapBpAutosaveStop", { clear = true }),

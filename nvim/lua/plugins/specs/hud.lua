@@ -76,28 +76,26 @@ return {
       vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
         group    = vim.api.nvim_create_augroup("WinbarFallback", { clear = true }),
         callback = function(e)
-          if vim.bo[e.buf].buftype ~= "" then vim.wo.winbar = nil; return end
-
           local win = vim.api.nvim_get_current_win()
 
+          if vim.bo[e.buf].buftype ~= "" then
+            pcall(vim.api.nvim_set_option_value, "winbar", "", { win = win })
+            return
+          end
+
           vim.defer_fn(function()
-            -- The window may have been closed by the time the timer fires.
             if not vim.api.nvim_win_is_valid(win) then return end
 
-            -- Read and write winbar on the captured window, not the current one.
-            local existing = pcall(function()
-              return vim.api.nvim_win_get_option(win, "winbar")
-            end)
             local wb
             local ok_wb = pcall(function()
-              wb = vim.api.nvim_win_get_option(win, "winbar")
+              wb = vim.api.nvim_get_option_value("winbar", { win = win })
             end)
-            if ok_wb and wb and wb ~= "" then return end  -- barbecue already set it
+            if ok_wb and wb and wb ~= "" then return end
 
             local buf = vim.api.nvim_win_get_buf(win)
             local rel = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":~:.")
             if rel ~= "" then
-              pcall(vim.api.nvim_win_set_option, win, "winbar", " " .. rel)
+              pcall(vim.api.nvim_set_option_value, "winbar", " " .. rel, { win = win })
             end
           end, 50)
         end,

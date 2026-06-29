@@ -33,7 +33,9 @@ local function load_project_templates()
   end
 
   local ok_ov, overseer = pcall(require, "overseer")
-  if not ok_ov then return end
+  if not ok_ov then
+    return
+  end
 
   local registered = 0
   for _, tmpl in ipairs(templates) do
@@ -61,14 +63,25 @@ local DEBOUNCE_MS = (type(vim.g.workflow_template_debounce_ms) == "number"
   and vim.g.workflow_template_debounce_ms or 300
 
 local function schedule_template_load()
+  -- Cancel any pending timer before creating a new one.
   if _buf_enter_timer then
-    pcall(function() _buf_enter_timer:stop() end)
+    pcall(function()
+      _buf_enter_timer:stop()
+      _buf_enter_timer:close()
+    end)
     _buf_enter_timer = nil
   end
-  _buf_enter_timer = vim.defer_fn(function()
+
+  local t = vim.uv.new_timer()
+  _buf_enter_timer = t
+
+  t:start(DEBOUNCE_MS, 0, vim.schedule_wrap(function()
+    -- If a newer timer has replaced us, bail without touching it.
+    if _buf_enter_timer ~= t then return end
+    pcall(function() t:stop(); t:close() end)
     _buf_enter_timer = nil
     load_project_templates()
-  end, DEBOUNCE_MS)
+  end))
 end
 
 -- ── Inline shell-command runner ────────────────────────────────────────────
@@ -206,6 +219,19 @@ return {
           end
         end,
         desc = "Debounced .overseer.lua template load on buffer enter",
+      })
+
+      -- Stop any pending debounce timer on exit to avoid libuv handle leaks.
+      vim.api.nvim_create_autocmd("VimLeavePre", {
+        group    = vim.api.nvim_create_augroup("OverseerTimerCleanup", { clear = true }),
+        once     = true,
+        callback = function()
+          if _buf_enter_timer then
+            pcall(function() _buf_enter_timer:stop(); _buf_enter_timer:close() end)
+            _buf_enter_timer = nil
+          end
+        end,
+        desc = "Stop pending workflow debounce timer on Vim exit",
       })
     end,
   },

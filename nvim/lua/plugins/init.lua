@@ -1,4 +1,4 @@
--- lua/plugins/init.lua — lazy.nvim bootstrap and spec loader
+-- lua/plugins/init.lua — lazy.nvim spec loader
 --
 -- LOCKFILE GUIDANCE ─────────────────────────────────────────────────────────
 --   1. After a clean install or after :Lazy update, run:
@@ -23,12 +23,6 @@
 -- ────────────────────────────────────────────────────────────────────────────
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-
-if not vim.uv.fs_stat(lazypath) then
-  local repo = "https://github.com/folke/lazy.nvim.git"
-  vim.fn.system({ "git","clone","--filter=blob:none","--branch=stable", repo, lazypath })
-end
-
 vim.opt.rtp:prepend(lazypath)
 
 -- ── Spec loader ──────────────────────────────────────────────────────────────
@@ -90,32 +84,32 @@ require("lazy").setup(specs, {
     version = false,
     lazy    = true,
   },
-  install  = { colorscheme = { "tokyonight","catppuccin","habamax" } },
+  install  = { colorscheme = { "tokyonight", "catppuccin", "habamax" } },
   checker  = {
-    enabled = true,
-    notify  = false,
-    frequency = 86400, -- daily
+    enabled   = true,
+    notify    = false,
+    frequency = 86400,   -- daily
   },
   change_detection = { enabled = true, notify = false },
   ui = {
     border = "rounded",
     icons  = {
-      cmd        = " ", config   = " ", event    = " ",
-      ft         = " ", init     = " ", imports  = " ",
-      keys       = " ", plugin   = " ", runtime  = " ",
-      require    = " ", source   = " ", start    = " ",
-      task       = " ", lazy     = "󰒲 ", not_loaded = "󰒲 ",
-      loaded     = "●",  list     = { "●", "➜", "★", "‒" },
+      cmd        = " ", config     = " ", event    = " ",
+      ft         = " ", init       = " ", imports  = " ",
+      keys       = " ", plugin     = " ", runtime  = " ",
+      require    = " ", source     = " ", start    = " ",
+      task       = " ", lazy       = "󰒲 ", not_loaded = "󰒲 ",
+      loaded     = "●",  list      = { "●", "➜", "★", "‒" },
     },
   },
   performance = {
-    cache      = { enabled = true },
+    cache          = { enabled = true },
     reset_packpath = true,
     rtp = {
       disabled_plugins = {
-        "gzip","matchit","matchparen","tarPlugin","tohtml","tutor","zipPlugin",
-        "2html_plugin","getscript","getscriptPlugin","vimball","vimballPlugin",
-        "rrhelper","logiPat","spellfile_plugin",
+        "gzip", "matchit", "matchparen", "tarPlugin", "tohtml", "tutor",
+        "zipPlugin", "2html_plugin", "getscript", "getscriptPlugin",
+        "vimball", "vimballPlugin", "rrhelper", "logiPat", "spellfile_plugin",
       },
     },
   },
