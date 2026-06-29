@@ -98,6 +98,76 @@ function! FeatureEnabled(name) abort
   return get(g:, 'module_' . a:name . '_enabled', 0)
 endfunction
 
+" --- Which-key registry (single source of truth) -----------------------------
+"
+" FIX: previously every <leader> mapping's description was hand-duplicated
+" into a separate giant g:which_key_map literal in Layer 7, with no link
+" between the two — easy to add/rename a mapping and forget the label, or
+" vice versa. Now Map()/MapGroup() accept an optional 'desc' (and MapGroup
+" accepts a reserved '__name__' opts key for the group label) and write
+" straight into g:which_key_map themselves. The literal table is gone;
+" this dict is the only thing which-key ever reads.
+"
+" Limitation (documented, not hidden): lazy-loaded modules (git/lsp/test/db/
+" rest/ale all use lazy='buf') only register their which-key entries once
+" they actually load on first BufReadPost. In practice that fires before a
+" person reaches for <leader>, but on a no-buffer Startify screen the menu
+" will be momentarily thinner than before. Acceptable trade-off for a menu
+" that can no longer drift from the real mappings.
+
+let g:which_key_map = {}
+
+function! s:WKPath(lhs) abort
+  let l:s = a:lhs
+  if l:s[0:7] ==# '<leader>'
+    let l:s = l:s[8:]
+  elseif l:s[0:12] ==# '<localleader>'
+    let l:s = l:s[13:]
+  else
+    return []
+  endif
+  let l:segments = []
+  let l:i = 0
+  while l:i < len(l:s)
+    if l:s[l:i] ==# '<'
+      let l:close = stridx(l:s, '>', l:i)
+      if l:close >= 0
+        call add(l:segments, l:s[l:i : l:close])
+        let l:i = l:close + 1
+        continue
+      endif
+    endif
+    call add(l:segments, l:s[l:i])
+    let l:i += 1
+  endwhile
+  return l:segments
+endfunction
+
+function! s:WKSetDesc(lhs, desc) abort
+  let l:path = s:WKPath(a:lhs)
+  if empty(l:path) | return | endif
+  let l:node = g:which_key_map
+  for l:seg in l:path[:-2]
+    if !has_key(l:node, l:seg) || type(l:node[l:seg]) != type({})
+      let l:node[l:seg] = {}
+    endif
+    let l:node = l:node[l:seg]
+  endfor
+  let l:node[l:path[-1]] = a:desc
+endfunction
+
+function! s:WKSetGroup(prefix, name) abort
+  let l:path = s:WKPath(a:prefix)
+  let l:node = g:which_key_map
+  for l:seg in l:path
+    if !has_key(l:node, l:seg) || type(l:node[l:seg]) != type({})
+      let l:node[l:seg] = {}
+    endif
+    let l:node = l:node[l:seg]
+  endfor
+  let l:node.name = a:name
+endfunction
+
 " --- Map() -------------------------------------------------------------------
 
 function! Map(mode, lhs, rhs, opts) abort
@@ -110,12 +180,18 @@ function! Map(mode, lhs, rhs, opts) abort
   let l:nore   = get(a:opts, 'noremap',1) ? 'noremap'  : 'map'
   let l:flags  = join(filter([l:silent, l:expr, l:buf], '!empty(v:val)'), ' ')
   execute a:mode . l:nore . ' ' . l:flags . ' ' . a:lhs . ' ' . a:rhs
+  if a:mode ==# 'n' && has_key(a:opts, 'desc')
+    call s:WKSetDesc(a:lhs, a:opts.desc)
+  endif
 endfunction
 
 " --- MapGroup() --------------------------------------------------------------
 
 function! MapGroup(prefix, maps, opts, ...) abort
   let l:mode = get(a:000, 0, 'n')
+  if has_key(a:opts, '__name__')
+    call s:WKSetGroup(a:prefix, a:opts['__name__'])
+  endif
   for [l:key, l:rhs] in items(a:maps)
     call Map(l:mode, a:prefix . l:key, l:rhs, get(a:opts, l:key, {}))
   endfor
@@ -474,7 +550,7 @@ Plug 'hrsh7th/vim-vsnip'
 Plug 'honza/vim-snippets'
 
 " LINTING
-if g:vimide_diagnostics !=# 'coc'
+if g:module_ale_enabled
   Plug 'dense-analysis/ale'
 endif
 
@@ -571,6 +647,34 @@ call Augroup('PlugAutoInstall', [
   \ 'VimEnter * ++once call s:CheckMissingPlugins()',
   \ ])
 
+" --- Reproducibility: pin/restore exact plugin commits -----------------------
+" FIX: ~70 Plug calls above have no version pinning, so :PlugUpdate can
+" silently change behavior underneath you. Rather than hand-fabricate commit
+" hashes (which would be guesswork and could just as easily break installs),
+" wrap vim-plug's own snapshot mechanism: lock the commits you currently have
+" working, commit that file to your dotfiles, restore it on a fresh machine.
+"   :PlugLock     → write current commits to ~/.vim/plugin-lock.vim
+"   :PlugInstall  → (on a new machine) pull plugins at latest
+"   :PlugRestore  → check out the pinned commits from plugin-lock.vim
+let g:vimide_lockfile = expand('~/.vim/plugin-lock.vim')
+
+function! s:PlugLock() abort
+  execute 'PlugSnapshot! ' . fnameescape(g:vimide_lockfile)
+  call Log('Plugin commits locked to ' . g:vimide_lockfile, 'info')
+endfunction
+
+function! s:PlugRestoreLock() abort
+  if !filereadable(g:vimide_lockfile)
+    call Log('No lockfile at ' . g:vimide_lockfile . ' — run :PlugLock first', 'warn')
+    return
+  endif
+  execute 'source ' . fnameescape(g:vimide_lockfile)
+  call Log('Plugins restored from ' . g:vimide_lockfile, 'info')
+endfunction
+
+call CreateCommand('PlugLock',    function('s:PlugLock'),        {})
+call CreateCommand('PlugRestore', function('s:PlugRestoreLock'), {})
+
 " =============================================================================
 " LAYER 4: COLORSCHEME & UI
 " =============================================================================
@@ -656,9 +760,11 @@ call Map('n', 'n', 'nzzzv', {})
 call Map('n', 'N', 'Nzzzv', {})
 
 " Config — all vim-meta under <leader>v
-call Map('n', '<leader>ve', ':edit $MYVIMRC<CR>', {})
-call Map('n', '<leader>vr', ':source $MYVIMRC \| call Log("reloaded", "info")<CR>', {})
-call Map('n', '<leader>vp', ':FindProjectRoot<CR>', {})
+call Map('n', '<leader>ve', ':edit $MYVIMRC<CR>', { 'desc': 'edit config' })
+call Map('n', '<leader>vr', ':source $MYVIMRC \| call Log("reloaded", "info")<CR>', { 'desc': 'reload config' })
+call Map('n', '<leader>vp', ':FindProjectRoot<CR>', { 'desc': 'find project root' })
+call Map('n', '<leader>vl', ':LintConfig<CR>', { 'desc': 'lint config (vint)' })
+call s:WKSetGroup('<leader>v', '+vim')
 
 " Save
 call Map('n', '<C-s>', ':write<CR>', {})
@@ -674,25 +780,35 @@ call MapGroup('<leader>w', {
   \ 'z': ':MaximizerToggle<CR>',
   \ 'q': ':quit<CR>',
   \ 'Q': ':quit!<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+window',
+  \ 'v': { 'desc': 'vsplit' },   's': { 'desc': 'split' },
+  \ 'c': { 'desc': 'close' },    'o': { 'desc': 'only' },
+  \ '=': { 'desc': 'equalize' }, 'z': { 'desc': 'maximize' },
+  \ 'q': { 'desc': 'quit' },     'Q': { 'desc': 'force quit' },
+  \ })
 
-call Map('n', '<leader>w+', ':resize +2<CR>', {})
-call Map('n', '<leader>w-', ':resize -2<CR>', {})
-call Map('n', '<leader>w[', ':vertical resize -2<CR>', {})
-call Map('n', '<leader>w]', ':vertical resize +2<CR>', {})
+call Map('n', '<leader>w+', ':resize +2<CR>', { 'desc': 'height +2' })
+call Map('n', '<leader>w-', ':resize -2<CR>', { 'desc': 'height -2' })
+call Map('n', '<leader>w[', ':vertical resize -2<CR>', { 'desc': 'width -2' })
+call Map('n', '<leader>w]', ':vertical resize +2<CR>', { 'desc': 'width +2' })
 
 " Buffer management
 " ]b / [b  — cycle buffers (defined above, preserves <C-i> jumplist)
-call Map('n', '<leader><Tab>', '<C-^>', {})
+call Map('n', '<leader><Tab>', '<C-^>', { 'desc': 'last buffer' })
 call MapGroup('<leader>b', {
   \ 'd': ':bdelete<CR>',
   \ 'D': ':bdelete!<CR>',
   \ 'C': ':CleanBuffers<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+buffer',
+  \ 'd': { 'desc': 'delete' }, 'D': { 'desc': 'force delete' }, 'C': { 'desc': 'clean all' },
+  \ })
 
 " Search
-call Map('n', '<leader>sc', ':nohlsearch<CR>', {})
-call Map('n', '<leader>sr', ':%s/\<<C-r><C-w>\>//gc<Left><Left><Left>', { 'silent': 0 })
+call s:WKSetGroup('<leader>s', '+search')
+call Map('n', '<leader>sc', ':nohlsearch<CR>', { 'desc': 'clear hl' })
+call Map('n', '<leader>sr', ':%s/\<<C-r><C-w>\>//gc<Left><Left><Left>', { 'silent': 0, 'desc': 'replace word' })
 call Map('x', '<leader>sr', '"hy:%s/<C-r>h//gc<Left><Left><Left>', { 'silent': 0 })
 
 " Quickfix
@@ -703,7 +819,12 @@ call MapGroup('<leader>q', {
   \ 'p': ':cprevious<CR>',
   \ 'q': ':qa<CR>',
   \ 'Q': ':qa!<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+quickfix/quit',
+  \ 'o': { 'desc': 'open' }, 'c': { 'desc': 'close' },
+  \ 'n': { 'desc': 'next' }, 'p': { 'desc': 'prev' },
+  \ 'q': { 'desc': 'quit all' }, 'Q': { 'desc': 'force quit all' },
+  \ })
 
 " Location list
 call MapGroup('<leader>l', {
@@ -711,7 +832,11 @@ call MapGroup('<leader>l', {
   \ 'c': ':lclose<CR>',
   \ 'n': ':lnext<CR>',
   \ 'p': ':lprevious<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+loclist',
+  \ 'o': { 'desc': 'open' }, 'c': { 'desc': 'close' },
+  \ 'n': { 'desc': 'next' }, 'p': { 'desc': 'prev' },
+  \ })
 
 " FZF
 call MapGroup('<leader>f', {
@@ -726,27 +851,42 @@ call MapGroup('<leader>f', {
   \ 'k': ':Maps<CR>',
   \ 'm': ':Marks<CR>',
   \ 'p': ':Files %:h<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+find/fzf',
+  \ 'f': { 'desc': 'files' },     'g': { 'desc': 'git files' },
+  \ 'b': { 'desc': 'buffers' },   'h': { 'desc': 'history' },
+  \ 'r': { 'desc': 'rg search' }, 'l': { 'desc': 'lines' },
+  \ 't': { 'desc': 'tags' },      'c': { 'desc': 'commands' },
+  \ 'k': { 'desc': 'keymaps' },   'm': { 'desc': 'marks' },
+  \ 'p': { 'desc': 'files in dir' },
+  \ })
 
 " Diff mode
+" NOTE: these two are buffer-local, conditional (OptionSet diff) maps created
+" outside Map(), so they can't self-register with which-key — set by hand.
 call Augroup('DiffMappings', [
   \ 'OptionSet diff if v:option_new'
   \   . ' | nnoremap <silent><buffer> <leader>dg :diffget<CR>'
   \   . ' | nnoremap <silent><buffer> <leader>dp :diffput<CR>'
   \   . ' | endif',
   \ ])
+call s:WKSetGroup('<leader>d', '+diff')
+call s:WKSetDesc('<leader>dg', 'diffget (diff mode)')
+call s:WKSetDesc('<leader>dp', 'diffput (diff mode)')
 
 " File explorer
+call s:WKSetGroup('<leader>e', '+explorer')
 call Map('n', '<leader>e',  ':Fern . -drawer -reveal=% -toggle<CR>', {})
-call Map('n', '<leader>er', ':Fern . -drawer -reveal=%<CR>', {})
+call Map('n', '<leader>er', ':Fern . -drawer -reveal=%<CR>', { 'desc': 'reveal in tree' })
 
 " Terminal
 call Map('n', '<C-\>', ':FloatermToggle<CR>', {})
 call Map('t', '<C-\>', '<C-\><C-n>:FloatermToggle<CR>', {})
 
 " Markdown
-call Map('n', '<leader>mp', ':MarkdownPreview<CR>', {})
-call Map('n', '<leader>ms', ':MarkdownPreviewStop<CR>', {})
+call s:WKSetGroup('<leader>m', '+markdown')
+call Map('n', '<leader>mp', ':MarkdownPreview<CR>', { 'desc': 'preview' })
+call Map('n', '<leader>ms', ':MarkdownPreviewStop<CR>', { 'desc': 'stop preview' })
 
 " Toggles
 call MapGroup('<leader>u', {
@@ -762,7 +902,15 @@ call MapGroup('<leader>u', {
   \ 'x': ':ContextToggle<CR>',
   \ 'u': ':UndotreeToggle<CR>',
   \ 't': ':TagbarToggle<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+toggle',
+  \ 'n': { 'desc': 'numbers' },        'r': { 'desc': 'rel numbers' },
+  \ 'w': { 'desc': 'wrap' },           's': { 'desc': 'spell' },
+  \ 'h': { 'desc': 'hlsearch' },       'b': { 'desc': 'background' },
+  \ 'c': { 'desc': 'cursorline' },     'l': { 'desc': 'listchars' },
+  \ 'i': { 'desc': 'indent guides' },  'x': { 'desc': 'context' },
+  \ 'u': { 'desc': 'undotree' },       't': { 'desc': 'tagbar' },
+  \ })
 
 " (tagbar → <leader>ut | undotree → <leader>uu — both in the toggle group above)
 
@@ -776,15 +924,22 @@ call MapGroup('<leader>S', {
   \ 't': ':Startify<CR>',
   \ 'q': ':qa<CR>',
   \ 'Q': ':qa!<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+session',
+  \ 'S': { 'desc': 'save' },     'L': { 'desc': 'load' },
+  \ 'd': { 'desc': 'delete' },   'c': { 'desc': 'close' },
+  \ 'o': { 'desc': 'obsession' }, 't': { 'desc': 'startify' },
+  \ 'q': { 'desc': 'quit all' },  'Q': { 'desc': 'force quit all' },
+  \ })
 
 " Vim / meta
-call Map('n', '<leader>vi', ':VimInfo<CR>', {})
+call Map('n', '<leader>vi', ':VimInfo<CR>', { 'desc': 'viminfo' })
 
 " Clipboard
-call Map('n', '<leader>yp', '"+p', {})
-call Map('n', '<leader>yP', '"+P', {})
-call Map('n', '<leader>yy', '"+yy', {})
+call s:WKSetGroup('<leader>y', '+yank/clipboard')
+call Map('n', '<leader>yp', '"+p', { 'desc': 'paste after' })
+call Map('n', '<leader>yP', '"+P', { 'desc': 'paste before' })
+call Map('n', '<leader>yy', '"+yy', { 'desc': 'yank line' })
 call Map('x', '<leader>y',  '"+y', {})
 
 " F5-F8 runners: run / compile / build / test  (F1-F4, F10-F12 reserved for debug module)
@@ -905,8 +1060,15 @@ call MapGroup('<leader>T', {
   \ 'k': ':FloatermKill<CR>',
   \ 'l': ':FloatermNext<CR>',
   \ 'h': ':FloatermPrev<CR>',
-  \ }, {})
+  \ }, {
+  \ '__name__': '+terminal',
+  \ 'n': { 'desc': 'new' }, 'k': { 'desc': 'kill' },
+  \ 'l': { 'desc': 'next' }, 'h': { 'desc': 'prev' },
+  \ })
 call Map('x', '<leader>Ts', ':FloatermSend<CR>', {})
+" 'send' is visual-mode only — still worth a which-key label for discovery,
+" even though normal-mode <leader>Ts can't actually fire it.
+call s:WKSetDesc('<leader>Ts', 'send (visual mode)')
 
 " --- vim-vsnip ---------------------------------------------------------------
 " These use <expr> + imap/smap; complex nested quotes make Map() unwieldy.
@@ -1050,86 +1212,13 @@ let g:startify_custom_header = [
   \ ]
 
 " --- which-key ---------------------------------------------------------------
+" g:which_key_map is no longer a literal here — it's populated incrementally
+" by every Map()/MapGroup() call across this file via the 'desc'/'__name__'
+" opts (see s:WKSetDesc/s:WKSetGroup in Layer 1). which_key#register stores a
+" reference to the variable BY NAME, so it stays correct as Layer 8 modules
+" populate it further (including lazily, on load).
 
 call which_key#register('<Space>', "g:which_key_map")
-let g:which_key_map = {
-  \ '<Tab>': 'last buffer',
-  \ 'e': {
-  \   'name': '+explorer',
-  \   'r': 'reveal in tree',
-  \ },
-  \ 'v': {
-  \   'name': '+vim',
-  \   'e': 'edit config',
-  \   'r': 'reload config',
-  \   'p': 'find project root',
-  \   'i': 'viminfo',
-  \ },
-  \ 'w': {
-  \   'name': '+window',
-  \   'v': 'vsplit', 's': 'split', 'c': 'close', 'o': 'only',
-  \   '=': 'equalize', 'z': 'maximize',
-  \   'q': 'quit', 'Q': 'force quit',
-  \   '+': 'height +2', '-': 'height -2',
-  \   '[': 'width -2',  ']': 'width +2',
-  \ },
-  \ 'b': {
-  \   'name': '+buffer',
-  \   'd': 'delete', 'D': 'force delete', 'C': 'clean all',
-  \ },
-  \ 'f': {
-  \   'name': '+find/fzf',
-  \   'f': 'files', 'g': 'git files', 'b': 'buffers', 'h': 'history',
-  \   'r': 'rg search', 'l': 'lines', 't': 'tags', 'c': 'commands',
-  \   'k': 'keymaps', 'm': 'marks', 'p': 'files in dir',
-  \ },
-  \ 'g': {
-  \   'name': '+git',
-  \   'g': 'status', 'c': 'commit', 'p': 'push', 'l': 'log', 'L': 'log file',
-  \   'd': 'diff split', 'b': 'blame', 'B': 'browse', 'f': 'fetch',
-  \   'm': 'merge', 'R': 'rebase', 'A': 'add file', 'S': 'stash', 'P': 'stash pop',
-  \ },
-  \ 'h': { 'name': '+hunk', 's': 'stage', 'u': 'undo', 'p': 'preview' },
-  \ 't': { 'name': '+test', 't': 'nearest', 'T': 'file', 'a': 'suite', 'R': 'last', 'v': 'visit' },
-  \ 'T': { 'name': '+terminal', 'n': 'new', 'k': 'kill', 'l': 'next', 'h': 'prev', 's': 'send' },
-  \ 'u': {
-  \   'name': '+toggle',
-  \   'n': 'numbers', 'r': 'rel numbers', 'w': 'wrap', 's': 'spell',
-  \   'h': 'hlsearch', 'b': 'background', 'c': 'cursorline', 'l': 'listchars',
-  \   'i': 'indent guides', 'x': 'context',
-  \   'u': 'undotree', 't': 'tagbar',
-  \ },
-  \ 's': { 'name': '+search', 'c': 'clear hl', 'r': 'replace word' },
-  \ 'y': {
-  \   'name': '+yank/clipboard',
-  \   'y': 'yank line', 'p': 'paste after', 'P': 'paste before',
-  \ },
-  \ 'c': {
-  \   'name': '+lsp/coc',
-  \   'n': 'rename symbol',
-  \   'a': 'code action',
-  \   'f': 'format',
-  \   's': 'outline',
-  \   'S': 'symbols',
-  \   'd': 'diagnostics',
-  \ },
-  \ 'r': { 'name': '+rest', 'r': 'rest query' },
-  \ 'q': { 'name': '+quickfix/quit', 'o': 'open', 'c': 'close', 'n': 'next', 'p': 'prev', 'q': 'quit all', 'Q': 'force quit all' },
-  \ 'l': { 'name': '+loclist',  'o': 'open', 'c': 'close', 'n': 'next', 'p': 'prev' },
-  \ 'd': { 'name': '+diff', 'g': 'diffget (diff mode)', 'p': 'diffput (diff mode)' },
-  \ 'x': { 'name': '+debug', 'x': 'reset', 'X': 'clear breakpoints', 'i': 'inspect', 'w': 'add watch' },
-  \ 'D': { 'name': '+database', 'u': 'toggle UI', 'f': 'find buffer' },
-  \ 'S': {
-  \   'name': '+session',
-  \   'S': 'save', 'L': 'load', 'd': 'delete', 'c': 'close', 'o': 'obsession', 't': 'startify',
-  \   'q': 'quit all', 'Q': 'force quit all',
-  \ },
-  \ 'm': { 'name': '+markdown', 'p': 'preview', 's': 'stop preview' },
-  \ }
-
-if g:vimide_diagnostics !=# 'coc'
-  let g:which_key_map['a'] = { 'name': '+ale', 'n': 'next', 'p': 'prev', 'f': 'fix', 'd': 'detail' }
-endif
 
 " =============================================================================
 " LAYER 8: MODULE DEFINITIONS
@@ -1168,13 +1257,25 @@ function! s:git_init() abort
     \ 'A': ':Git add %<CR>',
     \ 'S': ':Git stash<CR>',
     \ 'P': ':Git stash pop<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+git',
+    \ 'g': { 'desc': 'status' },     'c': { 'desc': 'commit' },
+    \ 'p': { 'desc': 'push' },       'l': { 'desc': 'log' },
+    \ 'L': { 'desc': 'log file' },   'd': { 'desc': 'diff split' },
+    \ 'b': { 'desc': 'blame' },      'B': { 'desc': 'browse' },
+    \ 'f': { 'desc': 'fetch' },      'm': { 'desc': 'merge' },
+    \ 'R': { 'desc': 'rebase' },     'A': { 'desc': 'add file' },
+    \ 'S': { 'desc': 'stash' },      'P': { 'desc': 'stash pop' },
+    \ })
 
   call MapGroup('<leader>h', {
     \ 's': ':GitGutterStageHunk<CR>',
     \ 'u': ':GitGutterUndoHunk<CR>',
     \ 'p': ':GitGutterPreviewHunk<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+hunk',
+    \ 's': { 'desc': 'stage' }, 'u': { 'desc': 'undo' }, 'p': { 'desc': 'preview' },
+    \ })
 
   call Map('n', ']h', '<Plug>(GitGutterNextHunk)', { 'noremap': 0 })
   call Map('n', '[h', '<Plug>(GitGutterPrevHunk)', { 'noremap': 0 })
@@ -1214,16 +1315,19 @@ function! s:lsp_init() abort
   call Map('n', 'gr', '<Plug>(coc-references)',        { 'noremap': 0 })
   call Map('n', 'K',  ':call CocActionAsync("doHover")<CR>', {})
 
-  call Map('n', '<leader>cn', '<Plug>(coc-rename)',            { 'noremap': 0 })
-  call Map('n', '<leader>ca', '<Plug>(coc-codeaction-cursor)', { 'noremap': 0 })
-  call Map('n', '<leader>cf', ':call CocAction("format")<CR>', {})
+  call Map('n', '<leader>cn', '<Plug>(coc-rename)',            { 'noremap': 0, 'desc': 'rename symbol' })
+  call Map('n', '<leader>ca', '<Plug>(coc-codeaction-cursor)', { 'noremap': 0, 'desc': 'code action' })
+  call Map('n', '<leader>cf', ':call CocAction("format")<CR>', { 'desc': 'format' })
   call Map('x', '<leader>cf', '<Plug>(coc-format-selected)',   { 'noremap': 0 })
 
   call MapGroup('<leader>c', {
     \ 's': ':CocList outline<CR>',
     \ 'S': ':CocList -I symbols<CR>',
     \ 'd': ':CocList diagnostics<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+lsp/coc',
+    \ 's': { 'desc': 'outline' }, 'S': { 'desc': 'symbols' }, 'd': { 'desc': 'diagnostics' },
+    \ })
 
   call Map('n', ']g', '<Plug>(coc-diagnostic-next)',       { 'noremap': 0 })
   call Map('n', '[g', '<Plug>(coc-diagnostic-prev)',       { 'noremap': 0 })
@@ -1247,7 +1351,7 @@ call s:RegisterModule('lsp', {
 
 " --- ALE (non-coc diagnostics) -----------------------------------------------
 
-if g:vimide_diagnostics !=# 'coc'
+if g:module_ale_enabled
   function! s:ale_init() abort
     let g:ale_sign_error           = '✘'
     let g:ale_sign_warning         = '▲'
@@ -1277,7 +1381,11 @@ if g:vimide_diagnostics !=# 'coc'
       \ 'p': ':ALEPreviousWrap<CR>',
       \ 'f': ':ALEFix<CR>',
       \ 'd': ':ALEDetail<CR>',
-      \ }, {})
+      \ }, {
+      \ '__name__': '+ale',
+      \ 'n': { 'desc': 'next' }, 'p': { 'desc': 'prev' },
+      \ 'f': { 'desc': 'fix' },  'd': { 'desc': 'detail' },
+      \ })
     call Map('n', ']a', '<Plug>(ale_next_wrap)', { 'noremap': 0 })
     call Map('n', '[a', '<Plug>(ale_prev_wrap)', { 'noremap': 0 })
   endfunction
@@ -1301,7 +1409,11 @@ function! s:debug_init() abort
     \ 'X': ':call vimspector#ClearBreakpoints()<CR>',
     \ 'i': ':call vimspector#BalloonEval()<CR>',
     \ 'w': ':call vimspector#AddWatch()<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+debug',
+    \ 'x': { 'desc': 'reset' }, 'X': { 'desc': 'clear breakpoints' },
+    \ 'i': { 'desc': 'inspect' }, 'w': { 'desc': 'add watch' },
+    \ })
 
   call Map('n', '<F1>',  ':call vimspector#Continue()<CR>', {})
   call Map('n', '<F2>',  ':call vimspector#StepOver()<CR>', {})
@@ -1337,7 +1449,11 @@ function! s:test_init() abort
     \ 'a': ':TestSuite<CR>',
     \ 'R': ':TestLast<CR>',
     \ 'v': ':TestVisit<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+test',
+    \ 't': { 'desc': 'nearest' }, 'T': { 'desc': 'file' }, 'a': { 'desc': 'suite' },
+    \ 'R': { 'desc': 'last' },    'v': { 'desc': 'visit' },
+    \ })
 endfunction
 
 call s:RegisterModule('test', {
@@ -1359,7 +1475,10 @@ function! s:db_init() abort
   call MapGroup('<leader>D', {
     \ 'u': ':DBUIToggle<CR>',
     \ 'f': ':DBUIFindBuffer<CR>',
-    \ }, {})
+    \ }, {
+    \ '__name__': '+database',
+    \ 'u': { 'desc': 'toggle UI' }, 'f': { 'desc': 'find buffer' },
+    \ })
 
   call Augroup('DatabaseSQL', [
     \ 'FileType sql setlocal omnifunc=vim_dadbod_completion#omni',
@@ -1391,7 +1510,8 @@ function! s:rest_init() abort
     \ }
   let g:vrc_output_buffer_name = '__VRC_OUTPUT__'
 
-  call Map('n', '<leader>rr', ':call VrcQuery()<CR>', {})
+  call s:WKSetGroup('<leader>r', '+rest')
+  call Map('n', '<leader>rr', ':call VrcQuery()<CR>', { 'desc': 'rest query' })
 endfunction
 
 call s:RegisterModule('rest', {
@@ -1599,7 +1719,7 @@ call Augroup('ProjectRoot', [
   \ ])
 
 function! s:LspRestart() abort
-  if exists(':CocRestart') | CocRestart | endif
+  if exists(':CocRestart') | execute 'CocRestart' | endif
 endfunction
 
 call RegisterTask('project:root', { 'run': function('s:InitProjectRoot') })
@@ -1621,6 +1741,7 @@ function! s:VimInfo() abort
   echo 'Project root: ' . State('project_root')
   let l:lt = State('last_task')
   echo 'Last task   : ' . (type(l:lt) == type({}) ? get(l:lt, 'name', '(none)') : '(none)')
+  echo 'Plugin lock : ' . (filereadable(g:vimide_lockfile) ? g:vimide_lockfile : 'none — run :PlugLock')
   echo '--- modules ---'
   for [l:name, l:m] in items(s:modules)
     let l:status = !l:m.enabled        ? 'off'
@@ -1631,7 +1752,7 @@ function! s:VimInfo() abort
   endfor
   echo '--- tools (✓ = found in PATH) ---'
   for l:t in ['node', 'python3', 'git', 'rg', 'bat', 'gopls', 'tmux',
-    \          'rustc', 'cargo', 'go', 'tsc', 'java', 'lua', 'ruby', 'elixir']
+    \          'rustc', 'cargo', 'go', 'tsc', 'java', 'lua', 'ruby', 'elixir', 'vint']
     echo printf('  %-12s: %s', l:t, executable(l:t) ? '✓' : '✗ not found')
   endfor
   echo '=================================='
@@ -1691,10 +1812,29 @@ function! s:CheckCocSettings() abort
   endif
 endfunction
 
+" --- Config self-linting (vint) ----------------------------------------------
+" FIX: nothing previously checked the vimrc itself for Vimscript footguns
+" (unused variables, deprecated syntax, etc). Wired as an opt-in command
+" rather than a startup check, since vint isn't a hard dependency.
+
+function! s:LintConfig() abort
+  if !executable('vint')
+    call Log('vint not found — pip install vim-vint', 'warn') | return
+  endif
+  let l:out = systemlist('vint --enable-neovim ' . shellescape($MYVIMRC))
+  if empty(l:out)
+    call Log('vint: no issues found', 'info') | return
+  endif
+  call setqflist(map(l:out, '{"text": v:val}'))
+  copen
+  call Log(printf('vint: %d issue(s) — see quickfix', len(l:out)), 'warn')
+endfunction
+
 call CreateCommand('VimInfo',          function('s:VimInfo'),          {})
 call CreateCommand('CleanBuffers',     function('s:CleanBuffers'),     {})
 call CreateCommand('FindProjectRoot',  function('s:InitProjectRoot'),  {})
 call CreateCommand('CheckCocSettings', function('s:CheckCocSettings'), {})
+call CreateCommand('LintConfig',       function('s:LintConfig'),       {})
 call CreateCommand('Rename',           function('s:RenameFile'),       { 'nargs': 1, 'complete': 'file' })
 
 command! ReloadConfig source $MYVIMRC <bar> call Log('Config reloaded', 'info')
