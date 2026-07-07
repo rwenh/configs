@@ -21,16 +21,10 @@
 --      can be used for critical plugins whose authors provide semver tags.
 --
 -- ────────────────────────────────────────────────────────────────────────────
+-- SPEC LOADING ─────────────────────────────────────────────────────────────
 
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 vim.opt.rtp:prepend(lazypath)
-
--- ── Spec loader ──────────────────────────────────────────────────────────────
-
-local SPEC_DIRS = {
-  "plugins.specs",
-  "plugins.specs.lang",
-}
 
 local function safe_spec(mod)
   local ok, result = pcall(require, mod)
@@ -53,25 +47,31 @@ end
 
 local function collect_specs()
   local specs = {}
-  for _, base in ipairs(SPEC_DIRS) do
-    local ok_path, base_path = pcall(function()
-      return vim.fn.stdpath("config") .. "/lua/" .. base:gsub("%.", "/")
-    end)
-    if not ok_path then goto continue end
 
-    local ok_scan, entries = pcall(vim.fn.readdir, base_path)
-    if not ok_scan then goto continue end
+  vim.list_extend(specs, safe_spec("plugins.specs"))
 
-    for _, entry in ipairs(entries) do
-      local stem = entry:match("^(.-)%.lua$")
-      if stem and stem ~= "init" and stem ~= "shared" then
-        local mod_name = base .. "." .. stem
-        vim.list_extend(specs, safe_spec(mod_name))
+  -- Language specs: auto-discovered, sorted for determinism.
+  local ok_path, lang_path = pcall(function()
+    return vim.fn.stdpath("config") .. "/lua/plugins/specs/lang"
+  end)
+  if ok_path then
+    local ok_scan, entries = pcall(vim.fn.readdir, lang_path)
+    if ok_scan then
+      table.sort(entries)
+      for _, entry in ipairs(entries) do
+        local stem = entry:match("^(.-)%.lua$")
+        if stem and stem ~= "shared" then
+          vim.list_extend(specs, safe_spec("plugins.specs.lang." .. stem))
+        end
       end
+    else
+      vim.notify(
+        "[plugins] could not read lang spec directory: " .. lang_path,
+        vim.log.levels.WARN
+      )
     end
-
-    ::continue::
   end
+
   return specs
 end
 

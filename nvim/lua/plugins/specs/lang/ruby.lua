@@ -66,15 +66,8 @@ return {
         once     = true,
         group    = vim.api.nvim_create_augroup("VimTestRubyInit", { clear = true }),
         callback = function()
-          vim.api.nvim_create_autocmd("VimEnter", {
-            pattern  = "*",
-            once     = true,
-            group    = vim.api.nvim_create_augroup("VimTestRubyStrategy", { clear = true }),
-            callback = function()
-              vim.g["test#strategy"]                  = "toggleterm"
-              vim.g["test#toggleterm#reuse_terminal"] = 1
-            end,
-          })
+          vim.g["test#strategy"]                  = "toggleterm"
+          vim.g["test#toggleterm#reuse_terminal"] = 1
           vim.schedule(check_bundler_env)
         end,
       })

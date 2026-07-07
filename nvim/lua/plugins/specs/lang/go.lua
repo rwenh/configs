@@ -4,11 +4,13 @@
 local shared = require("plugins.specs.lang.shared")
 local GO_FT = { "go", "gomod" }
 
-local _go_env_checked = false
+local _go_env_checked_root = nil
 
 local function check_go_env()
-  if _go_env_checked then return end
-  _go_env_checked = true
+  local ok_path, path_util = pcall(require, "core.util.path")
+  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  if root == _go_env_checked_root then return end
+  _go_env_checked_root = root
 
   local has_goimports = vim.fn.executable("goimports") == 1
   local has_gofumpt   = vim.fn.executable("gofumpt")   == 1
@@ -58,6 +60,15 @@ return {
       local ok, err = pcall(function() require("go").setup({ lsp_cfg = false }) end)
       if not ok then vim.notify("go.nvim setup failed: " .. tostring(err), vim.log.levels.WARN); return end
       vim.schedule(check_go_env)
+
+      vim.api.nvim_create_autocmd("DirChanged", {
+        group    = vim.api.nvim_create_augroup("GoEnvRecheck", { clear = true }),
+        callback = function()
+          local ft = vim.bo[vim.api.nvim_get_current_buf()].filetype
+          if vim.tbl_contains(GO_FT, ft) then vim.schedule(check_go_env) end
+        end,
+        desc = "Re-check Go environment on project switch",
+      })
     end,
     keys = {
       { "<leader>got", "<cmd>GoTest<cr>",     desc = "Go Test",              ft = GO_FT },

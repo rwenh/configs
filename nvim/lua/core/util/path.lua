@@ -26,7 +26,14 @@ local IGNORE_DIRS = (function()
   return t
 end)()
 
-local _cache = {}
+local _cache     = {}
+local _pkg_cache = {}
+
+local PACKAGE_MARKERS = {
+  "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
+  "setup.py", "setup.cfg", "pom.xml", "build.gradle",
+  "build.gradle.kts", "mix.exs", "rebar.config",
+}
 
 local function normalize(p)
   local n = vim.fn.fnamemodify(p, ":p")
@@ -158,7 +165,7 @@ function M.find_root_async(start_path, callback)
       end
       current    = parent
       marker_idx = 1
-      -- depth intentionally NOT incremented here
+      depth      = depth + 1
       check_next()
       return
     end
@@ -179,7 +186,42 @@ function M.find_root_async(start_path, callback)
   check_next()
 end
 
-function M.clear_cache() _cache = {} end
+function M.clear_cache() _cache = {}; _pkg_cache = {} end
+
+-- ── find_package_root ─────────────────────────────────────────────────────────
+--
+-- Like find_root() but considers only package-type markers (not VCS markers).
+-- In a monorepo, returns the nearest package root rather than the repo root.
+-- Returns nil if no package marker is found — callers should fall back to
+-- find_root() when nil is returned.
+--
+---@param start_path string?
+---@return string|nil
+function M.find_package_root(start_path)
+  start_path = start_path or vim.fn.expand("%:p:h")
+  local cache_key = normalize(start_path)
+
+  local entry = _pkg_cache[cache_key]
+  if entry and (os.time() - entry.time) < CACHE_TTL then return entry.root end
+  _pkg_cache[cache_key] = nil
+
+  local current = cache_key
+  for _ = 1, MAX_WALK_DEPTH do
+    if not is_ignored(current) then
+      for _, marker in ipairs(PACKAGE_MARKERS) do
+        if exists(current .. "/" .. marker) then
+          _pkg_cache[cache_key] = { root = current, time = os.time() }
+          return current
+        end
+      end
+    end
+    local parent = vim.fn.fnamemodify(current, ":h")
+    if parent == current or parent == "" then break end
+    current = parent
+  end
+
+  return nil
+end
 
 vim.api.nvim_create_autocmd({ "DirChangedPre", "DirChanged" }, {
   group    = vim.api.nvim_create_augroup("PathCacheClear", { clear = true }),

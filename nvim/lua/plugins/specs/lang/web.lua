@@ -25,7 +25,6 @@ end)
 
 -- ── Vite dev-server detection ─────────────────────────────────────────────
 --
--- Returns true when the project root contains a Vite config file.
 
 local function is_vite_project()
   local ok_path, path_util = pcall(require, "core.util.path")
@@ -34,7 +33,7 @@ local function is_vite_project()
 
   local configs = {
     "vite.config.ts", "vite.config.js",
-    "vite.config.mts", "vite.config.mjs", "vite.config.cjs",
+    "vite.config.mts", "vite.config.mjs", "vite.config.cjs", "vite.config.cts",
   }
   for _, name in ipairs(configs) do
     if vim.fn.filereadable(root .. "/" .. name) == 1 then return true end
@@ -88,7 +87,7 @@ return {
           if not is_vite_project() then
             vim.notify(
               "[web] No Vite config found in project root.\n"
-              .. "Expected: vite.config.{ts,js,mts,mjs,cjs}",
+              .. "Expected: vite.config.{ts,js,mts,mjs,cjs,cts}",
               vim.log.levels.WARN
             )
             return

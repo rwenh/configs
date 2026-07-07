@@ -20,6 +20,49 @@ local function path()
   return nil
 end
 
+-- ── Project config (.runner.lua) ──────────────────────────────────────────────
+--
+-- Example .runner.lua:
+--   return {
+--     python     = { run = "python -m myapp", test = "pytest tests/ -v" },
+--     javascript = { test = "npx jest --testPathPattern=src/" },
+--   }
+--
+local _project_runner_cache = {}
+
+local function load_project_runner_config()
+  local p    = path()
+  local root = (p and p.find_root()) or vim.fn.getcwd()
+  if not root or root == "" then return {} end
+  if _project_runner_cache[root] ~= nil then return _project_runner_cache[root] end
+
+  local cfg_file = root .. "/.runner.lua"
+  if vim.fn.filereadable(cfg_file) ~= 1 then
+    _project_runner_cache[root] = {}
+    return {}
+  end
+
+  local ok, result = pcall(dofile, cfg_file)
+  if not ok or type(result) ~= "table" then
+    vim.notify(
+      "[runner] .runner.lua error: " .. tostring(result),
+      vim.log.levels.WARN
+    )
+    _project_runner_cache[root] = {}
+    return {}
+  end
+
+  vim.notify("[runner] loaded project config from " .. cfg_file, vim.log.levels.INFO)
+  _project_runner_cache[root] = result
+  return result
+end
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("RunnerProjectConfigCache", { clear = true }),
+  callback = function() _project_runner_cache = {} end,
+  desc     = "Invalidate .runner.lua cache on directory change",
+})
+
 function M.gradle_or_maven(root, task)
   local escaped = vim.fn.shellescape(root)
   local gradlew  = root .. "/gradlew"
@@ -43,7 +86,7 @@ local runners = {
   rust = function(file)
     local dir = vim.fn.fnamemodify(file, ":h")
     local p   = path()
-    local cargo_root = p and p.find_root(dir)
+    local cargo_root = (p and p.find_package_root(dir)) or (p and p.find_root(dir))
     if cargo_root and vim.fn.filereadable(cargo_root .. "/Cargo.toml") == 1 then
       return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
     end
@@ -195,6 +238,18 @@ function M.run_file()
   local ft   = vim.bo.filetype
   if file == "" or vim.fn.filereadable(file) ~= 1 then vim.notify("[runner] no valid file to run", vim.log.levels.ERROR); return end
   if vim.bo.modified and (vim.g.runner_autosave ~= false) then pcall(vim.cmd, "write") end
+
+  local project_cfg = load_project_runner_config()
+  local project_run = project_cfg[ft] and project_cfg[ft].run
+  if project_run then
+    local cmd = type(project_run) == "function" and project_run(file) or tostring(project_run)
+    if cmd and cmd ~= "" then
+      local t = term()
+      if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+      return
+    end
+  end
+
   local runner_fn = runners[ft]
   if not runner_fn then vim.notify("[runner] no runner for filetype: " .. ft, vim.log.levels.WARN); return end
   local cmd = runner_fn(file)
@@ -205,18 +260,28 @@ end
 
 -- ── Public: run_nearest_function ──────────────────────────────────────────────
 --
+--
 function M.run_nearest_function()
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
+
+  local FUNCTION_NODE_TYPES = {
+    function_definition = true,  -- python, c, cpp
+    method_definition    = true,  -- javascript, typescript
+    function_declaration = true,  -- javascript, typescript, go
+    method_declaration    = true,  -- go, java
+    arrow_function         = true,  -- javascript, typescript
+    function_item          = true,  -- rust
+    method                  = true,  -- ruby
+    singleton_method        = true,  -- ruby: def self.foo
+  }
 
   local function_name = nil
   pcall(function()
     local node = vim.treesitter.get_node()
     while node do
       local node_type = node:type()
-      if node_type == "function_definition" or node_type == "method_definition"
-      or node_type == "function_declaration" or node_type == "method_declaration"
-      or node_type == "arrow_function" then
+      if FUNCTION_NODE_TYPES[node_type] then
         for i = 0, node:named_child_count() - 1 do
           local child = node:named_child(i)
           if child:type() == "identifier" or child:type() == "name" then
@@ -231,8 +296,8 @@ function M.run_nearest_function()
     end
   end)
 
-  local ok_path, path_util = pcall(require, "core.util.path")
-  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+  local p    = path()
+  local root = (p and p.find_root()) or vim.fn.getcwd()
   local er   = vim.fn.shellescape(root)
 
   local dispatch = {
@@ -254,7 +319,29 @@ function M.run_nearest_function()
     end,
     rust = function()
       if not function_name then return "cd " .. er .. " && cargo test" end
-      return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(function_name)
+      local full_path = function_name
+      pcall(function()
+        local node = vim.treesitter.get_node()
+        local parts = {}
+        while node do
+          if node:type() == "mod_item" then
+            for i = 0, node:named_child_count() - 1 do
+              local child = node:named_child(i)
+              if child:type() == "identifier" then
+                local sr, sc, er2, ec = child:range()
+                local mod_name = vim.api.nvim_buf_get_text(buf, sr, sc, er2, ec, {})[1]
+                if mod_name then table.insert(parts, 1, mod_name) end
+                break
+              end
+            end
+          end
+          node = node:parent()
+        end
+        if #parts > 0 then
+          full_path = table.concat(parts, "::") .. "::" .. function_name
+        end
+      end)
+      return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(full_path)
     end,
     ruby = function()
       if not function_name then return "cd " .. er .. " && bundle exec rspec" end
@@ -397,10 +484,21 @@ end
 
 -- ── Public: run_tests ─────────────────────────────────────────────────────────
 function M.run_tests()
-  local ft = vim.bo.filetype
-  local ok_path, path_mod = pcall(require, "core.util.path")
-  local root = (ok_path and path_mod.find_root()) or vim.fn.getcwd()
+  local ft   = vim.bo.filetype
+  local p    = path()
+  local root = (p and p.find_root()) or vim.fn.getcwd()
   local er   = vim.fn.shellescape(root)
+
+  local project_cfg  = load_project_runner_config()
+  local project_test = project_cfg[ft] and project_cfg[ft].test
+  if project_test then
+    local cmd = type(project_test) == "function" and project_test() or tostring(project_test)
+    if cmd and cmd ~= "" then
+      local t = term()
+      if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+      return
+    end
+  end
 
   local info_msgs = {
     fortran = "Fortran has no standard unit-test runner.\nUse <leader>ftb to build & run.",
@@ -416,7 +514,11 @@ function M.run_tests()
     return "cd " .. er .. " && ctest --test-dir build --output-on-failure"
   end
 
-  local js_test = function() return "cd " .. er .. " && " .. M.detect_js_test_cmd(root) end
+  local js_root = (p and p.find_package_root()) or root
+  local js_test = function()
+    return "cd " .. vim.fn.shellescape(js_root) .. " && " .. M.detect_js_test_cmd(js_root)
+  end
+
   local dispatch = {
     python          = function() return "cd " .. er .. " && pytest" end,
     rust            = function() return "cd " .. er .. " && cargo test" end,

@@ -36,9 +36,11 @@ cmd("Health", function()
     string.format("%-12s: %s", "lsp",     ok_lsp and (#clients > 0 and string.format("%d active", #clients) or "none") or "unknown"),
     string.format("%-12s: %s", "memory",  ok_mem and string.format("%.1fMB", mem) or "unknown"),
     string.format("%-12s: %s", "ide ver", tostring(vim.g.nvim_ide_version or "unknown")),
+    "",
+    "Full check: :checkhealth core",
   }
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
-end, { desc = "Show health status" })
+end, { desc = "Show health status (full: :checkhealth core)" })
 
 -- ── :Format ───────────────────────────────────────────────────────────────────
 --

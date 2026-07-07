@@ -149,7 +149,7 @@ function M.lint(ft, linters)
 end
 
 -- ── symlink_compile_commands ───────────────────────────────────────────────
-
+--
 ---@param prefix string
 ---@param extra  string[]?
 function M.symlink_compile_commands(prefix, extra)
@@ -174,12 +174,30 @@ function M.symlink_compile_commands(prefix, extra)
 
   for _, src in ipairs(candidates) do
     if vim.fn.filereadable(src) == 1 then
+      if vim.fn.executable("ln") ~= 1 then
+        vim.notify(
+          "[" .. prefix .. "] compile_commands.json found at "
+          .. vim.fn.fnamemodify(src, ":~:.")
+          .. " but 'ln' is not on PATH — skipping symlink.\n"
+          .. "Copy it to the project root manually, or install coreutils.",
+          vim.log.levels.DEBUG
+        )
+        return
+      end
+
       local ok = pcall(function() vim.fn.system({ "ln", "-sf", src, dst }) end)
       if ok and vim.fn.filereadable(dst) == 1 then
         vim.notify(
           "[" .. prefix .. "] compile_commands.json linked from "
           .. vim.fn.fnamemodify(src, ":~:."),
           vim.log.levels.INFO
+        )
+      else
+        vim.notify(
+          "[" .. prefix .. "] found " .. vim.fn.fnamemodify(src, ":~:.")
+          .. " but failed to symlink to " .. vim.fn.fnamemodify(dst, ":~:.")
+          .. " — check write permissions on the project root.",
+          vim.log.levels.DEBUG
         )
       end
       return

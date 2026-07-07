@@ -3,13 +3,17 @@
 
 local shared = require("plugins.specs.lang.shared")
 
-local function load_database_url()
-  if vim.g.db and vim.g.db ~= "" then return end
+local _db_loaded_root = nil
+
+---@param force boolean?  bypass the "already connected" guard
+local function load_database_url(force)
+  if not force and vim.g.db and vim.g.db ~= "" then return end
 
   for _, env_key in ipairs({ "DATABASE_URL", "DB_URL", "DATABASE_URI" }) do
     local val = os.getenv(env_key)
     if val and val ~= "" then
       vim.g.db = vim.trim(val)
+      _db_loaded_root = nil   -- global env var: not project-specific, stays sticky
       vim.notify(
         string.format("[database] Connection loaded from $%s", env_key),
         vim.log.levels.INFO
@@ -38,6 +42,7 @@ local function load_database_url()
         val = vim.trim(val)
         if val ~= "" then
           vim.g.db = val
+          _db_loaded_root = root
           vim.notify(
             string.format("[database] Connection loaded from %s (%s)",
               vim.fn.fnamemodify(f, ":~:."), key),
@@ -64,6 +69,15 @@ vim.api.nvim_create_autocmd("DirChanged", {
   callback = function()
     if not vim.g.db or vim.g.db == "" then
       vim.schedule(load_database_url)
+      return
+    end
+
+    if _db_loaded_root == nil then return end
+
+    local ok_path, path_util = pcall(require, "core.util.path")
+    local new_root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+    if new_root ~= _db_loaded_root then
+      vim.schedule(function() load_database_url(true) end)
     end
   end,
 })
@@ -107,7 +121,9 @@ return {
           vim.api.nvim_buf_set_name(buf, "schema-introspection.sql")
           vim.api.nvim_set_current_buf(buf)
           vim.notify(
-            "[database] Schema query opened — edit and run with <leader>dbe (DB execute)",
+            "[database] Schema query opened. Connect via <leader>dbu, then use\n"
+            .. "vim-dadbod-ui's own buffer-local keymaps to run it (:help dadbod-ui\n"
+            .. "for the current list — they're set per-buffer once a connection is active).",
             vim.log.levels.INFO
           )
         end,
@@ -117,6 +133,7 @@ return {
         "<leader>dbc",
         function()
           vim.g.db = ""
+          _db_loaded_root = nil
           vim.notify("[database] Connection cleared — reopen DBUI to reconnect", vim.log.levels.INFO)
         end,
         desc = "DB Clear Connection",

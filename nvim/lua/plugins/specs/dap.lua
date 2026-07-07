@@ -338,7 +338,14 @@ return {
       end
 
       -- ── Persistent breakpoints ─────────────────────────────────────────────
-      local bp_file = vim.fn.stdpath("data") .. "/dap-breakpoints.json"
+      local function get_bp_file()
+        local ok_path, path_util = pcall(require, "core.util.path")
+        local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
+        local hash = vim.fn.sha256(root):sub(1, 16)
+        local dir  = vim.fn.stdpath("data") .. "/dap-breakpoints"
+        if vim.fn.isdirectory(dir) ~= 1 then vim.fn.mkdir(dir, "p") end
+        return dir .. "/" .. hash .. ".json"
+      end
 
       local function serialize_breakpoints(bp_data)
         local bps = {}
@@ -359,7 +366,7 @@ return {
         if not ok_bp then return end
         local bps = serialize_breakpoints(bp_data)
         if next(bps) == nil then return end
-        pcall(vim.fn.writefile, { vim.json.encode(bps) }, bp_file)
+        pcall(vim.fn.writefile, { vim.json.encode(bps) }, get_bp_file())
       end
 
       local function set_bps_scheduled(bufnr, entries)
@@ -376,7 +383,7 @@ return {
       end
 
       local function load_breakpoints()
-        local ok_read, lines = pcall(vim.fn.readfile, bp_file)
+        local ok_read, lines = pcall(vim.fn.readfile, get_bp_file())
         if not ok_read or not lines or #lines == 0 then return end
         local ok_j, bps = pcall(vim.json.decode, table.concat(lines, "\n"))
         if not ok_j or not bps then return end

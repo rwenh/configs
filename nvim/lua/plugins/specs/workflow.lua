@@ -21,13 +21,21 @@ local function load_project_templates()
 
   local ok_chunk, chunk = pcall(loadfile, tmpl_file)
   if not ok_chunk or type(chunk) ~= "function" then
-    vim.notify("[workflow] .overseer.lua parse error in: " .. root, vim.log.levels.WARN)
+    vim.notify("[workflow] .overseer.lua parse error in: " .. root .. "\n" .. tostring(chunk), vim.log.levels.WARN)
     _project_templates_loaded[root] = true
     return
   end
 
   local ok_run, templates = pcall(chunk)
   if not ok_run or type(templates) ~= "table" then
+    local reason = (not ok_run)
+      and ("error while running the file: " .. tostring(templates))
+      or ("file ran but returned " .. type(templates) .. " instead of a table")
+    vim.notify(
+      "[workflow] .overseer.lua loaded but did not produce templates in: " .. root
+      .. "\n  " .. reason,
+      vim.log.levels.WARN
+    )
     _project_templates_loaded[root] = true
     return
   end

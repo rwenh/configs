@@ -51,6 +51,8 @@ M.lualine_wordcount = {
 }
 
 -- ── Frontmatter schema hint (yamlls) ─────────────────────────────────────────
+--
+local _yamlls_configured_clients = {}
 
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("MarkdownFrontmatter", { clear = true }),
@@ -60,12 +62,8 @@ vim.api.nvim_create_autocmd("LspAttach", {
     local ft = vim.bo[e.buf].filetype
     if ft ~= "markdown" and ft ~= "yaml" then return end
 
-    local schemas = client.config.settings
-      and client.config.settings.yaml
-      and client.config.settings.yaml.schemas
-      or {}
-    local name = vim.api.nvim_buf_get_name(e.buf)
-    if schemas[name] then return end
+    if _yamlls_configured_clients[client.id] then return end
+    _yamlls_configured_clients[client.id] = true
 
     local ok, err = pcall(function()
       client.notify("workspace/didChangeConfiguration", {
@@ -80,13 +78,14 @@ vim.api.nvim_create_autocmd("LspAttach", {
       })
     end)
     if not ok then
+      _yamlls_configured_clients[client.id] = nil
       vim.notify(
         "[markdown] yamlls didChangeConfiguration failed: " .. tostring(err),
         vim.log.levels.DEBUG
       )
     end
   end,
-  desc = "Enhance yamlls for Markdown frontmatter buffers",
+  desc = "Enhance yamlls for Markdown frontmatter buffers (once per client)",
 })
 
 return {

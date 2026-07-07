@@ -156,4 +156,34 @@ function M.validate()
   end
 end
 
+-- ── M.validate_dap ────────────────────────────────────────────────────────────
+-- Call once at startup alongside M.validate().
+--
+function M.validate_dap()
+  local ok, registry = pcall(require, "mason-registry")
+  if not ok then
+    vim.notify("[packages] validate_dap(): mason-registry not available", vim.log.levels.DEBUG)
+    return
+  end
+
+  local issues = {}
+  for _, pkg_name in ipairs(M.mason.dap) do
+    local ok_pkg, _ = pcall(function() return registry.get_package(pkg_name) end)
+    if not ok_pkg then
+      table.insert(issues, string.format("  mason.dap entry '%s' not found in registry", pkg_name))
+    end
+  end
+
+  if #issues > 0 then
+    vim.notify(
+      "[packages] validate_dap(): unknown Mason DAP package names:\n"
+      .. table.concat(issues, "\n")
+      .. "\n\nCheck M.mason.dap in packages.lua for typos.",
+      vim.log.levels.DEBUG
+    )
+  else
+    vim.notify("[packages] validate_dap(): all mason.dap entries found in registry.", vim.log.levels.DEBUG)
+  end
+end
+
 return M

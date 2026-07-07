@@ -28,8 +28,17 @@ vim.api.nvim_create_autocmd("FileType", {
 ---@param  line string  one line of VHDL source
 ---@return string       the line with the comment and everything after it removed
 local function strip_vhdl_comment(line)
-  local idx = line:find("%-%-", 1, true)
-  if idx then return line:sub(1, idx - 1) end
+  local in_string = false
+  local i = 1
+  while i <= #line do
+    local ch = line:sub(i, i)
+    if ch == '"' then
+      in_string = not in_string
+    elseif not in_string and ch == "-" and line:sub(i + 1, i + 1) == "-" then
+      return line:sub(1, i - 1)
+    end
+    i = i + 1
+  end
   return line
 end
 

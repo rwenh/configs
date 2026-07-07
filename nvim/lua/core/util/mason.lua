@@ -92,6 +92,45 @@ function M.version(name)
   return ver
 end
 
+---@param name     string
+---@param callback fun(ver: string|nil)
+function M.version_async(name, callback)
+  if type(callback) ~= "function" then return end
+
+  if _version_cache[name] ~= nil then
+    vim.schedule(function() callback(_version_cache[name]) end)
+    return
+  end
+
+  local bin = M.bin(name)
+  if vim.fn.executable(bin) ~= 1 then
+    _version_cache[name] = nil
+    vim.schedule(function() callback(nil) end)
+    return
+  end
+
+  local flags = VERSION_FLAGS[name] or { "--version" }
+  local cmd   = { bin, unpack(flags) }
+
+  if vim.system then
+    vim.system(cmd, { text = true }, function(result)
+      local ver
+      if result.code == 0 and result.stdout and result.stdout ~= "" then
+        local out = vim.trim(result.stdout:match("([^\n]+)") or "")
+        ver = out:match("%d+%.%d+%.?%d*") or "installed"
+      else
+        ver = "installed"
+      end
+      _version_cache[name] = ver
+      vim.schedule(function() callback(ver) end)
+    end)
+  else
+    -- Synchronous fallback for Neovim < 0.10 (no vim.system).
+    local ver = M.version(name)
+    vim.schedule(function() callback(ver) end)
+  end
+end
+
 --- Clear the version cache (call after :MasonUpdate or tool upgrades).
 function M.clear_version_cache()
   _version_cache = {}

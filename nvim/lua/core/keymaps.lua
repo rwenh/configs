@@ -1,9 +1,6 @@
 -- lua/core/keymaps.lua — global keymaps
 --
 
-local map  = vim.keymap.set
-local opts = { noremap = true, silent = true }
-
 local function lazy(mod, tag)
   return function(fn)
     return function()
@@ -50,29 +47,59 @@ vim.api.nvim_create_autocmd("User", {
   desc     = "Flush which-key group registrations queued by lang specs",
 })
 
+-- ── Conflict tracking (registration-time, not a post-hoc scan) ────────────────
+--
+local _conflict_log = {}
+
+local function record_conflict_if_any(mode, lhs, rhs, desc)
+  local modes = type(mode) == "table" and mode or { mode }
+  for _, m in ipairs(modes) do
+    local existing = vim.fn.maparg(lhs, m, false, true)
+    if existing and existing.lhs and existing.buffer == 0 then
+      local is_same
+      if existing.callback and type(rhs) == "function" then
+        is_same = (existing.callback == rhs)
+      elseif not existing.callback and type(rhs) ~= "function" then
+        is_same = (existing.rhs == tostring(rhs))
+      else
+        is_same = false -- one side is a callback, the other a string: always different
+      end
+      if not is_same then
+        table.insert(_conflict_log, {
+          mode          = m,
+          lhs           = lhs,
+          existing_desc = existing.desc and existing.desc ~= "" and existing.desc or "(no description)",
+          new_desc      = desc or "(no description)",
+        })
+      end
+    end
+  end
+end
+
+local function map(mode, lhs, rhs, opts)
+  record_conflict_if_any(mode, lhs, rhs, opts and opts.desc)
+  vim.keymap.set(mode, lhs, rhs, opts)
+end
+
 vim.api.nvim_create_user_command("KeymapHealth", function()
-  local maps = vim.api.nvim_get_keymap("n")
-  local by_lhs = {}
-  for _, m in ipairs(maps) do
-    local lhs = m.lhs or ""
-    by_lhs[lhs] = by_lhs[lhs] or {}
-    table.insert(by_lhs[lhs], m.rhs or m.callback and "<callback>" or "?")
-  end
-  local conflicts = {}
-  for lhs, rhs_list in pairs(by_lhs) do
-    if #rhs_list > 1 then table.insert(conflicts, { lhs = lhs, rhs = rhs_list }) end
-  end
-  if #conflicts == 0 then
-    vim.notify("[keymaps] No conflicts found in global normal-mode keymaps.", vim.log.levels.INFO)
+  if #_conflict_log == 0 then
+    vim.notify(
+      "[keymaps] No conflicts detected while registering global keymaps this session.\n"
+      .. "(This reflects conflicts caught at registration time, not a live re-scan —\n"
+      .. "Neovim's keymap table can't retroactively reveal an already-resolved overwrite.)",
+      vim.log.levels.INFO
+    )
     return
   end
-  table.sort(conflicts, function(a, b) return a.lhs < b.lhs end)
-  local lines = { string.format("[keymaps] %d conflict(s):", #conflicts) }
-  for _, c in ipairs(conflicts) do
-    table.insert(lines, string.format("  %-20s → %s", c.lhs, table.concat(c.rhs, " | ")))
+  local lines = { string.format("[keymaps] %d conflict(s) detected during registration:", #_conflict_log) }
+  for _, c in ipairs(_conflict_log) do
+    table.insert(lines, string.format(
+      "  mode=%-2s lhs=%-15s %q overwrote %q",
+      c.mode, c.lhs, c.new_desc, c.existing_desc
+    ))
   end
   vim.notify(table.concat(lines, "\n"), vim.log.levels.WARN)
-end, { desc = "Show duplicate global normal-mode keymaps" })
+end, { desc = "Show keymap conflicts caught at registration time this session" })
 
 -- ── Basic editing ──────────────────────────────────────────────────────────────
 map("v", "<",     "<gv",           { noremap=true, silent=true, desc="Indent left (keep selection)"  })
@@ -167,21 +194,17 @@ map("n", "<leader>;x", dap_call(function(d)  d.terminate()         end), { desc 
 map("n", "<leader>;t", dapui_call(function(u) u.toggle()           end), { desc = "Toggle debug UI"   })
 map("n", "<leader>;h", widget_call(function(w) w.hover()           end), { desc = "Debug hover"       })
 map("n", "<leader>;p", widget_call(function(w) w.preview()         end), { desc = "Debug preview"     })
-map("n", "<leader>;B", function()
-  local ok, d = pcall(require, "dap")
-  if ok then pcall(d.set_breakpoint, vim.fn.input("Breakpoint condition: "))
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Conditional breakpoint" })
-map("n", "<leader>;l", function()
-  local ok, d = pcall(require, "dap")
-  if ok then pcall(d.set_breakpoint, nil, nil, vim.fn.input("Log point message: "))
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Log point" })
-map("n", "<leader>;r", function()
-  local ok, d = pcall(require, "dap")
-  if ok then pcall(function() d.repl.toggle() end)
-  else vim.notify("[dap] nvim-dap not loaded", vim.log.levels.WARN) end
-end, { desc = "Toggle REPL" })
+
+map("n", "<leader>;B", dap_call(function(d)
+  pcall(d.set_breakpoint, vim.fn.input("Breakpoint condition: "))
+end), { desc = "Conditional breakpoint" })
+map("n", "<leader>;l", dap_call(function(d)
+  pcall(d.set_breakpoint, nil, nil, vim.fn.input("Log point message: "))
+end), { desc = "Log point" })
+map("n", "<leader>;r", dap_call(function(d)
+  pcall(function() d.repl.toggle() end)
+end), { desc = "Toggle REPL" })
+
 map("n", "<F5>",  dap_call(function(d) d.continue()          end), { desc = "DAP: Continue"          })
 map("n", "<F6>",  dap_call(function(d) d.toggle_breakpoint() end), { desc = "DAP: Toggle Breakpoint" })
 map("n", "<F7>",  dap_call(function(d) d.step_into()         end), { desc = "DAP: Step Into"         })
@@ -253,7 +276,8 @@ map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy file path (relativ
 map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",    { desc = "CD to file directory"      })
 map("n", "<leader>xe", "<cmd>!chmod +x %<cr>", { desc = "Make file executable"      })
 map("n", "<leader>xm", "<cmd>CleanUp<cr>",     { desc = "Lua garbage collect"       })
-map("n", "<leader>xh", "<cmd>Health<cr>",      { desc = "Health summary"            })
+map("n", "<leader>xh", "<cmd>Health<cr>",              { desc = "Health summary"            })
+map("n", "<leader>xH", "<cmd>checkhealth core<cr>",    { desc = "Full health check"         })
 map("n", "<leader>xp", "<cmd>ProjectRoot<cr>", { desc = "LCD to project root"       })
 map("n", "<leader>xl", "<cmd>Lazy<cr>",        { desc = "Lazy plugin manager"       })
 map("n", "<leader>xn", "<cmd>Mason<cr>",       { desc = "Mason package manager"     })

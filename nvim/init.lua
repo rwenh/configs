@@ -68,6 +68,47 @@ if _plugins_ok then
     callback = function()
       -- Cross-check lspconfig ↔ Mason naming drift (logs at DEBUG level only)
       pcall(function() require("core.util.packages").validate() end)
+      pcall(function() require("core.util.packages").validate_dap() end)
+
+      -- Escape hatch type validation
+      local typed_flags = {
+        { "format_timeout_ms",             "number" },
+        { "format_timeout_by_ft",          "table"  },
+        { "mason_extras",                  "table"  },
+        { "lsp_on_attach_overrides",       "table"  },
+        { "completion_sources_by_ft",      "table"  },
+        { "path_max_walk_depth",           "number" },
+        { "path_cache_ttl",                "number" },
+        { "path_ignore_dirs",              "table"  },
+        { "symbol_usage_max_lines",        "number" },
+        { "neotest_concurrency",           "number" },
+        { "dap_bp_autosave_ms",            "number" },
+        { "mason_install_timeout_ms",      "number" },
+        { "kotlin_spring_cache_ttl",       "number" },
+        { "workflow_template_debounce_ms", "number" },
+        { "filetype_options",              "table"  },
+        { "ts_disable",                    "table"  },
+        { "octo_timeout_ms",               "number" },
+        { "rustaceanvim_features",         "table"  },
+      }
+      local flag_issues = {}
+      for _, entry in ipairs(typed_flags) do
+        local key, expected = entry[1], entry[2]
+        local val = vim.g[key]
+        if val ~= nil and type(val) ~= expected then
+          table.insert(flag_issues, string.format(
+            "  vim.g.%-35s expected %-8s got %s",
+            key, expected, type(val)
+          ))
+        end
+      end
+      if #flag_issues > 0 then
+        vim.notify(
+          "[init] Escape hatch type mismatch — these flags will silently use defaults:\n"
+          .. table.concat(flag_issues, "\n"),
+          vim.log.levels.WARN
+        )
+      end
 
       local ok_lazy, lazy = pcall(require, "lazy")
       if ok_lazy then

@@ -114,6 +114,23 @@ local _builtin = {
   },
 }
 
+local _canonical_keys_by_length = (function()
+  local keys = {}
+  for key in pairs(_builtin) do
+    if key ~= "__default" then table.insert(keys, key) end
+  end
+  table.sort(keys, function(a, b) return #a > #b end)
+  return keys
+end)()
+
+local function resolve_canonical(theme)
+  if _builtin[theme] then return theme end
+  for _, key in ipairs(_canonical_keys_by_length) do
+    if theme:find(key, 1, true) then return key end
+  end
+  return theme
+end
+
 local _user_overrides = {}
 
 ---@param theme  string
@@ -135,15 +152,8 @@ end
 function M.apply()
   if vim.g.disable_highlight_overrides then return end
 
-  local theme = tostring(vim.g._nvim_active_theme or "")
-
-  local canonical = theme
-  for key in pairs(_builtin) do
-    if key ~= "__default" and theme:find(key, 1, true) then
-      canonical = key
-      break
-    end
-  end
+  local theme     = tostring(vim.g._nvim_active_theme or "")
+  local canonical = resolve_canonical(theme)
 
   local merged = {}
   local function merge_into(tbl)
