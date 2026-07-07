@@ -1,7 +1,5 @@
 ;;; emacs-ide-diagnose.el --- Rapid Diagnostics -*- lexical-binding: t -*-
-;;; Version: 3.2.1 | FIX: Added emacs-ide-diagnose-languages (was missing,
-;;;           documented in README but never implemented).  Expanded
-;;;           emacs-ide-diagnose to cover all feature modules + modes.
+;;;
 ;;; Code:
 
 (require 'cl-lib)
@@ -31,6 +29,20 @@
                    tools-rest tools-test-runner-registry tools-test debug-core
                    tools-repl tools-project-detect tools-hydra keybindings))
       (princ (format "  %s %s\n" (if (featurep mod) "✓" "✗") mod)))
+
+    ;; ── Lib layer ──────────────────────────────────────────────────────────────
+    (princ "\nLIB LAYER (ide-*):\n")
+    (dolist (lib '(ide-common ide-simple ide-window
+                   ide-search ide-pair ide-register))
+      (let* ((path (expand-file-name
+                    (concat "lib/" (symbol-name lib) ".el")
+                    user-emacs-directory))
+             (loaded  (featurep lib))
+             (on-disk (file-exists-p path)))
+        (princ (format "  %s %-18s %s\n"
+                       (cond (loaded "✓") (on-disk "○") (t "✗"))
+                       lib
+                       (cond (loaded "loaded") (on-disk "on disk") (t "MISSING"))))))
 
     ;; ── Key functions ──────────────────────────────────────────────────────────
     (princ "\nKEY FUNCTIONS:\n")

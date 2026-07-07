@@ -1,29 +1,6 @@
 ;;; early-init.el --- Enterprise Emacs IDE Early Initialization -*- lexical-binding: t -*-
 ;;; Version: 3.3.0
 ;;;
-;;; FIXES in this version:
-;;;   #69  file-name-handler-alist was disabled in phase 14 of 15, after
-;;;        TLS setup, native-comp, I/O, redisplay, treesit, custom-file, and
-;;;        JIT-lock had all already run.  The performance benefit of disabling
-;;;        it (faster require / file operations during startup) was obtained
-;;;        for only ONE phase (site-lisp-disable) instead of the entire init
-;;;        sequence.  Moved to phase 2, immediately after GC setup, so all
-;;;        subsequent requires benefit.  The saved alist is still restored in
-;;;        emacs-startup-hook (same as before).
-;;;
-;;;        Also fixed: the saved copy was captured at defvar time (line 44)
-;;;        correctly — but then disabled AFTER TLS had already called
-;;;        (require 'gnutls) which could itself trigger the handler.  Moving
-;;;        disable to phase 2 means TLS runs without the handler (gnutls is a
-;;;        built-in C module, so it does not need the handler).
-;;;
-;;;   #11  set-face-attribute for theme-flash prevention was called
-;;;        unconditionally.  In a headless/TTY session or when Emacs runs as
-;;;        a daemon (no initial frame), there is no `default' face instance
-;;;        and the call generates warnings.  Wrapped in (when (display-graphic-p)).
-;;;        For daemon mode the face will be set when a graphical frame connects,
-;;;        via a server-after-make-frame-hook entry.
-;;;
 ;;; Code:
 
 (defvar emacs-ide--early-init-start-time (current-time))
@@ -60,11 +37,7 @@
     (setq gc-cons-threshold  most-positive-fixnum
           gc-cons-percentage 1.0)))
 
-;;;; ── Phase 2: Disable file-name-handler (FIX #69 — moved early) ────────────
-;; Captured BEFORE disabling so emacs-startup-hook can restore it.
-;; Disabling here means all subsequent (require ...) calls during startup
-;; skip the handler chain, providing a measurable speedup.
-;; gnutls is a built-in C module and does not need the handler.
+;;;; ── Phase 2: Disable file-name-handler ────────────
 
 (defvar emacs-ide--file-name-handler-alist file-name-handler-alist
   "Original file-name-handler-alist, saved before early-init disables it.
@@ -219,8 +192,6 @@ Restored in `emacs-startup-hook' at depth 100.")
                             user-emacs-directory))))
 
 ;;;; ── Phase 16: TLS / security ────────────────────────────────────────────────
-;; gnutls is a built-in C module; (require 'gnutls) does not need
-;; file-name-handler-alist (which was disabled in phase 2 above).
 
 (emacs-ide--benchmark-phase "tls-security"
   (lambda ()
@@ -236,11 +207,7 @@ Restored in `emacs-startup-hook' at depth 100.")
   (lambda ()
     (setq inhibit-default-init t)))
 
-;;;; ── Phase 18: Initial theme flash prevention (FIX #11) ─────────────────────
-;; FIX #11: wrapped in (when (display-graphic-p)) so TTY sessions and
-;; daemon mode (no initial graphical frame) do not generate face warnings.
-;; In daemon mode, a server-after-make-frame-hook entry applies the dark
-;; background when the first graphical client connects.
+;;;; ── Phase 18: Initial theme flash prevention ─────────────────────
 
 (emacs-ide--benchmark-phase "initial-theme"
   (lambda ()
@@ -271,10 +238,7 @@ Restored in `emacs-startup-hook' at depth 100.")
 
 (add-hook 'emacs-startup-hook
           (lambda ()
-            ;; Restore file-name-handler-alist (disabled in phase 2)
             (setq file-name-handler-alist emacs-ide--file-name-handler-alist)
-            ;; Restore GC to working threshold (set by config-apply later,
-            ;; but 16 MB is the safe default if config hasn't run yet)
             (unless (> gc-cons-threshold (* 16 1024 1024))
               (setq gc-cons-threshold  (* 16 1024 1024)
                     gc-cons-percentage 0.1))

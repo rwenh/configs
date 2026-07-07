@@ -1,4 +1,5 @@
 ;;; emacs-ide-test.el --- Enterprise Test Suite -*- lexical-binding: t -*-
+;;;
 ;;; Code:
 
 (require 'ert)

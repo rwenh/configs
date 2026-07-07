@@ -1,7 +1,6 @@
 ;;; emacs-ide-profiler.el --- Performance Profiling System -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Advanced profiling and performance analysis.
 ;;; Version: 3.0.4
+;;;
 ;;; Code:
 
 (require 'profiler)

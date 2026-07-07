@@ -1,6 +1,4 @@
 ;;; emacs-ide-telemetry.el --- Usage Analytics (Local Only) -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Privacy-respecting local usage analytics with config integration and rotation.
 ;;; Version: 3.3.0
 ;;;
 ;;; Code:
@@ -179,14 +177,10 @@ the number of straight.el packages."
 ;;;; ── Config integration ──────────────────────────────────────────────────────
 
 (with-eval-after-load 'emacs-ide-config
-  ;; Read max-log-size from config — accept both 'enabled' and 'enable' spellings
   (let ((size (and (fboundp 'emacs-ide-config-get)
                    (emacs-ide-config-get 'telemetry 'max-log-size nil))))
     (when (and size (numberp size) (> size 0))
       (setq emacs-ide-telemetry-max-log-size size)))
-  ;; Honour telemetry.enable (or .enabled for legacy) from config.yml.
-  ;; emacs-ide-config-apply (Session 1) already sets emacs-ide-telemetry-enabled;
-  ;; this block handles the enable/disable side effect on the hook.
   (if emacs-ide-telemetry-enabled
       (emacs-ide-telemetry-enable)
     (emacs-ide-telemetry-disable)))

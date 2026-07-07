@@ -1,7 +1,6 @@
 ;;; emacs-ide-security.el --- Security Hardening -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Enterprise security configuration with config integration.
 ;;; Version: 3.0.4
+;;;
 ;;; Code:
 
 (require 'cl-lib)

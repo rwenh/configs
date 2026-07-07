@@ -1,5 +1,6 @@
 ;;; emacs-ide-config.el --- Lean Configuration System -*- lexical-binding: t -*-
 ;;; Version: 3.6.0
+;;;
 ;;; Code:
 
 (require 'cl-lib)

@@ -1,6 +1,4 @@
 ;;; emacs-ide-package.el --- Package Management Utilities -*- lexical-binding: t -*-
-;;; Commentary:
-;;; Utilities for package load-time tracking and reporting.
 ;;; Version: 3.3.0
 ;;;
 ;;; Code:

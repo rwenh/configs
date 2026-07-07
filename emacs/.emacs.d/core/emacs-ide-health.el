@@ -1,4 +1,5 @@
 ;;; emacs-ide-health.el --- Fast Health Checks -*- lexical-binding: t -*-
+;;;
 ;;; Code:
 
 (require 'cl-lib)

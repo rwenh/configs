@@ -1,7 +1,6 @@
 ;;; emacs-ide-recovery.el --- Production Recovery System -*- lexical-binding: t -*-
-;;; Version: 3.2.1 | FIX: Added emacs-ide-recovery--session-timer defvar + periodic
-;;;           flush timer. init.el's kill-emacs-hook referenced this var but it was
-;;;           never declared, causing a void-variable warning on every exit.
+;;; Version: 3.2.1
+;;;
 ;;; Code:
 
 (require 'cl-lib)
@@ -33,9 +32,6 @@
                      (upcase (symbol-name level))
                      (apply #'format fmt args))))
     (make-directory (file-name-directory emacs-ide-recovery-log-file) t)
-    ;; FIX: was (nth 7 (file-attributes ...) 0) — nth takes exactly 2 args.
-    ;; The trailing 0 was silently ignored in some builds but throws
-    ;; wrong-number-of-arguments in others.  Use (or ... 0) on the result.
     (when (and (file-exists-p emacs-ide-recovery-log-file)
                (> (or (nth 7 (file-attributes emacs-ide-recovery-log-file)) 0)
                   emacs-ide-recovery-max-log-size))
@@ -76,10 +72,6 @@
 ;; Load on startup
 (emacs-ide-recovery-load-crash-history)
 
-;; Crash detection: increment the counter immediately on startup (before any
-;; clean-exit hook can run), then persist it.  The kill-emacs-hook below resets
-;; it to zero on a normal exit.  If Emacs crashes, the hook never fires and the
-;; incremented count stays on disk — so the NEXT startup will see count > 0.
 (cl-incf emacs-ide-recovery-crash-count)
 (emacs-ide-recovery-save-crash-history)
 
@@ -156,9 +148,6 @@ The package will not be loaded even if it appears in the feature modules list."
     (message "No recovery log found at %s" emacs-ide-recovery-log-file)))
 
 ;;; ─── Session timer ───────────────────────────────────────────────────────────
-;; Declared here so init.el's kill-emacs-hook can safely cancel it.
-;; The timer fires every 5 minutes to flush the crash history to disk,
-;; ensuring an abnormal exit is recorded even without the kill hook running.
 
 (defvar emacs-ide-recovery--session-timer nil
   "Periodic idle timer that flushes crash-history state to disk.")
