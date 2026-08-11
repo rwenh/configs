@@ -45,12 +45,27 @@ local function safe_spec(mod)
   return result
 end
 
+-- ── Lang stems already explicitly imported by plugins.specs ──────────────────
+--
+local function already_imported_lang_stems(core_specs)
+  local stems = {}
+  for _, entry in ipairs(core_specs) do
+    if type(entry) == "table" and type(entry.import) == "string" then
+      local stem = entry.import:match("^plugins%.specs%.lang%.([%w_]+)$")
+      if stem then stems[stem] = true end
+    end
+  end
+  return stems
+end
+
 local function collect_specs()
   local specs = {}
 
-  vim.list_extend(specs, safe_spec("plugins.specs"))
+  local core_specs = safe_spec("plugins.specs")
+  vim.list_extend(specs, core_specs)
 
-  -- Language specs: auto-discovered, sorted for determinism.
+  local already_imported = already_imported_lang_stems(core_specs)
+
   local ok_path, lang_path = pcall(function()
     return vim.fn.stdpath("config") .. "/lua/plugins/specs/lang"
   end)
@@ -60,7 +75,7 @@ local function collect_specs()
       table.sort(entries)
       for _, entry in ipairs(entries) do
         local stem = entry:match("^(.-)%.lua$")
-        if stem and stem ~= "shared" then
+        if stem and stem ~= "shared" and not already_imported[stem] then
           vim.list_extend(specs, safe_spec("plugins.specs.lang." .. stem))
         end
       end

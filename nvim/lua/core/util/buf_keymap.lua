@@ -11,8 +11,10 @@ local M = {}
 function M.set(buf, mode, lhs, rhs, desc)
   local modes = type(mode) == "table" and mode or { mode }
   for _, m in ipairs(modes) do
-    local existing = vim.fn.maparg(lhs, m, false, true)
-    if existing and existing.buffer == 1 and existing.lhs then
+    local ok_query, existing = pcall(vim.api.nvim_buf_call, buf, function()
+      return vim.fn.maparg(lhs, m, false, true)
+    end)
+    if ok_query and existing and existing.buffer == 1 and existing.lhs then
       local existing_rhs = existing.callback and "<callback>" or (existing.rhs or "")
       local new_rhs      = type(rhs) == "function" and "<callback>" or tostring(rhs)
       if existing_rhs ~= new_rhs then
@@ -48,8 +50,6 @@ function M.batch(buf, maps, flag_name)
     local ok_write = pcall(function() vim.b[buf][flag_name] = true end)
 
     if not ok_write then
-      -- The buffer is invalid or the write failed. Emit a debug notice and
-      -- abort — registering keymaps on an invalid buffer would also fail.
       vim.notify(
         string.format(
           "[buf_keymap] batch(): could not set dedup flag '%s' on buf=%d "
@@ -118,7 +118,9 @@ function M.clear(buf, flag_name, maps)
       local modes = type(mode) == "table" and mode or { mode }
       for _, m in ipairs(modes) do
         pcall(function()
-          local existing = vim.fn.maparg(lhs, m, false, true)
+          local existing = vim.api.nvim_buf_call(buf, function()
+            return vim.fn.maparg(lhs, m, false, true)
+          end)
           if existing and existing.buffer == 1 then
             vim.keymap.del(m, lhs, { buffer = buf })
           end

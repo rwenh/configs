@@ -127,7 +127,7 @@ end
 
 ---@return table
 function M.session()
-  if vim.g.nvim_session_quote_text and vim.g.nvim_session_quote_author then
+  if vim.g.nvim_session_quote_text then
     return {
       text     = vim.g.nvim_session_quote_text,
       author   = vim.g.nvim_session_quote_author,

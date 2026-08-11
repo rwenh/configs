@@ -6,6 +6,8 @@ local M = {}
 -- ── Version cache ─────────────────────────────────────────────────────────────
 local _version_cache = {}
 
+local NOT_INSTALLED = false
+
 -- ── Synchronous guards ────────────────────────────────────────────────────────
 
 ---@param name  string   binary name (e.g. "gcc", "python3", "ghdl")
@@ -68,10 +70,13 @@ end
 ---@param pattern     string?  Lua pattern to extract version from output
 ---@return string|nil          version string, "installed", or nil
 function M.version(bin, version_cmd, pattern)
-  if _version_cache[bin] ~= nil then return _version_cache[bin] end
+  local cached = _version_cache[bin]
+  if cached ~= nil then
+    return cached ~= NOT_INSTALLED and cached or nil
+  end
 
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[bin] = nil
+    _version_cache[bin] = NOT_INSTALLED
     return nil
   end
 
@@ -106,14 +111,15 @@ end
 function M.version_async(bin, cmd, callback, pattern)
   if type(callback) ~= "function" then return end
 
-  -- Fast path: already cached.
-  if _version_cache[bin] ~= nil then
-    vim.schedule(function() callback(_version_cache[bin]) end)
+  -- Fast path: already cached (including a cached "not installed" result).
+  local cached = _version_cache[bin]
+  if cached ~= nil then
+    vim.schedule(function() callback(cached ~= NOT_INSTALLED and cached or nil) end)
     return
   end
 
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[bin] = nil
+    _version_cache[bin] = NOT_INSTALLED
     vim.schedule(function() callback(nil) end)
     return
   end

@@ -27,31 +27,53 @@ local function has_stylelint_config()
   return false
 end
 
+local _stylelint_registered = false
+
+local function try_register_stylelint()
+  if _stylelint_registered then return end
+  if vim.fn.executable("stylelint") ~= 1 then return end
+  if not has_stylelint_config() then
+    vim.notify(
+      "[css] stylelint found but no config detected — linter skipped.\n"
+      .. "Create .stylelintrc.json to enable it.",
+      vim.log.levels.DEBUG
+    )
+    return
+  end
+  local ok, lint = pcall(require, "lint")
+  if not ok then return end
+  for _, ft in ipairs({ "css", "scss", "less" }) do
+    lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
+    if not vim.tbl_contains(lint.linters_by_ft[ft], "stylelint") then
+      table.insert(lint.linters_by_ft[ft], "stylelint")
+    end
+  end
+  _stylelint_registered = true
+  vim.notify("[css] stylelint registered (config detected)", vim.log.levels.DEBUG)
+end
+
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = { "css", "scss", "less" },
-  once     = true,
   group    = vim.api.nvim_create_augroup("StylelintConditional", { clear = true }),
+  callback = try_register_stylelint,
+  desc = "Conditionally register stylelint when config is present (re-checked on every relevant buffer, not just the first)",
+})
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("StylelintRecheck", { clear = true }),
   callback = function()
-    if vim.fn.executable("stylelint") ~= 1 then return end
-    if not has_stylelint_config() then
-      vim.notify(
-        "[css] stylelint found but no config detected — linter skipped.\n"
-        .. "Create .stylelintrc.json to enable it.",
-        vim.log.levels.DEBUG
-      )
-      return
-    end
-    local ok, lint = pcall(require, "lint")
-    if not ok then return end
-    for _, ft in ipairs({ "css", "scss", "less" }) do
-      lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
-      if not vim.tbl_contains(lint.linters_by_ft[ft], "stylelint") then
-        table.insert(lint.linters_by_ft[ft], "stylelint")
+    if _stylelint_registered then return end
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) then
+        local ft = vim.bo[buf].filetype
+        if vim.tbl_contains({ "css", "scss", "less" }, ft) then
+          try_register_stylelint()
+          return
+        end
       end
     end
-    vim.notify("[css] stylelint registered (config detected)", vim.log.levels.DEBUG)
   end,
-  desc = "Conditionally register stylelint when config is present",
+  desc = "Re-check stylelint config when the working directory changes",
 })
 
 -- ── cssmodules LSP setup helper ───────────────────────────────────────────────
@@ -165,7 +187,6 @@ return {
   },
 
   -- ── Tailwind CSS ───────────────────────────────────────────────────────────
-  ---- MAINTAINER NOTE: Verify the repository exists before upgrading this config:
   --   https://github.com/laytan/tailwind-tools.nvim
   --
   {

@@ -109,69 +109,71 @@ return {
     "akinsho/toggleterm.nvim",
     ft   = "ruby",
     init = function()
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = "ruby",
-        once     = true,
-        group    = vim.api.nvim_create_augroup("RailsGeneratorKeymaps", { clear = true }),
-        callback = function()
-          if not is_rails_project() then return end
+      local bkm = require("core.util.buf_keymap")
 
-          local bkm = require("core.util.buf_keymap")
-
-          local function rails_generate(generator_type)
-            vim.ui.input(
-              { prompt = "rails generate " .. generator_type .. ": " },
-              function(input)
-                if not input or vim.trim(input) == "" then return end
-                require("core.util.term").float_at_root(
-                  "bundle exec rails generate " .. generator_type .. " " .. input
-                )
-              end
+      local function rails_generate(generator_type)
+        vim.ui.input(
+          { prompt = "rails generate " .. generator_type .. ": " },
+          function(input)
+            if not input or vim.trim(input) == "" then return end
+            require("core.util.term").float_at_root(
+              "bundle exec rails generate " .. generator_type .. " " .. input
             )
           end
+        )
+      end
 
-          local maps = {
-            { "n", "<leader>rgm", function() rails_generate("model")      end, "Rails generate model"      },
-            { "n", "<leader>rgc", function() rails_generate("controller") end, "Rails generate controller" },
-            { "n", "<leader>rgs", function() rails_generate("scaffold")   end, "Rails generate scaffold"   },
-            { "n", "<leader>rgj", function() rails_generate("job")        end, "Rails generate job"        },
-            { "n", "<leader>rgM", function() rails_generate("migration")  end, "Rails generate migration"  },
-            {
-              "n", "<leader>rgS",
-              function() require("core.util.term").float_at_root("bundle exec rails server") end,
-              "Rails server",
-            },
-            {
-              "n", "<leader>rgd",
-              function() require("core.util.term").float_at_root("bundle exec rails db:migrate") end,
-              "Rails db:migrate",
-            },
-            {
-              "n", "<leader>rgr",
-              function() require("core.util.term").float_at_root("bundle exec rails console") end,
-              "Rails console",
-            },
-          }
+      local maps = {
+        { "n", "<leader>rgm", function() rails_generate("model")      end, "Rails generate model"      },
+        { "n", "<leader>rgc", function() rails_generate("controller") end, "Rails generate controller" },
+        { "n", "<leader>rgs", function() rails_generate("scaffold")   end, "Rails generate scaffold"   },
+        { "n", "<leader>rgj", function() rails_generate("job")        end, "Rails generate job"        },
+        { "n", "<leader>rgM", function() rails_generate("migration")  end, "Rails generate migration"  },
+        {
+          "n", "<leader>rgS",
+          function() require("core.util.term").float_at_root("bundle exec rails server") end,
+          "Rails server",
+        },
+        {
+          "n", "<leader>rgd",
+          function() require("core.util.term").float_at_root("bundle exec rails db:migrate") end,
+          "Rails db:migrate",
+        },
+        {
+          "n", "<leader>rgr",
+          function() require("core.util.term").float_at_root("bundle exec rails console") end,
+          "Rails console",
+        },
+      }
 
-          -- Apply to all currently open Ruby buffers.
-          for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-            if vim.api.nvim_buf_is_loaded(buf)
-            and vim.bo[buf].filetype == "ruby" then
-              bkm.batch(buf, maps, "ruby_rails_keymaps")
-            end
-          end
+      local function register_if_rails(buf)
+        if is_rails_project() then
+          bkm.batch(buf, maps, "ruby_rails_keymaps")
+        end
+      end
 
-          vim.api.nvim_create_autocmd("FileType", {
-            pattern  = "ruby",
-            once     = false,
-            group    = vim.api.nvim_create_augroup("RailsGeneratorFuture", { clear = true }),
-            callback = function(e)
-              if is_rails_project() then
-                bkm.batch(e.buf, maps, "ruby_rails_keymaps")
-              end
-            end,
-          })
+      -- Apply immediately to any Ruby buffers already open.
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf)
+        and vim.bo[buf].filetype == "ruby" then
+          register_if_rails(buf)
+        end
+      end
+
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = "ruby",
+        group    = vim.api.nvim_create_augroup("RailsGeneratorKeymaps", { clear = true }),
+        callback = function(e) register_if_rails(e.buf) end,
+        desc = "Register Rails generator keymaps for Ruby buffers in Rails projects",
+      })
+
+      vim.api.nvim_create_autocmd("DirChanged", {
+        group    = vim.api.nvim_create_augroup("RailsGeneratorRecheck", { clear = true }),
+        callback = function()
+          local buf = vim.api.nvim_get_current_buf()
+          if vim.bo[buf].filetype == "ruby" then register_if_rails(buf) end
         end,
+        desc = "Re-check Rails project status on project switch",
       })
     end,
   },

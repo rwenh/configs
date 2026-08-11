@@ -3,14 +3,6 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── Build-flag sanitiser ──────────────────────────────────────────────────────
----@param  flags string  raw flag string from vim.g.c_build_flags
----@return string        safe flag string
-local function sanitize_flags(flags)
-  -- Remove known shell-dangerous characters while preserving valid flag syntax.
-  return (flags or ""):gsub("[;&|`$<>()\n\r\"'\\]", "")
-end
-
 -- ── compile_commands.json detection ──────────────────────────────────────────
 
 local function maybe_symlink()
@@ -75,10 +67,10 @@ return {
           local file  = vim.fn.expand("%:p")
           local exe   = vim.fn.expand("%:p:r")
 
-          local raw_flags = vim.g.c_build_flags or "-Wall -Wextra -g"
-          local flags     = sanitize_flags(raw_flags)
+          local raw_flags      = vim.g.c_build_flags or "-Wall -Wextra -g"
+          local flags, changed = shared.sanitize_build_flags(raw_flags)
 
-          if flags ~= raw_flags then
+          if changed then
             vim.notify(
               "[c] c_build_flags contained unsafe characters that were stripped.\n"
               .. "  original : " .. raw_flags .. "\n"

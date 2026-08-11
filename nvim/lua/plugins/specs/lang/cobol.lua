@@ -91,7 +91,7 @@ return {
         local dialect_flag = (dialect ~= "gnucobol")
           and ("-std=" .. dialect .. " ") or ""
         require("core.util.term").float(string.format(
-          "cobc -x %s%s -o %s %s && %s; rm -f %s",
+          "if cobc -x %s%s -o %s %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
           dialect_flag, includes,
           vim.fn.shellescape(exe),
           vim.fn.shellescape(file),

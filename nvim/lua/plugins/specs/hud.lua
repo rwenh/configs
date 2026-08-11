@@ -106,6 +106,8 @@ return {
   -- ── symbol-usage.nvim ─────────────────────────────────────────────────────
   { "Wansmer/symbol-usage.nvim", event = "LspAttach",
     config = function()
+      local function icon(codepoint) return vim.fn.nr2char(codepoint, true) end
+
       local MAX_LINES = (type(vim.g.symbol_usage_max_lines) == "number"
         and vim.g.symbol_usage_max_lines > 0)
         and vim.g.symbol_usage_max_lines or 2000
@@ -114,10 +116,10 @@ return {
         local parts = {}
         if symbol.references then
           local n = symbol.references
-          table.insert(parts, ("󰌹 %s"):format(n <= 1 and "1 use" or (n .. " uses")))
+          table.insert(parts, (icon(0xf0339) .. " %s"):format(n <= 1 and "1 use" or (n .. " uses")))
         end
         if symbol.definition and symbol.definition > 0 then
-          table.insert(parts, ("󰳽 %s"):format(symbol.definition))
+          table.insert(parts, (icon(0xf0cfd) .. " %s"):format(symbol.definition))
         end
         return table.concat(parts, " │ ")
       end

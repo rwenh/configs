@@ -192,8 +192,8 @@ local runners = {
     local ok_rf, lines = pcall(vim.fn.readfile, file)
     if ok_rf and lines then
       for _, line in ipairs(lines) do
-        if line:lower():match("^%s*entity%s+%w+%s+is") then
-          entity = line:match("[Ee][Nn][Tt][Ii][Tt][Yy]%s+(%w+)")
+        if line:lower():match("^%s*entity%s+[%w_]+%s+is") then
+          entity = line:match("[Ee][Nn][Tt][Ii][Tt][Yy]%s+([%w_]+)")
           if entity then break end
         end
       end
@@ -353,18 +353,18 @@ function M.run_nearest_function()
     end,
     java = function()
       if not function_name then
-        local thunk = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+        local thunk = M.gradle_or_maven(root, "test")
         return thunk or ("cd " .. er .. " && mvn test")
       end
-      local thunk = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+      local thunk = M.gradle_or_maven(root, "test")
       if thunk then return thunk .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
       return "cd " .. er .. " && mvn -Dtest=" .. vim.fn.shellescape(function_name) .. " test"
     end,
     kotlin = function()
       if not function_name then
-        return M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+        return M.gradle_or_maven(root, "test")
       end
-      local base = M.gradle_or_maven(vim.fn.fnamemodify(vim.fn.expand("%:p"), ":h"), "test")
+      local base = M.gradle_or_maven(root, "test")
       if base then return base .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
     end,
   }
@@ -384,7 +384,13 @@ function M.run_nearest_function()
   end
 
   local cmd = thunk()
-  if not cmd then return end
+  if not cmd then
+    vim.notify(
+      "[runner] " .. ft .. ": no build tool detected (no gradlew or pom.xml found under " .. root .. ")",
+      vim.log.levels.WARN
+    )
+    return
+  end
   local t = term()
   if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
 end
@@ -435,13 +441,14 @@ function M.run_selection(start_line, end_line)
     t.float(cmd, { on_exit = function() vim.schedule(cleanup) end })
     vim.defer_fn(cleanup, 30000)
   else
+    vim.cmd("split | terminal " .. cmd)
+    local term_buf = vim.api.nvim_get_current_buf()
     local aug = "RunnerSelectionCleanup_" .. vim.fn.sha256(tmpfile):sub(1, 8)
     vim.api.nvim_create_autocmd("TermClose", {
-      once = true, group = vim.api.nvim_create_augroup(aug, { clear = true }),
+      once = true, buffer = term_buf, group = vim.api.nvim_create_augroup(aug, { clear = true }),
       callback = function() vim.schedule(cleanup); pcall(vim.api.nvim_del_augroup_by_name, aug) end,
     })
     vim.defer_fn(cleanup, 30000)
-    vim.cmd("split | terminal " .. cmd)
   end
 end
 
@@ -473,12 +480,24 @@ function M.pipe(cmd, stdin_text, opts)
   end
 end
 
+-- ── Public: detect_pkg_manager ────────────────────────────────────────────────
+--
+---@param root string
+---@return "npm"|"pnpm"|"yarn"|"bun"
+function M.detect_pkg_manager(root)
+  if vim.fn.filereadable(root .. "/bun.lockb") == 1 or vim.fn.filereadable(root .. "/bun.lock") == 1 then return "bun" end
+  if vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then return "pnpm" end
+  if vim.fn.filereadable(root .. "/yarn.lock") == 1 then return "yarn" end
+  return "npm"
+end
+
 -- ── Public: detect_js_test_cmd ────────────────────────────────────────────────
+--
 function M.detect_js_test_cmd(root)
-  if vim.fn.filereadable(root .. "/bun.lockb") == 1 or vim.fn.filereadable(root .. "/bun.lock") == 1 then return "bun test"
-  elseif vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then return "pnpm test"
-  elseif vim.fn.filereadable(root .. "/yarn.lock") == 1 then return "yarn test"
-  end
+  local pm = M.detect_pkg_manager(root)
+  if pm == "bun"  then return "bun test"  end
+  if pm == "pnpm" then return "pnpm test" end
+  if pm == "yarn" then return "yarn test" end
   return "npm test"
 end
 
@@ -536,7 +555,13 @@ function M.run_tests()
   local thunk = dispatch[ft]
   if not thunk then vim.notify("[runner] no test runner for: " .. ft, vim.log.levels.WARN); return end
   local cmd = thunk()
-  if not cmd then return end
+  if not cmd then
+    vim.notify(
+      "[runner] " .. ft .. ": no build tool detected (no gradlew or pom.xml found under " .. root .. ")",
+      vim.log.levels.WARN
+    )
+    return
+  end
   local t = term()
   if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
 end

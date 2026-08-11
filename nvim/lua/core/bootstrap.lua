@@ -27,8 +27,6 @@ local lazypath  = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 local cachepath = vim.fn.stdpath("data") .. "/lazy-cache/lazy.nvim"
 
 -- ── SHA integrity check ───────────────────────────────────────────────────────
--- After a fresh clone, verify the HEAD commit is reachable (non-empty).
--- This catches partial clones caused by network interruptions.
 local function clone_looks_valid(path)
   if vim.fn.isdirectory(path) ~= 1 then return false end
   local head = vim.fn.system({ "git", "-C", path, "rev-parse", "HEAD" })
@@ -36,7 +34,6 @@ local function clone_looks_valid(path)
 end
 
 -- ── Offline fallback ──────────────────────────────────────────────────────────
--- When the primary clone fails (no network), attempt to copy a previously
 -- cached snapshot from vim.g.lazy_cache_path (default: stdpath("data")/lazy-cache).
 local function try_offline_fallback()
   local cache = vim.g.lazy_cache_path or cachepath
@@ -55,20 +52,19 @@ local function try_offline_fallback()
 end
 
 -- ── Cache updater ─────────────────────────────────────────────────────────────
--- Runs once per session after plugins have loaded; silently copies the live
--- lazy.nvim directory to the cache path so the next offline fallback is fresh.
 local function schedule_cache_update()
   vim.api.nvim_create_autocmd("User", {
     pattern  = "LazyDone",
     once     = true,
     callback = function()
       local cache = vim.g.lazy_cache_path or cachepath
-      if vim.fn.isdirectory(cache) ~= 1 then
-        vim.fn.mkdir(vim.fn.fnamemodify(cache, ":h"), "p")
+      if vim.fn.isdirectory(cache) == 1 then
+        vim.fn.delete(cache, "rf")
       end
+      vim.fn.mkdir(vim.fn.fnamemodify(cache, ":h"), "p")
       -- Background copy — fire and forget; errors are non-fatal.
       if vim.system then
-        vim.system({ "cp", "-r", "--no-target-directory", lazypath, cache }, {}, function() end)
+        vim.system({ "cp", "-r", lazypath, cache }, {}, function() end)
       end
     end,
     desc = "Update lazy.nvim offline cache after LazyDone",

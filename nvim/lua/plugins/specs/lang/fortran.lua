@@ -11,7 +11,6 @@ pcall(function()
       f90  = "fortran", f95  = "fortran", f03  = "fortran",
       f08  = "fortran", f18  = "fortran",
       F90  = "fortran", F95  = "fortran", F03  = "fortran",
-      -- FIX: was 'for_', now 'for' (standard fixed-form Fortran extension)
       ["for"] = "fortran",
       fpp  = "fortran",
     },
@@ -99,8 +98,22 @@ return {
         local exec = require("core.util.exec")
         if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
         local exe = vim.fn.tempname()
+
+        local raw_flags      = vim.g.fortran_build_flags or "-Wall"
+        local flags, changed = shared.sanitize_build_flags(raw_flags)
+
+        if changed then
+          vim.notify(
+            "[fortran] fortran_build_flags contained unsafe characters that were stripped.\n"
+            .. "  original : " .. raw_flags .. "\n"
+            .. "  sanitised: " .. flags,
+            vim.log.levels.WARN
+          )
+        end
+
         require("core.util.term").float(string.format(
-          "gfortran -Wall -o %s %s && %s; rm -f %s",
+          "if gfortran %s -o %s %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
+          flags,
           vim.fn.shellescape(exe),
           vim.fn.shellescape(file),
           vim.fn.shellescape(exe),

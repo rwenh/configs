@@ -132,7 +132,10 @@ return {
           map("<leader>k", vim.lsp.buf.signature_help, "Signature Help")
 
           local function code_action()
-            cmd_or_fallback("ActionsPreview", vim.lsp.buf.code_action)
+            local ok = pcall(function()
+              require("actions-preview").code_actions()
+            end)
+            if not ok then vim.lsp.buf.code_action() end
           end
           map("<leader>,a", code_action, "Code Action")
           map("<leader>,a", code_action, "Code Action", "v")
@@ -142,17 +145,11 @@ return {
 
           local function fmt()
             local timeout_ms = get_format_timeout(e.buf)
-            local ok, err = pcall(function()
-              require("conform").format({
-                bufnr        = e.buf,
-                timeout_ms   = timeout_ms,
-                lsp_format   = "fallback",
-              })
-            end)
-            if not ok then
-              local msg = tostring(err or "")
-              if msg:lower():find("timeout") or msg:lower():find("timed out") then
-                local ft = vim.bo[e.buf].filetype
+            local ft = vim.bo[e.buf].filetype
+
+            local function on_result(err)
+              if not err then return end
+              if tostring(err):lower():find("timeout") then
                 vim.notify(
                   string.format(
                     "[lsp] Format timed out after %d ms for filetype '%s'.\n"
@@ -164,8 +161,20 @@ return {
                   vim.log.levels.WARN
                 )
               else
-                vim.notify("[lsp] Format error: " .. msg, vim.log.levels.WARN)
+                vim.notify("[lsp] Format error: " .. tostring(err), vim.log.levels.WARN)
               end
+            end
+
+            local ok, err = pcall(function()
+              require("conform").format({
+                bufnr        = e.buf,
+                timeout_ms   = timeout_ms,
+                lsp_format   = "fallback",
+                quiet        = true,
+              }, on_result)
+            end)
+            if not ok then
+              vim.notify("[lsp] Format error: " .. tostring(err), vim.log.levels.WARN)
             end
           end
           map("<leader>,f", fmt, "Format")

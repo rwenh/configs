@@ -41,6 +41,24 @@ local function is_vite_project()
   return false
 end
 
+-- ── Package-manager run-command mapping ────────────────────────────────────
+--
+local PM_RUN_PREFIX = {
+  npm  = "npm run ",
+  pnpm = "pnpm ",
+  yarn = "yarn ",
+  bun  = "bun run ",
+}
+
+---@param root   string
+---@param script string  e.g. "dev" or "build"
+---@return string
+local function pm_run_cmd(root, script)
+  local ok_runner, runner = pcall(require, "core.util.runner")
+  local pm = (ok_runner and runner.detect_pkg_manager(root)) or "npm"
+  return (PM_RUN_PREFIX[pm] or PM_RUN_PREFIX.npm) .. script
+end
+
 return {
   -- ── Auto-close HTML/JSX tags ───────────────────────────────────────────────
   {
@@ -93,22 +111,11 @@ return {
             return
           end
 
-          -- Prefer the local vite binary via npx/bunx/pnpx depending on the
-          local ok_runner, runner = pcall(require, "core.util.runner")
-          local ok_path,   path_util = pcall(require, "core.util.path")
+          local ok_path, path_util = pcall(require, "core.util.path")
           local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
 
-          local pm_cmd = "npm run dev"
-          if ok_runner then
-            local base = runner.detect_js_test_cmd(root)
-            if base:find("^bun")  then pm_cmd = "bun run dev"
-            elseif base:find("^pnpm") then pm_cmd = "pnpm dev"
-            elseif base:find("^yarn") then pm_cmd = "yarn dev"
-            end
-          end
-
           require("core.util.term").float(
-            "cd " .. vim.fn.shellescape(root) .. " && " .. pm_cmd,
+            "cd " .. vim.fn.shellescape(root) .. " && " .. pm_run_cmd(root, "dev"),
             { close_on_exit = false }
           )
         end,
@@ -119,21 +126,11 @@ return {
       {
         "<leader>wb",
         function()
-          local ok_runner, runner = pcall(require, "core.util.runner")
-          local ok_path,   path_util = pcall(require, "core.util.path")
+          local ok_path, path_util = pcall(require, "core.util.path")
           local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
 
-          local pm_cmd = "npm run build"
-          if ok_runner then
-            local base = runner.detect_js_test_cmd(root)
-            if base:find("^bun")  then pm_cmd = "bun run build"
-            elseif base:find("^pnpm") then pm_cmd = "pnpm build"
-            elseif base:find("^yarn") then pm_cmd = "yarn build"
-            end
-          end
-
           require("core.util.term").float(
-            "cd " .. vim.fn.shellescape(root) .. " && " .. pm_cmd
+            "cd " .. vim.fn.shellescape(root) .. " && " .. pm_run_cmd(root, "build")
           )
         end,
         desc = "Web: build (npm/pnpm/yarn/bun run build)",

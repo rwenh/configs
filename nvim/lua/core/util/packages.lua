@@ -48,20 +48,6 @@ M.mason = {
   },
 }
 
-M.versions = {
-  ["lua-language-server"] = nil,
-  ["basedpyright"]        = nil,
-  ["prettier"]            = nil,
-  ["stylua"]              = nil,
-  ["black"]               = nil,
-  ["ruff"]                = nil,
-  ["eslint_d"]            = nil,
-  ["debugpy"]             = nil,
-  ["codelldb"]            = nil,
-  ["delve"]               = nil,
-  ["js-debug-adapter"]    = nil,
-}
-
 -- ── M.get ─────────────────────────────────────────────────────────────────────
 ---@param  category string?
 ---@return string[]
@@ -96,19 +82,7 @@ function M.get(category)
   return result
 end
 
--- ── M.version_pin ─────────────────────────────────────────────────────────────
----@param  name string
----@return string|nil
-function M.version_pin(name)
-  return M.versions[name]
-end
-
 -- ── M.validate ────────────────────────────────────────────────────────────────
---
--- Servers managed externally (rustaceanvim, nvim-jdtls) are excluded.
---
--- Call once at startup (e.g. from init.lua after core modules load):
---   require("core.util.packages").validate()
 --
 local EXTERNALLY_MANAGED = {
   -- rust-analyzer managed by rustaceanvim
@@ -117,6 +91,7 @@ local EXTERNALLY_MANAGED = {
   ["jdtls"]         = true,
 }
 
+---@return { ok: boolean, issues: string[] }
 function M.validate()
   -- Normalise: strip hyphens, underscores, "language", "server", "ls", "lsp".
   local function normalise(s)
@@ -154,16 +129,19 @@ function M.validate()
   else
     vim.notify("[packages] M.validate(): all lspconfig entries have Mason counterparts.", vim.log.levels.DEBUG)
   end
+
+  return { ok = (#issues == 0), issues = issues }
 end
 
 -- ── M.validate_dap ────────────────────────────────────────────────────────────
 -- Call once at startup alongside M.validate().
 --
+---@return { ok: boolean, issues: string[] }
 function M.validate_dap()
   local ok, registry = pcall(require, "mason-registry")
   if not ok then
     vim.notify("[packages] validate_dap(): mason-registry not available", vim.log.levels.DEBUG)
-    return
+    return { ok = false, issues = { "  mason-registry not available" } }
   end
 
   local issues = {}
@@ -184,6 +162,8 @@ function M.validate_dap()
   else
     vim.notify("[packages] validate_dap(): all mason.dap entries found in registry.", vim.log.levels.DEBUG)
   end
+
+  return { ok = (#issues == 0), issues = issues }
 end
 
 return M

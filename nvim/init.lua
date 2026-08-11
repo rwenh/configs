@@ -70,26 +70,58 @@ if _plugins_ok then
       pcall(function() require("core.util.packages").validate() end)
       pcall(function() require("core.util.packages").validate_dap() end)
 
-      -- Escape hatch type validation
       local typed_flags = {
-        { "format_timeout_ms",             "number" },
-        { "format_timeout_by_ft",          "table"  },
-        { "mason_extras",                  "table"  },
-        { "lsp_on_attach_overrides",       "table"  },
-        { "completion_sources_by_ft",      "table"  },
-        { "path_max_walk_depth",           "number" },
-        { "path_cache_ttl",                "number" },
-        { "path_ignore_dirs",              "table"  },
-        { "symbol_usage_max_lines",        "number" },
-        { "neotest_concurrency",           "number" },
-        { "dap_bp_autosave_ms",            "number" },
-        { "mason_install_timeout_ms",      "number" },
-        { "kotlin_spring_cache_ttl",       "number" },
-        { "workflow_template_debounce_ms", "number" },
-        { "filetype_options",              "table"  },
-        { "ts_disable",                    "table"  },
-        { "octo_timeout_ms",               "number" },
-        { "rustaceanvim_features",         "table"  },
+        -- Core display & behaviour
+        { "disable_highlight_overrides",   "boolean" },
+        { "disable_tint",                  "boolean" },
+        { "disable_smear_cursor",          "boolean" },
+        { "disable_mini_pairs",            "boolean" },
+        { "disable_autoformat",            "boolean" },
+        { "disable_treesitter_folds",      "boolean" },
+        { "auto_cd_root",                  "boolean" },
+        { "runner_autosave",               "boolean" },
+        -- LSP & formatting
+        { "format_timeout_ms",             "number"  },
+        { "format_timeout_by_ft",          "table"   },
+        { "enable_pylint",                 "boolean" },
+        { "lsp_on_attach_overrides",       "table"   },
+        { "completion_sources_by_ft",      "table"   },
+        { "debugpy_python",                "string"  },
+        { "ts_import_preference",          "string"  },
+        -- DAP & testing
+        { "dap_bp_autosave_ms",            "number"  },
+        { "neotest_concurrency",           "number"  },
+        -- Task runner & workflow
+        { "mason_install_timeout_ms",      "number"  },
+        { "mason_extras",                  "table"   },
+        { "workflow_template_debounce_ms", "number"  },
+        { "overseer_auto_scroll",          "boolean" },
+        -- Project root & paths
+        { "path_max_walk_depth",           "number"  },
+        { "path_cache_ttl",                "number"  },
+        { "path_debug",                    "boolean" },
+        { "path_ignore_dirs",              "table"   },
+        { "cmake_build_dir",               "string"  },
+        { "lazy_cache_path",               "string"  },
+        -- UI extras
+        { "symbol_usage_max_lines",        "number"  },
+        { "force_mini_animate_scroll",     "boolean" },
+        { "octo_timeout_ms",               "number"  },
+        -- Language-specific
+        { "disable_vsg_format",            "boolean" },
+        { "elixir_use_nextls",             "boolean" },
+        { "kotlin_spring_cache_ttl",       "number"  },
+        { "python_venv_auto_refresh",      "boolean" },
+        { "python_docstring_style",        "string"  },
+        { "c_build_flags",                 "string"  },
+        { "cpp_build_flags",               "string"  },
+        { "fortran_build_flags",           "string"  },
+        { "rustaceanvim_features",         "table"   },
+        { "filetype_options",              "table"   },
+        { "spell_wordlist",                "string"  },
+        { "ts_disable",                    "table"   },
+        { "ts_auto_install",               "boolean" },
+        { "nextls_bin",                    "string"  },
       }
       local flag_issues = {}
       for _, entry in ipairs(typed_flags) do

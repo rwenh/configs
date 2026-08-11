@@ -161,21 +161,55 @@ pcall(function()
 end)
 
 -- ── Large file optimisation ───────────────────────────────────────────────────
+--
 local large_file_group = ag("LargeFile", { clear = true })
+local LARGE_FILE_BYTES  = 500 * 1024
+
+local function set_win_local_for_buf(buf, key, val)
+  local wins = vim.fn.win_findbuf(buf)
+  for _, win in ipairs(wins) do
+    pcall(vim.api.nvim_set_option_value, key, val, { win = win, scope = "local" })
+  end
+end
+
+local function apply_large_file_state(buf)
+  pcall(function()
+    set_win_local_for_buf(buf, "foldmethod", "manual")
+    set_win_local_for_buf(buf, "spell", false)
+    set_win_local_for_buf(buf, "cursorline", false)
+    vim.api.nvim_set_option_value("swapfile", false, { buf = buf })
+    vim.api.nvim_set_option_value("syntax", "off", { buf = buf })
+  end)
+  pcall(vim.treesitter.stop, buf)
+end
+
+local function lift_large_file_state(buf)
+  pcall(function()
+    if vim.g.disable_treesitter_folds then
+      set_win_local_for_buf(buf, "foldmethod", "indent")
+    else
+      set_win_local_for_buf(buf, "foldmethod", "expr")
+      set_win_local_for_buf(buf, "foldexpr", "v:lua.vim.treesitter.foldexpr()")
+    end
+    set_win_local_for_buf(buf, "spell", (vim.bo[buf].filetype == "markdown"))
+    set_win_local_for_buf(buf, "cursorline", true)
+    vim.api.nvim_set_option_value("swapfile", false, { buf = buf })
+    vim.api.nvim_set_option_value("syntax", "on", { buf = buf })
+  end)
+  pcall(function()
+    vim.b[buf]._ts_size_checked = nil
+    vim.b[buf]._ts_large        = nil
+  end)
+  pcall(vim.treesitter.start, buf)
+end
 
 au("BufReadPre", {
   group    = large_file_group,
   callback = function(e)
     local ok, stat = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(e.buf))
-    if ok and stat and stat.size > 500 * 1024 then
+    if ok and stat and stat.size > LARGE_FILE_BYTES then
       vim.b[e.buf].large_file = true
-      pcall(function()
-        vim.opt_local.foldmethod = "manual"
-        vim.opt_local.spell      = false
-        vim.opt_local.cursorline = false
-        vim.opt_local.swapfile   = false
-        vim.opt_local.syntax     = "off"
-      end)
+      apply_large_file_state(e.buf)
       vim.schedule(function()
         vim.notify("Large file — some features disabled", vim.log.levels.WARN)
       end)
@@ -195,6 +229,34 @@ au("BufWinEnter", {
       pcall(function() vim.opt_local.foldmethod = "manual" end)
     end
   end,
+})
+au("BufWritePost", {
+  group    = large_file_group,
+  callback = function(e)
+    local name = vim.api.nvim_buf_get_name(e.buf)
+    if name == "" then return end
+    local ok, stat = pcall(vim.uv.fs_stat, name)
+    if not ok or not stat then return end
+
+    local is_large  = stat.size > LARGE_FILE_BYTES
+    local was_large = (vim.b[e.buf] and vim.b[e.buf].large_file) or false
+    if is_large == was_large then return end -- no state change, nothing to do
+
+    if is_large then
+      vim.b[e.buf].large_file = true
+      apply_large_file_state(e.buf)
+      vim.schedule(function()
+        vim.notify("Large file — some features disabled", vim.log.levels.WARN)
+      end)
+    else
+      vim.b[e.buf].large_file = nil
+      lift_large_file_state(e.buf)
+      vim.schedule(function()
+        vim.notify("File back under 500 KB — large-file protections lifted", vim.log.levels.INFO)
+      end)
+    end
+  end,
+  desc = "Re-evaluate the large-file flag on save in both directions",
 })
 
 -- ── NvimIdeReady user event (phase 2 fix #1: fires after LazyDone) ───────────

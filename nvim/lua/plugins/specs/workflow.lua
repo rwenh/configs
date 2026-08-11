@@ -106,22 +106,17 @@ local function run_shell_command_interactive()
     local ok_path, path_util = pcall(require, "core.util.path")
     local cwd = (ok_path and path_util.find_root()) or vim.fn.getcwd()
 
-    local ok_task = pcall(function()
-      overseer.run_template({
-        name   = "shell",
-        params = { cmd = input, cwd = cwd },
-      })
+    local ok_task, err = pcall(function()
+      overseer.new_task({
+        name       = input,
+        cmd        = { "sh", "-c", input },
+        cwd        = cwd,
+        components = { "default" },
+      }):start()
     end)
 
     if not ok_task then
-      pcall(function()
-        overseer.new_task({
-          name       = input,
-          cmd        = { "sh", "-c", input },
-          cwd        = cwd,
-          components = { "default" },
-        }):start()
-      end)
+      vim.notify("[workflow] failed to run shell command: " .. tostring(err), vim.log.levels.ERROR)
     end
   end)
 end
@@ -143,11 +138,18 @@ return {
             vim.notify("[overseer] plugin not loaded", vim.log.levels.WARN)
             return
           end
-          local ok = pcall(function() overseer.run_template({ name = "build" }) end)
-          if not ok then
+
+          local function open_picker_fallback()
             vim.notify("[overseer] no 'build' template — opening task picker", vim.log.levels.INFO)
             vim.cmd("OverseerRun")
           end
+
+          local ok = pcall(function()
+            overseer.run_template({ name = "build" }, function(task)
+              if not task then vim.schedule(open_picker_fallback) end
+            end)
+          end)
+          if not ok then open_picker_fallback() end
         end,
         desc = "Overseer: build",
       },
@@ -159,14 +161,7 @@ return {
     },
 
     opts = function()
-      local strategy_name = (pcall(require, "toggleterm")) and "toggleterm" or "terminal"
       return {
-        strategy = {
-          strategy_name,
-          direction     = "float",
-          close_on_exit = false,
-          open_on_start = true,
-        },
 
         templates   = { "builtin" },
         auto_scroll = vim.g.overseer_auto_scroll ~= false,

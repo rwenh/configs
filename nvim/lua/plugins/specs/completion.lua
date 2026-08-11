@@ -71,24 +71,6 @@ return {
     },
 
     config = function(_, opts)
-      -- ── Version pin check ───────────────────────────────────────────────────
-      pcall(function()
-        local ok, blink_meta = pcall(require, "blink.cmp.version")
-        if ok and type(blink_meta) == "table" and blink_meta.version then
-          local major = tonumber(tostring(blink_meta.version):match("^(%d+)"))
-          if major and major ~= 1 then
-            vim.notify(
-              string.format(
-                "[completion] blink.cmp major version is %d (expected 1).\n"
-                .. "The '1.*' pin no longer applies — update completion.lua.\n"
-                .. "Set: version = '%d.*'  or pin to a specific release.",
-                major, major
-              ),
-              vim.log.levels.WARN
-            )
-          end
-        end
-      end)
 
       -- ── LuaSnip integration ─────────────────────────────────────────────────
       local has_ls, ls = pcall(require, "luasnip")

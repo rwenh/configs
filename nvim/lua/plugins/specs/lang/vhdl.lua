@@ -49,7 +49,7 @@ end
 local function parse_entity_ports(lines)
   local entity_name = nil
   for _, line in ipairs(lines) do
-    entity_name = line:match("^%s*entity%s+(%w+)%s+is")
+    entity_name = line:match("^%s*entity%s+([%w_]+)%s+is")
     if entity_name then break end
   end
   if not entity_name then return nil, {} end
@@ -95,11 +95,15 @@ local function parse_entity_ports(lines)
   for decl in (port_text .. ";"):gmatch("(.-)%s*;") do
     decl = vim.trim(decl)
     if decl ~= "" then
-      local sig, dir, typ = decl:match("^(%w+)%s*:%s*(%w+)%s+(.+)$")
-      if sig and dir and typ then
+      local names_part, dir, typ = decl:match("^([%w_,%s]+):%s*([%w_]+)%s+(.+)$")
+      if names_part and dir and typ then
         typ = vim.trim(typ)
-        sig = sig:gsub("^signal%s+", "")
-        table.insert(ports, { name = sig, dir = dir:lower(), typ = typ })
+        for sig in names_part:gmatch("[%w_]+") do
+          sig = sig:gsub("^signal$", "")
+          if sig ~= "" then
+            table.insert(ports, { name = sig, dir = dir:lower(), typ = typ })
+          end
+        end
       end
     end
   end

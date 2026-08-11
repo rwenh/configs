@@ -366,7 +366,6 @@ These modules contain no startup-only state and can be reloaded mid-session:
 |---------|-----|
 | LSP not attaching | `:MasonInstallAll` · `:checkhealth lsp` |
 | Completion not working | `:Lazy update` · verify `version = "1.*"` in `completion.lua` |
-| blink.cmp major-version warning | Update version pin in `completion.lua` |
 | COBOL LSP not attaching | `npm i -g @broadcommfd/cobol-language-support` + restart |
 | VHDL LSP not attaching | `cargo install vhdl_ls` + restart |
 | TypeScript LSP double-attaching | Ensure typescript-tools.nvim installed |

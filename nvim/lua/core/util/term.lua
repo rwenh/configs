@@ -122,6 +122,9 @@ function M.open(name, cmd, opts)
     cmd          = cmd,
     display_name = name,
     on_close     = function()
+      if _registry[name] then
+        _registry[name] = nil
+      end
     end,
   })
 
@@ -137,7 +140,6 @@ function M.open(name, cmd, opts)
   end
 end
 
----Send text to a named terminal that is already running.
 ---@param name string   registry key of an existing named terminal
 ---@param text string   text to send
 ---@param nl   boolean? append newline (default true)

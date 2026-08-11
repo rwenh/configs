@@ -86,6 +86,45 @@ return {
     end,
   },
 
+  -- ── Raw g++ build + run (no CMake) ──────────────────────────────────────────
+  --
+  {
+    "akinsho/toggleterm.nvim",
+    keys = {
+      {
+        "<leader>ccx",
+        function()
+          local exec = require("core.util.exec")
+          if not exec.require_bin("g++", "sudo zypper in gcc-c++") then return end
+
+          local file = vim.fn.expand("%:p")
+          local exe  = vim.fn.expand("%:p:r")
+
+          local raw_flags      = vim.g.cpp_build_flags or "-Wall -std=c++17 -g"
+          local flags, changed = shared.sanitize_build_flags(raw_flags)
+
+          if changed then
+            vim.notify(
+              "[cpp] cpp_build_flags contained unsafe characters that were stripped.\n"
+              .. "  original : " .. raw_flags .. "\n"
+              .. "  sanitised: " .. flags,
+              vim.log.levels.WARN
+            )
+          end
+
+          require("core.util.term").float(string.format(
+            "g++ %s -o %s %s && %s",
+            flags,
+            vim.fn.shellescape(exe),
+            vim.fn.shellescape(file),
+            vim.fn.shellescape(exe)
+          ))
+        end,
+        desc = "C++ Compile & Run single file (g++, no CMake)", ft = "cpp",
+      },
+    },
+  },
+
   -- ── Neogen docstrings ──────────────────────────────────────────────────────
 
   {

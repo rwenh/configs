@@ -450,7 +450,6 @@ rm -rf ~/.local/share/nvim ~/.cache/nvim && nvim
 |---------|-----|
 | LSP not attaching | `:MasonInstallAll` · `:checkhealth lsp` |
 | Completion broken | `:Lazy update` · verify `version = "1.*"` in `completion.lua` |
-| blink.cmp major-version warning at startup | Update `completion.lua` version pin to match installed major |
 | COBOL LSP missing | `npm i -g @broadcommfd/cobol-language-support` + restart |
 | VHDL LSP missing | `cargo install vhdl_ls` + restart |
 | TypeScript LSP double-attaching | Ensure typescript-tools.nvim installed; `ts_ls` fallback only fires when absent |

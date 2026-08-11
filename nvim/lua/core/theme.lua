@@ -24,13 +24,13 @@ M.available = {
 --   }
 
 local _builtin_patches = {
-  tokyonight       = { background = "dark"  },
-  catppuccin       = { background = "dark"  },
-  kanagawa         = { background = "dark"  },
-  ["rose-pine"]    = { background = "dark"  },
-  ["gruvbox-material"] = { background = "dark" },
-  solarized           = { background = "light" },
-  ["solarized-osaka"] = { background = "dark"  },
+  tokyonight           = {},
+  catppuccin           = {},
+  kanagawa             = {},
+  ["rose-pine"]        = {},
+  ["gruvbox-material"] = {},
+  solarized            = {},
+  ["solarized-osaka"]  = {},
 }
 
 local function get_patches(theme_name)

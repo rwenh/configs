@@ -84,6 +84,8 @@ return {
         file_panel     = { size = 10, use_icons = true },
       }
 
+      local user_set_timeout = vim.g.octo_timeout_ms ~= nil
+
       local ok_cfg, octo_config = pcall(require, "octo.config")
       if ok_cfg and type(octo_config) == "table" then
         local defaults = type(octo_config.defaults) == "table" and octo_config.defaults
@@ -91,9 +93,19 @@ return {
                       or {}
         if defaults.timeout ~= nil then
           opts.timeout = vim.g.octo_timeout_ms or 10000
+        elseif user_set_timeout then
+          vim.notify(
+            string.format(
+              "[git] vim.g.octo_timeout_ms = %d is set, but the installed octo.nvim\n"
+              .. "version doesn't expose a 'timeout' config field. Skipping it rather\n"
+              .. "than passing a value octo.nvim won't recognise.\n"
+              .. "Run :Lazy update octo.nvim, or check octo.nvim's current option names.",
+              vim.g.octo_timeout_ms
+            ),
+            vim.log.levels.WARN
+          )
         end
       else
-        -- Fallback: include timeout anyway; octo will ignore unknown keys.
         opts.timeout = vim.g.octo_timeout_ms or 10000
       end
 
@@ -113,10 +125,25 @@ return {
       { "<leader>.zz",
         function()
           vim.ui.input({ prompt = "Stash message (optional): " }, function(msg)
-            local cmd = (msg and msg ~= "")
-              and ("Git stash push -m " .. vim.fn.shellescape(msg))
-              or  "Git stash push"
-            pcall(vim.cmd, cmd)
+            if msg == nil then return end
+
+            local cmd = { "git", "stash", "push" }
+            if msg ~= "" then
+              table.insert(cmd, "-m")
+              table.insert(cmd, msg)
+            end
+
+            local buf_dir = vim.fn.expand("%:p:h")
+            vim.system(cmd, { text = true, cwd = (buf_dir ~= "" and buf_dir or nil) }, function(result)
+              vim.schedule(function()
+                local out = vim.trim((result.stderr or "") .. (result.stdout or ""))
+                if result.code == 0 then
+                  vim.notify("[git] " .. (out ~= "" and out or "Stash pushed"), vim.log.levels.INFO)
+                else
+                  vim.notify("[git] stash push failed: " .. out, vim.log.levels.ERROR)
+                end
+              end)
+            end)
           end)
         end,
         desc = "Git stash push",
@@ -134,6 +161,8 @@ return {
     },
   },
 
+  -- ── git-worktree ────────────────────────────────────────────────────────────
+  --
   { "ThePrimeagen/git-worktree.nvim",
     dependencies = { "nvim-telescope/telescope.nvim" },
     event        = "VeryLazy",
@@ -142,17 +171,46 @@ return {
       if not ok then return end
       pcall(function() wt.setup() end)
       local ok_t, telescope = pcall(require, "telescope")
-      if ok_t then pcall(function() telescope.load_extension("git_worktree") end) end
+      if ok_t then
+        local ok_ext, err = pcall(function() telescope.load_extension("git_worktree") end)
+        if not ok_ext then
+          vim.notify(
+            "[git] git_worktree Telescope extension failed to load: " .. tostring(err)
+            .. "\n<leader>.wl / <leader>.wc will not work until this is fixed.\n"
+            .. "Check :Lazy log git-worktree.nvim for details.",
+            vim.log.levels.WARN
+          )
+        end
+      end
     end,
-    keys = {
-      { "<leader>.wl", function()
+    keys = (function()
+      local function call_worktree_ext(fn_name, desc)
+        return function()
           local ok, telescope = pcall(require, "telescope")
-          if ok then pcall(function() telescope.extensions.git_worktree.git_worktrees() end) end
-        end, desc = "Git worktree list / switch" },
-      { "<leader>.wc", function()
-          local ok, telescope = pcall(require, "telescope")
-          if ok then pcall(function() telescope.extensions.git_worktree.create_git_worktree() end) end
-        end, desc = "Git worktree create" },
-    },
+          if not ok then
+            vim.notify("[git] telescope not available", vim.log.levels.WARN)
+            return
+          end
+          local ext = telescope.extensions and telescope.extensions.git_worktree
+          if not ext or type(ext[fn_name]) ~= "function" then
+            vim.notify(
+              "[git] git_worktree Telescope extension is not loaded — " .. desc .. " unavailable.\n"
+              .. "It should load automatically; if this persists, check :Lazy log git-worktree.nvim\n"
+              .. "or run: :lua require('telescope').load_extension('git_worktree')",
+              vim.log.levels.WARN
+            )
+            return
+          end
+          local ok_call, err = pcall(ext[fn_name])
+          if not ok_call then
+            vim.notify("[git] " .. desc .. " failed: " .. tostring(err), vim.log.levels.WARN)
+          end
+        end
+      end
+      return {
+        { "<leader>.wl", call_worktree_ext("git_worktrees",       "Git worktree list / switch"), desc = "Git worktree list / switch" },
+        { "<leader>.wc", call_worktree_ext("create_git_worktree", "Git worktree create"),         desc = "Git worktree create" },
+      }
+    end)(),
   },
 }

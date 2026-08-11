@@ -76,9 +76,7 @@ return {
           end)()
 
           local root_dir = setup.find_root({ ".git","mvnw","gradlew","pom.xml","build.gradle" }) or vim.fn.getcwd()
-          local buf_path = vim.api.nvim_buf_get_name(e.buf)
-          local hash_src = (buf_path ~= "" and buf_path ~= root_dir) and buf_path or root_dir
-          local workspace = data_dir .. "/jdtls-workspace/" .. vim.fn.sha256(hash_src)
+          local workspace = data_dir .. "/jdtls-workspace/" .. vim.fn.sha256(root_dir)
 
           local config_dir = (function()
             local sysname = (vim.uv.os_uname() or {}).sysname or "Linux"

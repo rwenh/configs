@@ -3,6 +3,21 @@
 
 local shared = require("plugins.specs.lang.shared")
 
+-- ── build.zig detection ─────────────────────────────────────────────────────
+--
+---@return string  path to build.zig, or "" if none found above the current buffer
+local function find_build_zig()
+  local dir = vim.fn.expand("%:p:h")
+  local search_path = (dir ~= "" and dir or ".") .. ";"
+  return vim.fn.findfile("build.zig", search_path)
+end
+
+---@param build_zig string  a non-empty path returned by find_build_zig()
+---@return string
+local function build_zig_dir(build_zig)
+  return vim.fn.fnamemodify(build_zig, ":p:h")
+end
+
 return {
   { "stevearc/conform.nvim", optional = true,
     opts = function(_, opts)
@@ -29,16 +44,18 @@ return {
               type    = "codelldb",
               request = "launch",
               program = function()
-                local build_zig = vim.fn.findfile("build.zig", ".;")
+                local build_zig = find_build_zig()
                 local default   = vim.fn.getcwd() .. "/zig-out/bin/"
                 if build_zig ~= "" then
-                  -- Try each exe name declared in build.zig (all occurrences).
-                  for _, line in ipairs(vim.fn.readfile(build_zig)) do
-                    local name = line:match('addExecutable%([^,]+,?%s*"([^"]+)"')
-                      or line:match('addExecutable%(.name%s*=%s*"([^"]+)"')
-                    if name then
-                      local candidate = vim.fn.fnamemodify(build_zig, ":h") .. "/zig-out/bin/" .. name
-                      if vim.fn.filereadable(candidate) == 1 then return candidate end
+                  local ok_rf, lines = pcall(vim.fn.readfile, build_zig)
+                  if ok_rf then
+                    for _, line in ipairs(lines) do
+                      local name = line:match('addExecutable%([^,]+,?%s*"([^"]+)"')
+                        or line:match('addExecutable%(.name%s*=%s*"([^"]+)"')
+                      if name then
+                        local candidate = build_zig_dir(build_zig) .. "/zig-out/bin/" .. name
+                        if vim.fn.filereadable(candidate) == 1 then return candidate end
+                      end
                     end
                   end
                 end
@@ -59,20 +76,24 @@ return {
       {
         "<leader>zb",
         function()
-          if vim.fn.findfile("build.zig", ".;") == "" then
+          local build_zig = find_build_zig()
+          if build_zig == "" then
             vim.notify("[zig] build.zig not found", vim.log.levels.WARN); return
           end
-          require("core.util.term").float_at_root("zig build run")
+          local term = require("core.util.term")
+          term.float(term.cd_prefix(build_zig_dir(build_zig)) .. "zig build run")
         end,
         desc = "Zig Build Run", ft = "zig",
       },
       {
         "<leader>zt",
         function()
-          if vim.fn.findfile("build.zig", ".;") == "" then
+          local build_zig = find_build_zig()
+          if build_zig == "" then
             vim.notify("[zig] build.zig not found", vim.log.levels.WARN); return
           end
-          require("core.util.term").float_at_root("zig build test")
+          local term = require("core.util.term")
+          term.float(term.cd_prefix(build_zig_dir(build_zig)) .. "zig build test")
         end,
         desc = "Zig Build Test", ft = "zig",
       },
@@ -92,10 +113,19 @@ return {
         function()
           local exec = require("core.util.exec")
           if not exec.require_bin("zig", "See https://ziglang.org/download/") then return end
+
+          local build_zig = find_build_zig()
+          if build_zig == "" then
+            vim.notify("[zig] build.zig not found — zig fetch needs a Zig project", vim.log.levels.WARN)
+            return
+          end
+
           vim.ui.input({ prompt = "zig fetch URL: " }, function(url)
             if not url or vim.trim(url) == "" then return end
-            require("core.util.term").float_at_root(
-              "zig fetch --save " .. vim.fn.shellescape(url)
+            local term = require("core.util.term")
+            term.float(
+              term.cd_prefix(build_zig_dir(build_zig))
+              .. "zig fetch --save " .. vim.fn.shellescape(url)
             )
           end)
         end,

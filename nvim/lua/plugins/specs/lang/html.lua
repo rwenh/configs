@@ -31,31 +31,53 @@ local function has_htmlhint_config()
   return false
 end
 
+local _htmlhint_registered = false
+
+local function try_register_htmlhint()
+  if _htmlhint_registered then return end
+  if vim.fn.executable("htmlhint") ~= 1 then return end
+  if not has_htmlhint_config() then
+    vim.notify(
+      "[html] htmlhint found but no config detected (checked .htmlhintrc and package.json) — linter skipped.\n"
+      .. "Create a .htmlhintrc or add an 'htmlhint' key in package.json.",
+      vim.log.levels.DEBUG
+    )
+    return
+  end
+  local ok, lint = pcall(require, "lint")
+  if not ok then return end
+  lint.linters_by_ft = lint.linters_by_ft or {}
+  lint.linters_by_ft.html = lint.linters_by_ft.html or {}
+  local already = false
+  for _, l in ipairs(lint.linters_by_ft.html) do
+    if l == "htmlhint" then already = true; break end
+  end
+  if not already then table.insert(lint.linters_by_ft.html, "htmlhint") end
+  _htmlhint_registered = true
+end
+
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = { "html", "htmldjango" },
-  once     = true,
   group    = vim.api.nvim_create_augroup("HtmlHintConditional", { clear = true }),
+  callback = try_register_htmlhint,
+  desc = "Conditionally register htmlhint when config is present (re-checked on every relevant buffer, not just the first)",
+})
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("HtmlHintRecheck", { clear = true }),
   callback = function()
-    if vim.fn.executable("htmlhint") ~= 1 then return end
-    if not has_htmlhint_config() then
-      vim.notify(
-        "[html] htmlhint found but no config detected (checked .htmlhintrc and package.json) — linter skipped.\n"
-        .. "Create a .htmlhintrc or add an 'htmlhint' key in package.json.",
-        vim.log.levels.DEBUG
-      )
-      return
+    if _htmlhint_registered then return end
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) then
+        local ft = vim.bo[buf].filetype
+        if vim.tbl_contains({ "html", "htmldjango" }, ft) then
+          try_register_htmlhint()
+          return
+        end
+      end
     end
-    local ok, lint = pcall(require, "lint")
-    if not ok then return end
-    lint.linters_by_ft = lint.linters_by_ft or {}
-    lint.linters_by_ft.html = lint.linters_by_ft.html or {}
-    local already = false
-    for _, l in ipairs(lint.linters_by_ft.html) do
-      if l == "htmlhint" then already = true; break end
-    end
-    if not already then table.insert(lint.linters_by_ft.html, "htmlhint") end
   end,
-  desc = "Conditionally register htmlhint when config is present",
+  desc = "Re-check htmlhint config when the working directory changes",
 })
 
 return {

@@ -148,6 +148,16 @@ function M.lint(ft, linters)
   }
 end
 
+-- ── sanitize_build_flags ──────────────────────────────────────────────────────
+--
+---@param  flags string?  raw flag string, e.g. from vim.g.c_build_flags
+---@return string sanitized
+---@return boolean changed  true if any characters were actually stripped
+function M.sanitize_build_flags(flags)
+  local sanitized = (flags or ""):gsub("[;&|`$<>()\n\r\"'\\]", "")
+  return sanitized, sanitized ~= (flags or "")
+end
+
 -- ── symlink_compile_commands ───────────────────────────────────────────────
 --
 ---@param prefix string

@@ -134,8 +134,7 @@ return {
         local labels = vim.tbl_map(function(i) return i.label end, items)
 
         vim.ui.select(labels, {
-          prompt    = "Exception breakpoints (space to toggle, enter to confirm):",
-          telescope = { multi_select = true },
+          prompt = "Select an exception breakpoint filter (type a number, enter to confirm):",
         }, function(choice, idx)
           if not choice then return end
           local selected_filter = items[idx] and items[idx].id or choice
@@ -205,36 +204,12 @@ return {
 
       -- ── js-debug-adapter path resolver ──────────────────────────────────────
       --
-      -- Mason has restructured this package before and may do so again.
-      -- The resolver now:
-      --   1. Tries the known Mason layout (primary)
-      --   2. Searches common relative paths inside the Mason js-debug-adapter pkg root
-      --   3. Falls back to a PATH search for dapDebugServer.js
-      -- This makes JS/TS debugging resilient to Mason package directory changes.
-      --
       local function find_js_debug_script()
-        -- Primary: current known Mason layout
-        local primary = mason.pkg("js-debug-adapter/js-debug/src/dapDebugServer.js")
-        if vim.fn.filereadable(primary) == 1 then return primary end
-
-        -- Secondary: search common alternate layouts within the Mason package root
-        local pkg_root = mason.packages_root() .. "/js-debug-adapter"
-        if vim.fn.isdirectory(pkg_root) == 1 then
-          local candidates = {
-            pkg_root .. "/js-debug/src/dapDebugServer.js",      -- current
-            pkg_root .. "/extension/src/dapDebugServer.js",     -- some older builds
-            pkg_root .. "/out/src/dapDebugServer.js",           -- compiled variants
-            pkg_root .. "/dist/src/dapDebugServer.js",
-          }
-          for _, path in ipairs(candidates) do
-            if vim.fn.filereadable(path) == 1 then
-              vim.notify("[dap] js-debug-adapter found at alternate path: " .. path, vim.log.levels.DEBUG)
-              return path
-            end
-          end
+        local path, is_alternate = mason.js_debug_script()
+        if path and is_alternate then
+          vim.notify("[dap] js-debug-adapter found at alternate path: " .. path, vim.log.levels.DEBUG)
         end
-
-        return nil
+        return path
       end
 
       local function setup_js()
@@ -364,9 +339,13 @@ return {
       local function save_breakpoints()
         local ok_bp, bp_data = pcall(function() return require("dap.breakpoints").get() end)
         if not ok_bp then return end
-        local bps = serialize_breakpoints(bp_data)
-        if next(bps) == nil then return end
-        pcall(vim.fn.writefile, { vim.json.encode(bps) }, get_bp_file())
+        local bps     = serialize_breakpoints(bp_data)
+        local bp_file = get_bp_file()
+        if next(bps) == nil then
+          pcall(os.remove, bp_file)
+          return
+        end
+        pcall(vim.fn.writefile, { vim.json.encode(bps) }, bp_file)
       end
 
       local function set_bps_scheduled(bufnr, entries)

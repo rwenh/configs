@@ -464,6 +464,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>xe` | Make file executable |
 | `<leader>xm` | Lua garbage collection |
 | `<leader>xh` | `:Health` summary |
+| `<leader>xH` | Full health check (`:checkhealth core`) |
 | `<leader>xp` | LCD to project root |
 | `<leader>xl` | Lazy |
 | `<leader>xn` | Mason |

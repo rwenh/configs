@@ -3,9 +3,11 @@
 
 local _active_theme = vim.g._nvim_active_theme or "tokyonight"
 
+local _declared_themes = {}
+
 local function theme_spec(plugin_name, name, extra)
+  if name then _declared_themes[name] = true end
   local is_active = (name == _active_theme)
-    or (_active_theme == "tokyonight" and name and vim.startswith(name, "tokyonight"))
   return vim.tbl_extend("force", {
     plugin_name, name = name or nil, lazy = not is_active, priority = 1000,
   }, extra or {})
@@ -30,21 +32,27 @@ function M.set_header(lines)
 end
 
 function M.reload_dashboard()
+  if vim.bo.filetype ~= "snacks_dashboard" then
+    vim.notify("[ui] Not currently viewing the dashboard — nothing to reload", vim.log.levels.INFO)
+    return
+  end
+
   local ok, snacks = pcall(require, "snacks")
   if not ok then
     vim.notify("[ui] snacks.nvim not loaded — dashboard reload unavailable", vim.log.levels.WARN)
     return
   end
-  pcall(function()
-    snacks.dashboard.setup({
-      dashboard = { preset = { header = M.build_header() } },
-    })
+
+  local reload_ok = pcall(function()
+    vim.cmd("enew")
+    snacks.dashboard.open({ preset = { header = M.build_header() } })
   end)
-  pcall(function()
-    if vim.bo.filetype == "snacks_dashboard" then
-      vim.cmd("enew"); snacks.dashboard.open()
-    end
-  end)
+
+  if reload_ok then
+    vim.notify("[ui] Dashboard reloaded", vim.log.levels.INFO)
+  else
+    vim.notify("[ui] snacks.dashboard.open() failed while reloading", vim.log.levels.WARN)
+  end
 end
 
 function M.build_header()
@@ -85,7 +93,6 @@ end
 
 vim.api.nvim_create_user_command("DashboardReload", function()
   M.reload_dashboard()
-  vim.notify("[ui] Dashboard reloaded", vim.log.levels.INFO)
 end, { desc = "Hot-reload the snacks dashboard with current header" })
 
 -- ── lualine diagnostic symbol helper ─────────────────────────────────────────
@@ -98,7 +105,9 @@ local lualine_diag_symbols = {
   info  = diag_icons.Info,
 }
 
-return vim.tbl_extend("keep", M, {
+-- ── Plugin specs ──────────────────────────────────────────────────────────────
+--
+local plugin_specs = {
 
   -- ── Themes ──────────────────────────────────────────────────────────────────
   theme_spec("folke/tokyonight.nvim", "tokyonight", {
@@ -336,4 +345,32 @@ return vim.tbl_extend("keep", M, {
       })
     end,
   },
-})
+}
+
+-- ── Theme registration drift check ────────────────────────────────────────────
+--
+do
+  local ok_theme, theme = pcall(require, "core.theme")
+  if ok_theme and type(theme.available) == "table" then
+    local missing_from_ui, missing_from_theme = {}, {}
+    for _, name in ipairs(theme.available) do
+      if not _declared_themes[name] then table.insert(missing_from_ui, name) end
+    end
+    for name in pairs(_declared_themes) do
+      if not vim.tbl_contains(theme.available, name) then table.insert(missing_from_theme, name) end
+    end
+    if #missing_from_ui > 0 or #missing_from_theme > 0 then
+      local msg = { "[ui] theme_spec() registrations and core.theme's M.available have drifted:" }
+      if #missing_from_ui > 0 then
+        table.insert(msg, "  in M.available but no theme_spec() plugin: " .. table.concat(missing_from_ui, ", "))
+      end
+      if #missing_from_theme > 0 then
+        table.insert(msg, "  has a theme_spec() plugin but missing from M.available: " .. table.concat(missing_from_theme, ", "))
+      end
+      table.insert(msg, "A name in only one list means M.switch() will reject an installed theme, or \"succeed\" on one that never loads.")
+      vim.notify(table.concat(msg, "\n"), vim.log.levels.WARN)
+    end
+  end
+end
+
+return vim.tbl_extend("keep", M, plugin_specs)

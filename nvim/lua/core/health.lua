@@ -14,12 +14,41 @@ local function mason_installed(pkg_name)
   return ok_pkg and pkg and pkg:is_installed()
 end
 
+local _checked_mason_lsp_pkgs = {}
+
 local function lsp_check(label, binary, mason_pkg, advice)
+  if mason_pkg then _checked_mason_lsp_pkgs[mason_pkg] = true end
   local installed = (binary and bin_ok(binary)) or (mason_pkg and mason_installed(mason_pkg))
   if installed then
     vim.health.ok(label)
   else
     vim.health.warn(label .. " not found", { advice or (mason_pkg and (":MasonInstall " .. mason_pkg) or ("Install: " .. (binary or ""))) })
+  end
+end
+
+-- typescript-tools.nvim talks to the TypeScript compiler's language service
+-- directly — it does not use (and this config does not install) a standalone
+-- typescript-language-server binary. Checking for that binary here produced a
+-- permanent false "not found" warning for the default setup. Check the two
+-- things that actually matter instead: the plugin is loaded, and a
+-- TypeScript compiler is discoverable.
+local function ts_tools_check()
+  local loaded = package.loaded["typescript-tools"] ~= nil
+    or #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0
+
+  if loaded then
+    vim.health.ok("TypeScript   (typescript-tools.nvim)")
+  else
+    vim.health.warn("TypeScript   (typescript-tools.nvim) not loaded", { ":Lazy install" })
+  end
+
+  if bin_ok("tsc") then
+    vim.health.ok("TypeScript   (tsc compiler on PATH)")
+  else
+    vim.health.info(
+      "TypeScript   (tsc compiler) not found on PATH — fine if 'typescript' is a local "
+      .. "devDependency instead of a global install; install globally with: npm install -g typescript"
+    )
   end
 end
 
@@ -44,6 +73,8 @@ local function lang_check(label, binary, optional, advice)
 end
 
 function M.check()
+  -- Reset per-run state — :checkhealth can be invoked more than once per session.
+  _checked_mason_lsp_pkgs = {}
 
   -- ── Core ──────────────────────────────────────────────────────────────────
   vim.health.start("nvim-ide core")
@@ -95,6 +126,52 @@ function M.check()
     vim.health.warn("lazy-lock.json not found", { "Run :Lazy lock and commit the file" })
   end
 
+  do
+    local ok_icons, icons = pcall(require, "core.util.icons")
+    if ok_icons and type(icons.check_nerd_font) == "function" then
+      local font_ok, font = icons.check_nerd_font()
+      if font_ok == nil then
+        vim.health.info("Nerd Font: cannot verify from terminal Neovim — check visually")
+      elseif font_ok then
+        vim.health.ok("Nerd Font detected (guifont: " .. tostring(font) .. ")")
+      else
+        vim.health.warn(
+          "guifont does not mention a Nerd Font: " .. tostring(font),
+          { "Icons throughout the UI will render as boxes/tofu. Install a Nerd Font: https://www.nerdfonts.com/" }
+        )
+      end
+    end
+  end
+
+  -- ── Config internal consistency ───────────────────────────────────────────
+  --
+  vim.health.start("nvim-ide config consistency")
+
+  do
+    local ok_pkgs, packages = pcall(require, "core.util.packages")
+    if not ok_pkgs then
+      vim.health.error("core.util.packages not loadable")
+    else
+      local ok_v1, result1 = pcall(packages.validate)
+      if not ok_v1 then
+        vim.health.warn("packages.validate() raised an error", { tostring(result1) })
+      elseif result1.ok then
+        vim.health.ok("lspconfig ↔ Mason naming: no drift detected")
+      else
+        vim.health.warn("lspconfig ↔ Mason naming drift detected", result1.issues)
+      end
+
+      local ok_v2, result2 = pcall(packages.validate_dap)
+      if not ok_v2 then
+        vim.health.warn("packages.validate_dap() raised an error", { tostring(result2) })
+      elseif result2.ok then
+        vim.health.ok("Mason DAP package names: all found in registry")
+      else
+        vim.health.warn("Mason DAP package name(s) not found in registry", result2.issues)
+      end
+    end
+  end
+
   -- ── LSP servers ───────────────────────────────────────────────────────────
   vim.health.start("nvim-ide LSP servers")
 
@@ -107,7 +184,7 @@ function M.check()
   lsp_check("Elixir       (elixir-ls)",                nil,                           "elixir-ls")
   lsp_check("Java         (jdtls)",                    nil,                           "jdtls")
   lsp_check("Kotlin       (kotlin-language-server)",   "kotlin-language-server",      "kotlin-language-server")
-  lsp_check("TypeScript   (typescript-tools)",         "typescript-language-server",  "typescript-language-server")
+  ts_tools_check()
   lsp_check("HTML         (html-lsp)",                 "vscode-html-language-server", "html-lsp")
   lsp_check("CSS          (cssls)",                    "vscode-css-language-server",  "css-lsp")
   lsp_check("JSON         (jsonls)",                   "vscode-json-language-server", "json-lsp")
@@ -116,8 +193,36 @@ function M.check()
   lsp_check("Zig          (zls)",                      "zls",                         "zls")
   lsp_check("Fortran      (fortls)",                   "fortls",                      "fortls")
   lsp_check("SQL          (sqls)",                     "sqls",                        "sqls")
-  lsp_check("COBOL        (cobol-language-server)",    "cobol-language-server",       nil, "npm i -g @broadcommfd/cobol-language-support")
+  do
+    if bin_ok("cobol-language-server") then
+      vim.health.ok("COBOL        (cobol-language-server)")
+    else
+      vim.health.info(
+        "COBOL        (cobol-language-server) not found — no npm package currently provides "
+        .. "a working standalone binary here (the previously-listed @broadcommfd/cobol-language-support "
+        .. "does not exist on the npm registry). Broadcom/Code4z's COBOL Language Support ships as a "
+        .. "VS Code extension, not a drop-in LSP binary. cobc compile/run (<leader>cob, <leader>coc) "
+        .. "works without it."
+      )
+    end
+  end
   lsp_check("VHDL         (vhdl_ls)",                  "vhdl_ls",                     nil, "cargo install vhdl_ls")
+
+  do
+    local ok_pkgs, packages = pcall(require, "core.util.packages")
+    if ok_pkgs then
+      local missing = {}
+      for _, pkg in ipairs(packages.get("lsp")) do
+        if not _checked_mason_lsp_pkgs[pkg] then table.insert(missing, pkg) end
+      end
+      if #missing > 0 then
+        vim.health.warn(
+          "packages.lua lists Mason LSP package(s) with no matching health check",
+          { "Add an lsp_check() entry in health.lua for: " .. table.concat(missing, ", ") }
+        )
+      end
+    end
+  end
 
   -- ── Formatters ────────────────────────────────────────────────────────────
   vim.health.start("nvim-ide formatters")
@@ -163,17 +268,8 @@ function M.check()
     "dlv", "dlv", nil)
 
   do
-    local js_debug_root = mason_pkg .. "js-debug-adapter"
-    local js_debug_candidates = {
-      js_debug_root .. "/js-debug/src/dapDebugServer.js",
-      js_debug_root .. "/extension/src/dapDebugServer.js",
-      js_debug_root .. "/out/src/dapDebugServer.js",
-      js_debug_root .. "/dist/src/dapDebugServer.js",
-    }
-    local found = false
-    for _, candidate in ipairs(js_debug_candidates) do
-      if vim.fn.filereadable(candidate) == 1 then found = true; break end
-    end
+    local ok_mason, mason = pcall(require, "core.util.mason")
+    local found = ok_mason and mason.js_debug_script() ~= nil
     if found then
       vim.health.ok("JS/TS        (js-debug-adapter)")
     else

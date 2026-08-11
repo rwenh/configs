@@ -42,9 +42,32 @@ end
 M.bin_exists  = M.bin_ok
 M.pkg_exists  = M.script_ok
 
+-- ── js-debug-adapter path resolution ──────────────────────────────────────────
+--
+local JS_DEBUG_CANDIDATES = {
+  "js-debug-adapter/js-debug/src/dapDebugServer.js",   -- current Mason layout
+  "js-debug-adapter/extension/src/dapDebugServer.js",  -- some older builds
+  "js-debug-adapter/out/src/dapDebugServer.js",        -- compiled variants
+  "js-debug-adapter/dist/src/dapDebugServer.js",
+}
+
+---@return string|nil  absolute path to dapDebugServer.js, or nil if not found in any known layout
+---@return boolean?     true if the found path was NOT the primary/expected layout
+function M.js_debug_script()
+  for i, rel in ipairs(JS_DEBUG_CANDIDATES) do
+    local path = M.pkg(rel)
+    if vim.fn.filereadable(path) == 1 then
+      return path, (i ~= 1)
+    end
+  end
+  return nil
+end
+
 -- ── Version cache ─────────────────────────────────────────────────────────────
 
 local _version_cache = {}
+
+local NOT_INSTALLED = false
 
 local VERSION_FLAGS = {
   stylua          = { "--version" },
@@ -66,11 +89,14 @@ local VERSION_FLAGS = {
 ---@param name string
 ---@return string|nil
 function M.version(name)
-  if _version_cache[name] ~= nil then return _version_cache[name] end
+  local cached = _version_cache[name]
+  if cached ~= nil then
+    return cached ~= NOT_INSTALLED and cached or nil
+  end
 
   local bin = M.bin(name)
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[name] = nil
+    _version_cache[name] = NOT_INSTALLED
     return nil
   end
 
@@ -97,14 +123,15 @@ end
 function M.version_async(name, callback)
   if type(callback) ~= "function" then return end
 
-  if _version_cache[name] ~= nil then
-    vim.schedule(function() callback(_version_cache[name]) end)
+  local cached = _version_cache[name]
+  if cached ~= nil then
+    vim.schedule(function() callback(cached ~= NOT_INSTALLED and cached or nil) end)
     return
   end
 
   local bin = M.bin(name)
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[name] = nil
+    _version_cache[name] = NOT_INSTALLED
     vim.schedule(function() callback(nil) end)
     return
   end
@@ -136,14 +163,41 @@ function M.clear_version_cache()
   _version_cache = {}
 end
 
-vim.api.nvim_create_autocmd("User", {
-  pattern  = "MasonUpdateCompleted",
-  group    = vim.api.nvim_create_augroup("MasonVersionCacheClear", { clear = true }),
-  callback = function()
-    M.clear_version_cache()
-    vim.notify("[mason] Version cache cleared after :MasonUpdate.", vim.log.levels.DEBUG)
-  end,
-  desc = "Auto-clear mason.lua version cache after :MasonUpdate completes",
-})
+local function register_registry_hooks()
+  local ok_registry, registry = pcall(require, "mason-registry")
+  if not ok_registry then return false end
+
+  local function clear_and_notify(reason)
+    return function()
+      M.clear_version_cache()
+      vim.notify("[mason] Version cache cleared " .. reason .. ".", vim.log.levels.DEBUG)
+    end
+  end
+
+  registry:on("update:success",            clear_and_notify("after :MasonUpdate"))
+  registry:on("package:install:success",   clear_and_notify("after a package install"))
+  registry:on("package:uninstall:success", clear_and_notify("after a package uninstall"))
+  return true
+end
+
+if not register_registry_hooks() then
+  vim.api.nvim_create_autocmd("User", {
+    pattern  = "LazyDone",
+    once     = true,
+    group    = vim.api.nvim_create_augroup("MasonVersionCacheClear", { clear = true }),
+    callback = function()
+      if not register_registry_hooks() then
+        vim.notify(
+          "[mason] mason-registry still not available after LazyDone -- "
+          .. "version cache will not auto-clear after installs/updates. Call "
+          .. "require('core.util.mason').clear_version_cache() manually if a "
+          .. "version looks stale.",
+          vim.log.levels.DEBUG
+        )
+      end
+    end,
+    desc = "Retry hooking mason-registry's events once plugins have finished loading",
+  })
+end
 
 return M
