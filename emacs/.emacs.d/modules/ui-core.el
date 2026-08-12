@@ -113,7 +113,16 @@
                           :weight (or weight 'normal))
       t))
 
-  (let ((font (or (bound-and-true-p emacs-ide-font) "JetBrains Mono"))
+  (let ((font (let ((raw (bound-and-true-p emacs-ide-font)))
+                ;; Same symbol-vs-string issue as ui-workspace.el: config.yml
+                ;; values come back interned as symbols, and `member' against
+                ;; `font-family-list' (a list of strings) never matches a
+                ;; symbol -- it just silently returns nil, no error, so the
+                ;; configured font was never actually being applied.
+                (cond
+                 ((stringp raw) raw)
+                 ((and raw (symbolp raw)) (symbol-name raw))
+                 (t "JetBrains Mono"))))
         (size (or (bound-and-true-p emacs-ide-font-size) 11)))
     (or (emacs-ide-set-font font size 'medium)
         (emacs-ide-set-font "Cascadia Code"   size)

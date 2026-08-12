@@ -141,7 +141,14 @@
 
 (defun emacs-ide-devops--compose-file ()
   "Find the nearest docker-compose file going up from `default-directory'."
-  (let ((configured (emacs-ide-devops--cfg 'compose-file nil)))
+  (let* ((raw (emacs-ide-devops--cfg 'compose-file nil))
+         ;; Defensive coercion -- see ui-workspace.el for why this matters:
+         ;; a bare YAML string value comes back as a symbol, and
+         ;; file-exists-p/expand-file-name both require an actual string.
+         (configured (cond
+                      ((stringp raw) raw)
+                      ((and raw (symbolp raw)) (symbol-name raw))
+                      (t nil))))
     (if (and configured (file-exists-p configured))
         (expand-file-name configured)
       (let ((candidates '("docker-compose.yml" "docker-compose.yaml"

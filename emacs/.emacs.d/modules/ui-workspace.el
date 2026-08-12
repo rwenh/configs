@@ -25,11 +25,18 @@
   :init
   (setq persp-initial-frame-name    "main"
         persp-state-default-file
-        (expand-file-name
-         (or (and (fboundp 'emacs-ide-config-get)
-                  (emacs-ide-config-get 'workspace 'state-file nil))
-             "var/persp-state")
-         user-emacs-directory)
+        ;; config.yml values that aren't true/false/null/number come back
+        ;; from the YAML parser as interned symbols (see
+        ;; `emacs-ide-config-parse-value'), not strings — `expand-file-name'
+        ;; requires a string, so coerce defensively before using it.
+        (let ((configured (and (fboundp 'emacs-ide-config-get)
+                                (emacs-ide-config-get 'workspace 'state-file nil))))
+          (expand-file-name
+           (cond
+            ((stringp configured) configured)
+            ((and configured (symbolp configured)) (symbol-name configured))
+            (t "var/persp-state"))
+           user-emacs-directory))
         persp-suppress-no-prefix-key-warning t
         persp-show-modestring                t
         persp-modestring-short               t
