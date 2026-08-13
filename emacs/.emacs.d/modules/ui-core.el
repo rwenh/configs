@@ -15,7 +15,10 @@
       use-file-dialog                 nil
       echo-keystrokes                 0.01
       inhibit-splash-screen           t
-      inhibit-startup-echo-area-message t)
+      ;; Emacs only honors this if the value is literally the user's
+      ;; login name (see the variable's docstring) — `t' silently does
+      ;; nothing, which is why the startup message still printed.
+      inhibit-startup-echo-area-message (user-login-name))
 
 ;;; ─── Display buffer rules ────────────────────────────────────────────────────
 

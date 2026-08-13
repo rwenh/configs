@@ -31,13 +31,14 @@ reaches propertize as a local-map, which would produce
                     ((string-prefix-p "✗" s) 'error)
                     ((string-prefix-p "⚠" s) 'warning)
                     ((string-prefix-p "?" s) 'shadow)
-                    (t                       'success))))
+                    (t                       'success)))
+             (props (list 'face       face
+                          'help-echo  "IDE Health — click to run full check"
+                          'mouse-face 'mode-line-highlight)))
         (emacs-ide-modeline--ensure-health-map)
-        (propertize (concat " 🏥" s " ")
-                    'face       face
-                    'help-echo  "IDE Health — click to run full check"
-                    'mouse-face 'mode-line-highlight
-                    'local-map  emacs-ide-modeline--health-map))
+        (when emacs-ide-modeline--health-map
+          (setq props (append props (list 'local-map emacs-ide-modeline--health-map))))
+        (apply #'propertize (concat " 🏥" s " ") props))
     ""))
 
 (with-eval-after-load 'doom-modeline

@@ -1,5 +1,5 @@
 ;;; emacs-ide-config.el --- Lean Configuration System -*- lexical-binding: t -*-
-;;; Version: 3.6.0
+;;; Version: 3.7.0
 ;;;
 ;;; Code:
 
@@ -97,43 +97,92 @@
 
 ;;;; ── Simple & Safe YAML Parser ──────────────────────────────────────────────
 
-(defun emacs-ide-config-parse-value (str)
+(defun emacs-ide-config-parse-value (str &optional as-string)
+  "Parse STR into null/nil, t, a number, or otherwise either an
+interned symbol (default — several settings, e.g. lsp.diagnostics-provider
+and repl.side, are compared with `eq' against a symbol and rely on this)
+or the trimmed string itself when AS-STRING is non-nil.  Sequence items
+are parsed with AS-STRING so paths and directory names come back as
+plain strings, matching what every consumer of a list value expects."
   (let ((s (string-trim (replace-regexp-in-string "[ \t]+#.*$" "" (or str "")))))
     (cond
      ((or (string-empty-p s) (member s '("null" "~"))) nil)
      ((string= s "true") t)
      ((string= s "false") nil)
      ((string-match-p "^-?[0-9]+\\.?[0-9]*$" s) (string-to-number s))
+     (as-string s)
      (t (intern s)))))
 
+(defun emacs-ide-config--line-indent (raw-line)
+  "Return the number of leading space/tab characters on RAW-LINE."
+  (let ((i 0) (len (length raw-line)))
+    (while (and (< i len) (memq (aref raw-line i) '(?\s ?\t)))
+      (setq i (1+ i)))
+    i))
+
+(defun emacs-ide-config--read-lines (file)
+  "Return FILE's meaningful content as a list of (INDENT . TEXT),
+skipping blank lines and full-line comments.  TEXT is the line with
+surrounding whitespace stripped; inline comments on scalar values are
+still stripped later, exactly as before, only by `emacs-ide-config-parse-value'."
+  (with-temp-buffer
+    (insert-file-contents file)
+    (let (result)
+      (goto-char (point-min))
+      (while (not (eobp))
+        (let* ((raw (buffer-substring-no-properties
+                     (line-beginning-position) (line-end-position)))
+               (trimmed (string-trim raw)))
+          (unless (or (string-empty-p trimmed) (string-prefix-p "#" trimmed))
+            (push (cons (emacs-ide-config--line-indent raw) trimmed) result)))
+        (forward-line 1))
+      (nreverse result))))
+
 (defun emacs-ide-config-parse-yaml (file)
-  "Robust simple YAML parser for this config."
+  "Simple, dependency-free parser for config.yml."
   (when (file-exists-p file)
-    (with-temp-buffer
-      (insert-file-contents file)
-      (let ((data '())
-            (current-section nil))
-        (goto-char (point-min))
-        (while (not (eobp))
-          (let* ((line (buffer-substring-no-properties
-                        (line-beginning-position) (line-end-position)))
-                 (trim (string-trim line)))
-            (unless (or (string-empty-p trim) (string-prefix-p "#" trim))
-              (when (string-match "^\\([a-z0-9_-]+\\):" trim)
-                (let ((key (intern (match-string 1 trim)))
-                      (val-str (string-trim (substring trim (match-end 0)))))
-                  (if (string-match-p "^[ \t]" line) ; indented = subkey
-                      (when current-section
-                        (let ((section (assoc current-section data)))
-                          (when section
-                            (setf (alist-get key (cdr section))
-                                  (emacs-ide-config-parse-value val-str)))))
-                    ;; top-level section
-                    (setq current-section key)
-                    (unless (assoc key data)
-                      (push (cons key '()) data)))))))
-          (forward-line 1))
-        (nreverse data)))))
+    (let ((lines (emacs-ide-config--read-lines file)))
+      (cl-labels
+          ((peek ()        (car lines))
+           (peek-indent ()  (and lines (caar lines)))
+           (advance ()      (pop lines))
+           (parse-seq (indent)
+             "Consume '- item' lines at exactly INDENT; return a list."
+             (let (items)
+               (while (and lines (= (peek-indent) indent)
+                           (string-prefix-p "- " (cdr (peek))))
+                 (push (emacs-ide-config-parse-value
+                        (string-trim (substring (cdr (advance)) 2))
+                        t)
+                       items))
+               (nreverse items)))
+           (parse-map (min-indent)
+             "Consume `key: value'/`key:' lines at indent >= MIN-INDENT,
+recursing into nested mappings and sequences; return an alist."
+             (let (result)
+               (while (and lines (>= (peek-indent) min-indent))
+                 (let* ((entry   (advance))
+                        (indent  (car entry))
+                        (text    (cdr entry)))
+                   (when (string-match "^\\([a-z0-9_-]+\\):" text)
+                     (let ((key     (intern (match-string 1 text)))
+                           (val-str (string-trim (substring text (match-end 0)))))
+                       (push
+                        (cons key
+                              (cond
+                               ;; `key: value' on the same line
+                               ((not (string-empty-p val-str))
+                                (emacs-ide-config-parse-value val-str))
+                               ;; `key:' with nested content below it
+                               ((and lines (> (peek-indent) indent))
+                                (if (string-prefix-p "- " (cdr (peek)))
+                                    (parse-seq (peek-indent))
+                                  (parse-map (peek-indent))))
+                               ;; `key:' with nothing following at all
+                               (t nil)))
+                        result)))))
+               (nreverse result))))
+        (parse-map 0)))))
 
 ;;;; ── Apply ──────────────────────────────────────────────────────────────────
 
