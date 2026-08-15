@@ -16,7 +16,6 @@
 (defvar emacs-ide-config-reload-hook nil)
 
 ;;;; ── Config variable declarations ──────────────────────────────────────────
-;; These are set by `emacs-ide-config-apply' after parsing config.yml.
 
 ;; General
 (defvar emacs-ide-theme           'ef-dark)
@@ -166,7 +165,10 @@ recursing into nested mappings and sequences; return an alist."
                         (text    (cdr entry)))
                    (when (string-match "^\\([a-z0-9_-]+\\):" text)
                      (let ((key     (intern (match-string 1 text)))
-                           (val-str (string-trim (substring text (match-end 0)))))
+                           (val-str (string-trim
+                                     (replace-regexp-in-string
+                                      "\\(^\\|[ \t]\\)#.*$" ""
+                                      (substring text (match-end 0))))))
                        (push
                         (cons key
                               (cond

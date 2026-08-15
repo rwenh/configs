@@ -23,6 +23,19 @@
 (defvar emacs-ide-db--active-connection nil
   "Name of the currently active database connection, or nil.")
 
+(defun emacs-ide-db--alist-to-plist (alist)
+  "Convert the (KEY . VAL) pairs in ALIST to a flat :KEY VAL plist.
+The hand-rolled YAML parser renders a nested `key: value' block as an
+alist, e.g. ((type . postgres) (host . localhost)); every consumer of
+`emacs-ide-db--connections' (emacs-ide-db-connect, emacs-ide-db-status,
+etc.) reads connection fields with `plist-get' against :type/:host/
+:port/:dbname/:user, so the alist needs converting on the way in."
+  (apply #'append
+         (mapcar (lambda (kv)
+                   (list (intern (concat ":" (symbol-name (car kv))))
+                         (cdr kv)))
+                 alist)))
+
 (defun emacs-ide-db--load-connections-from-config ()
   "Populate `emacs-ide-db--connections' from config.yml database.connections."
   (when (boundp 'emacs-ide-config-data)
@@ -31,7 +44,11 @@
       (when (and conns (listp conns))
         (setq emacs-ide-db--connections
               (mapcar (lambda (entry)
-                        (cons (symbol-name (car entry)) (cdr entry)))
+                        (cons (symbol-name (car entry))
+                              (if (and (consp (cdr entry))
+                                       (consp (cadr entry)))
+                                  (emacs-ide-db--alist-to-plist (cdr entry))
+                                (cdr entry))))
                       conns))))))
 
 (with-eval-after-load 'emacs-ide-config

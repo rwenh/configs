@@ -1,5 +1,5 @@
 # ============================================================================
-# Enterprise Emacs IDE Configuration — v3.4.0
+# Enterprise Emacs IDE Configuration — v3.5.0
 # ============================================================================
 # Edit here, then: M-x emacs-ide-config-reload  (C-c R)
 # ============================================================================
@@ -80,7 +80,7 @@ performance:
   native-comp-jobs: 4
   large-file-threshold: 10000000
   read-process-output-max: 4194304
-  slow-package-threshold: 0.1
+  slow-package-threshold: 2.0
 
 features:
   dashboard: true
@@ -338,6 +338,39 @@ repl:
   side: bottom
   auto-focus: true
 
+registers:              # populated into Emacs registers at startup (C-c q j / C-c q l)
+  init: ~/.emacs.d/init.el
+  config: ~/.emacs.d/config.yml
+  todo: ~/org/todo.org
+
+database:
+  default-connection: ~              # name of default connection, ~ = none
+  connections:                       # add named connections here, e.g.:
+                                      #   mydb:
+                                      #     type: postgres
+                                      #     host: localhost
+                                      #     port: 5432
+                                      #     dbname: mydb
+                                      #     user: someone
+
+devops:
+  docker-enable: true
+  kubernetes-enable: false           # requires kubectl on PATH
+  terraform-enable: true
+
+analytics:
+  loc-tool: auto                     # auto → tokei → cloc → elisp
+  exclude-dirs:
+    - .git
+    - node_modules
+    - vendor
+    - __pycache__
+    - target
+    - build
+    - dist
+    - .venv
+    - venv
+
 security:
   tls-verify: true
   tls-min-prime-bits: 3072
@@ -383,8 +416,8 @@ environments:
     theme: ef-dark
 
 advanced:
-  custom-load-path: []
-  custom-requires: []
+  custom-load-path:
+  custom-requires:
   experimental:
     use-tree-sitter-everywhere: false
     aggressive-indent: false

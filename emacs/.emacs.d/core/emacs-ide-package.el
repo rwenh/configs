@@ -12,8 +12,14 @@
   "Hash table mapping package-name symbols to their load times in seconds.
 Uses :test 'eq because keys are always interned symbols.")
 
-(defvar emacs-ide-package-slow-threshold 0.1
-  "Load time in seconds above which a package is considered slow.")
+(defvar emacs-ide-package-slow-threshold 2.0
+  "Load time in seconds above which a package is considered slow.
+Was 0.1s, which flagged nearly every `require' during a first-time
+straight.el bootstrap (clone + byte-compile routinely exceeds 100ms
+even for small packages), making the \"(slow)\" tag fire on virtually
+every module and lose all diagnostic value.  2.0s still catches
+genuine warm-boot regressions while filtering first-boot compile
+noise.  Overridden at runtime by config.yml performance.slow-package-threshold.")
 
 (defconst emacs-ide-package-report-top-n 20
   "Number of slowest packages shown in `emacs-ide-package-report'.")
