@@ -41,7 +41,7 @@ local function is_spring_project()
     if vim.fn.filereadable(f) == 1 then
       local lines = vim.fn.readfile(f)
       for _, line in ipairs(lines) do
-        if line:find("spring%-boot", 1, true) or line:find("springframework", 1, true) then
+        if line:find("spring-boot", 1, true) or line:find("springframework", 1, true) then
           result = true; break
         end
       end
