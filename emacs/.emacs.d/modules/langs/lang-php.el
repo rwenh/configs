@@ -109,16 +109,16 @@
 ;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (cond
-   ((executable-find "php-cs-fixer")
+  (when (executable-find "php-cs-fixer")
     (unless (assq 'php-cs-fixer apheleia-formatters)
       (push '(php-cs-fixer "php-cs-fixer" "fix" "--quiet" filepath)
-            apheleia-formatters))
-    (setf (alist-get 'php-mode    apheleia-mode-alist) 'php-cs-fixer)
-    (setf (alist-get 'php-ts-mode apheleia-mode-alist) 'php-cs-fixer))
-   ((executable-find "phpcbf")
-    (setf (alist-get 'php-mode    apheleia-mode-alist) 'phpcbf)
-    (setf (alist-get 'php-ts-mode apheleia-mode-alist) 'phpcbf))))
+            apheleia-formatters)))
+  (let ((default (cond ((executable-find "php-cs-fixer") 'php-cs-fixer)
+                        ((executable-find "phpcbf")       'phpcbf))))
+    (when default
+      (let ((formatter (emacs-ide-dev-resolve-formatter "php" default)))
+        (setf (alist-get 'php-mode    apheleia-mode-alist) formatter)
+        (setf (alist-get 'php-ts-mode apheleia-mode-alist) formatter)))))
 
 ;;;; ── Composer integration ────────────────────────────────────────────────────
 
@@ -156,7 +156,7 @@
                                   (ignore-errors (projectile-project-root)))
                              default-directory)))))))
 
-) ;; end php-enabled
+)
 
 (provide 'lang-php)
 ;;; lang-php.el ends here

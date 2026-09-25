@@ -86,13 +86,21 @@
       (add-hook 'graphql-mode-hook #'lsp-deferred))))
 
 (with-eval-after-load 'apheleia
-  (emacs-ide-dev-attach-formatter 'prettier 'yaml-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'yaml-ts-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'json-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'json-ts-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'markdown-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'gfm-mode)
-  (emacs-ide-dev-attach-formatter 'prettier 'graphql-mode))
+  (when (executable-find "prettier")
+    (dolist (entry '(("yaml"     . (yaml-mode yaml-ts-mode))
+                      ("json"     . (json-mode json-ts-mode))
+                      ("markdown" . (markdown-mode gfm-mode))))
+      (let ((formatter (emacs-ide-dev-resolve-formatter (car entry) 'prettier)))
+        (dolist (mode (cdr entry))
+          (emacs-ide-dev-attach-formatter formatter mode))))
+    (emacs-ide-dev-attach-formatter 'prettier 'graphql-mode))
+  (when (executable-find "taplo")
+    (let ((formatter (emacs-ide-dev-resolve-formatter "toml" 'taplo)))
+      (emacs-ide-dev-attach-formatter formatter 'toml-mode)
+      (emacs-ide-dev-attach-formatter formatter 'toml-ts-mode)))
+  (when (executable-find "terraform")
+    (emacs-ide-dev-attach-formatter
+     (emacs-ide-dev-resolve-formatter "terraform" 'terraform-fmt) 'terraform-mode)))
 
 )
 

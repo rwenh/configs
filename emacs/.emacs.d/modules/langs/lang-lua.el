@@ -57,8 +57,9 @@
   (when (executable-find "stylua")
     (unless (assq 'stylua apheleia-formatters)
       (push '(stylua "stylua" "-") apheleia-formatters))
-    (setf (alist-get 'lua-mode apheleia-mode-alist) 'stylua)
-    (setf (alist-get 'lua-ts-mode apheleia-mode-alist) 'stylua)))
+    (let ((formatter (emacs-ide-dev-resolve-formatter "lua" 'stylua)))
+      (setf (alist-get 'lua-mode apheleia-mode-alist) formatter)
+      (setf (alist-get 'lua-ts-mode apheleia-mode-alist) formatter))))
 
 ;;;; ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@
         :file-fn    #'emacs-ide-lua-test-file
         :project-fn #'emacs-ide-lua-test-project))))
 
-) ;; end lua-enabled
+)
 
 (provide 'lang-lua)
 ;;; lang-lua.el ends here

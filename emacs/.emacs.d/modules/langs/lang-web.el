@@ -174,16 +174,22 @@
 ;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  ;; JS / TS
-  (dolist (m '(js-mode js2-mode js-ts-mode
-               typescript-mode typescript-ts-mode tsx-ts-mode))
-    (setf (alist-get m apheleia-mode-alist) 'prettier))
+  ;; JS
+  (let ((formatter (emacs-ide-dev-resolve-formatter "javascript" 'prettier)))
+    (dolist (m '(js-mode js2-mode js-ts-mode))
+      (setf (alist-get m apheleia-mode-alist) formatter)))
+  ;; TS
+  (let ((formatter (emacs-ide-dev-resolve-formatter "typescript" 'prettier)))
+    (dolist (m '(typescript-mode typescript-ts-mode tsx-ts-mode))
+      (setf (alist-get m apheleia-mode-alist) formatter)))
   ;; HTML
-  (dolist (m '(web-mode mhtml-mode html-mode))
-    (setf (alist-get m apheleia-mode-alist) 'prettier))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "html" 'prettier)))
+    (dolist (m '(web-mode mhtml-mode html-mode))
+      (setf (alist-get m apheleia-mode-alist) formatter)))
   ;; CSS / SCSS / LESS
-  (dolist (m '(css-mode css-ts-mode scss-mode less-css-mode))
-    (setf (alist-get m apheleia-mode-alist) 'prettier)))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "css" 'prettier)))
+    (dolist (m '(css-mode css-ts-mode scss-mode less-css-mode))
+      (setf (alist-get m apheleia-mode-alist) formatter))))
 
 ;;;; ── Test runners ────────────────────────────────────────────────────────────
 

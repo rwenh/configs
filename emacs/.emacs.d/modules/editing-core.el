@@ -292,10 +292,23 @@
 
 ;;;; ── Aggressive indent (experimental) ───────────────────────────────────────
 
+(defun emacs-ide--aggressive-indent-enabled-p ()
+  "Return non-nil only when advanced.experimental.aggressive-indent is true.
+`emacs-ide-config-get' only resolves two levels (SECTION KEY), so the
+three-level path advanced.experimental.aggressive-indent has to be drilled
+into by hand.  The previous check tested only (advanced experimental),
+which is the whole `experimental:' alist -- that alist is truthy simply
+because the block exists in config.yml, regardless of what its individual
+flags are set to, so aggressive-indent-mode was loading and hooking into
+emacs-lisp-mode even with `aggressive-indent: false' in config.yml."
+  (when (fboundp 'emacs-ide-config-get)
+    (let ((experimental (emacs-ide-config-get 'advanced 'experimental nil)))
+      (and (listp experimental)
+           (cdr (assoc 'aggressive-indent experimental))))))
+
 (use-package aggressive-indent
   :defer t
-  :if (and (fboundp 'emacs-ide-config-get)
-           (emacs-ide-config-get 'advanced 'experimental nil))
+  :if (emacs-ide--aggressive-indent-enabled-p)
   :hook (emacs-lisp-mode . aggressive-indent-mode))
 
 ;;;; ── Whitespace visualisation ────────────────────────────────────────────────

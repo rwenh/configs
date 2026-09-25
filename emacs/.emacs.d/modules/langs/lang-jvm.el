@@ -72,8 +72,9 @@
 
 (with-eval-after-load 'apheleia
   (when (emacs-ide-dev-lang-enabled-p "java")
-    (emacs-ide-dev-attach-formatter 'google-java-format 'java-mode)
-    (emacs-ide-dev-attach-formatter 'google-java-format 'java-ts-mode)))
+    (let ((formatter (emacs-ide-dev-resolve-formatter "java" 'google-java-format)))
+      (emacs-ide-dev-attach-formatter formatter 'java-mode)
+      (emacs-ide-dev-attach-formatter formatter 'java-ts-mode))))
 
 ;;;; ── Test runner (Java) ──────────────────────────────────────────────────────
 
@@ -120,8 +121,9 @@
 
 (with-eval-after-load 'apheleia
   (when (emacs-ide-dev-lang-enabled-p "kotlin")
-    (emacs-ide-dev-attach-formatter 'ktlint 'kotlin-mode)
-    (emacs-ide-dev-attach-formatter 'ktlint 'kotlin-ts-mode)))
+    (let ((formatter (emacs-ide-dev-resolve-formatter "kotlin" 'ktlint)))
+      (emacs-ide-dev-attach-formatter formatter 'kotlin-mode)
+      (emacs-ide-dev-attach-formatter formatter 'kotlin-ts-mode))))
 
 ;;;; ── Scala ───────────────────────────────────────────────────────────────────
 
@@ -137,6 +139,11 @@
                     (if (executable-find "sbt")
                         (compile "sbt test")
                       (message "lang-jvm: sbt not found on PATH"))))))
+
+(with-eval-after-load 'apheleia
+  (when (emacs-ide-dev-lang-enabled-p "scala")
+    (emacs-ide-dev-attach-formatter
+     (emacs-ide-dev-resolve-formatter "scala" 'scalafmt) 'scala-mode)))
 
 (use-package lsp-mode
   :if (and (bound-and-true-p emacs-ide-lsp-enable)
@@ -157,7 +164,7 @@
   :mode (("\\.groovy\\'" . groovy-mode)
          ("\\.gradle\\'" . groovy-mode)))
 
-) ;; end JVM-enabled
+)
 
 (provide 'lang-jvm)
 ;;; lang-jvm.el ends here

@@ -76,7 +76,8 @@
 (with-eval-after-load 'apheleia
   (when (and (emacs-ide-dev-lang-enabled-p "zig")
              (executable-find "zig"))
-    (emacs-ide-dev-attach-formatter 'zigfmt 'zig-mode)))
+    (emacs-ide-dev-attach-formatter
+     (emacs-ide-dev-resolve-formatter "zig" 'zigfmt) 'zig-mode)))
 
 (with-eval-after-load 'dap-mode
   (when (emacs-ide-dev-lang-enabled-p "zig")
@@ -123,7 +124,8 @@
 (with-eval-after-load 'apheleia
   (when (and (emacs-ide-dev-lang-enabled-p "nix")
              (executable-find "nixpkgs-fmt"))
-    (emacs-ide-dev-attach-formatter 'nixpkgs-fmt 'nix-mode)))
+    (emacs-ide-dev-attach-formatter
+     (emacs-ide-dev-resolve-formatter "nix" 'nixpkgs-fmt) 'nix-mode)))
 
 ;;;; ── D ───────────────────────────────────────────────────────────────────────
 
@@ -141,7 +143,7 @@
   :defer t
   :mode "\\.v\\'")
 
-) ;; end systems-enabled
+)
 
 (provide 'lang-systems)
 ;;; lang-systems.el ends here

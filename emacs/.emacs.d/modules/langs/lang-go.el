@@ -131,8 +131,9 @@
 ;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (emacs-ide-dev-attach-formatter 'gofmt 'go-mode)
-  (emacs-ide-dev-attach-formatter 'gofmt 'go-ts-mode))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "go" 'gofmt)))
+    (emacs-ide-dev-attach-formatter formatter 'go-mode)
+    (emacs-ide-dev-attach-formatter formatter 'go-ts-mode)))
 
 ;;;; ── Test runner ─────────────────────────────────────────────────────────────
 
@@ -159,7 +160,7 @@
                                 (ignore-errors (projectile-project-root)))
                            default-directory))))))
 
-) ;; end go-enabled
+)
 
 (provide 'lang-go)
 ;;; lang-go.el ends here

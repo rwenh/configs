@@ -98,16 +98,13 @@
 ;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (emacs-ide-dev-attach-formatter 'black 'python-mode)
-  (emacs-ide-dev-attach-formatter 'black 'python-ts-mode)
-  ;; isort runs after black to sort imports
-  (when (executable-find "isort")
-    (setf (alist-get 'python-mode    apheleia-mode-alist) '(black isort))
-    (setf (alist-get 'python-ts-mode apheleia-mode-alist) '(black isort)))
-  ;; ruff as an alternative formatter (faster than black+isort)
   (when (executable-find "ruff")
     (setf (alist-get 'ruff apheleia-formatters)
-          '("ruff" "format" "--quiet" "-"))))
+          '("ruff" "format" "--quiet" "-")))
+  (let* ((default   (if (executable-find "isort") '(black isort) 'black))
+         (formatter (emacs-ide-dev-resolve-formatter "python" default)))
+    (setf (alist-get 'python-mode    apheleia-mode-alist) formatter)
+    (setf (alist-get 'python-ts-mode apheleia-mode-alist) formatter)))
 
 ;;;; ── REPL ────────────────────────────────────────────────────────────────────
 
@@ -221,7 +218,7 @@
   :after python
   :defer t)
 
-) ;; end when python enabled
+)
 
 (provide 'lang-python)
 ;;; lang-python.el ends here

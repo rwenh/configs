@@ -82,7 +82,8 @@
 
 (with-eval-after-load 'apheleia
   (when (emacs-ide-dev-lang-enabled-p "haskell")
-    (emacs-ide-dev-attach-formatter 'ormolu 'haskell-mode)))
+    (emacs-ide-dev-attach-formatter
+     (emacs-ide-dev-resolve-formatter "haskell" 'ormolu) 'haskell-mode)))
 
 ;;;; ── Clojure ─────────────────────────────────────────────────────────────────
 
@@ -181,8 +182,9 @@
 (with-eval-after-load 'apheleia
   (when (and (emacs-ide-dev-lang-enabled-p "elixir")
              (executable-find "mix"))
-    (setf (alist-get 'elixir-mode    apheleia-mode-alist) 'mix-format)
-    (setf (alist-get 'elixir-ts-mode apheleia-mode-alist) 'mix-format)))
+    (let ((formatter (emacs-ide-dev-resolve-formatter "elixir" 'mix-format)))
+      (setf (alist-get 'elixir-mode    apheleia-mode-alist) formatter)
+      (setf (alist-get 'elixir-ts-mode apheleia-mode-alist) formatter))))
 
 (use-package alchemist
   :if (and (emacs-ide-dev-lang-enabled-p "elixir")
@@ -244,7 +246,7 @@
   :defer t
   :mode "\\.erl\\'")
 
-) ;; end functional-enabled
+)
 
 (provide 'lang-functional)
 ;;; lang-functional.el ends here

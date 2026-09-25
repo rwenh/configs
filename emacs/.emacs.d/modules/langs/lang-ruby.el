@@ -142,13 +142,12 @@
 ;;;; ── Formatter (rubocop via apheleia) ───────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (cond
-   ((executable-find "standardrb")
-    (setf (alist-get 'ruby-mode    apheleia-mode-alist) 'standardrb)
-    (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) 'standardrb))
-   ((executable-find "rubocop")
-    (setf (alist-get 'ruby-mode    apheleia-mode-alist) 'rubocop)
-    (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) 'rubocop))))
+  (let ((default (cond ((executable-find "standardrb") 'standardrb)
+                        ((executable-find "rubocop")    'rubocop))))
+    (when default
+      (let ((formatter (emacs-ide-dev-resolve-formatter "ruby" default)))
+        (setf (alist-get 'ruby-mode    apheleia-mode-alist) formatter)
+        (setf (alist-get 'ruby-ts-mode apheleia-mode-alist) formatter)))))
 
 ;;;; ── rspec-mode (optional test navigation) ─────────────────────────────────
 
@@ -204,7 +203,7 @@
                                   (ignore-errors (projectile-project-root)))
                              default-directory)))))))
 
-) ;; end ruby-enabled
+)
 
 (provide 'lang-ruby)
 ;;; lang-ruby.el ends here

@@ -56,8 +56,9 @@ Reads lang-settings.sql.dialect from config.yml via core-dev."
         sqlformat-args    '("-s2" "-g")))
 
 (with-eval-after-load 'apheleia
-  (emacs-ide-dev-attach-formatter 'pgformatter 'sql-mode)
-  (emacs-ide-dev-attach-formatter 'pgformatter 'sql-ts-mode))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "sql" 'pgformatter)))
+    (emacs-ide-dev-attach-formatter formatter 'sql-mode)
+    (emacs-ide-dev-attach-formatter formatter 'sql-ts-mode)))
 
 (use-package ejc-sql
   :defer t

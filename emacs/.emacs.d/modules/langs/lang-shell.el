@@ -98,8 +98,9 @@
          (bash-ts-mode . flymake-shellcheck-auto)))
 
 (with-eval-after-load 'apheleia
-  (emacs-ide-dev-attach-formatter 'shfmt 'sh-mode)
-  (emacs-ide-dev-attach-formatter 'shfmt 'bash-ts-mode))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "shell" 'shfmt)))
+    (emacs-ide-dev-attach-formatter formatter 'sh-mode)
+    (emacs-ide-dev-attach-formatter formatter 'bash-ts-mode)))
 
 )
 

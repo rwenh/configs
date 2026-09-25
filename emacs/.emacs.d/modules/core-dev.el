@@ -138,6 +138,42 @@ the corresponding type is opened."
 
 ;;;; ── Formatter helper ────────────────────────────────────────────────────────
 
+(defconst emacs-ide-dev--formatter-aliases
+  '((pg_format . pgformatter))
+  "Map a config.yml formatting: NAME to the apheleia formatter SYMBOL this
+codebase actually registers it under, for the cases where they differ.
+config.yml names the CLI tool (`pg_format'); the apheleia formatter entry
+this codebase defines for it is `pgformatter' (see apheleia-langs-patch.el
+and lang-sql.el).  Add further entries here if a future language hits the
+same mismatch.")
+
+(defun emacs-ide-dev-resolve-formatter (lang-key default-formatter)
+  "Return the formatter to use for LANG-KEY, honouring config.yml.
+
+Reads config.yml's `formatting.LANG-KEY'.  If it names a formatter that is
+already registered in `apheleia-formatters' (after alias normalisation via
+`emacs-ide-dev--formatter-aliases'), that value is returned; otherwise
+DEFAULT-FORMATTER (a symbol, or a list for a formatter pipeline such as
+`(black isort)') is returned unchanged.
+
+Call this AFTER any custom formatter recipe for the language has already
+been pushed onto `apheleia-formatters' (e.g. after the `executable-find
+\"ruff\"' block that registers the `ruff' recipe), so the validity check
+below can actually see it.  This never assigns a formatter apheleia
+doesn't know how to run — an unset, misspelled, or not-yet-registered
+config.yml value silently falls back to DEFAULT-FORMATTER rather than
+breaking formatting on save."
+  (let* ((configured (and (fboundp 'emacs-ide-config-get)
+                          (emacs-ide-config-get 'formatting (intern lang-key) nil)))
+         (resolved   (and configured
+                          (or (cdr (assq configured emacs-ide-dev--formatter-aliases))
+                              configured))))
+    (if (and resolved
+             (boundp 'apheleia-formatters)
+             (assq resolved apheleia-formatters))
+        resolved
+      default-formatter)))
+
 (defun emacs-ide-dev-attach-formatter (formatter-sym mode)
   "Map apheleia FORMATTER-SYM to major MODE when both are available."
   (with-eval-after-load 'apheleia

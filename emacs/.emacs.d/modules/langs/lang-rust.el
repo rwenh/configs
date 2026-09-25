@@ -53,8 +53,9 @@
 ;;;; ── Formatter ───────────────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (setf (alist-get 'rust-mode    apheleia-mode-alist) 'rustfmt)
-  (setf (alist-get 'rust-ts-mode apheleia-mode-alist) 'rustfmt))
+  (let ((formatter (emacs-ide-dev-resolve-formatter "rust" 'rustfmt)))
+    (setf (alist-get 'rust-mode    apheleia-mode-alist) formatter)
+    (setf (alist-get 'rust-ts-mode apheleia-mode-alist) formatter)))
 
 ;;;; ── Test runners ────────────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@
                                 (ignore-errors (projectile-project-root)))
                            default-directory))))))
 
-) ;; end rust-enabled
+)
 
 (provide 'lang-rust)
 ;;; lang-rust.el ends here

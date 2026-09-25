@@ -86,8 +86,12 @@
 ;;;; ── Formatter (apheleia) ────────────────────────────────────────────────────
 
 (with-eval-after-load 'apheleia
-  (dolist (m '(c-mode c++-mode c-ts-mode c++-ts-mode cuda-mode))
-    (emacs-ide-dev-attach-formatter 'clang-format m)))
+  (let ((c-formatter   (emacs-ide-dev-resolve-formatter "c"   'clang-format))
+        (cpp-formatter (emacs-ide-dev-resolve-formatter "cpp" 'clang-format)))
+    (dolist (m '(c-mode c-ts-mode))
+      (emacs-ide-dev-attach-formatter c-formatter m))
+    (dolist (m '(c++-mode c++-ts-mode cuda-mode))
+      (emacs-ide-dev-attach-formatter cpp-formatter m))))
 
 ;;;; ── CMake ───────────────────────────────────────────────────────────────────
 
@@ -167,7 +171,7 @@
                                 (ignore-errors (projectile-project-root)))
                            default-directory))))))
 
-) ;; end (when c enabled)
+)
 
 (provide 'lang-c)
 ;;; lang-c.el ends here

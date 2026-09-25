@@ -136,8 +136,9 @@
     (unless (assq 'csharpier apheleia-formatters)
       (push '(csharpier "dotnet-csharpier" "--write-stdout")
             apheleia-formatters))
-    (setf (alist-get 'csharp-mode    apheleia-mode-alist) 'csharpier)
-    (setf (alist-get 'csharp-ts-mode apheleia-mode-alist) 'csharpier)))
+    (let ((formatter (emacs-ide-dev-resolve-formatter "csharp" 'csharpier)))
+      (setf (alist-get 'csharp-mode    apheleia-mode-alist) formatter)
+      (setf (alist-get 'csharp-ts-mode apheleia-mode-alist) formatter))))
 
 ;;;; ── dotnet helpers ─────────────────────────────────────────────────────────
 
@@ -212,7 +213,7 @@
                                 (ignore-errors (projectile-project-root)))
                            default-directory))))))
 
-) ;; end csharp-enabled
+)
 
 (provide 'lang-csharp)
 ;;; lang-csharp.el ends here

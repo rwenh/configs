@@ -92,7 +92,7 @@
   :defer t
   :mode "\\.dart\\'"
   :init
-  (setq dart-format-on-save nil)   ; apheleia handles formatting
+  (setq dart-format-on-save nil)
   :config
   (emacs-ide-dev-bind-compile dart-mode-map #'emacs-ide-dart-run)
   (define-key dart-mode-map (kbd "C-c C-b") #'emacs-ide-dart-build)
@@ -108,7 +108,6 @@
            (executable-find "dart"))
   :hook (dart-mode . lsp-deferred)
   :config
-  ;; Dart SDK includes the analysis server — lsp-mode auto-detects it
   (when (boundp 'lsp-dart-sdk-dir)
     (let* ((dart-bin (executable-find "dart"))
            (dart-sdk (when dart-bin
@@ -149,7 +148,8 @@
     (unless (assq 'dart-format apheleia-formatters)
       (push '(dart-format "dart" "format" "--output=show" "-")
             apheleia-formatters))
-    (setf (alist-get 'dart-mode apheleia-mode-alist) 'dart-format)))
+    (setf (alist-get 'dart-mode apheleia-mode-alist)
+          (emacs-ide-dev-resolve-formatter "dart" 'dart-format))))
 
 ;;;; ── Test runner registration ────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@
       :file-fn    #'emacs-ide-dart-test-file
       :project-fn #'emacs-ide-dart-test-project)))
 
-) ;; end dart-enabled
+)
 
 (provide 'lang-dart)
 ;;; lang-dart.el ends here

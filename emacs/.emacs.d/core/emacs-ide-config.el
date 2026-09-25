@@ -16,6 +16,7 @@
 (defvar emacs-ide-config-reload-hook nil)
 
 ;;;; ── Config variable declarations ──────────────────────────────────────────
+;; These are set by `emacs-ide-config-apply' after parsing config.yml.
 
 ;; General
 (defvar emacs-ide-theme           'ef-dark)
