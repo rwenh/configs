@@ -9,7 +9,7 @@ local function is_spring_project(root)
     if vim.fn.filereadable(f) == 1 then
       local lines = vim.fn.readfile(f)
       for _, line in ipairs(lines) do
-        if line:find("spring%-boot", 1, true) or line:find("springframework", 1, true) then
+        if line:find("spring-boot", 1, true) or line:find("springframework", 1, true) then
           return true
         end
       end
@@ -31,7 +31,7 @@ local function detect_java_test(bundles, mason_root)
 
   for _, jar_path in ipairs(bundles) do
     local lower = jar_path:lower()
-    if lower:find("java%-test", 1, true)
+    if lower:find("java-test", 1, true)
     or lower:find("junit", 1, true)
     or lower:find("testrunner", 1, true)
     or lower:find("com.microsoft.java.test", 1, true) then
