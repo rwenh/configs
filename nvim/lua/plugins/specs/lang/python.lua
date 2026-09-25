@@ -17,28 +17,6 @@ return {
     config = function(_, opts)
       local ok, vs = pcall(require, "venv-selector")
       if not ok then return end
-
-      opts.post_set_venv = function()
-        local ok_dpy, dpy = pcall(require, "dap-python")
-        if ok_dpy then
-          local venv   = os.getenv("VIRTUAL_ENV")
-          local python = (venv and venv ~= "") and (venv .. "/bin/python")
-                         or vim.fn.exepath("python3")
-          if python and python ~= "" then
-            local ok_setup, err = pcall(dpy.setup, python)
-            if not ok_setup then
-              vim.notify(
-                "[python] dap-python re-init failed after venv switch.\n"
-                .. "Interpreter: " .. python .. "\n"
-                .. "Reason: " .. tostring(err) .. "\n"
-                .. "Fix: pip install debugpy  (inside the selected venv)",
-                vim.log.levels.WARN
-              )
-            end
-          end
-        end
-      end
-
       vs.setup(opts)
     end,
   },
@@ -238,8 +216,6 @@ return {
         { "n", "<leader>pyrc",
           function()
             local prev_opfunc    = vim.o.operatorfunc
-            -- Use the stable wrapper — operatorfunc now references a guaranteed
-            -- global rather than a deep module path.
             vim.o.operatorfunc = "v:lua._nvide_iron_opfunc"
             vim.api.nvim_feedkeys("g@", "n", false)
             vim.api.nvim_create_autocmd("ModeChanged", {
