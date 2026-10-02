@@ -30,7 +30,8 @@ end
 --
 ---@param ft      string    Neovim filetype
 ---@param factory function  (s, t, i, f, ref) → snippet list
-function M.load(ft, factory)
+---@param id      string?   stable id; a repeat load with the same (ft, id) REPLACES, never duplicates
+function M.load(ft, factory, id)
   local ok, ls = pcall(require, "luasnip")
   if not ok then
     vim.notify(
@@ -77,41 +78,43 @@ function M.load(ft, factory)
 
   local clean_snippets = vim.tbl_filter(function(s) return s ~= nil end, snippets)
 
-  -- Conflict detection: warn when a trigger already exists for the ft.
-  local existing     = M.list(ft)
-  local existing_set = {}
-  for _, snip in ipairs(existing) do
-    if type(snip.trigger) == "string" then
-      existing_set[snip.trigger] = true
-    end
-  end
-
-  local conflicts = {}
-  for _, snip in ipairs(clean_snippets) do
-    if type(snip) == "table" and type(snip.trigger) == "string" then
-      if existing_set[snip.trigger] then
-        table.insert(conflicts, snip.trigger)
-      end
-    end
-  end
-
-  if #conflicts > 0 then
-    vim.notify(
-      string.format(
-        "[snippets] %s: trigger(s) already registered, will override: %s",
-        ft, table.concat(conflicts, ", ")
-      ),
-      vim.log.levels.DEBUG
-    )
-  end
-
-  local ok_add, err = pcall(ls.add_snippets, ft, clean_snippets)
+  -- `key` makes add_snippets idempotent: reloads/hot-swaps replace, not duplicate.
+  local key = "nvim-ide:" .. ft .. ":" .. (id or "default")
+  local ok_add, err = pcall(ls.add_snippets, ft, clean_snippets, { key = key })
   if not ok_add then
     vim.notify(
       string.format("[snippets] add_snippets failed for '%s': %s", ft, tostring(err)),
       vim.log.levels.WARN
     )
   end
+end
+
+-- ── Deferred registration ─────────────────────────────────────────────────────
+--
+-- lazy.nvim keeps only ONE `config` per plugin (last spec wins), so per-language
+-- `{ "L3MON4D3/LuaSnip", config = ... }` specs overwrite each other. Lang files
+-- call M.register() at file scope instead; completion.lua owns the single
+-- LuaSnip config, which calls M.flush().
+local _pending = {}
+local _flushed = false
+
+---@param ft      string
+---@param factory function  (s, t, i, f, ref) → snippet list
+---@param id      string?
+function M.register(ft, factory, id)
+  if type(ft) ~= "string" or ft == "" or type(factory) ~= "function" then
+    vim.notify("[snippets] register(ft: string, factory: function[, id])", vim.log.levels.WARN)
+    return
+  end
+  id = id or "default"
+  _pending[ft .. "\0" .. id] = { ft = ft, factory = factory, id = id }
+  if _flushed then M.load(ft, factory, id) end   -- LuaSnip already up: load now
+end
+
+--- Load everything queued so far. Idempotent (keyed add_snippets).
+function M.flush()
+  _flushed = true
+  for _, e in pairs(_pending) do M.load(e.ft, e.factory, e.id) end
 end
 
 ---@return function?, function?, function?, function?   s, t, i, f
