@@ -8,7 +8,38 @@ local M = {}
 local DEFAULTS = {
   direction     = "float",
   close_on_exit = false,
+  hidden        = true,    -- don't pollute :ToggleTerm cycling with one-shot runs
 }
+
+-- ── Bounded history of one-shot runs ──────────────────────────────────────────
+-- Every float() used to create a fresh Terminal + buffer that was never freed.
+-- We keep the newest `vim.g.term_max_runs` (default 3) and shut down older ones —
+-- but only if their job already finished, so a running dev server is never killed.
+local _recent = {}
+
+local function max_runs()
+  local n = vim.g.term_max_runs
+  return (type(n) == "number" and n >= 1) and math.floor(n) or 3
+end
+
+local function job_finished(t)
+  if not t.job_id then return true end
+  local ok, r = pcall(vim.fn.jobwait, { t.job_id }, 0)
+  return ok and r[1] ~= -1
+end
+
+local function track(t)
+  table.insert(_recent, t)
+  local i = 1
+  while #_recent > max_runs() and i < #_recent do   -- never the newest
+    if job_finished(_recent[i]) then
+      local old = table.remove(_recent, i)
+      pcall(function() old:shutdown() end)
+    else
+      i = i + 1
+    end
+  end
+end
 
 -- ── Named terminal registry ───────────────────────────────────────────────────
 local _registry = {}
@@ -40,7 +71,9 @@ function M.float(cmd, opts)
   local cfg = vim.tbl_extend("force", DEFAULTS, opts or {}, { cmd = cmd })
 
   local ok_toggle, err = pcall(function()
-    terminal.Terminal:new(cfg):toggle()
+    local term = terminal.Terminal:new(cfg)
+    term:toggle()
+    track(term)
   end)
   if not ok_toggle then
     vim.notify("[term] failed to open terminal: " .. tostring(err),
