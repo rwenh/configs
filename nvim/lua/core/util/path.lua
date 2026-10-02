@@ -1,13 +1,23 @@
 -- lua/core/util/path.lua — project-root detection with caching
 --
+-- Fixes vs v2.5.0:
+--   * is_ignored() matched by SUBSTRING ("build" also skipped "rebuild-tools"); now exact
+--   * fs_stat instead of two vim.fn calls per probe
+--   * "/" no longer normalises to ""
+--   * opt-in vim.g.path_prefer_vcs: pick the VCS root over a nearer Makefile/package.json
+--   * new find_up(markers, start): nearest dir containing any marker (e.g. a Makefile)
+--   * find_root_async keeps its API but is a scheduled sync call (the walk is ~1 ms)
 
 local M = {}
+local uv = vim.uv or vim.loop
 
 local MAX_WALK_DEPTH = (type(vim.g.path_max_walk_depth) == "number" and vim.g.path_max_walk_depth > 0)
   and vim.g.path_max_walk_depth or 20
 
 local CACHE_TTL = (type(vim.g.path_cache_ttl) == "number" and vim.g.path_cache_ttl > 0)
   and vim.g.path_cache_ttl or 30
+
+local VCS_MARKERS = { ".git", ".hg", ".svn" }
 
 local ROOT_MARKERS = {
   ".git", ".hg", ".svn",
@@ -18,51 +28,40 @@ local ROOT_MARKERS = {
   "setup.py", "setup.cfg",
 }
 
-local IGNORE_DIRS = (function()
-  local t = { ".cache", "__pycache__" }
-  if type(vim.g.path_ignore_dirs) == "table" then
-    vim.list_extend(t, vim.g.path_ignore_dirs)
-  end
-  return t
-end)()
-
-local _cache     = {}
-local _pkg_cache = {}
-
 local PACKAGE_MARKERS = {
   "package.json", "Cargo.toml", "go.mod", "pyproject.toml",
   "setup.py", "setup.cfg", "pom.xml", "build.gradle",
   "build.gradle.kts", "mix.exs", "rebar.config",
 }
 
+local IGNORE_DIRS = (function()
+  local t = { ".cache", "__pycache__" }
+  if type(vim.g.path_ignore_dirs) == "table" then vim.list_extend(t, vim.g.path_ignore_dirs) end
+  return t
+end)()
+
+local _cache     = {}
+local _pkg_cache = {}
+
 local function normalize(p)
-  local n = vim.fn.fnamemodify(p, ":p")
-  return (n:gsub("/$", ""))
+  local n = vim.fn.fnamemodify(p, ":p"):gsub("/$", "")
+  return n == "" and "/" or n
 end
 
 local function exists(path)
-  local ok_d, is_dir  = pcall(function() return vim.fn.isdirectory(path) == 1 end)
-  local ok_f, is_file = pcall(function() return vim.fn.filereadable(path) == 1 end)
-  return (ok_d and is_dir) or (ok_f and is_file)
-end
-
-local function basename(path)
-  return path:match("([^/\\]+)$") or path
+  return uv.fs_stat(path) ~= nil
 end
 
 local function is_ignored(dir)
-  local base = basename(dir)
+  local base = dir:match("([^/\\]+)$") or dir
   for _, pat in ipairs(IGNORE_DIRS) do
-    if base == pat or base:find(pat, 1, true) then return true end
+    if base == pat then return true end
   end
   return false
 end
 
--- Shared upward-walk used by both find_root and find_package_root — they only
--- differ in which marker list they check and what they do on a miss (find_root
--- falls back to cwd; find_package_root returns nil), so the walk itself is
--- factored out to avoid maintaining two copies of the same loop.
----@param start_key string  already-normalized starting directory
+--- Walk upward from `start_key`, returning the first directory holding any marker.
+---@param start_key string  normalised start directory
 ---@param markers   string[]
 ---@return string|nil
 local function walk_for_marker(start_key, markers)
@@ -70,9 +69,7 @@ local function walk_for_marker(start_key, markers)
   for _ = 1, MAX_WALK_DEPTH do
     if not is_ignored(current) then
       for _, marker in ipairs(markers) do
-        if exists(current .. "/" .. marker) then
-          return current
-        end
+        if exists(current .. "/" .. marker) then return current end
       end
     end
     local parent = vim.fn.fnamemodify(current, ":h")
@@ -82,152 +79,67 @@ local function walk_for_marker(start_key, markers)
   return nil
 end
 
--- ── Synchronous find_root ─────────────────────────────────────────────────────
+local function cwd_fallback(start_path, tag)
+  local ok, cwd = pcall(vim.fn.getcwd)
+  if not (ok and cwd and cwd ~= "") then return nil end
+  if vim.g.path_debug then
+    vim.schedule(function()
+      vim.notify(
+        "[path] " .. tag .. "no root markers found walking from: " .. start_path
+        .. "\n  falling back to cwd: " .. cwd,
+        vim.log.levels.DEBUG
+      )
+    end)
+  end
+  return cwd
+end
 
 ---@param start_path string?
 ---@return string|nil
 function M.find_root(start_path)
   start_path = start_path or vim.fn.expand("%:p:h")
-  local cache_key = normalize(start_path)
+  local key = normalize(start_path)
 
-  local entry = _cache[cache_key]
+  local entry = _cache[key]
   if entry and (os.time() - entry.time) < CACHE_TTL then return entry.root end
-  _cache[cache_key] = nil
+  _cache[key] = nil
 
-  local found = walk_for_marker(cache_key, ROOT_MARKERS)
-  if found then
-    _cache[cache_key] = { root = found, time = os.time() }
-    return found
-  end
-
-  local ok_cwd, cwd = pcall(vim.fn.getcwd)
-  if ok_cwd and cwd and cwd ~= "" then
-    if vim.g.path_debug then
-      vim.schedule(function()
-        vim.notify(
-          "[path] no root markers found walking from: " .. start_path
-          .. "\n  falling back to cwd: " .. cwd,
-          vim.log.levels.DEBUG
-        )
-      end)
-    end
-    _cache[cache_key] = { root = cwd, time = os.time() }
-    return cwd
-  end
-  return nil
+  local found
+  if vim.g.path_prefer_vcs == true then found = walk_for_marker(key, VCS_MARKERS) end
+  found = found or walk_for_marker(key, ROOT_MARKERS) or cwd_fallback(start_path, "")
+  if found then _cache[key] = { root = found, time = os.time() } end
+  return found
 end
 
--- ── Async find_root ───────────────────────────────────────────────────────────
---
 ---@param start_path string?
 ---@param callback   fun(root: string|nil)
 function M.find_root_async(start_path, callback)
   if type(callback) ~= "function" then return end
+  vim.schedule(function() callback(M.find_root(start_path)) end)
+end
 
-  start_path = start_path or vim.fn.expand("%:p:h")
-  local cache_key = normalize(start_path)
-  local entry = _cache[cache_key]
-  if entry and (os.time() - entry.time) < CACHE_TTL then
-    vim.schedule(function() callback(entry.root) end)
-    return
-  end
-
-  if not (vim.uv and vim.uv.fs_stat) then
-    vim.schedule(function() callback(M.find_root(start_path)) end)
-    return
-  end
-
-  local current    = cache_key
-  local depth      = 0
-  local marker_idx = 1
-
-  local function fallback_cwd()
-    local ok_cwd, cwd = pcall(vim.fn.getcwd)
-    local result = (ok_cwd and cwd ~= "") and cwd or nil
-    if result then
-      if vim.g.path_debug then
-        vim.schedule(function()
-          vim.notify(
-            "[path] (async) no root markers found walking from: " .. start_path
-            .. "\n  falling back to cwd: " .. result,
-            vim.log.levels.DEBUG
-          )
-        end)
-      end
-      _cache[cache_key] = { root = result, time = os.time() }
-    end
-    vim.schedule(function() callback(result) end)
-  end
-
-  local function check_next()
-    if depth >= MAX_WALK_DEPTH then
-      fallback_cwd()
-      return
-    end
-
-    if marker_idx > #ROOT_MARKERS then
-      local parent = vim.fn.fnamemodify(current, ":h")
-      if parent == current or parent == "" then
-        fallback_cwd()
-        return
-      end
-      current    = parent
-      marker_idx = 1
-      depth      = depth + 1
-      check_next()
-      return
-    end
-
-    if is_ignored(current) then
-      local parent = vim.fn.fnamemodify(current, ":h")
-      if parent == current then
-        fallback_cwd()
-        return
-      end
-      current    = parent
-      marker_idx = 1
-      depth      = depth + 1
-      check_next()
-      return
-    end
-
-    -- Probe the next marker in the current directory.
-    local probe = current .. "/" .. ROOT_MARKERS[marker_idx]
-    vim.uv.fs_stat(probe, function(err, stat)
-      if not err and stat then
-        _cache[cache_key] = { root = current, time = os.time() }
-        vim.schedule(function() callback(current) end)
-      else
-        marker_idx = marker_idx + 1
-        check_next()
-      end
-    end)
-  end
-
-  check_next()
+--- Nearest ancestor directory containing any of `markers` (uncached, no cwd fallback).
+---@param markers    string[]
+---@param start_path string?
+---@return string|nil
+function M.find_up(markers, start_path)
+  return walk_for_marker(normalize(start_path or vim.fn.expand("%:p:h")), markers)
 end
 
 function M.clear_cache() _cache = {}; _pkg_cache = {} end
 
--- ── find_package_root ─────────────────────────────────────────────────────────
---
 ---@param start_path string?
 ---@return string|nil
 function M.find_package_root(start_path)
   start_path = start_path or vim.fn.expand("%:p:h")
-  local cache_key = normalize(start_path)
+  local key = normalize(start_path)
 
-  local entry = _pkg_cache[cache_key]
+  local entry = _pkg_cache[key]
   if entry and (os.time() - entry.time) < CACHE_TTL then return entry.root end
-  _pkg_cache[cache_key] = nil
 
-  -- Cache the result either way, including nil (no package marker found).
-  -- Previously only a *found* root was cached, so any buffer without a
-  -- recognizable package marker (e.g. a scratch file, or a language that
-  -- doesn't use PACKAGE_MARKERS) re-walked the full MAX_WALK_DEPTH on every
-  -- single call with zero benefit from the TTL cache.
-  local found = walk_for_marker(cache_key, PACKAGE_MARKERS)
-  _pkg_cache[cache_key] = { root = found, time = os.time() }
+  -- Cache misses (nil) too, or buffers with no package marker re-walk every call.
+  local found = walk_for_marker(key, PACKAGE_MARKERS)
+  _pkg_cache[key] = { root = found, time = os.time() }
   return found
 end
 
