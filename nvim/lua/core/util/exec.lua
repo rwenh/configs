@@ -144,4 +144,19 @@ function M.version_async(bin, cmd, callback, pattern)
   end
 end
 
+-- ── Build-flag sanitiser ──────────────────────────────────────────────────────
+
+--- Allow-list sanitiser for user-supplied compiler flags that end up inside a
+--- shell string (vim.g.c_build_flags and friends). Anything outside
+--- [A-Za-z0-9 - . _ = / + : , @] is dropped — including `#`, `*`, `~`, braces and
+--- every quote/redirect/substitution character the old deny-list missed.
+---@param flags string?
+---@return string sanitized
+---@return boolean changed
+function M.sanitize_build_flags(flags)
+  local raw   = tostring(flags or "")
+  local clean = raw:gsub("[^%w%s%-%._=/+:,@]", "")
+  return clean, clean ~= raw
+end
+
 return M
