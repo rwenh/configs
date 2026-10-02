@@ -2,6 +2,10 @@
 --
 -- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → highlights
 
+-- 0. Byte-compile + cache Lua modules (Neovim 0.9+). Must be first. lazy.nvim
+--    detects it and stands down its own cache.
+if vim.loader then vim.loader.enable() end
+
 -- 1. Bootstrap lazy.nvim + leader keys + version stamp (must be first)
 require("core.bootstrap")
 
@@ -78,6 +82,9 @@ if _plugins_ok then
         { "disable_mini_pairs",            "boolean" },
         { "disable_autoformat",            "boolean" },
         { "disable_treesitter_folds",      "boolean" },
+        { "disable_trim_whitespace",       "boolean" },
+        { "disable_theme_autoswitch",      "boolean" },
+        { "disable_project_configs",       "boolean" },
         { "auto_cd_root",                  "boolean" },
         { "runner_autosave",               "boolean" },
         -- LSP & formatting
@@ -96,10 +103,13 @@ if _plugins_ok then
         { "mason_extras",                  "table"   },
         { "workflow_template_debounce_ms", "number"  },
         { "overseer_auto_scroll",          "boolean" },
+        { "term_max_runs",                 "number"  },
+        { "terminal_tui_programs",         "table"   },
         -- Project root & paths
         { "path_max_walk_depth",           "number"  },
         { "path_cache_ttl",                "number"  },
         { "path_debug",                    "boolean" },
+        { "path_prefer_vcs",               "boolean" },
         { "path_ignore_dirs",              "table"   },
         { "cmake_build_dir",               "string"  },
         { "lazy_cache_path",               "string"  },
