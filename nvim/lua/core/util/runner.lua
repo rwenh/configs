@@ -42,7 +42,7 @@ local function load_project_runner_config()
     return {}
   end
 
-  local ok, result = pcall(dofile, cfg_file)
+  local ok, result = require("core.util.secure").load(cfg_file)   -- trust-gated, not dofile
   if not ok or type(result) ~= "table" then
     vim.notify(
       "[runner] .runner.lua error: " .. tostring(result),
@@ -63,17 +63,52 @@ vim.api.nvim_create_autocmd("DirChanged", {
   desc     = "Invalidate .runner.lua cache on directory change",
 })
 
-function M.gradle_or_maven(root, task)
+---@param root   string
+---@param task   string   gradle/maven task ("test", "build", "run", "bootRun", …)
+---@param filter string?  test-name filter; only honoured when task == "test"
+---@return string|nil
+function M.gradle_or_maven(root, task, filter)
   local escaped = vim.fn.shellescape(root)
-  local gradlew  = root .. "/gradlew"
+  local want_filter = filter and filter ~= "" and task == "test"
+
+  local gradle
+  local gradlew = root .. "/gradlew"
   if vim.fn.filereadable(gradlew) == 1 and vim.fn.executable(gradlew) == 1 then
-    return "cd " .. escaped .. " && ./gradlew " .. task
+    gradle = "./gradlew"
+  elseif (vim.fn.filereadable(root .. "/build.gradle") == 1 or vim.fn.filereadable(root .. "/build.gradle.kts") == 1)
+      and vim.fn.executable("gradle") == 1 then
+    gradle = "gradle"
   end
+  if gradle then
+    local cmd = "cd " .. escaped .. " && " .. gradle .. " " .. task
+    if want_filter then cmd = cmd .. " --tests " .. vim.fn.shellescape("*." .. filter) end
+    return cmd
+  end
+
   if vim.fn.filereadable(root .. "/pom.xml") == 1 then
-    local mvn_task = (task == "run") and "exec:java" or task
-    return "cd " .. escaped .. " && mvn " .. mvn_task
+    local mvnw = root .. "/mvnw"
+    local mvn  = (vim.fn.filereadable(mvnw) == 1 and vim.fn.executable(mvnw) == 1) and "./mvnw" or "mvn"
+    local cmd  = "cd " .. escaped .. " && " .. mvn .. " " .. ((task == "run") and "exec:java" or task)
+    -- Maven has no `--tests`; surefire filters with -Dtest=Class#method.
+    if want_filter then
+      cmd = cmd .. " -Dtest=" .. vim.fn.shellescape("*#" .. filter) .. " -Dsurefire.failIfNoSpecifiedTests=false"
+    end
+    return cmd
   end
   return nil
+end
+
+--- Sanitised build flags (allow-list), warning when something was stripped.
+local function build_flags(raw, label)
+  local flags, changed = require("core.util.exec").sanitize_build_flags(raw)
+  if changed then
+    vim.notify(
+      "[runner] " .. label .. " contained unsafe characters that were stripped.\n"
+      .. "  original : " .. raw .. "\n  sanitised: " .. flags,
+      vim.log.levels.WARN
+    )
+  end
+  return flags
 end
 
 -- ── File runners ───────────────────────────────────────────────────────────────
@@ -111,7 +146,7 @@ local runners = {
   c = function(file)
     if vim.fn.executable("gcc") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = vim.g.c_build_flags or "-Wall -Wextra -g"
+    local flags = build_flags(vim.g.c_build_flags or "-Wall -Wextra -g", "c_build_flags")
     return string.format(
       "gcc %s -o %s %s && %s",
       flags,
@@ -123,7 +158,7 @@ local runners = {
   cpp = function(file)
     if vim.fn.executable("g++") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = vim.g.cpp_build_flags or "-Wall -std=c++17 -g"
+    local flags = build_flags(vim.g.cpp_build_flags or "-Wall -std=c++17 -g", "cpp_build_flags")
     return string.format(
       "g++ %s -o %s %s && %s",
       flags,
@@ -177,7 +212,7 @@ local runners = {
   fortran = function(file)
     if vim.fn.executable("gfortran") ~= 1 then return nil end
     local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = vim.g.fortran_build_flags or "-Wall"
+    local flags = build_flags(vim.g.fortran_build_flags or "-Wall", "fortran_build_flags")
     return string.format(
       "gfortran %s -o %s %s && %s",
       flags,
@@ -260,113 +295,139 @@ end
 
 -- ── Public: run_nearest_function ──────────────────────────────────────────────
 --
---
+-- Names come from the tree-sitter `name` FIELD (not "first identifier child"), which
+-- is what makes Go methods (field_identifier), Rust, Ruby and JS `const f = () => {}`
+-- work. Test selection per language:
+--   python  pytest -k NAME          go      go test -run ^NAME$
+--   js/ts   vitest|jest -t NAME     rust    cargo test MOD::NAME
+--   ruby    rspec --example NAME    elixir  mix test FILE:LINE
+--   java/kotlin  gradle --tests / maven -Dtest=*#NAME
+
+local FUNCTION_NODE_TYPES = {
+  function_definition  = true,  -- python, c, cpp
+  method_definition    = true,  -- javascript, typescript
+  function_declaration = true,  -- javascript, typescript, go
+  method_declaration   = true,  -- go, java
+  function_item        = true,  -- rust
+  method               = true,  -- ruby
+  singleton_method     = true,  -- ruby: def self.foo
+}
+
+local FUNCTION_VALUE_TYPES = { arrow_function = true, function_expression = true, ["function"] = true }
+
+local function node_text(node, buf)
+  local ok, txt = pcall(vim.treesitter.get_node_text, node, buf)
+  return (ok and txt and txt ~= "") and txt or nil
+end
+
+local function nearest_function_name(buf)
+  local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
+  if not ok then return nil end
+  while node do
+    local t = node:type()
+    local name_node
+    if FUNCTION_NODE_TYPES[t] then
+      name_node = node:field("name")[1]
+    elseif t == "variable_declarator" then          -- const foo = () => {}
+      local val = node:field("value")[1]
+      if val and FUNCTION_VALUE_TYPES[val:type()] then name_node = node:field("name")[1] end
+    end
+    if name_node then
+      local name = node_text(name_node, buf)
+      if name then return name end
+    end
+    node = node:parent()
+  end
+  return nil
+end
+
+local function rust_qualified_name(buf, fname)
+  local parts = {}
+  local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
+  while ok and node do
+    if node:type() == "mod_item" then
+      local n = node:field("name")[1]
+      local txt = n and node_text(n, buf)
+      if txt then table.insert(parts, 1, txt) end
+    end
+    node = node:parent()
+  end
+  table.insert(parts, fname)
+  return table.concat(parts, "::")
+end
+
+local VITEST_CONFIGS = {
+  "vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.config.mjs",
+  "vitest.config.cjs", "vitest.workspace.ts", "vitest.workspace.js",
+}
+
+---@param root string
+---@return "vitest"|"jest"|nil
+function M.detect_js_runner(root)
+  for _, f in ipairs(VITEST_CONFIGS) do
+    if vim.fn.filereadable(root .. "/" .. f) == 1 then return "vitest" end
+  end
+  local pkg = root .. "/package.json"
+  if vim.fn.filereadable(pkg) == 1 then
+    local ok, lines = pcall(vim.fn.readfile, pkg)
+    if ok then
+      local ok_j, obj = pcall(vim.json.decode, table.concat(lines, "\n"))
+      if ok_j and type(obj) == "table" then
+        local deps = vim.tbl_extend("force", obj.dependencies or {}, obj.devDependencies or {})
+        if deps.vitest then return "vitest" end
+        if deps.jest or obj.jest then return "jest" end
+      end
+    end
+  end
+  return nil
+end
+
 function M.run_nearest_function()
   local ft  = vim.bo.filetype
   local buf = vim.api.nvim_get_current_buf()
 
-  local FUNCTION_NODE_TYPES = {
-    function_definition = true,  -- python, c, cpp
-    method_definition    = true,  -- javascript, typescript
-    function_declaration = true,  -- javascript, typescript, go
-    method_declaration    = true,  -- go, java
-    arrow_function         = true,  -- javascript, typescript
-    function_item          = true,  -- rust
-    method                  = true,  -- ruby
-    singleton_method        = true,  -- ruby: def self.foo
-  }
-
-  local function_name = nil
-  pcall(function()
-    local node = vim.treesitter.get_node()
-    while node do
-      local node_type = node:type()
-      if FUNCTION_NODE_TYPES[node_type] then
-        for i = 0, node:named_child_count() - 1 do
-          local child = node:named_child(i)
-          if child:type() == "identifier" or child:type() == "name" then
-            local start_row, start_col, end_row, end_col = child:range()
-            function_name = vim.api.nvim_buf_get_text(buf, start_row, start_col, end_row, end_col, {})[1]
-            break
-          end
-        end
-        if function_name then break end
-      end
-      node = node:parent()
-    end
-  end)
+  local function_name = nearest_function_name(buf)
 
   local p    = path()
   local root = (p and p.find_root()) or vim.fn.getcwd()
   local er   = vim.fn.shellescape(root)
+
+  local function js_cmd()
+    local base = M.detect_js_test_cmd(root)
+    if not function_name then return "cd " .. er .. " && " .. base end
+    local q, runner = vim.fn.shellescape(function_name), M.detect_js_runner(root)
+    if runner == "vitest" then return "cd " .. er .. " && npx vitest run -t " .. q end
+    if runner == "jest"   then return "cd " .. er .. " && npx jest -t " .. q end
+    local sep = (base == "bun test") and " -t " or " -- -t "
+    return "cd " .. er .. " && " .. base .. sep .. q
+  end
 
   local dispatch = {
     python = function()
       if not function_name then return "cd " .. er .. " && pytest" end
       return "cd " .. er .. " && pytest -k " .. vim.fn.shellescape(function_name) .. " -v"
     end,
-    javascript = function()
-      if not function_name then return "cd " .. er .. " && npm test" end
-      return "cd " .. er .. " && npx vitest run -t " .. vim.fn.shellescape(function_name)
-    end,
-    typescript = function()
-      if not function_name then return "cd " .. er .. " && npm test" end
-      return "cd " .. er .. " && npx vitest run -t " .. vim.fn.shellescape(function_name)
-    end,
+    javascript = js_cmd, typescript = js_cmd, javascriptreact = js_cmd, typescriptreact = js_cmd,
     go = function()
       if not function_name then return "cd " .. er .. " && go test ./..." end
       return "cd " .. er .. " && go test ./... -run " .. vim.fn.shellescape("^" .. function_name .. "$")
     end,
     rust = function()
       if not function_name then return "cd " .. er .. " && cargo test" end
-      local full_path = function_name
-      pcall(function()
-        local node = vim.treesitter.get_node()
-        local parts = {}
-        while node do
-          if node:type() == "mod_item" then
-            for i = 0, node:named_child_count() - 1 do
-              local child = node:named_child(i)
-              if child:type() == "identifier" then
-                local sr, sc, er2, ec = child:range()
-                local mod_name = vim.api.nvim_buf_get_text(buf, sr, sc, er2, ec, {})[1]
-                if mod_name then table.insert(parts, 1, mod_name) end
-                break
-              end
-            end
-          end
-          node = node:parent()
-        end
-        if #parts > 0 then
-          full_path = table.concat(parts, "::") .. "::" .. function_name
-        end
-      end)
-      return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(full_path)
+      return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(rust_qualified_name(buf, function_name))
     end,
     ruby = function()
       if not function_name then return "cd " .. er .. " && bundle exec rspec" end
       return "cd " .. er .. " && bundle exec rspec --example " .. vim.fn.shellescape(function_name)
     end,
     elixir = function()
-      if not function_name then return "cd " .. er .. " && mix test" end
-      return "cd " .. er .. " && mix test --only " .. vim.fn.shellescape(function_name)
+      -- `mix test --only NAME` filters by TAG, not by function; FILE:LINE is the real selector.
+      local file = vim.fn.expand("%:p")
+      local rel  = vim.startswith(file, root .. "/") and file:sub(#root + 2) or file
+      return "cd " .. er .. " && mix test " .. vim.fn.shellescape(rel .. ":" .. vim.fn.line("."))
     end,
-    java = function()
-      if not function_name then
-        local thunk = M.gradle_or_maven(root, "test")
-        return thunk or ("cd " .. er .. " && mvn test")
-      end
-      local thunk = M.gradle_or_maven(root, "test")
-      if thunk then return thunk .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
-      return "cd " .. er .. " && mvn -Dtest=" .. vim.fn.shellescape(function_name) .. " test"
-    end,
-    kotlin = function()
-      if not function_name then
-        return M.gradle_or_maven(root, "test")
-      end
-      local base = M.gradle_or_maven(root, "test")
-      if base then return base .. " --tests " .. vim.fn.shellescape("*." .. function_name) end
-    end,
+    java   = function() return M.gradle_or_maven(root, "test", function_name) end,
+    kotlin = function() return M.gradle_or_maven(root, "test", function_name) end,
   }
 
   local thunk = dispatch[ft]
@@ -386,7 +447,7 @@ function M.run_nearest_function()
   local cmd = thunk()
   if not cmd then
     vim.notify(
-      "[runner] " .. ft .. ": no build tool detected (no gradlew or pom.xml found under " .. root .. ")",
+      "[runner] " .. ft .. ": no build tool detected (no gradlew/gradle or pom.xml found under " .. root .. ")",
       vim.log.levels.WARN
     )
     return
@@ -530,7 +591,7 @@ function M.run_tests()
     if vim.fn.executable("ctest") ~= 1 then
       vim.notify("C/C++ tests use CTest but `ctest` was not found.", vim.log.levels.INFO); return nil
     end
-    return "cd " .. er .. " && ctest --test-dir build --output-on-failure"
+    return "cd " .. er .. " && ctest --test-dir " .. vim.fn.shellescape(vim.g.cmake_build_dir or "build") .. " --output-on-failure"
   end
 
   local js_root = (p and p.find_package_root()) or root
