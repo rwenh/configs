@@ -16,6 +16,12 @@ local function check_go_env()
   local has_gofumpt   = vim.fn.executable("gofumpt")   == 1
   if has_goimports and has_gofumpt then return end
 
+  if vim.fn.executable("go") ~= 1 then
+    -- vim.system() RAISES on a missing binary (it was an uncaught error at startup).
+    vim.notify("[go] `go` not found on PATH — Go tooling checks skipped.\nInstall Go >= 1.21.", vim.log.levels.WARN)
+    return
+  end
+
   vim.system({ "go", "env", "GOPATH" }, { text = true }, function(result)
     if result.code ~= 0 or not result.stdout or vim.trim(result.stdout) == "" then return end
 

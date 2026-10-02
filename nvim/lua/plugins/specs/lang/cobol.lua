@@ -76,6 +76,32 @@ local function cobol_exe_path()
   return dir .. "/" .. tmp
 end
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("cobol", function(s, t, i, _, _ref)
+  return {
+    s("skeleton", {
+      t({ "       IDENTIFICATION DIVISION.", "       PROGRAM-ID. " }),
+      i(1, "PROGRAM-NAME"), t("."),
+      t({ "", "       ENVIRONMENT DIVISION.", "",
+          "       DATA DIVISION.", "       WORKING-STORAGE SECTION.", "       01  " }),
+      i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
+      t({ "", "", "       PROCEDURE DIVISION.", "       MAIN-PARA.", "           " }),
+      i(0), t({ "", "           STOP RUN." }),
+    }),
+    s("if", {
+      t("           IF "), i(1, "CONDITION"),
+      t({ "", "               " }), i(2, "CONTINUE"),
+      t({ "", "           END-IF" }),
+    }),
+    s("perform", {
+      t("           PERFORM "), i(1, "PARA-NAME"),
+      t(" UNTIL "), i(0, "CONDITION"),
+    }),
+    s("display", { t('           DISPLAY "'), i(1, "message"), t('"') }),
+    s("copy",    { t("           COPY "), i(1, "COPYBOOK-NAME"), t(".") }),
+  }
+end)
+
 return {
   {
     "akinsho/toggleterm.nvim",
@@ -139,37 +165,6 @@ return {
     end)(),
   },
 
-  {
-    "L3MON4D3/LuaSnip",
-    optional = true,
-    ft       = "cobol",
-    config   = function()
-      require("core.util.snippets").load("cobol", function(s, t, i, _, _ref)
-        return {
-          s("skeleton", {
-            t({ "       IDENTIFICATION DIVISION.", "       PROGRAM-ID. " }),
-            i(1, "PROGRAM-NAME"), t("."),
-            t({ "", "       ENVIRONMENT DIVISION.", "",
-                "       DATA DIVISION.", "       WORKING-STORAGE SECTION.", "       01  " }),
-            i(2, "WS-VAR"), t("  PIC "), i(3, "X(10)"), t("."),
-            t({ "", "", "       PROCEDURE DIVISION.", "       MAIN-PARA.", "           " }),
-            i(0), t({ "", "           STOP RUN." }),
-          }),
-          s("if", {
-            t("           IF "), i(1, "CONDITION"),
-            t({ "", "               " }), i(2, "CONTINUE"),
-            t({ "", "           END-IF" }),
-          }),
-          s("perform", {
-            t("           PERFORM "), i(1, "PARA-NAME"),
-            t(" UNTIL "), i(0, "CONDITION"),
-          }),
-          s("display", { t('           DISPLAY "'), i(1, "message"), t('"') }),
-          s("copy",    { t("           COPY "), i(1, "COPYBOOK-NAME"), t(".") }),
-        }
-      end)
-    end,
-  },
 
-  shared.treesitter({ "cobol" }),
+  -- COBOL uses Vim's regex syntax highlighting.
 }

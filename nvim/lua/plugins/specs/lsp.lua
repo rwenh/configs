@@ -4,7 +4,11 @@
 return {
   { "williamboman/mason.nvim", cmd = "Mason", build = ":MasonUpdate", opts = { ui = { border = "rounded" } } },
   { "williamboman/mason-lspconfig.nvim", dependencies = "mason.nvim",
-    opts = { ensure_installed = require("core.util.packages").lspconfig, automatic_installation = true, handlers = { function() end } } },
+    opts = {
+      ensure_installed = require("core.util.packages").lspconfig,
+      automatic_enable = false,
+      handlers = { function() end },   -- v1 compat: never auto-setup
+    } },
 
   { "aznhe21/actions-preview.nvim", lazy = true,
     opts = { telescope = { sorting_strategy = "ascending", layout_strategy = "vertical",
@@ -53,7 +57,7 @@ return {
           _project_lsp_cache[root] = {}; return {}
         end
 
-        local ok, result = pcall(dofile, cfg_file)
+        local ok, result = require("core.util.secure").load(cfg_file)   -- trust-gated, not dofile
         if not ok or type(result) ~= "table" then
           vim.notify("[lsp] .lspconfig.lua error: " .. tostring(result), vim.log.levels.WARN)
           _project_lsp_cache[root] = {}; return {}
@@ -103,20 +107,6 @@ return {
         if not pcall(vim.cmd, cmd_str) then pcall(fallback_fn) end
       end
 
-      -- ── Format timeout helper ─────────────────────────────────────────────
-      --
-      local DEFAULT_TIMEOUT_MS = 3000
-
-      local function get_format_timeout(bufnr)
-        local ft = vim.bo[bufnr or 0].filetype
-        local by_ft = type(vim.g.format_timeout_by_ft) == "table"
-          and vim.g.format_timeout_by_ft or {}
-        return by_ft[ft]
-          or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0
-              and vim.g.format_timeout_ms)
-          or DEFAULT_TIMEOUT_MS
-      end
-
       -- ── LspAttach keymaps ─────────────────────────────────────────────────
       vim.api.nvim_create_autocmd("LspAttach", {
         group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
@@ -144,37 +134,15 @@ return {
           end, "Rename Symbol")
 
           local function fmt()
-            local timeout_ms = get_format_timeout(e.buf)
-            local ft = vim.bo[e.buf].filetype
-
-            local function on_result(err)
-              if not err then return end
-              if tostring(err):lower():find("timeout") then
-                vim.notify(
-                  string.format(
-                    "[lsp] Format timed out after %d ms for filetype '%s'.\n"
-                    .. "To increase the timeout:\n"
-                    .. "  vim.g.format_timeout_by_ft = { %s = %d }\n"
-                    .. "  or: vim.g.format_timeout_ms = %d",
-                    timeout_ms, ft, ft, timeout_ms * 2, timeout_ms * 2
-                  ),
-                  vim.log.levels.WARN
-                )
-              else
-                vim.notify("[lsp] Format error: " .. tostring(err), vim.log.levels.WARN)
-              end
-            end
-
-            local ok, err = pcall(function()
-              require("conform").format({
-                bufnr        = e.buf,
-                timeout_ms   = timeout_ms,
-                lsp_format   = "fallback",
-                quiet        = true,
-              }, on_result)
-            end)
-            if not ok then
-              vim.notify("[lsp] Format error: " .. tostring(err), vim.log.levels.WARN)
+            local format = require("core.util.format")
+            local mode   = vim.fn.mode()
+            if mode == "v" or mode == "V" or mode == "\22" then
+              -- The visual-mode mapping used to format the WHOLE buffer (range ignored).
+              local l1, l2 = vim.fn.line("v"), vim.fn.line(".")
+              vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
+              format.run({ bufnr = e.buf, line1 = l1, line2 = l2 })
+            else
+              format.run({ bufnr = e.buf })
             end
           end
           map("<leader>,f", fmt, "Format")
@@ -230,14 +198,16 @@ return {
 
       -- ── Elixir: only start elixir-ls when NextLS is NOT wanted ────────────
       if not vim.g.elixir_use_nextls then
+        -- vim.lsp.config() needs `cmd` as a list (a function must return an RPC client),
+        -- so resolve the binary eagerly.
+        local elixirls_cmd = (function()
+          local mason_ls = vim.fn.stdpath("data") .. "/mason/packages/elixir-ls/language_server.sh"
+          if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
+          local sys = vim.fn.exepath("elixir-ls")
+          return sys ~= "" and { sys } or { "elixir-ls" }
+        end)()
         lsp_setup("elixirls", {
-          cmd = function()
-            local data     = vim.fn.stdpath("data")
-            local mason_ls = data .. "/mason/packages/elixir-ls/language_server.sh"
-            if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
-            local sys = vim.fn.exepath("elixir-ls")
-            return sys ~= "" and { sys } or { "elixir-ls" }
-          end,
+          cmd = elixirls_cmd,
           settings = { elixirLS = {
             dialyzerEnabled  = true,
             fetchDeps        = false,
@@ -251,12 +221,22 @@ return {
         lsp_setup(s, {})
       end
 
+      -- html (moved here from lang/html.lua, whose spec `init` was overwritten by other
+      -- lang specs, so the server was never enabled).
+      lsp_setup("html", {
+        filetypes    = { "html", "htmldjango", "jinja.html" },
+        init_options = { provideFormatter = false },
+      })
+
       -- ── TypeScript fallback ────────────────────────────────────────────────
       do
         local ts_tools_present = (function()
           if package.loaded["typescript-tools"] then return true end
-          local hits = vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false)
-          return #hits > 0
+          -- typescript-tools is lazy (ft = ...), so it is NOT on the runtimepath yet; probing
+          -- the rtp always failed and warned on every startup. Ask lazy.nvim instead.
+          local ok, lazy_cfg = pcall(require, "lazy.core.config")
+          if ok and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] then return true end
+          return #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0
         end)()
         if not ts_tools_present then
           if vim.fn.executable("typescript-language-server") == 1 then lsp_setup("ts_ls", {})
@@ -282,9 +262,15 @@ return {
       local icons = require("core.util.icons")
       vim.diagnostic.config({
         virtual_text  = { prefix = "●", spacing = 4 },
-        signs         = { text = { Error = icons.diagnostics.Error, Warn = icons.diagnostics.Warn, Hint = icons.diagnostics.Hint, Info = icons.diagnostics.Info } },
+        -- keys must be severity constants; string keys like `Error` are ignored (no signs)
+        signs         = { text = {
+          [vim.diagnostic.severity.ERROR] = icons.diagnostics.Error,
+          [vim.diagnostic.severity.WARN]  = icons.diagnostics.Warn,
+          [vim.diagnostic.severity.HINT]  = icons.diagnostics.Hint,
+          [vim.diagnostic.severity.INFO]  = icons.diagnostics.Info,
+        } },
         underline = true, severity_sort = true, update_in_insert = false,
-        float     = { border = "rounded", source = "always" },
+        float     = { border = "rounded", source = true },
       })
     end,
   },
@@ -304,17 +290,7 @@ return {
         sh="shfmt", ruby="rubocop", kotlin="ktlint", c="clang-format", cpp="clang-format",
         fortran="fprettify", zig="zigfmt", vhdl="vsg", elixir="mix",
       },
-      format_on_save = function(bufnr)
-        if vim.g.disable_autoformat then return nil end
-        local ok, v = pcall(function() return vim.b[bufnr].disable_autoformat end)
-        if ok and v then return nil end
-        local ft = vim.bo[bufnr].filetype
-        local by_ft = type(vim.g.format_timeout_by_ft) == "table" and vim.g.format_timeout_by_ft or {}
-        local timeout = by_ft[ft]
-          or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0 and vim.g.format_timeout_ms)
-          or 3000
-        return { timeout_ms = timeout, lsp_format = "fallback" }
-      end,
+      format_on_save = function(bufnr) return require("core.util.format").on_save(bufnr) end,
     },
     config = function(_, opts)
       if vim.fn.executable("sqlfmt") == 1 then

@@ -61,6 +61,9 @@ vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
 return {
   {
     "nvim-treesitter/nvim-treesitter",
+    -- Pin: this spec uses the `nvim-treesitter.configs` API. The default branch is
+    -- now `main` (rewrite, no .configs) and would break a fresh install.
+    branch   = "master",
     build    = ":TSUpdate",
     lazy     = false,
     priority = 100,
@@ -174,7 +177,7 @@ return {
     },
   },
 
-  { "nvim-treesitter/nvim-treesitter-textobjects", lazy = false },
+  { "nvim-treesitter/nvim-treesitter-textobjects", branch = "master", lazy = false },
 
   {
     "nvim-treesitter/nvim-treesitter-context",

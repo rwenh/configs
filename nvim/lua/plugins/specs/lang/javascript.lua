@@ -70,6 +70,46 @@ local function check_node_version()
   end
 end
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("javascript", function(s, t, i, _, ref)
+  local module_type = detect_module_type()
+  local use_esm     = (module_type == "esm")
+  return {
+    s("imp", use_esm and {
+      t("import "), i(1, "name"), t(" from '"), i(2, "module"), t("'"),
+    } or {
+      t("const "), i(1, "name"), t(" = require('"), i(2, "module"), t("')"),
+    }),
+    s("afn", {
+      t("const "), i(1, "name"), t(" = async ("), i(2), t(") => {"),
+      t({ "", "  " }), i(0), t({ "", "}" }),
+    }),
+    s("pall", {
+      t("const ["), i(1, "a"), t(", "), i(2, "b"), t("] = await Promise.all(["),
+      t({ "", "  " }), ref(1, "a"), t(","),
+      t({ "", "  " }), ref(2, "b"), t(","),
+      t({ "", "])" }),
+    }),
+    s("tc", {
+      t("try {"), t({ "", "  " }), i(1, "// ..."),
+      t({ "", "} catch (" }), i(2, "err"), t(") {"),
+      t({ "", "  console.error(" }), ref(2, "err"), t(")"),
+      t({ "", "}" }),
+    }),
+    s("cl", { t('console.log("'), i(1, "label"), t(':", '), i(2, "value"), t(")") }),
+    s("rcl", { t("// console.log("), i(0), t(")") }),
+  }
+end)
+
+-- File scope, NOT a toggleterm `init` (lazy keeps one `init` per plugin; the last
+-- lang spec's won, so this check never ran).
+vim.api.nvim_create_autocmd("FileType", {
+  pattern  = shared.JS_FT,
+  once     = true,
+  group    = vim.api.nvim_create_augroup("JsEnvCheck", { clear = true }),
+  callback = function() vim.schedule(check_node_version) end,
+})
+
 return {
   {
     "vuki656/package-info.nvim",
@@ -97,53 +137,11 @@ return {
   {
     "akinsho/toggleterm.nvim",
     ft = shared.JS_FT,
-    init = function()
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = shared.JS_FT,
-        once     = true,
-        group    = vim.api.nvim_create_augroup("JsEnvCheck", { clear = true }),
-        callback = function() vim.schedule(check_node_version) end,
-      })
-    end,
     keys = {
       { "<leader>jsm", function() notify_module_type() end, desc = "JS Show module type (ESM / CJS)", ft = shared.JS_FT },
     },
   },
 
-  {
-    "L3MON4D3/LuaSnip", optional = true, ft = { "javascript", "javascriptreact" },
-    config = function()
-      require("core.util.snippets").load("javascript", function(s, t, i, _, ref)
-        local module_type = detect_module_type()
-        local use_esm     = (module_type == "esm")
-        return {
-          s("imp", use_esm and {
-            t("import "), i(1, "name"), t(" from '"), i(2, "module"), t("'"),
-          } or {
-            t("const "), i(1, "name"), t(" = require('"), i(2, "module"), t("')"),
-          }),
-          s("afn", {
-            t("const "), i(1, "name"), t(" = async ("), i(2), t(") => {"),
-            t({ "", "  " }), i(0), t({ "", "}" }),
-          }),
-          s("pall", {
-            t("const ["), i(1, "a"), t(", "), i(2, "b"), t("] = await Promise.all(["),
-            t({ "", "  " }), ref(1, "a"), t(","),
-            t({ "", "  " }), ref(2, "b"), t(","),
-            t({ "", "])" }),
-          }),
-          s("tc", {
-            t("try {"), t({ "", "  " }), i(1, "// ..."),
-            t({ "", "} catch (" }), i(2, "err"), t(") {"),
-            t({ "", "  console.error(" }), ref(2, "err"), t(")"),
-            t({ "", "}" }),
-          }),
-          s("cl", { t('console.log("'), i(1, "label"), t(':", '), i(2, "value"), t(")") }),
-          s("rcl", { t("// console.log("), i(0), t(")") }),
-        }
-      end)
-    end,
-  },
 
   shared.treesitter({ "javascript", "jsdoc" }),
 }

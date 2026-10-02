@@ -41,6 +41,24 @@ local function check_elixir_env()
   )
 end
 
+-- ── Env checks ────────────────────────────────────────────────────────────────
+-- File scope, NOT a toggleterm `init` (lazy keeps one `init` per plugin).
+vim.api.nvim_create_autocmd("FileType", {
+  pattern  = "elixir",
+  once     = true,
+  group    = vim.api.nvim_create_augroup("ElixirEnvCheck", { clear = true }),
+  callback = function() vim.schedule(check_elixir_env) end,
+})
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("ElixirEnvRecheck", { clear = true }),
+  callback = function()
+    local ft = vim.bo[vim.api.nvim_get_current_buf()].filetype
+    if ft == "elixir" then vim.schedule(check_elixir_env) end
+  end,
+  desc = "Re-check Elixir environment on project switch",
+})
+
 return {
   -- ── elixir-tools (NextLS) ─────────────────────────────────────────────────
   {
@@ -82,23 +100,6 @@ return {
   {
     "akinsho/toggleterm.nvim",
     ft   = "elixir",
-    init = function()
-      vim.api.nvim_create_autocmd("FileType", {
-        pattern  = "elixir",
-        once     = true,
-        group    = vim.api.nvim_create_augroup("ElixirEnvCheck", { clear = true }),
-        callback = function() vim.schedule(check_elixir_env) end,
-      })
-
-      vim.api.nvim_create_autocmd("DirChanged", {
-        group    = vim.api.nvim_create_augroup("ElixirEnvRecheck", { clear = true }),
-        callback = function()
-          local ft = vim.bo[vim.api.nvim_get_current_buf()].filetype
-          if ft == "elixir" then vim.schedule(check_elixir_env) end
-        end,
-        desc = "Re-check Elixir environment on project switch",
-      })
-    end,
     keys = {
       { "<leader>ext", function() require("core.util.term").float_at_root("mix test")               end, desc = "Elixir mix test",                    ft = "elixir" },
       { "<leader>exC", function() require("core.util.term").float_at_root("mix test --cover")        end, desc = "Elixir mix test --cover",             ft = "elixir" },

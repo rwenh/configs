@@ -80,65 +80,26 @@ vim.api.nvim_create_autocmd("DirChanged", {
   desc = "Re-check htmlhint config when the working directory changes",
 })
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("html", function(s, t, i, _, ref)
+  return {
+    s("html5", {
+      t({ "<!DOCTYPE html>", '<html lang="' }), i(1, "en"), t({ '">', "<head>",
+        '  <meta charset="UTF-8" />', '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+        "  <title>" }), i(2, "Document"), t({ "</title>", "</head>", "<body>", "  " }),
+      i(0), t({ "", "</body>", "</html>" }),
+    }),
+    s("tag", {
+      t("<"), i(1, "div"), t(' class="'), i(2), t('">'),
+      t({ "", "  " }), i(0), t({ "", "</" }), ref(1, "div"), t(">"),
+    }),
+    s("inp", {
+      t('<input type="'), i(1, "text"), t('" name="'), i(2),
+      t('" id="'), ref(2), t('" placeholder="'), i(3), t('" />'),
+    }),
+  }
+end)
+
 return {
   shared.treesitter({ "html" }),
-
-  {
-    "neovim/nvim-lspconfig",
-    optional = true,
-    init = function()
-      local cfg = {
-        filetypes    = { "html", "htmldjango", "jinja.html" },
-        init_options = { provideFormatter = false },
-      }
-
-      if vim.fn.executable("vscode-html-language-server") ~= 1 then
-        vim.schedule(function()
-          vim.notify(
-            "[html] vscode-html-language-server not found — run :MasonInstall html-lsp",
-            vim.log.levels.DEBUG
-          )
-        end)
-        return
-      end
-
-      if vim.fn.has("nvim-0.11") == 1 then
-        pcall(function() vim.lsp.config("html", cfg); vim.lsp.enable("html") end)
-      else
-        vim.api.nvim_create_autocmd("BufReadPost", {
-          pattern  = { "*.html", "*.htmldjango", "*.jinja" },
-          once     = true,
-          group    = vim.api.nvim_create_augroup("HtmlLspCfg", { clear = true }),
-          callback = function()
-            local ok, lspconfig = pcall(require, "lspconfig")
-            if ok then pcall(function() lspconfig.html.setup(cfg) end) end
-          end,
-        })
-      end
-    end,
-  },
-
-  {
-    "L3MON4D3/LuaSnip", optional = true, ft = { "html", "htmldjango" },
-    config = function()
-      require("core.util.snippets").load("html", function(s, t, i, _, ref)
-        return {
-          s("html5", {
-            t({ "<!DOCTYPE html>", '<html lang="' }), i(1, "en"), t({ '">', "<head>",
-              '  <meta charset="UTF-8" />', '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
-              "  <title>" }), i(2, "Document"), t({ "</title>", "</head>", "<body>", "  " }),
-            i(0), t({ "", "</body>", "</html>" }),
-          }),
-          s("tag", {
-            t("<"), i(1, "div"), t(' class="'), i(2), t('">'),
-            t({ "", "  " }), i(0), t({ "", "</" }), ref(1, "div"), t(">"),
-          }),
-          s("inp", {
-            t('<input type="'), i(1, "text"), t('" name="'), i(2),
-            t('" id="'), ref(2), t('" placeholder="'), i(3), t('" />'),
-          }),
-        }
-      end)
-    end,
-  },
 }

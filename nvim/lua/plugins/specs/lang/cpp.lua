@@ -18,6 +18,25 @@ vim.api.nvim_create_autocmd("FileType", {
   desc = "Auto-symlink compile_commands.json from build dir to project root",
 })
 
+-- ── clangd: switch between header and implementation ───────────────────────
+-- File scope, NOT a spec `init`: lazy keeps one `init` per plugin, so an
+-- nvim-lspconfig init here was overwritten by other lang specs (silently dead).
+--   <leader>ch — ClangdSwitchSourceHeader
+vim.api.nvim_create_autocmd("LspAttach", {
+  group    = vim.api.nvim_create_augroup("ClangdSwitchHeader", { clear = true }),
+  callback = function(e)
+    local client = vim.lsp.get_client_by_id(e.data.client_id)
+    if not client or client.name ~= "clangd" then return end
+    if not vim.tbl_contains({ "c", "cpp" }, vim.bo[e.buf].filetype) then return end
+    vim.keymap.set("n", "<leader>ch", "<cmd>ClangdSwitchSourceHeader<cr>", {
+      buffer = e.buf,
+      silent = true,
+      desc   = "C/C++ Switch header ↔ source (clangd)",
+    })
+  end,
+  desc = "Register clangd switch-header keymap on attach",
+})
+
 -- ── cmake-tools ────────────────────────────────────────────────────────────
 
 return {
@@ -58,32 +77,6 @@ return {
       end
       return keys
     end)(),
-  },
-
-  -- ── clangd: switch between header and implementation ──────────────────────
-  --
-  -- <leader>ch  — ClangdSwitchSourceHeader (built-in clangd command via LSP)
-
-  {
-    "neovim/nvim-lspconfig",
-    optional = true,
-    init = function()
-      vim.api.nvim_create_autocmd("LspAttach", {
-        group    = vim.api.nvim_create_augroup("ClangdSwitchHeader", { clear = true }),
-        callback = function(e)
-          local client = vim.lsp.get_client_by_id(e.data.client_id)
-          if not client or client.name ~= "clangd" then return end
-          local ft = vim.bo[e.buf].filetype
-          if not vim.tbl_contains({ "c", "cpp" }, ft) then return end
-          vim.keymap.set("n", "<leader>ch", "<cmd>ClangdSwitchSourceHeader<cr>", {
-            buffer = e.buf,
-            silent = true,
-            desc   = "C/C++ Switch header ↔ source (clangd)",
-          })
-        end,
-        desc = "Register clangd switch-header keymap on attach",
-      })
-    end,
   },
 
   -- ── Raw g++ build + run (no CMake) ──────────────────────────────────────────

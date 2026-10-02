@@ -111,6 +111,36 @@ local function parse_entity_ports(lines)
   return entity_name, ports
 end
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("vhdl", function(s, t, i, _, ref)
+  return {
+    s("entity", {
+      t("entity "), i(1, "entity_name"), t(" is"),
+      t({ "", "  port (" }),
+      t({ "", "    " }), i(2, "signal_name"),
+      t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
+      t({ "", "  );", "end entity " }), ref(1, "entity_name"), t(";"),
+    }),
+    s("arch", {
+      t("architecture "), i(1, "rtl"),
+      t(" of "), i(2, "entity_name"), t(" is"),
+      t({ "", "begin", "  " }), i(0),
+      t({ "", "end architecture " }), ref(1, "rtl"), t(";"),
+    }),
+    s("process", {
+      t("process("), i(1, "clk"), t(")"),
+      t({ "", "begin", "  if rising_edge(" }),
+      ref(1, "clk"), t(") then"),
+      t({ "", "    " }), i(0),
+      t({ "", "  end if;", "end process;" }),
+    }),
+    s("std", {
+      t({ "library ieee;", "use ieee.std_logic_1164.all;",
+          "use ieee.numeric_std.all;", "" }),
+    }),
+  }
+end)
+
 return {
   -- ── Conform: vsg formatter ─────────────────────────────────────────────────
   {
@@ -266,40 +296,5 @@ return {
         end,
         desc = "VHDL Generate testbench skeleton", ft = "vhdl" },
     },
-  },
-
-  -- ── LuaSnip snippets ────────────────────────────────────────────────────────
-  {
-    "L3MON4D3/LuaSnip", optional = true, ft = "vhdl",
-    config = function()
-      require("core.util.snippets").load("vhdl", function(s, t, i, _, ref)
-        return {
-          s("entity", {
-            t("entity "), i(1, "entity_name"), t(" is"),
-            t({ "", "  port (" }),
-            t({ "", "    " }), i(2, "signal_name"),
-            t(" : "), i(3, "in"), t(" "), i(4, "std_logic"),
-            t({ "", "  );", "end entity " }), ref(1, "entity_name"), t(";"),
-          }),
-          s("arch", {
-            t("architecture "), i(1, "rtl"),
-            t(" of "), i(2, "entity_name"), t(" is"),
-            t({ "", "begin", "  " }), i(0),
-            t({ "", "end architecture " }), ref(1, "rtl"), t(";"),
-          }),
-          s("process", {
-            t("process("), i(1, "clk"), t(")"),
-            t({ "", "begin", "  if rising_edge(" }),
-            ref(1, "clk"), t(") then"),
-            t({ "", "    " }), i(0),
-            t({ "", "  end if;", "end process;" }),
-          }),
-          s("std", {
-            t({ "library ieee;", "use ieee.std_logic_1164.all;",
-                "use ieee.numeric_std.all;", "" }),
-          }),
-        }
-      end)
-    end,
   },
 }

@@ -31,6 +31,38 @@ vim.api.nvim_create_autocmd("DirChanged", {
   desc = "Re-symlink compile_commands.json when working directory changes",
 })
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("c", function(s, t, i, _, ref)
+  return {
+    s("main", {
+      t({ "#include <stdio.h>", "#include <stdlib.h>", "",
+          "int main(int argc, char *argv[]) {", "    " }),
+      i(0, "return 0;"), t({ "", "}" }),
+    }),
+    s("guard", {
+      t("#ifndef "), i(1, "HEADER_H"),
+      t({ "", "#define " }), ref(1, "HEADER_H"),
+      t({ "", "", "" }), i(0),
+      t({ "", "", "#endif /* " }), ref(1, "HEADER_H"), t(" */"),
+    }),
+    s("struct", {
+      t("typedef struct {"), t({ "", "    " }), i(1, "int member"), t(";"),
+      t({ "", "} " }), i(2, "MyStruct"), t(";"),
+    }),
+    s("for", {
+      t("for (int "), i(1, "i"), t(" = 0; "), ref(1, "i"),
+      t(" < "), i(2, "n"), t("; "), ref(1, "i"),
+      t("++) {"), t({ "", "    " }), i(0), t({ "", "}" }),
+    }),
+    s("malloc", {
+      i(1, "Type"), t(" *"), i(2, "ptr"), t(" = malloc(sizeof("),
+      ref(1, "Type"), t(") * "), i(3, "n"), t(");"),
+      t({ "", "if (!" }), ref(2, "ptr"),
+      t({ ") {", '    fprintf(stderr, "malloc failed\\n");', "    return NULL;", "}" }),
+    }),
+  }
+end)
+
 return {
   -- ── clangd extensions ─────────────────────────────────────────────────────
   {
@@ -150,41 +182,4 @@ return {
   -- ── Neogen docstrings ──────────────────────────────────────────────────────
   { "danymat/neogen", optional = true, ft = "c",
     opts = { languages = { c = { template = { annotation_convention = "doxygen" } } } } },
-
-  -- ── LuaSnip snippets ───────────────────────────────────────────────────────
-  {
-    "L3MON4D3/LuaSnip", optional = true, ft = "c",
-    config = function()
-      require("core.util.snippets").load("c", function(s, t, i, _, ref)
-        return {
-          s("main", {
-            t({ "#include <stdio.h>", "#include <stdlib.h>", "",
-                "int main(int argc, char *argv[]) {", "    " }),
-            i(0, "return 0;"), t({ "", "}" }),
-          }),
-          s("guard", {
-            t("#ifndef "), i(1, "HEADER_H"),
-            t({ "", "#define " }), ref(1, "HEADER_H"),
-            t({ "", "", "" }), i(0),
-            t({ "", "", "#endif /* " }), ref(1, "HEADER_H"), t(" */"),
-          }),
-          s("struct", {
-            t("typedef struct {"), t({ "", "    " }), i(1, "int member"), t(";"),
-            t({ "", "} " }), i(2, "MyStruct"), t(";"),
-          }),
-          s("for", {
-            t("for (int "), i(1, "i"), t(" = 0; "), ref(1, "i"),
-            t(" < "), i(2, "n"), t("; "), ref(1, "i"),
-            t("++) {"), t({ "", "    " }), i(0), t({ "", "}" }),
-          }),
-          s("malloc", {
-            i(1, "Type"), t(" *"), i(2, "ptr"), t(" = malloc(sizeof("),
-            ref(1, "Type"), t(") * "), i(3, "n"), t(");"),
-            t({ "", "if (!" }), ref(2, "ptr"),
-            t({ ") {", '    fprintf(stderr, "malloc failed\\n");', "    return NULL;", "}" }),
-          }),
-        }
-      end)
-    end,
-  },
 }

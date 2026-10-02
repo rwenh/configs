@@ -62,6 +62,50 @@ vim.api.nvim_create_autocmd("DirChanged", {
   callback = function() _fprettify_args_cache = {} end,
 })
 
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+require("core.util.snippets").register("fortran", function(s, t, i, _, ref)
+  return {
+    s("program", {
+      t("program "), i(1, "name"),
+      t({ "", "  implicit none", "  " }), i(2),
+      t({ "", "end program " }), ref(1, "name"),
+      i(0),
+    }),
+    s("subroutine", {
+      t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
+      t({ "", "  implicit none", "  " }), i(3),
+      t({ "", "end subroutine " }), ref(1, "name"),
+      i(0),
+    }),
+    s("function", {
+      i(1, "real"), t(" function "), i(2, "name"), t("("), i(3), t(")"),
+      t({ "", "  implicit none", "  " }), i(0),
+      t({ "", "end function " }), ref(2, "name"),
+    }),
+    s("do", {
+      t("do "), i(1, "i"), t(" = "), i(2, "1"), t(", "), i(3, "n"),
+      t({ "", "  " }), i(0),
+      t({ "", "end do" }),
+    }),
+    s("module", {
+      t("module "), i(1, "name"),
+      t({ "", "  implicit none", "  " }), i(0),
+      t({ "", "end module " }), ref(1, "name"),
+    }),
+    s("mpi_init", {
+      t({
+        "use mpi",
+        "integer :: ierr, rank, nprocs",
+        "call MPI_Init(ierr)",
+        "call MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)",
+        "call MPI_Comm_size(MPI_COMM_WORLD, nprocs, ierr)",
+      }),
+      i(0),
+      t({ "", "call MPI_Finalize(ierr)" }),
+    }),
+  }
+end)
+
 return {
   -- ── Conform: fprettify custom config ──────────────────────────────────────
   {
@@ -162,56 +206,5 @@ return {
         },
       }
     end)(),
-  },
-
-  -- ── LuaSnip snippets ───────────────────────────────────────────────────────
-  {
-    "L3MON4D3/LuaSnip",
-    optional = true,
-    ft       = "fortran",
-    config   = function()
-      require("core.util.snippets").load("fortran", function(s, t, i, _, ref)
-        return {
-          s("program", {
-            t("program "), i(1, "name"),
-            t({ "", "  implicit none", "  " }), i(2),
-            t({ "", "end program " }), ref(1, "name"),
-            i(0),
-          }),
-          s("subroutine", {
-            t("subroutine "), i(1, "name"), t("("), i(2), t(")"),
-            t({ "", "  implicit none", "  " }), i(3),
-            t({ "", "end subroutine " }), ref(1, "name"),
-            i(0),
-          }),
-          s("function", {
-            i(1, "real"), t(" function "), i(2, "name"), t("("), i(3), t(")"),
-            t({ "", "  implicit none", "  " }), i(0),
-            t({ "", "end function " }), ref(2, "name"),
-          }),
-          s("do", {
-            t("do "), i(1, "i"), t(" = "), i(2, "1"), t(", "), i(3, "n"),
-            t({ "", "  " }), i(0),
-            t({ "", "end do" }),
-          }),
-          s("module", {
-            t("module "), i(1, "name"),
-            t({ "", "  implicit none", "  " }), i(0),
-            t({ "", "end module " }), ref(1, "name"),
-          }),
-          s("mpi_init", {
-            t({
-              "use mpi",
-              "integer :: ierr, rank, nprocs",
-              "call MPI_Init(ierr)",
-              "call MPI_Comm_rank(MPI_COMM_WORLD, rank, ierr)",
-              "call MPI_Comm_size(MPI_COMM_WORLD, nprocs, ierr)",
-            }),
-            i(0),
-            t({ "", "call MPI_Finalize(ierr)" }),
-          }),
-        }
-      end)
-    end,
   },
 }

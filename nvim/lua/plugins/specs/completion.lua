@@ -104,4 +104,14 @@ return {
       if not ok then vim.notify("blink.cmp setup failed", vim.log.levels.ERROR) end
     end,
   },
+
+  -- Single owner of LuaSnip's `config` (lazy keeps only one per plugin).
+  -- Language snippets are queued by lang specs via core.util.snippets.register().
+  {
+    "L3MON4D3/LuaSnip",
+    config = function()
+      local ok, snippets = pcall(require, "core.util.snippets")
+      if ok then snippets.flush() end
+    end,
+  },
 }

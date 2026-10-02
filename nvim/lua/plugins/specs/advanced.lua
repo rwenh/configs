@@ -47,7 +47,10 @@ return {
   { "tpope/vim-abolish", event = "VeryLazy" },
   { "gbprod/stay-in-place.nvim", event = "VeryLazy", opts = {} },
 
-  -- ── mini.nvim — unified spec ───────────────────────────────────────────────
+  -- ── mini.nvim — SINGLE owner of every mini.* setup ───────────────────────────
+  -- lazy.nvim keeps one `config` per plugin (last spec wins). Previously a second
+  -- spec (mini.files) overwrote this one, so comment/surround/align/move/pairs/
+  -- visits were never set up. Other specs (editor.lua) may only contribute `keys`.
   {
     "echasnovski/mini.nvim",
     event = "VeryLazy",
@@ -56,46 +59,8 @@ return {
       { "ga", mode = { "n","v" } }, { "gA", mode = { "n","v" } },
       { "gS" },
       { "gsa", mode = "v" }, { "gsd" }, { "gsf" }, { "gsF" }, { "gsh" }, { "gsr" },
-      { "<A-h>", mode = { "n","v","i" } }, { "<A-j>", mode = { "n","v","i" } },
-      { "<A-k>", mode = { "n","v","i" } }, { "<A-l>", mode = { "n","v","i" } },
-    },
-    config = function()
-      for _, mod in ipairs({ "align","comment","move","splitjoin","surround" }) do
-        local ok, err = pcall(function() require("mini." .. mod).setup() end)
-        if not ok then vim.notify(string.format("[mini.%s] setup failed: %s", mod, tostring(err)), vim.log.levels.WARN) end
-      end
-
-      if vim.g.disable_mini_pairs ~= true then
-        pcall(function()
-          require("mini.pairs").setup({
-            modes   = { insert = true, command = false, terminal = false },
-            mappings = {
-              ["("]  = { action = "open",  pair = "()",  neigh_pattern = "[^\\]." },
-              ["["]  = { action = "open",  pair = "[]",  neigh_pattern = "[^\\]." },
-              ["{"]  = { action = "open",  pair = "{}",  neigh_pattern = "[^\\]." },
-              [")"]  = { action = "close", pair = "()",  neigh_pattern = "[^\\]." },
-              ["]"]  = { action = "close", pair = "[]",  neigh_pattern = "[^\\]." },
-              ["}"]  = { action = "close", pair = "{}",  neigh_pattern = "[^\\]." },
-              ['"']  = { action = "closeopen", pair = '""', neigh_pattern = "[^\\].", register = { cr = false } },
-              ["'"]  = { action = "closeopen", pair = "''", neigh_pattern = "[^%a\\].", register = { cr = false } },
-              ["`"]  = { action = "closeopen", pair = "``", neigh_pattern = "[^\\].", register = { cr = false } },
-            },
-          })
-        end)
-      end
-
-      pcall(function()
-        require("mini.visits").setup({
-          store = { path = vim.fn.stdpath("data") .. "/mini-visits.json" },
-        })
-      end)
-    end,
-  },
-
-  -- ── mini.files ────────────────────────────────────────────────────────────
-  {
-    "echasnovski/mini.nvim",
-    keys = {
+      { "<A-h>", mode = { "n","v" } }, { "<A-j>", mode = { "n","v" } },
+      { "<A-k>", mode = { "n","v" } }, { "<A-l>", mode = { "n","v" } },
       {
         "<leader>em",
         function()
@@ -118,12 +83,48 @@ return {
       },
     },
     config = function()
-      pcall(function()
-        require("mini.files").setup({
-          windows = { preview = true, width_focus = 50, width_preview = 70 },
-          options = { use_as_default_explorer = false },
+      local function setup(mod, opts)
+        local ok, err = pcall(function() require("mini." .. mod).setup(opts) end)
+        if not ok then
+          vim.notify(string.format("[mini.%s] setup failed: %s", mod, tostring(err)), vim.log.levels.WARN)
+        end
+      end
+
+      setup("align")
+      setup("comment")
+      setup("move")
+      setup("splitjoin")
+      -- Documented keys are gs*; mini.surround's default prefix is `s*`, which
+      -- would shadow flash's `s`.
+      setup("surround", {
+        mappings = {
+          add = "gsa", delete = "gsd", find = "gsf", find_left = "gsF",
+          highlight = "gsh", replace = "gsr", update_n_lines = "gsn",
+        },
+      })
+
+      if vim.g.disable_mini_pairs ~= true then
+        setup("pairs", {
+          modes   = { insert = true, command = false, terminal = false },
+          mappings = {
+            ["("]  = { action = "open",  pair = "()",  neigh_pattern = "[^\\]." },
+            ["["]  = { action = "open",  pair = "[]",  neigh_pattern = "[^\\]." },
+            ["{"]  = { action = "open",  pair = "{}",  neigh_pattern = "[^\\]." },
+            [")"]  = { action = "close", pair = "()",  neigh_pattern = "[^\\]." },
+            ["]"]  = { action = "close", pair = "[]",  neigh_pattern = "[^\\]." },
+            ["}"]  = { action = "close", pair = "{}",  neigh_pattern = "[^\\]." },
+            ['"']  = { action = "closeopen", pair = '""', neigh_pattern = "[^\\].", register = { cr = false } },
+            ["'"]  = { action = "closeopen", pair = "''", neigh_pattern = "[^%a\\].", register = { cr = false } },
+            ["`"]  = { action = "closeopen", pair = "``", neigh_pattern = "[^\\].", register = { cr = false } },
+          },
         })
-      end)
+      end
+
+      setup("visits", { store = { path = vim.fn.stdpath("data") .. "/mini-visits.json" } })
+      setup("files", {
+        windows = { preview = true, width_focus = 50, width_preview = 70 },
+        options = { use_as_default_explorer = false },
+      })
     end,
   },
 
@@ -251,6 +252,8 @@ return {
         open   = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
         close  = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
         scroll = scroll_cfg,
+        -- smear-cursor.nvim owns cursor motion; two cursor animators fight.
+        cursor = { enable = vim.g.disable_smear_cursor == true },
       })
     end },
 }

@@ -113,79 +113,63 @@ local function setup_cssmodules_lsp()
   _cssmodules_setup_done = true
 end
 
+-- ── cssmodules LSP + CSS-variable jump ───────────────────────────────────────
+-- File scope, NOT spec `init`s: lazy keeps one `init` per plugin, so these (and
+-- the html/cpp ones) overwrote each other and only the last survived.
+vim.api.nvim_create_autocmd("BufReadPost", {
+  pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
+  once     = true,
+  group    = vim.api.nvim_create_augroup("CssModulesLspInit", { clear = true }),
+  callback = function() vim.schedule(setup_cssmodules_lsp) end,
+  desc     = "Setup cssmodules LSP on first CSS/TSX/JSX buffer",
+})
+
+vim.api.nvim_create_autocmd("DirChanged", {
+  group    = vim.api.nvim_create_augroup("CssModulesLspDir", { clear = true }),
+  callback = function()
+    _cssmodules_setup_done = false
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf)
+      and vim.tbl_contains({ "css","scss","less","typescriptreact","javascriptreact" }, vim.bo[buf].filetype) then
+        vim.schedule(setup_cssmodules_lsp)
+        return
+      end
+    end
+  end,
+  desc = "Re-setup cssmodules LSP when working directory changes",
+})
+
+vim.api.nvim_create_autocmd("LspAttach", {
+  group    = vim.api.nvim_create_augroup("CssVarJump", { clear = true }),
+  callback = function(e)
+    local client = vim.lsp.get_client_by_id(e.data.client_id)
+    if not client or client.name ~= "cssls" then return end
+    if not vim.tbl_contains({ "css","scss","less" }, vim.bo[e.buf].filetype) then return end
+
+    vim.keymap.set("n", "<leader>cv", function()
+      local word = vim.fn.expand("<cword>")
+      if not word:match("^%-%-") then
+        vim.notify("[css] cursor is not on a CSS custom property (--var)", vim.log.levels.INFO)
+        return
+      end
+      local ok, tb = pcall(require, "telescope.builtin")
+      if ok then
+        local ok_path, path = pcall(require, "core.util.path")
+        local root = (ok_path and path.find_root()) or vim.fn.getcwd()
+        pcall(tb.live_grep, {
+          default_text = word .. ":",
+          cwd          = root,
+          prompt_title = "CSS variable definition: " .. word,
+        })
+      else
+        vim.lsp.buf.definition()
+      end
+    end, { buffer = e.buf, desc = "CSS jump to variable definition" })
+  end,
+  desc = "Register CSS variable jump keymap on cssls attach",
+})
+
 return {
-  -- ── cssmodules LSP ──────────────────────────────────────────────────────────
-  {
-    "neovim/nvim-lspconfig",
-    optional = true,
-    init = function()
-      vim.api.nvim_create_autocmd("BufReadPost", {
-        pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
-        once     = true,
-        group    = vim.api.nvim_create_augroup("CssModulesLspInit", { clear = true }),
-        callback = function() vim.schedule(setup_cssmodules_lsp) end,
-        desc     = "Setup cssmodules LSP on first CSS/TSX/JSX buffer",
-      })
-
-      vim.api.nvim_create_autocmd("DirChanged", {
-        group    = vim.api.nvim_create_augroup("CssModulesLspDir", { clear = true }),
-        callback = function()
-          _cssmodules_setup_done = false
-          -- Only act when a relevant filetype is currently open.
-          for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-            if vim.api.nvim_buf_is_loaded(buf) then
-              local ft = vim.bo[buf].filetype
-              if vim.tbl_contains({ "css","scss","less","typescriptreact","javascriptreact" }, ft) then
-                vim.schedule(setup_cssmodules_lsp)
-                return
-              end
-            end
-          end
-        end,
-        desc = "Re-setup cssmodules LSP when working directory changes",
-      })
-    end,
-  },
-
-  -- ── CSS variable jump-to-definition ──────────────────────────────────────────
-  {
-    "neovim/nvim-lspconfig",
-    optional = true,
-    init = function()
-      vim.api.nvim_create_autocmd("LspAttach", {
-        group    = vim.api.nvim_create_augroup("CssVarJump", { clear = true }),
-        callback = function(e)
-          local client = vim.lsp.get_client_by_id(e.data.client_id)
-          if not client or client.name ~= "cssls" then return end
-          local ft = vim.bo[e.buf].filetype
-          if not vim.tbl_contains({ "css","scss","less" }, ft) then return end
-
-          vim.keymap.set("n", "<leader>cv", function()
-            local word = vim.fn.expand("<cword>")
-            if not word:match("^%-%-") then
-              vim.notify("[css] cursor is not on a CSS custom property (--var)", vim.log.levels.INFO)
-              return
-            end
-            local ok, tb = pcall(require, "telescope.builtin")
-            if ok then
-              local ok_path, path = pcall(require, "core.util.path")
-              local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-              pcall(tb.live_grep, {
-                default_text = word .. ":",
-                cwd          = root,
-                prompt_title = "CSS variable definition: " .. word,
-                type_filter  = "css,scss,less",
-              })
-            else
-              vim.lsp.buf.definition()
-            end
-          end, { buffer = e.buf, desc = "CSS jump to variable definition" })
-        end,
-        desc = "Register CSS variable jump keymap on cssls attach",
-      })
-    end,
-  },
-
   -- ── Tailwind CSS ───────────────────────────────────────────────────────────
   --   https://github.com/laytan/tailwind-tools.nvim
   --

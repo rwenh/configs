@@ -1,13 +1,53 @@
 -- lua/plugins/specs/dap.lua — Debug Adapter Protocol
 --
 
+-- ── Exception-breakpoint picker ───────────────────────────────────────────────
+-- File scope + spec `keys` (with rhs) so the mapping exists before nvim-dap loads.
+local function exception_breakpoints()
+  local ok, dap = pcall(require, "dap")
+  if not ok then vim.notify("[dap] nvim-dap not available", vim.log.levels.WARN); return end
+
+  local session = dap.session()
+  if not session then
+    vim.notify("[dap] No active debug session", vim.log.levels.WARN)
+    return
+  end
+
+  local filters = (session.capabilities or {}).exceptionBreakpointFilters or {}
+  if #filters == 0 then
+    vim.notify("[dap] Adapter does not support exception breakpoints", vim.log.levels.INFO)
+    return
+  end
+
+  local items = vim.tbl_map(function(f)
+    return { id = f.filter, label = (f.label or f.filter) .. (f.default and " (default)" or "") }
+  end, filters)
+  local labels = vim.tbl_map(function(i) return i.label end, items)
+
+  vim.ui.select(labels, { prompt = "Exception breakpoint filter:" }, function(choice, idx)
+    if not choice then return end
+    local selected = items[idx] and items[idx].id or choice
+    pcall(function()
+      session:request("setExceptionBreakpoints", { filters = { selected } }, function(err)
+        if err then
+          vim.notify("[dap] setExceptionBreakpoints error: " .. tostring(err), vim.log.levels.WARN)
+        else
+          vim.notify("[dap] Exception breakpoint set: " .. selected, vim.log.levels.INFO)
+        end
+      end)
+    end)
+  end)
+end
+
 return {
   {
     "mfussenegger/nvim-dap",
     dependencies = { "rcarriga/nvim-dap-ui", "theHamsta/nvim-dap-virtual-text", "nvim-neotest/nvim-nio" },
+    -- F5–F11 and <leader>;{b,c,...} are owned by core/keymaps.lua, whose handlers
+    -- require("dap") (which lazy-loads it). Listing them here as rhs-less lazy keys
+    -- installed stubs that shadowed those mappings and never restored them.
     keys = {
-      { "<F5>" }, { "<F6>" }, { "<F7>" }, { "<F8>" }, { "<F9>" }, { "<F10>" }, { "<F11>" },
-      { "<leader>;c" }, { "<leader>;b" },
+      { "<leader>;E", exception_breakpoints, desc = "DAP: Configure exception breakpoints" },
     },
     config = function()
       local dap   = require("dap")
@@ -46,11 +86,14 @@ return {
       dap.listeners.before.event_exited["dapui_config"]      = safe_close
 
       -- ── register_adapter helper ────────────────────────────────────────────
-      local function register_adapter(name, check_fn, configs, warn_msg)
+      -- dap.configurations is keyed by FILETYPE, dap.adapters by adapter name. The old
+      -- code stored configs under the adapter name ("delve", "mix_task"), so <F5> in a
+      -- Go/Elixir buffer found no configuration at all.
+      local function register_adapter(name, filetypes, check_fn, configs, warn_msg)
         local adapter = check_fn()
         if adapter then
-          dap.adapters[name]       = adapter
-          dap.configurations[name] = configs
+          dap.adapters[name] = adapter
+          for _, ft in ipairs(filetypes) do dap.configurations[ft] = configs end
         else
           vim.schedule(function() vim.notify(warn_msg, vim.log.levels.WARN) end)
         end
@@ -76,7 +119,7 @@ return {
           return
         end
 
-        local ok, result = pcall(dofile, cfg_file)
+        local ok, result = require("core.util.secure").load(cfg_file)   -- trust-gated, not dofile
         if not ok or type(result) ~= "table" then
           vim.notify("[dap] .nvim-dap.lua error: " .. tostring(result), vim.log.levels.WARN)
           _project_dap_cache[root] = true
@@ -108,49 +151,6 @@ return {
         load_project_dap_config()   -- no-op after first call per cwd
         return orig_continue(...)
       end
-
-      -- ── Exception breakpoint UI helper ─────────────────────────────────────
-      vim.keymap.set("n", "<leader>;E", function()
-        local session = dap.session()
-        if not session then
-          vim.notify("[dap] No active debug session", vim.log.levels.WARN)
-          return
-        end
-
-        local caps    = session.capabilities or {}
-        local filters = caps.exceptionBreakpointFilters or {}
-
-        if #filters == 0 then
-          vim.notify("[dap] Adapter does not support exception breakpoints", vim.log.levels.INFO)
-          return
-        end
-
-        local items = vim.tbl_map(function(f)
-          local label   = f.label or f.filter
-          local default = f.default and " (default)" or ""
-          return { id = f.filter, label = label .. default }
-        end, filters)
-
-        local labels = vim.tbl_map(function(i) return i.label end, items)
-
-        vim.ui.select(labels, {
-          prompt = "Select an exception breakpoint filter (type a number, enter to confirm):",
-        }, function(choice, idx)
-          if not choice then return end
-          local selected_filter = items[idx] and items[idx].id or choice
-          pcall(function()
-            session:request("setExceptionBreakpoints", {
-              filters = { selected_filter },
-            }, function(err)
-              if err then
-                vim.notify("[dap] setExceptionBreakpoints error: " .. tostring(err), vim.log.levels.WARN)
-              else
-                vim.notify("[dap] Exception breakpoint set: " .. selected_filter, vim.log.levels.INFO)
-              end
-            end)
-          end)
-        end)
-      end, { desc = "DAP: Configure exception breakpoints" })
 
       -- ── Deferred adapter setup ─────────────────────────────────────────────
 
@@ -187,7 +187,7 @@ return {
       end
 
       local function setup_go()
-        register_adapter("delve",
+        register_adapter("delve", { "go" },
           function()
             local dlv = mason.bin("dlv")
             if vim.fn.executable(dlv) ~= 1 then return nil end
@@ -277,7 +277,7 @@ return {
       end
 
       local function setup_elixir()
-        register_adapter("mix_task",
+        register_adapter("mix_task", { "elixir" },
           function()
             local pkg_dbg    = mason.pkg("elixir-ls/debugger.sh")
             local standalone = vim.fn.exepath("elixir-ls-debugger")
@@ -304,12 +304,35 @@ return {
         { pattern = "ruby",                                                           fn = setup_ruby,     suffix = "Ruby"    },
         { pattern = "elixir",                                                         fn = setup_elixir,   suffix = "Elixir"  },
       }
+      local function ft_wanted(ft, pattern)
+        if type(pattern) == "table" then return vim.tbl_contains(pattern, ft) end
+        return ft == pattern
+      end
+
       for _, entry in ipairs(deferred) do
+        local done = false
+        local function run()
+          if done then return end
+          done = true
+          local ok, err = pcall(entry.fn)
+          if not ok then
+            vim.notify(string.format("[dap] %s adapter setup failed: %s", entry.suffix, tostring(err)), vim.log.levels.WARN)
+          end
+        end
+
         vim.api.nvim_create_autocmd("FileType", {
           pattern  = entry.pattern, once = true,
           group    = vim.api.nvim_create_augroup("DapDeferred" .. entry.suffix, { clear = true }),
-          callback = entry.fn, desc = "Register DAP adapter: " .. entry.suffix,
+          callback = run, desc = "Register DAP adapter: " .. entry.suffix,
         })
+
+        -- nvim-dap loads on first use — normally AFTER the relevant buffer's FileType
+        -- event already fired — so also cover buffers that are already open.
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_loaded(buf) and ft_wanted(vim.bo[buf].filetype, entry.pattern) then
+            run(); break
+          end
+        end
       end
 
       -- ── Persistent breakpoints ─────────────────────────────────────────────
@@ -424,15 +447,13 @@ return {
         end,
       })
 
-      local load_group = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true })
-      vim.api.nvim_create_autocmd("User",            { pattern = "LazyDone", once = true, group = load_group, callback = load_breakpoints })
-      vim.api.nvim_create_autocmd("SessionLoadPost", { once = true,                       group = load_group, callback = load_breakpoints })
+      vim.schedule(load_breakpoints)
+      vim.api.nvim_create_autocmd("SessionLoadPost", {
+        group    = vim.api.nvim_create_augroup("DapBreakpointsLoad", { clear = true }),
+        callback = load_breakpoints,
+      })
     end,
   },
-
-  { "jay-babu/mason-nvim-dap.nvim",
-    dependencies = { "mason.nvim", "nvim-dap" },
-    opts = { ensure_installed = require("core.util.packages").mason.dap, automatic_installation = true } },
 
   { "rcarriga/nvim-dap-virtual-text",
     dependencies = "mfussenegger/nvim-dap", event = "VeryLazy",
