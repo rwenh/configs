@@ -17,7 +17,7 @@ local EPHEMERAL_FT = {
 -- ── Highlight on yank ─────────────────────────────────────────────────────────
 au("TextYankPost", {
   group    = ag("HighlightYank", { clear = true }),
-  callback = function() pcall(vim.highlight.on_yank, { timeout = 200 }) end,
+  callback = function() pcall((vim.hl or vim.highlight).on_yank, { timeout = 200 }) end,
 })
 
 -- ── Restore cursor position ───────────────────────────────────────────────────
@@ -64,38 +64,34 @@ au("FileType", {
   end,
 })
 
--- ── Trim trailing whitespace (phase 2 fix #3: in-memory byte count) ──────────
-local function buf_byte_size(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  local total = 0
-  for _, line in ipairs(lines) do total = total + #line + 1 end
-  return total
-end
+-- ── Trim trailing whitespace ──────────────────────────────────────────────────
+-- Uses :substitute inside nvim_buf_call (one undo step, marks/extmarks/folds/cursor
+-- preserved). The old version rewrote the WHOLE buffer with nvim_buf_set_lines and
+-- copied every line three times just to measure the size.
+-- Opt-out: vim.g.disable_trim_whitespace = true, or per buffer vim.b.disable_trim_whitespace.
+local TRIM_SKIP_FT = {
+  markdown = true, markdown_inline = true, diff = true, rst = true,
+  asciidoc = true, mail = true, patch = true, gitsendemail = true,
+}
 
 au("BufWritePre", {
   group    = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
+    if vim.g.disable_trim_whitespace or vim.b[e.buf].disable_trim_whitespace then return end
     if not is_real_buf(e.buf) then return end
-    if vim.bo[e.buf].binary then return end
+    if vim.bo[e.buf].binary or not vim.bo[e.buf].modifiable then return end
     if vim.b[e.buf] and vim.b[e.buf].large_file then return end
-    if buf_byte_size(e.buf) > 500 * 1024 then return end
-    local ft = vim.bo[e.buf].filetype
-    if vim.tbl_contains({ "markdown","markdown_inline","diff","rst","asciidoc","mail" }, ft) then return end
-    if #vim.api.nvim_buf_get_lines(e.buf, 0, -1, false) == 0 then return end
-    local scan_ok, match_line = pcall(vim.api.nvim_buf_call, e.buf, function()
-      return vim.fn.search([[\s\+$]], "nw")
-    end)
-    if not scan_ok or match_line == 0 then return end
-    pcall(function()
-      local lines   = vim.api.nvim_buf_get_lines(e.buf, 0, -1, false)
-      local trimmed = {}
-      local dirty   = false
-      for i, line in ipairs(lines) do
-        local t = line:gsub("%s+$", "")
-        trimmed[i] = t
-        if t ~= line then dirty = true end
-      end
-      if dirty then vim.api.nvim_buf_set_lines(e.buf, 0, -1, false, trimmed) end
+    if TRIM_SKIP_FT[vim.bo[e.buf].filetype] then return end
+
+    -- O(1) size check — no line copies.
+    local last = vim.api.nvim_buf_line_count(e.buf)
+    if vim.api.nvim_buf_get_offset(e.buf, last) > 500 * 1024 then return end
+
+    pcall(vim.api.nvim_buf_call, e.buf, function()
+      if vim.fn.search([[\s\+$]], "nw") == 0 then return end
+      local view = vim.fn.winsaveview()
+      vim.cmd([[silent! keepjumps keeppatterns %s/\s\+$//e]])
+      vim.fn.winrestview(view)
     end)
   end,
 })

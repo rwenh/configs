@@ -5,8 +5,10 @@ local function lazy(mod, tag)
   return function(fn)
     return function()
       local ok, m = pcall(require, mod)
-      if ok then pcall(fn, m)
-      else vim.notify(tag .. " not loaded", vim.log.levels.WARN) end
+      if not ok then vim.notify(tag .. " not loaded", vim.log.levels.WARN); return end
+      -- Errors from the handler used to be swallowed by a bare pcall.
+      local ok2, err = pcall(fn, m)
+      if not ok2 then vim.notify(tag .. " " .. tostring(err), vim.log.levels.WARN) end
     end
   end
 end
@@ -64,6 +66,9 @@ local function record_conflict_if_any(mode, lhs, rhs, desc)
       else
         is_same = false -- one side is a callback, the other a string: always different
       end
+      -- Re-registering the same mapping (e.g. :Reload core.keymaps) creates a new
+      -- closure; same description == same mapping, not a conflict.
+      if not is_same and desc and existing.desc == desc then is_same = true end
       if not is_same then
         table.insert(_conflict_log, {
           mode          = m,
@@ -104,10 +109,8 @@ end, { desc = "Show keymap conflicts caught at registration time this session" }
 -- ── Basic editing ──────────────────────────────────────────────────────────────
 map("v", "<",     "<gv",           { noremap=true, silent=true, desc="Indent left (keep selection)"  })
 map("v", ">",     ">gv",           { noremap=true, silent=true, desc="Indent right (keep selection)" })
-map("n", "<A-j>", "<cmd>move .+1<cr>==", { noremap=true, silent=true, desc="Move line down"  })
-map("n", "<A-k>", "<cmd>move .-2<cr>==", { noremap=true, silent=true, desc="Move line up"    })
-map("x", "<A-j>", ":move '>+1<cr>gv=gv", { noremap=true, silent=true, desc="Move selection down" })
-map("x", "<A-k>", ":move '<-2<cr>gv=gv", { noremap=true, silent=true, desc="Move selection up"   })
+-- Alt+h/j/k/l line/selection moving is owned by mini.move (advanced.lua). The
+-- hand-rolled <A-j>/<A-k> maps that lived here were overwritten by it at VeryLazy.
 map("n", "<Esc>", "<cmd>nohlsearch<cr>", { noremap=true, silent=true, desc="Clear search highlight" })
 
 -- ── Window management ─────────────────────────────────────────────────────────
@@ -217,8 +220,11 @@ map("n", "<F11>", dap_call(function(d) d.terminate()         end), { desc = "DAP
 map("n", "<leader>'r", function() pcall(function() require("core.util.runner").run_file()   end) end, { desc = "Run file"   })
 map("n", "<leader>'t", function() pcall(function() require("core.util.runner").run_tests()  end) end, { desc = "Run tests" })
 map("x", "<leader>'s", function()
-  local s = vim.fn.line("'<"); local e = vim.fn.line("'>")
-  if s == 0 or e == 0 then vim.notify("[runner] no visual selection", vim.log.levels.WARN); return end
+  -- Still in visual mode here, so '< and '> point at the PREVIOUS selection.
+  -- line("v") (other end) and line(".") (cursor) are the live selection.
+  local s, e = vim.fn.line("v"), vim.fn.line(".")
+  if s > e then s, e = e, s end
+  vim.api.nvim_feedkeys(vim.keycode("<Esc>"), "nx", false)
   pcall(function() require("core.util.runner").run_selection(s, e) end)
 end, { desc = "Run selection" })
 map("n", "<leader>'F", function()
@@ -231,20 +237,39 @@ map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>",      { desc = "Fl
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>",   { desc = "Vertical terminal"   })
 
--- WORKAROUND for nested TUIs (e.g. lazygit):
---   Option A — delete this mapping globally and use <C-\><C-n> to exit:
---     vim.keymap.del("t", "<Esc>")
---
---   Option B — use double-Escape for Normal, single-Escape for TUI:
---     vim.keymap.del("t", "<Esc>")
---     vim.keymap.set("t", "<Esc><Esc>", "<C-\\><C-n>", { noremap=true, silent=true })
---
---   Option C — configure toggleterm to use a different close_on_esc key:
---     In toggleterm.nvim opts: close_on_esc = false
---     Then bind <C-\> explicitly per terminal.
---
-map("t", "<Esc>", "<C-\\><C-n>", { noremap=true, silent=true,
-  desc = "Exit terminal mode (see keymaps.lua comment for nested TUI workarounds)" })
+-- <Esc> leaves terminal mode — but NOT in full-screen TUIs, where <Esc> must reach
+-- the program (lazygit, htop, yazi, …). This was a global `t <Esc>` mapping that
+-- broke them; it is now buffer-local and skipped for known TUIs. In those, the
+-- built-in <C-\><C-n> still leaves terminal mode.
+--   Extend the list with vim.g.terminal_tui_programs = { "myTui" }
+local TUI_PROGRAMS = {
+  lazygit = true, lazydocker = true, htop = true, btop = true, top = true,
+  yazi = true, ranger = true, lf = true, nnn = true, k9s = true, tig = true,
+  fzf = true, less = true, man = true, nvim = true, vim = true, vi = true,
+  mc = true, ncdu = true, glances = true,
+}
+
+local function is_tui_terminal(bufnr)
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  local cmd  = name:match("//%d+:(.*)$") or ""
+  local prog = vim.fn.fnamemodify(cmd:match("^%s*(%S+)") or "", ":t")
+  if TUI_PROGRAMS[prog] then return true end
+  for _, extra in ipairs(type(vim.g.terminal_tui_programs) == "table" and vim.g.terminal_tui_programs or {}) do
+    if prog == extra then return true end
+  end
+  return false
+end
+
+vim.api.nvim_create_autocmd("TermOpen", {
+  group    = vim.api.nvim_create_augroup("TerminalEscape", { clear = true }),
+  callback = function(e)
+    if is_tui_terminal(e.buf) then return end
+    vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", {
+      buffer = e.buf, noremap = true, silent = true, desc = "Exit terminal mode",
+    })
+  end,
+  desc = "Buffer-local <Esc> → Normal mode (skipped for full-screen TUIs)",
+})
 
 -- ── UI toggles ────────────────────────────────────────────────────────────────
 map("n", "<leader>ut", "<cmd>lua require('core.theme').toggle()<cr>", { desc = "Toggle theme"        })
@@ -274,7 +299,15 @@ map({ "n","x","o" }, "s", flash_call(function(f) f.jump() end), { desc = "Flash 
 map("n", "<leader>xc", "<cmd>CopyPath<cr>",    { desc = "Copy file path (absolute)" })
 map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy file path (relative)" })
 map("n", "<leader>xd", "<cmd>cd %:p:h<cr>",    { desc = "CD to file directory"      })
-map("n", "<leader>xe", "<cmd>!chmod +x %<cr>", { desc = "Make file executable"      })
+map("n", "<leader>xe", function()
+  -- Was `:!chmod +x %` — `%` is not shell-escaped, so spaces/quotes in the path broke it.
+  local file = vim.api.nvim_buf_get_name(0)
+  local stat = file ~= "" and vim.uv.fs_stat(file) or nil
+  if not stat then vim.notify("[xe] buffer has no file on disk", vim.log.levels.WARN); return end
+  local ok, err = vim.uv.fs_chmod(file, bit.bor(stat.mode, 73))   -- 73 == 0o111
+  vim.notify(ok and ("[xe] +x " .. vim.fn.fnamemodify(file, ":t")) or ("[xe] chmod failed: " .. tostring(err)),
+    ok and vim.log.levels.INFO or vim.log.levels.ERROR)
+end, { desc = "Make file executable" })
 map("n", "<leader>xm", "<cmd>CleanUp<cr>",     { desc = "Lua garbage collect"       })
 map("n", "<leader>xh", "<cmd>Health<cr>",              { desc = "Health summary"            })
 map("n", "<leader>xH", "<cmd>checkhealth core<cr>",    { desc = "Full health check"         })

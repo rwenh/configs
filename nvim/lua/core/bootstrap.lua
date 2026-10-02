@@ -52,22 +52,38 @@ local function try_offline_fallback()
 end
 
 -- ── Cache updater ─────────────────────────────────────────────────────────────
+-- Only refreshes when the cached HEAD differs from the installed one, entirely
+-- off the main thread, via copy-to-tmp + rename — so a failed copy can never
+-- destroy a good cache (the old code did rm -rf, then cp, on EVERY startup).
 local function schedule_cache_update()
+  if not vim.system then return end
   vim.api.nvim_create_autocmd("User", {
     pattern  = "LazyDone",
     once     = true,
     callback = function()
       local cache = vim.g.lazy_cache_path or cachepath
-      if vim.fn.isdirectory(cache) == 1 then
-        vim.fn.delete(cache, "rf")
-      end
       vim.fn.mkdir(vim.fn.fnamemodify(cache, ":h"), "p")
-      -- Background copy — fire and forget; errors are non-fatal.
-      if vim.system then
-        vim.system({ "cp", "-r", lazypath, cache }, {}, function() end)
+
+      local function head(path, cb)
+        vim.system({ "git", "-C", path, "rev-parse", "HEAD" }, { text = true }, function(r)
+          cb(r.code == 0 and vim.trim(r.stdout or "") or nil)
+        end)
       end
+
+      head(lazypath, function(installed)
+        if not installed or installed == "" then return end
+        head(cache, function(cached)
+          if cached == installed then return end   -- up to date: do nothing
+          local tmp = cache .. ".tmp"
+          vim.system({
+            "sh", "-c",
+            'rm -rf "$1" && cp -r "$2" "$1" && rm -rf "$3" && mv "$1" "$3"',
+            "sh", tmp, lazypath, cache,
+          }, {}, function() end)
+        end)
+      end)
     end,
-    desc = "Update lazy.nvim offline cache after LazyDone",
+    desc = "Refresh lazy.nvim offline cache (only when HEAD changed)",
   })
 end
 

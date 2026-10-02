@@ -33,7 +33,10 @@ end
 -- things that actually matter instead: the plugin is loaded, and a
 -- TypeScript compiler is discoverable.
 local function ts_tools_check()
+  local ok_lazy, lazy_cfg = pcall(require, "lazy.core.config")
+  local declared = ok_lazy and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] ~= nil
   local loaded = package.loaded["typescript-tools"] ~= nil
+    or declared   -- lazy (ft=...) plugins are not on the rtp until first use
     or #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0
 
   if loaded then

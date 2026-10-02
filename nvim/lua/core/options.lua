@@ -122,8 +122,9 @@ opt.sessionoptions = table.concat({
 -- GLOBAL FLAGS (escape hatches)
 -- ═══════════════════════════════════════════════════════════════════════════
 
-g.auto_cd_root    = false
-g.runner_autosave = true
+-- Respect values set in init.lua BEFORE bootstrap (documented escape hatches).
+if g.auto_cd_root    == nil then g.auto_cd_root    = false end
+if g.runner_autosave == nil then g.runner_autosave = true  end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PER-FILETYPE OPTION OVERRIDES

@@ -44,70 +44,23 @@ end, { desc = "Show health status (full: :checkhealth core)" })
 
 -- ── :Format ───────────────────────────────────────────────────────────────────
 --
-local FORMAT_DEFAULT_TIMEOUT_MS = 3000
-
-local function get_format_timeout(bufnr)
-  local ft = vim.bo[bufnr or 0].filetype
-  local by_ft = type(vim.g.format_timeout_by_ft) == "table"
-    and vim.g.format_timeout_by_ft or {}
-  return by_ft[ft]
-    or (type(vim.g.format_timeout_ms) == "number" and vim.g.format_timeout_ms > 0
-        and vim.g.format_timeout_ms)
-    or FORMAT_DEFAULT_TIMEOUT_MS
-end
-
 cmd("Format", function(opts)
-  local ok, conform = pcall(require, "conform")
-  if not ok then vim.notify("conform.nvim not available", vim.log.levels.ERROR); return end
-
-  local bufnr      = vim.api.nvim_get_current_buf()
-  local ft         = vim.bo[bufnr].filetype
-  local timeout_ms = get_format_timeout(bufnr)
-
-  local function on_result(err)
-    if not err then return end
-    if tostring(err):lower():find("timeout") then
-      vim.notify(
-        string.format(
-          "[commands] Format timed out after %d ms for filetype '%s'.\n"
-          .. "To increase the timeout:\n"
-          .. "  vim.g.format_timeout_by_ft = { %s = %d }\n"
-          .. "  or: vim.g.format_timeout_ms = %d",
-          timeout_ms, ft, ft, timeout_ms * 2, timeout_ms * 2
-        ),
-        vim.log.levels.WARN
-      )
-    else
-      vim.notify("[commands] Format error: " .. tostring(err), vim.log.levels.WARN)
-    end
-  end
-
-  if opts.range > 0 then
-    local last_lines = vim.api.nvim_buf_get_lines(0, opts.line2 - 1, opts.line2, false)
-    local last_line  = last_lines[1] or ""
-    local end_col    = vim.fn.strchars(last_line)
-    local run_ok, run_err = pcall(function()
-      conform.format({
-        bufnr      = bufnr,
-        timeout_ms = timeout_ms,
-        lsp_format = "fallback",
-        quiet      = true,
-        range      = { start = { opts.line1, 0 }, ["end"] = { opts.line2, end_col } },
-      }, on_result)
-    end)
-    if not run_ok then vim.notify("[commands] Format error: " .. tostring(run_err), vim.log.levels.WARN) end
-  else
-    local run_ok, run_err = pcall(function()
-      conform.format({
-        bufnr      = bufnr,
-        timeout_ms = timeout_ms,
-        lsp_format = "fallback",
-        quiet      = true,
-      }, on_result)
-    end)
-    if not run_ok then vim.notify("[commands] Format error: " .. tostring(run_err), vim.log.levels.WARN) end
-  end
+  local fmt = require("core.util.format")
+  if opts.range > 0 then fmt.run({ line1 = opts.line1, line2 = opts.line2 })
+  else fmt.run({}) end
 end, { range = true, desc = "Format file or range" })
+
+-- ── :Reload ───────────────────────────────────────────────────────────────────
+-- Real module hot-swap (clears package.loaded, re-requires, atomic rollback).
+-- :luafile does NOT do this — it discards the module's return value.
+cmd("Reload", function(opts)
+  require("core.util.reload").reload(opts.args, opts.bang)
+end, {
+  nargs    = 1,
+  bang     = true,
+  complete = function(lead) return require("core.util.reload").complete(lead) end,
+  desc     = "Hot-swap a module: :Reload core.util.runner | :Reload core.util.*",
+})
 
 -- ── :ProjectRoot ──────────────────────────────────────────────────────────────
 cmd("ProjectRoot", function()
@@ -305,10 +258,9 @@ cmd("MasonInstallAll", function(opts)
       vim.log.levels.WARN
     )
     if timer then pcall(function() timer:stop(); timer:close() end); timer = nil end
-    if pending <= 0 then
-      vim.g._mason_install_running = false
-    end
-    -- If pending > 0 the mutex remains locked until the callbacks settle.
+    -- Always release the lock: if a callback never fires, the mutex used to stay
+    -- locked until restart. Mason serialises duplicate installs itself.
+    vim.g._mason_install_running = false
   end))
 
   for _, pkg_name in ipairs(pkgs) do

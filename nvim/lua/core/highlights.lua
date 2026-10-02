@@ -1,48 +1,68 @@
--- lua/core/highlights.lua — theme-aware highlight overrides
+-- lua/core/highlights.lua — theme- and background-aware highlight overrides
 --
+-- Fixes vs v2.5.0: the tokyonight overrides hard-coded DARK hex values and were
+-- applied even when background=light (day mode is the default 07:00–19:00), giving
+-- dark floats on a light theme. Palettes are now chosen per vim.o.background.
+--
+-- An override entry may be a table OR a function(palette, bg) → table.
 
 local M = {}
 
-local BG     = "#0d1117"
-local BLUE   = "#7aa2f7"
-local PURPLE = "#bb9af7"
-local ORANGE = "#ff9e64"
-local CYAN   = "#7dcfff"
-local GREY   = "#3d5a6e"
-local DIM    = "#1e2030"
-local SCOPE  = "#3d59a1"
-local GREEN  = "#9ece6a"
-local RED    = "#f7768e"
+local PALETTE = {
+  dark = {
+    BG = "#0d1117", BLUE = "#7aa2f7", PURPLE = "#bb9af7", ORANGE = "#ff9e64",
+    CYAN = "#7dcfff", GREY = "#3d5a6e", DIM = "#1e2030", SCOPE = "#3d59a1",
+    GREEN = "#9ece6a", RED = "#f7768e", PROMPT = "#16161e", FG = "#c0caf5",
+    STOPPED_LINE = "#1a2b1a",
+  },
+  light = {   -- tokyonight "day"
+    BG = "#d0d5e3", BLUE = "#2e7de9", PURPLE = "#9854f1", ORANGE = "#b15c00",
+    CYAN = "#007197", GREY = "#8990b3", DIM = "#c4c8da", SCOPE = "#92a6d5",
+    GREEN = "#587539", RED = "#f52a65", PROMPT = "#c4c8da", FG = "#3760bf",
+    STOPPED_LINE = "#d5e5d0",
+  },
+}
+
+---@param bg string?  defaults to vim.o.background
+---@return table
+function M.palette(bg)
+  return PALETTE[bg or vim.o.background] or PALETTE.dark
+end
 
 local _builtin = {
-  __default = {
-    DapBreakpoint  = { fg = RED },
-    DapStopped     = { fg = GREEN, bold = true },
-    DapStoppedLine = { bg = "#1a2b1a" },
-  },
+  __default = function(P)
+    return {
+      DapBreakpoint  = { fg = P.RED },
+      DapLogPoint    = { fg = P.CYAN },
+      DapStopped     = { fg = P.GREEN, bold = true },
+      DapStoppedLine = { bg = P.STOPPED_LINE },
+    }
+  end,
 
-  tokyonight = {
-    LineNr                  = { fg = GREY },
-    CursorLineNr            = { fg = CYAN,   bold = true },
-    NormalFloat             = { bg = BG },
-    FloatBorder             = { fg = BLUE,   bg = BG },
-    FloatTitle              = { fg = PURPLE, bold = true },
-    TelescopeNormal         = { bg = BG },
-    TelescopeBorder         = { fg = BLUE,   bg = BG },
-    TelescopePromptBorder   = { fg = PURPLE, bg = "#16161e" },
-    TelescopePromptNormal   = { bg = "#16161e" },
-    TelescopePromptPrefix   = { fg = ORANGE },
-    TelescopeResultsTitle   = { fg = BG,     bg = BLUE   },
-    TelescopePreviewTitle   = { fg = BG,     bg = PURPLE },
-    TelescopeSelectionCaret = { fg = ORANGE },
-    TreesitterContextBottom = { underline = true, sp = BLUE },
-    IblIndent               = { fg = DIM   },
-    IblScope                = { fg = SCOPE },
-    WhichKeyBorder          = { fg = BLUE   },
-    WhichKeyGroup           = { fg = PURPLE },
-    WhichKeyDesc            = { fg = "#c0caf5" },
-    WhichKeySeparator       = { fg = SCOPE  },
-  },
+  tokyonight = function(P)
+    return {
+      LineNr                  = { fg = P.GREY },
+      CursorLineNr            = { fg = P.CYAN,   bold = true },
+      NormalFloat             = { bg = P.BG },
+      FloatBorder             = { fg = P.BLUE,   bg = P.BG },
+      FloatTitle              = { fg = P.PURPLE, bold = true },
+      TelescopeNormal         = { bg = P.BG },
+      TelescopeBorder         = { fg = P.BLUE,   bg = P.BG },
+      TelescopePromptBorder   = { fg = P.PURPLE, bg = P.PROMPT },
+      TelescopePromptNormal   = { bg = P.PROMPT },
+      TelescopePromptPrefix   = { fg = P.ORANGE },
+      TelescopeResultsTitle   = { fg = P.BG,     bg = P.BLUE   },
+      TelescopePreviewTitle   = { fg = P.BG,     bg = P.PURPLE },
+      TelescopeSelectionCaret = { fg = P.ORANGE },
+      TreesitterContextBottom = { underline = true, sp = P.BLUE },
+      IblIndent               = { fg = P.DIM   },
+      IblScope                = { fg = P.SCOPE },
+      WhichKeyBorder          = { fg = P.BLUE   },
+      WhichKeyGroup           = { fg = P.PURPLE },
+      WhichKeyDesc            = { fg = P.FG },
+      WhichKeySeparator       = { fg = P.SCOPE  },
+    }
+  end,
 
   catppuccin = {
     FloatBorder             = { fg = "#89b4fa" },
@@ -134,31 +154,37 @@ end
 local _user_overrides = {}
 
 ---@param theme  string
----@param groups table
+---@param groups table|function  groups, or function(palette, bg) → groups
 function M.register(theme, groups)
-  if type(theme) ~= "string" or type(groups) ~= "table" then
+  if type(theme) ~= "string" or (type(groups) ~= "table" and type(groups) ~= "function") then
     vim.notify(
-      "[highlights] register(): expected (string, table), got ("
+      "[highlights] register(): expected (string, table|function), got ("
       .. type(theme) .. ", " .. type(groups) .. ")",
       vim.log.levels.WARN
     )
     return
   end
-  _user_overrides[theme] = vim.tbl_deep_extend(
-    "force", _user_overrides[theme] or {}, groups
-  )
+  -- Stack entries (not deep-merge) so function and table overrides can coexist.
+  _user_overrides[theme] = _user_overrides[theme] or {}
+  table.insert(_user_overrides[theme], groups)
 end
 
 function M.apply()
   if vim.g.disable_highlight_overrides then return end
 
+  local bg        = vim.o.background == "light" and "light" or "dark"
+  local P         = M.palette(bg)
   local theme     = tostring(vim.g._nvim_active_theme or "")
   local canonical = resolve_canonical(theme)
 
   local merged = {}
-  local function merge_into(tbl)
-    if type(tbl) == "table" then
-      for group, attrs in pairs(tbl) do
+  local function merge_into(entry)
+    if type(entry) == "function" then
+      local ok, res = pcall(entry, P, bg)
+      entry = ok and res or nil
+    end
+    if type(entry) == "table" then
+      for group, attrs in pairs(entry) do
         merged[group] = vim.tbl_extend("force", merged[group] or {}, attrs)
       end
     end
@@ -166,28 +192,19 @@ function M.apply()
 
   merge_into(_builtin.__default)
   merge_into(_builtin[canonical])
-  merge_into(_user_overrides.__default)
-  merge_into(_user_overrides[canonical])
+  for _, key in ipairs({ "__default", canonical }) do
+    for _, entry in ipairs(_user_overrides[key] or {}) do merge_into(entry) end
+  end
 
   local failed = {}
   for group, attrs in pairs(merged) do
     local ok, err = pcall(vim.api.nvim_set_hl, 0, group, attrs)
-    if not ok then
-      table.insert(failed, { group = group, err = tostring(err) })
-    end
+    if not ok then table.insert(failed, string.format("  %s: %s", group, tostring(err))) end
   end
-
   if #failed > 0 then
-    local msgs = {}
-    for _, f in ipairs(failed) do
-      table.insert(msgs, string.format("  %s: %s", f.group, f.err))
-    end
     vim.notify(
-      string.format(
-        "[highlights] %d group(s) failed to apply:\n%s",
-        #failed, table.concat(msgs, "\n")
-      ),
-      vim.log.levels.DEBUG
+      string.format("[highlights] %d group(s) failed to apply:\n%s", #failed, table.concat(failed, "\n")),
+      vim.log.levels.WARN
     )
   end
 end
