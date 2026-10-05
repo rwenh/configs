@@ -132,6 +132,7 @@ if _plugins_ok then
         { "ts_disable",                    "table"   },
         { "ts_auto_install",               "boolean" },
         { "nextls_bin",                    "string"  },
+        { "cobol_format",                  "string"  },
       }
       local flag_issues = {}
       for _, entry in ipairs(typed_flags) do

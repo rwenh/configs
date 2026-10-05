@@ -198,8 +198,6 @@ return {
 
       -- ── Elixir: only start elixir-ls when NextLS is NOT wanted ────────────
       if not vim.g.elixir_use_nextls then
-        -- vim.lsp.config() needs `cmd` as a list (a function must return an RPC client),
-        -- so resolve the binary eagerly.
         local elixirls_cmd = (function()
           local mason_ls = vim.fn.stdpath("data") .. "/mason/packages/elixir-ls/language_server.sh"
           if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
@@ -217,12 +215,14 @@ return {
         })
       end
 
-      for _, s in ipairs({ "tailwindcss","cssls","jsonls","yamlls","clangd","kotlin_language_server","zls" }) do
+      for _, s in ipairs({ "tailwindcss","cssls","jsonls","yamlls","kotlin_language_server","zls" }) do
         lsp_setup(s, {})
       end
 
-      -- html (moved here from lang/html.lua, whose spec `init` was overwritten by other
-      -- lang specs, so the server was never enabled).
+      lsp_setup("clangd", {
+        cmd = { "clangd", "--background-index", "--clang-tidy", "--header-insertion=iwyu", "--completion-style=detailed" },
+      })
+
       lsp_setup("html", {
         filetypes    = { "html", "htmldjango", "jinja.html" },
         init_options = { provideFormatter = false },
@@ -232,8 +232,6 @@ return {
       do
         local ts_tools_present = (function()
           if package.loaded["typescript-tools"] then return true end
-          -- typescript-tools is lazy (ft = ...), so it is NOT on the runtimepath yet; probing
-          -- the rtp always failed and warned on every startup. Ask lazy.nvim instead.
           local ok, lazy_cfg = pcall(require, "lazy.core.config")
           if ok and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] then return true end
           return #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0

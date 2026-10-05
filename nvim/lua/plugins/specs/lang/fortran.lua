@@ -187,19 +187,15 @@ return {
         },
         {
           "<leader>ftm",
-          function() require("core.util.term").float_at_root("make") end,
+          function() shared.run_make() end,
           desc = "Fortran Make",
           ft   = "fortran",
         },
         {
           "<leader>ftf",
           function()
-            local exec = require("core.util.exec")
-            if not exec.require_bin("fprettify", "pip install fprettify") then return end
-            local args = fprettify_args()
-            local cmd  = "fprettify " .. table.concat(args, " ")
-              .. " " .. vim.fn.shellescape(vim.fn.expand("%:p"))
-            require("core.util.term").float(cmd)
+            -- Via conform (stdin → buffer).
+            require("core.util.format").run({})
           end,
           desc = "Fortran Format (fprettify)",
           ft   = "fortran",

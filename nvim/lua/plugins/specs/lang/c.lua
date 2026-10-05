@@ -123,7 +123,7 @@ return {
       },
       {
         "<leader>cm",
-        function() require("core.util.term").float_at_root("make") end,
+        function() shared.run_make() end,
         desc = "C Make", ft = "c",
       },
       {

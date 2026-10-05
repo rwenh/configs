@@ -46,16 +46,8 @@ local function toggle_cargo_features()
     table.sort(new_list)
     vim.g.rustaceanvim_features = new_list
 
-    local clients = vim.lsp.get_clients({ name = "rust-analyzer" })
-    if #clients > 0 then
-      for _, client in ipairs(clients) do
-        pcall(function()
-          client.notify("workspace/didChangeConfiguration", {
-            settings = { ["rust-analyzer"] = { cargo = { features = new_list } } },
-          })
-        end)
-      end
-    end
+    -- rustaceanvim re-evaluates `server.settings`
+    pcall(vim.cmd, "RustAnalyzer reloadSettings")
 
     local active_str = #new_list > 0 and table.concat(new_list, ", ") or "(none)"
     vim.notify(
@@ -77,25 +69,32 @@ return {
         server = {
           on_attach = function(client, bufnr)
             if client.server_capabilities.inlayHintProvider then
-              local already = pcall(function()
-                return vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr })
-              end)
-              if not already then
-                pcall(function() vim.lsp.inlay_hint.enable(true, { bufnr = bufnr }) end)
+              local ok, enabled = pcall(vim.lsp.inlay_hint.is_enabled, { bufnr = bufnr })
+              if not (ok and enabled) then
+                pcall(vim.lsp.inlay_hint.enable, true, { bufnr = bufnr })
               end
             end
           end,
+          -- Dynamic so <leader>rf can change cargo features without a restart.
+          settings = function(project_root, default_settings)
+            local settings = require("rustaceanvim.config.server").load_rust_analyzer_settings(
+              project_root, { default_settings = default_settings })
+            local feats = vim.g.rustaceanvim_features
+            if type(feats) == "table" then
+              local ra = settings["rust-analyzer"]
+              ra.cargo = vim.tbl_extend("force", ra.cargo or {}, { features = feats })
+            end
+            return settings
+          end,
           default_settings = {
             ["rust-analyzer"] = {
-              assist            = { importMergeBehavior = "last", importPrefix = "by_self" },
-              cargo             = {
-                loadOutDirsFromCheck = true,
-                features = type(vim.g.rustaceanvim_features) == "table"
-                  and vim.g.rustaceanvim_features or "all",
-              },
-              procMacro         = { enable = true },
-              checkOnSave       = { command = "clippy", extraArgs = { "--all-targets","--all-features" } },
-              inlayHints        = {
+              -- renamed keys: assist.importMergeBehavior/importPrefix -> imports.*;
+              imports     = { granularity = { group = "module" }, prefix = "self" },
+              cargo       = { features = "all" },
+              procMacro   = { enable = true },
+              check       = { command = "clippy", extraArgs = { "--no-deps" } },
+              checkOnSave = true,
+              inlayHints  = {
                 parameterHints    = { enable = true },
                 typeHints         = { enable = true },
                 closingBraceHints = { minLines = 25 },
@@ -103,8 +102,8 @@ return {
             },
           },
         },
-        dap   = { adapter = "codelldb" },
-        tools = { test_executor = "swole", hover_actions = { auto_focus = false } },
+        -- No `dap.adapter` string: rustaceanvim auto-detects codelldb from Mason.
+tools = { hover_actions = { auto_focus = false } },
       }
     end,
 
@@ -154,15 +153,23 @@ return {
       opts.formatters = opts.formatters or {}
       local _edition_cache = {}
       local function detect_edition()
-        local cargo = vim.fn.findfile("Cargo.toml", ".;")
-        if cargo == "" then return "2021" end
-        local abs = vim.fn.fnamemodify(cargo, ":p")
-        if _edition_cache[abs] then return _edition_cache[abs] end
-        for _, line in ipairs(vim.fn.readfile(abs)) do
-          local ed = line:match('^edition%s*=%s*"(%d+)"')
-          if ed then _edition_cache[abs] = ed; return ed end
+        local dir = vim.fn.expand("%:p:h")
+        if dir == "" then dir = vim.fn.getcwd() end
+        if _edition_cache[dir] then return _edition_cache[dir] end
+        local found = "2021"
+        for _, cargo in ipairs(vim.fs.find("Cargo.toml", { upward = true, path = dir, limit = math.huge })) do
+          local ok, lines = pcall(vim.fn.readfile, cargo)
+          if ok then
+            local hit
+            for _, line in ipairs(lines) do
+              hit = line:match('^edition%s*=%s*"(%d+)"')
+              if hit then break end
+            end
+            if hit then found = hit; break end
+          end
         end
-        _edition_cache[abs] = "2021"; return "2021"
+        _edition_cache[dir] = found
+        return found
       end
       opts.formatters.rustfmt = {
         command = "rustfmt",

@@ -23,94 +23,6 @@ vim.api.nvim_create_autocmd("FileType", {
   desc = "Check for vhdl_ls.toml on first VHDL buffer open",
 })
 
--- ── VHDL inline-comment stripper ─────────────────────────────────────────────
---
----@param  line string  one line of VHDL source
----@return string       the line with the comment and everything after it removed
-local function strip_vhdl_comment(line)
-  local in_string = false
-  local i = 1
-  while i <= #line do
-    local ch = line:sub(i, i)
-    if ch == '"' then
-      in_string = not in_string
-    elseif not in_string and ch == "-" and line:sub(i + 1, i + 1) == "-" then
-      return line:sub(1, i - 1)
-    end
-    i = i + 1
-  end
-  return line
-end
-
--- ── Port section parser ────────────────────────────────────────────────────────
----@param  lines string[]
----@return string|nil  entity name
----@return table       list of { name, dir, typ } tables
-local function parse_entity_ports(lines)
-  local entity_name = nil
-  for _, line in ipairs(lines) do
-    entity_name = line:match("^%s*entity%s+([%w_]+)%s+is")
-    if entity_name then break end
-  end
-  if not entity_name then return nil, {} end
-
-  local port_parts = {}
-  local collecting = false
-  local depth      = 0
-
-  for _, line in ipairs(lines) do
-    local safe_line = strip_vhdl_comment(line)
-
-    if not collecting then
-      if safe_line:find("port%s*%(") then
-        collecting = true
-        local after_port = safe_line:match("port%s*%((.*)$") or ""
-        table.insert(port_parts, after_port)
-        depth = 1
-        for c in after_port:gmatch(".") do
-          if c == "(" then depth = depth + 1
-          elseif c == ")" then
-            depth = depth - 1
-            if depth == 0 then collecting = false; break end
-          end
-        end
-      end
-    else
-      table.insert(port_parts, safe_line)
-      for c in safe_line:gmatch(".") do
-        if c == "(" then depth = depth + 1
-        elseif c == ")" then
-          depth = depth - 1
-          if depth == 0 then collecting = false; break end
-        end
-      end
-    end
-  end
-
-  local port_text = table.concat(port_parts, " ")
-  port_text = port_text:gsub("%s*%)%s*;?%s*$", "")
-  port_text = port_text:gsub("%s+", " ")
-
-  local ports = {}
-  for decl in (port_text .. ";"):gmatch("(.-)%s*;") do
-    decl = vim.trim(decl)
-    if decl ~= "" then
-      local names_part, dir, typ = decl:match("^([%w_,%s]+):%s*([%w_]+)%s+(.+)$")
-      if names_part and dir and typ then
-        typ = vim.trim(typ)
-        for sig in names_part:gmatch("[%w_]+") do
-          sig = sig:gsub("^signal$", "")
-          if sig ~= "" then
-            table.insert(ports, { name = sig, dir = dir:lower(), typ = typ })
-          end
-        end
-      end
-    end
-  end
-
-  return entity_name, ports
-end
-
 -- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
 require("core.util.snippets").register("vhdl", function(s, t, i, _, ref)
   return {
@@ -148,10 +60,13 @@ return {
     optional = true,
     opts = function(_, opts)
       opts.formatters     = opts.formatters or {}
+      -- vsg: `--output` is not a flag and `--stdin --fix` crashes (it tries to os.stat("stdin")).
+      -- The working mode is in-place `--fix -f FILE`; conform runs it on a temp copy and reads it back.
       opts.formatters.vsg = {
         command = "vsg",
-        args    = { "--output", "-", "--stdin" },
-        stdin   = true,
+        args    = { "--fix", "-f", "$FILENAME" },
+        stdin   = false,
+        exit_codes = { 0, 1 },   -- 1 = "unfixable violations remain", not a crash
         condition = function()
           if vim.g.disable_vsg_format then return false end
           if vim.fn.executable("vsg") ~= 1 then
@@ -245,48 +160,15 @@ return {
             return
           end
 
-          local entity_name, ports = parse_entity_ports(lines)
-
+          local vhdl = require("core.util.vhdl")
+          local entity_name, ports, generics = vhdl.parse_entity(lines)
           if not entity_name then
             vim.notify("[vhdl] No entity declaration found", vim.log.levels.WARN)
             return
           end
 
-          local tb_name = "tb_" .. entity_name
-          local tb_file = vim.fn.fnamemodify(file, ":h") .. "/" .. tb_name .. ".vhd"
-
-          local tb_lines = {
-            "library ieee;",
-            "use ieee.std_logic_1164.all;",
-            "use ieee.numeric_std.all;",
-            "",
-            "entity " .. tb_name .. " is",
-            "end entity " .. tb_name .. ";",
-            "",
-            "architecture sim of " .. tb_name .. " is",
-          }
-
-          for _, p in ipairs(ports) do
-            table.insert(tb_lines, "  signal " .. p.name .. " : " .. p.typ .. ";")
-          end
-
-          table.insert(tb_lines, "begin")
-          table.insert(tb_lines, "  uut: entity work." .. entity_name)
-          table.insert(tb_lines, "    port map (")
-          for i, p in ipairs(ports) do
-            local comma = (i < #ports) and "," or ""
-            table.insert(tb_lines, "      " .. p.name .. " => " .. p.name .. comma)
-          end
-          table.insert(tb_lines, "    );")
-          table.insert(tb_lines, "")
-          table.insert(tb_lines, "  stim: process")
-          table.insert(tb_lines, "  begin")
-          table.insert(tb_lines, "    -- TODO: add stimulus")
-          table.insert(tb_lines, "    wait;")
-          table.insert(tb_lines, "  end process stim;")
-          table.insert(tb_lines, "end architecture sim;")
-
-          local ok_w = pcall(vim.fn.writefile, tb_lines, tb_file)
+          local tb_file = vim.fn.fnamemodify(file, ":h") .. "/tb_" .. entity_name .. ".vhd"
+          local ok_w = pcall(vim.fn.writefile, vhdl.testbench(entity_name, ports, generics), tb_file)
           if ok_w then
             vim.notify("[vhdl] Testbench created: " .. tb_file, vim.log.levels.INFO)
             vim.cmd("edit " .. vim.fn.fnameescape(tb_file))

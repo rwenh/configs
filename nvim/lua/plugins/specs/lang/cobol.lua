@@ -13,7 +13,8 @@ local function detect_dialect()
   if vim.fn.filereadable(marker) == 1 then
     local lines = vim.fn.readfile(marker)
     local d     = lines[1] and vim.trim(lines[1]):lower() or ""
-    local valid = { gnucobol=true, ibm=true, mf=true, acucobol=true }
+    d = (d == "acucobol") and "acu" or d          -- cobc's flag is -std=acu, not acucobol
+    local valid = { gnucobol=true, ibm=true, mf=true, acu=true }
     if valid[d] then return d end
   end
 
@@ -116,6 +117,8 @@ return {
         local exe          = cobol_exe_path()
         local dialect_flag = (dialect ~= "gnucobol")
           and ("-std=" .. dialect .. " ") or ""
+        -- cobc defaults to fixed-form source; vim.g.cobol_format = "free" adds -free.
+        if vim.g.cobol_format == "free" then dialect_flag = dialect_flag .. "-free " end
         require("core.util.term").float(string.format(
           "if cobc -x %s%s -o %s %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
           dialect_flag, includes,
@@ -164,7 +167,6 @@ return {
       }
     end)(),
   },
-
 
   -- COBOL uses Vim's regex syntax highlighting.
 }

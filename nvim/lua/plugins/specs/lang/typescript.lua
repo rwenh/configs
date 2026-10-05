@@ -3,26 +3,21 @@
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── JSONC parser ──────────────────────────────────────────────────────────────
----@param  text string  raw file contents (possibly JSONC)
----@return table|nil    decoded table, or nil on parse failure
-local function decode_jsonc(text)
-  if not text or text == "" then return nil end
-
-  -- 1. Remove /* ... */ block comments (non-greedy, may span lines).
-  local stripped = text:gsub("/%*.-%*/", "")
-
-  -- 2. Remove // line comments.  We only remove to the end of the line so that
-  --    URLs inside strings (https://…) are preserved — they contain // but the
-  --    pattern anchors to whitespace-or-start before the //.
-  stripped = stripped:gsub("([^:])//[^\n]*", "%1")
-
-  -- 3. Remove trailing commas before ] or } (common JSONC pattern).
-  stripped = stripped:gsub(",%s*([%]%}])", "%1")
-
-  local ok, result = pcall(vim.json.decode, stripped)
-  if ok and type(result) == "table" then return result end
-  return nil
+-- ── tsconfig loader (string-aware JSONC, follows relative `extends`) ─────────────
+local function load_tsconfig(file, depth)
+  depth = depth or 0
+  local cfg = require("core.util.jsonc").read(file)
+  if not cfg then return nil end
+  local has_paths = cfg.compilerOptions and cfg.compilerOptions.paths
+  if type(cfg.extends) == "string" and cfg.extends:sub(1, 1) == "." and depth < 5 and not has_paths then
+    local base = vim.fs.normalize(vim.fn.fnamemodify(file, ":h") .. "/" .. cfg.extends)
+    if not base:match("%.json$") then base = base .. ".json" end
+    local parent = load_tsconfig(base, depth + 1)
+    if parent then
+      cfg.compilerOptions = vim.tbl_deep_extend("keep", cfg.compilerOptions or {}, parent.compilerOptions or {})
+    end
+  end
+  return cfg
 end
 
 -- ── tsconfig resolver ─────────────────────────────────────────────────────────
@@ -159,12 +154,7 @@ return {
             vim.notify("[ts] tsconfig.json not found", vim.log.levels.WARN); return
           end
 
-          local ok_r, lines = pcall(vim.fn.readfile, tsconfig)
-          if not ok_r then
-            vim.notify("[ts] Could not read " .. tsconfig, vim.log.levels.WARN); return
-          end
-
-          local cfg = decode_jsonc(table.concat(lines, "\n"))
+          local cfg = load_tsconfig(tsconfig)
           if not cfg then
             vim.notify(
               "[ts] Could not parse " .. vim.fn.fnamemodify(tsconfig, ":t")

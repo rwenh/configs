@@ -148,7 +148,7 @@ return {
 
   { "karb94/neoscroll.nvim", event = "VeryLazy",
     opts = { mappings = {"<C-u>","<C-d>","zt","zz","zb"}, hide_cursor = true,
-             stop_eof = true, respect_scrolloff = true, easing_function = "sine",
+             stop_eof = true, respect_scrolloff = true, easing = "sine",
              cursor_scrolls_alone = true } },
 
   { "stevearc/oil.nvim", cmd = "Oil",

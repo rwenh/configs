@@ -3,7 +3,9 @@
 
 local shared = require("plugins.specs.lang.shared")
 
-vim.g.user_emmet_leader_key = "<C-e>"
+vim.g.user_emmet_leader_key     = "<C-y>"
+vim.g.user_emmet_expandabbr_key = "<C-e>"
+vim.g.user_emmet_install_global = 0
 
 -- ── PostCSS filetype registration ─────────────────────────────────────────
 --
@@ -89,6 +91,15 @@ return {
   {
     "mattn/emmet-vim",
     ft = shared.WEB_FT,
+    config = function()
+      -- Vim's insert-mode <C-e> in every buffer opened after the first web file.
+      pcall(vim.cmd, "EmmetInstall")
+      vim.api.nvim_create_autocmd("FileType", {
+        group    = vim.api.nvim_create_augroup("EmmetInstallWeb", { clear = true }),
+        pattern  = shared.WEB_FT,
+        callback = function() pcall(vim.cmd, "EmmetInstall") end,
+      })
+    end,
   },
 
   -- ── Vite dev-server keymap ─────────────────────────────────────────────────
@@ -97,7 +108,7 @@ return {
 
   {
     "akinsho/toggleterm.nvim",
-    ft = shared.JS_TS_FT,
+    ft = shared.WEB_FT,
     keys = {
       {
         "<leader>wv",
@@ -120,7 +131,7 @@ return {
           )
         end,
         desc = "Web: Vite dev server",
-        ft   = shared.JS_TS_FT,
+        ft   = shared.WEB_FT,
       },
 
       {
@@ -134,7 +145,7 @@ return {
           )
         end,
         desc = "Web: build (npm/pnpm/yarn/bun run build)",
-        ft   = shared.JS_TS_FT,
+        ft   = shared.WEB_FT,
       },
     },
   },

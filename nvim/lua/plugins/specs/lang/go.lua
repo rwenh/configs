@@ -17,7 +17,6 @@ local function check_go_env()
   if has_goimports and has_gofumpt then return end
 
   if vim.fn.executable("go") ~= 1 then
-    -- vim.system() RAISES on a missing binary (it was an uncaught error at startup).
     vim.notify("[go] `go` not found on PATH — Go tooling checks skipped.\nInstall Go >= 1.21.", vim.log.levels.WARN)
     return
   end
@@ -85,7 +84,12 @@ return {
       { "<leader>goi", "<cmd>GoImpl<cr>",     desc = "Go Impl",              ft = GO_FT },
       { "<leader>goa", "<cmd>GoAddTag<cr>",   desc = "Go Add Struct Tag",    ft = GO_FT },
       { "<leader>goA", "<cmd>GoRmTag<cr>",    desc = "Go Remove Struct Tag", ft = GO_FT },
-      { "<leader>gom", "<cmd>GoMod<cr>",      desc = "Go Mod",               ft = GO_FT },
+      { "<leader>gom", function()
+          -- :GoMod does not exist; go.nvim ships GoModInit/Tidy/Vendor/Dnld/Graph/Why.
+          vim.ui.select({ "Tidy", "Init", "Vendor", "Dnld", "Graph", "Why" }, { prompt = "go mod:" }, function(c)
+            if c then pcall(vim.cmd, "GoMod" .. c) end
+          end)
+        end, desc = "Go Mod (pick subcommand)", ft = GO_FT },
       { "<leader>gog", function() require("core.util.term").float_at_root("go generate ./...") end, desc = "Go Generate", ft = GO_FT },
       { "<leader>goe", function()
           local ok_t = pcall(function() require("core.util.term").float_at_root("go env") end)

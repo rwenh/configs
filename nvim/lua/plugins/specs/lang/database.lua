@@ -36,9 +36,7 @@ local function load_database_url(force)
     for _, line in ipairs(lines) do
       local key, val = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
       if key and vim.tbl_contains({ "DATABASE_URL", "DB_URL", "DATABASE_URI" }, key) then
-        -- Strip surrounding quotes if present.
         val = val:gsub('^["\']', ""):gsub('["\']$', "")
-        -- Final trim to catch any residual whitespace.
         val = vim.trim(val)
         if val ~= "" then
           vim.g.db = val
@@ -56,13 +54,6 @@ local function load_database_url(force)
     ::continue::
   end
 end
-
-vim.api.nvim_create_autocmd({ "User" }, {
-  pattern  = "DBUIOpening",
-  group    = vim.api.nvim_create_augroup("DatabaseUrlLoad", { clear = true }),
-  callback = function() vim.schedule(load_database_url) end,
-  desc     = "Auto-load DATABASE_URL before DBUI opens",
-})
 
 vim.api.nvim_create_autocmd("DirChanged", {
   group    = vim.api.nvim_create_augroup("DatabaseUrlReload", { clear = true }),
@@ -91,9 +82,9 @@ return {
     },
     cmd  = { "DBUI", "DBUIToggle", "DBUIAddConnection", "DBUIFindBuffer" },
     keys = {
-      { "<leader>dbu", "<cmd>DBUIToggle<cr>",        desc = "DB UI Toggle"      },
-      { "<leader>dba", "<cmd>DBUIAddConnection<cr>", desc = "DB Add Connection" },
-      { "<leader>dbf", "<cmd>DBUIFindBuffer<cr>",    desc = "DB Find Buffer"    },
+      { "<leader>dbu", function() load_database_url(); vim.cmd("DBUIToggle")        end, desc = "DB UI Toggle"      },
+      { "<leader>dba", function() load_database_url(); vim.cmd("DBUIAddConnection") end, desc = "DB Add Connection" },
+      { "<leader>dbf", function() load_database_url(); vim.cmd("DBUIFindBuffer")    end, desc = "DB Find Buffer"    },
       {
         "<leader>dbs",
         function()

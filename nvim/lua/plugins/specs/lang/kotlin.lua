@@ -11,7 +11,6 @@ local _spring_cache = {}
 vim.api.nvim_create_autocmd("DirChanged", {
   group    = vim.api.nvim_create_augroup("KotlinSpringCacheClear", { clear = true }),
   callback = function()
-    -- Only invalidate stale entries; fresh ones survive directory changes.
     local now = os.time()
     for root, entry in pairs(_spring_cache) do
       if SPRING_CACHE_TTL == 0 or (now - entry.time) >= SPRING_CACHE_TTL then
@@ -35,19 +34,7 @@ local function is_spring_project()
     end
   end
 
-  local result = false
-  for _, fname in ipairs({ "build.gradle", "build.gradle.kts", "pom.xml" }) do
-    local f = root .. "/" .. fname
-    if vim.fn.filereadable(f) == 1 then
-      local lines = vim.fn.readfile(f)
-      for _, line in ipairs(lines) do
-        if line:find("spring-boot", 1, true) or line:find("springframework", 1, true) then
-          result = true; break
-        end
-      end
-    end
-    if result then break end
-  end
+  local result = require("core.util.jvm").is_spring_project(root)
 
   _spring_cache[root] = { result = result, time = os.time() }
   return result

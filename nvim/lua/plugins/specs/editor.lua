@@ -19,8 +19,8 @@ return {
       },
     },
     config = function(_, opts)
-      local ok = pcall(function() require("harpoon").setup(opts) end)
-      if not ok then vim.notify("harpoon setup failed", vim.log.levels.WARN) end
+      local ok, err = pcall(function() require("harpoon"):setup(opts) end)
+      if not ok then vim.notify("harpoon setup failed: " .. tostring(err), vim.log.levels.WARN) end
     end,
   },
 
@@ -40,7 +40,7 @@ return {
             layout_strategy  = "horizontal",
             layout_config    = { height = 0.9, preview_cutoff = 120, prompt_position = "bottom" },
             sorting_strategy = "ascending",
-            file_ignore_patterns = { "/node_modules/", "/.git/", "/dist/", "/build/", "/.venv/", "/__pycache__/" },
+            file_ignore_patterns = { "node_modules/", "^%.git/", "%.venv/", "__pycache__/", "^dist/", "^build/" },
           },
           extensions = { fzf = { fuzzy = true, override_generic_sorter = true, override_file_sorter = true, case_mode = "smart_case" } },
         })
@@ -66,35 +66,14 @@ return {
   {
     "nvim-telescope/telescope-fzf-native.nvim",
     lazy  = true,
-    build = function()
+    build = (function()
       if vim.fn.executable("cmake") == 1 then
         return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build"
       elseif vim.fn.executable("make") == 1 then
         return "make"
-      else
-        vim.notify("[telescope-fzf-native] cmake/make unavailable — native sorter will not be built", vim.log.levels.WARN)
-        return ""
       end
-    end,
-    cond = function()
-      local plugin_dir = vim.fn.stdpath("data") .. "/lazy/telescope-fzf-native.nvim"
-      -- Check for the built shared library under build/.
-      local lib_so  = plugin_dir .. "/build/libfzf.so"
-      local lib_dyl = plugin_dir .. "/build/libfzf.dylib"
-      local lib_dll = plugin_dir .. "/build/libfzf.dll"
-      if vim.fn.filereadable(lib_so)  == 1 then return true end
-      if vim.fn.filereadable(lib_dyl) == 1 then return true end
-      if vim.fn.filereadable(lib_dll) == 1 then return true end
-      -- Also accept the root-level build that `make` produces.
-      if vim.fn.filereadable(plugin_dir .. "/libfzf.so")  == 1 then return true end
-      if vim.fn.filereadable(plugin_dir .. "/libfzf.dylib")== 1 then return true end
-      vim.notify(
-        "[telescope-fzf-native] compiled library not found — using built-in sorter.\n"
-        .. "To build: cd " .. plugin_dir .. " && make",
-        vim.log.levels.DEBUG
-      )
-      return false
-    end,
+      return nil
+    end)(),
   },
 
   -- ── Project-scoped Telescope search ────────────────────────────────────────
@@ -192,7 +171,10 @@ return {
   -- ── Todo comments ──────────────────────────────────────────────────────────
   {
     "folke/todo-comments.nvim",
-    cmd          = { "TodoTelescope" },
+    -- event-loaded so TODO/FIXME comments are highlighted; cmd-only meant no highlighting
+    -- until the first :TodoTelescope or ]t.
+    event        = { "BufReadPost", "BufNewFile" },
+    cmd          = { "TodoTelescope", "TodoQuickFix", "TodoLocList" },
     dependencies = "nvim-lua/plenary.nvim",
     keys = { { "<leader>xT", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" } },
     opts = {

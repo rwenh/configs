@@ -24,72 +24,6 @@ M.TAILWIND_FT = {
   "vue", "svelte",
 }
 
--- ── FT → LSP server name ──────────────────────────────────────────────────
---
-M.ft_to_lsp = {
-  lua             = "lua_ls",
-  python          = "basedpyright",
-  -- NOTE: rust-analyzer is managed by rustaceanvim, NOT lspconfig.
-  rust            = "rust-analyzer",
-  go              = "gopls",
-  javascript      = "typescript-tools",
-  typescript      = "typescript-tools",
-  javascriptreact = "typescript-tools",
-  typescriptreact = "typescript-tools",
-  -- NOTE: jdtls is managed by nvim-jdtls, NOT lspconfig.
-  java            = "jdtls",
-  kotlin          = "kotlin_language_server",
-  ruby            = "solargraph",
-  elixir          = "elixirls",
-  c               = "clangd",
-  cpp             = "clangd",
-  html            = "html",
-  css             = "cssls",
-  scss            = "cssls",
-  json            = "jsonls",
-  yaml            = "yamlls",
-  sql             = "sqls",
-  fortran         = "fortls",
-  zig             = "zls",
-  vhdl            = "vhdl_ls",
-  cobol           = "cobol_ls",
-}
-
--- If M.lsp_managed_externally[ft] is true, skip lspconfig setup for that ft.
-M.lsp_managed_externally = {
-  rust = true,  -- managed by rustaceanvim
-  java = true,  -- managed by nvim-jdtls
-}
-
--- ── FT → formatter name(s) ────────────────────────────────────────────────
-
-M.ft_to_formatter = {
-  lua             = { "stylua" },
-  python          = { "black", "isort" },
-  go              = { "goimports", "gofumpt" },
-  rust            = { "rustfmt" },
-  javascript      = { "prettier" },
-  javascriptreact = { "prettier" },
-  typescript      = { "prettier" },
-  typescriptreact = { "prettier" },
-  html            = { "prettier" },
-  css             = { "prettier" },
-  scss            = { "prettier" },
-  less            = { "prettier" },
-  json            = { "prettier" },
-  yaml            = { "prettier" },
-  markdown        = { "prettier" },
-  sh              = { "shfmt" },
-  ruby            = { "rubocop" },
-  kotlin          = { "ktlint" },
-  c               = { "clang-format" },
-  cpp             = { "clang-format" },
-  fortran         = { "fprettify" },
-  zig             = { "zigfmt" },
-  vhdl            = { "vsg" },
-  elixir          = { "mix" },
-}
-
 -- ── Spec helpers ───────────────────────────────────────────────────────────
 
 ---@param parsers string[]
@@ -110,52 +44,23 @@ function M.treesitter(parsers)
   }
 end
 
----@param ft         string
----@param formatters string[]
-function M.conform(ft, formatters)
-  return {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = function(_, opts)
-      opts.formatters_by_ft        = opts.formatters_by_ft or {}
-      opts.formatters_by_ft[ft]    = opts.formatters_by_ft[ft] or {}
-      for _, fmt in ipairs(formatters) do
-        if not vim.tbl_contains(opts.formatters_by_ft[ft], fmt) then
-          table.insert(opts.formatters_by_ft[ft], fmt)
-        end
-      end
-    end,
-  }
-end
-
----@param ft      string
----@param linters string[]
-function M.lint(ft, linters)
-  return {
-    "mfussenegger/nvim-lint",
-    optional = true,
-    config = function()
-      local ok, lint = pcall(require, "lint")
-      if not ok then return end
-      lint.linters_by_ft     = lint.linters_by_ft or {}
-      lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
-      for _, l in ipairs(linters) do
-        if not vim.tbl_contains(lint.linters_by_ft[ft], l) then
-          table.insert(lint.linters_by_ft[ft], l)
-        end
-      end
-    end,
-  }
-end
-
 -- ── sanitize_build_flags ──────────────────────────────────────────────────────
 --
 ---@param  flags string?  raw flag string, e.g. from vim.g.c_build_flags
 ---@return string sanitized
 ---@return boolean changed  true if any characters were actually stripped
 function M.sanitize_build_flags(flags)
-  local sanitized = (flags or ""):gsub("[;&|`$<>()\n\r\"'\\]", "")
-  return sanitized, sanitized ~= (flags or "")
+  return require("core.util.exec").sanitize_build_flags(flags)   -- allow-list; single implementation
+end
+
+function M.run_make()
+  local dir = require("core.util.path").find_up({ "Makefile", "makefile", "GNUmakefile" })
+  if not dir then
+    vim.notify("[make] no Makefile found above the current file", vim.log.levels.WARN)
+    return
+  end
+  local term = require("core.util.term")
+  term.float(term.cd_prefix(dir) .. "make")
 end
 
 -- ── symlink_compile_commands ───────────────────────────────────────────────

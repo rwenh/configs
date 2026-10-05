@@ -40,9 +40,13 @@ return {
           snippets = { name = "Snippets", module = "blink.cmp.sources.snippets", min_keyword_length = 2 },
           buffer   = { name = "Buffer",   module = "blink.cmp.sources.buffer",   min_keyword_length = 2, score_offset = -3 },
           cmdline  = { name = "cmdline",  module = "blink.cmp.sources.cmdline",  min_keyword_length = 0 },
+          dadbod   = { name = "Dadbod",   module = "vim_dadbod_completion.blink" },
         },
-        per_filetype = type(vim.g.completion_sources_by_ft) == "table"
-          and vim.g.completion_sources_by_ft or {},
+        per_filetype = vim.tbl_extend(
+          "keep",
+          type(vim.g.completion_sources_by_ft) == "table" and vim.g.completion_sources_by_ft or {},
+          { sql = { "dadbod", "snippets", "buffer" }, mysql = { "dadbod", "snippets", "buffer" }, plsql = { "dadbod", "snippets", "buffer" } }
+        ),
       },
 
       cmdline = { keymap = { preset = "enter" }, sources = { "cmdline" } },
@@ -105,7 +109,6 @@ return {
     end,
   },
 
-  -- Single owner of LuaSnip's `config` (lazy keeps only one per plugin).
   -- Language snippets are queued by lang specs via core.util.snippets.register().
   {
     "L3MON4D3/LuaSnip",

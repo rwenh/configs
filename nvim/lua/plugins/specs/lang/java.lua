@@ -1,46 +1,8 @@
 -- lua/plugins/specs/lang/java.lua — Java development
 --
 
--- ── Spring Boot detection ─────────────────────────────────────────────────
-local function is_spring_project(root)
-  root = root or vim.fn.getcwd()
-  for _, fname in ipairs({ "build.gradle", "build.gradle.kts", "pom.xml" }) do
-    local f = root .. "/" .. fname
-    if vim.fn.filereadable(f) == 1 then
-      local lines = vim.fn.readfile(f)
-      for _, line in ipairs(lines) do
-        if line:find("spring-boot", 1, true) or line:find("springframework", 1, true) then
-          return true
-        end
-      end
-    end
-  end
-  return false
-end
-
--- ── java-test bundle presence check ──────────────────────────────────────
---
---
-local function detect_java_test(bundles, mason_root)
-  -- Primary: the Mason java-test package directory exists and has JARs.
-  local java_test_pkg = mason_root:gsub("jdtls$", "java-test")
-  if vim.fn.isdirectory(java_test_pkg) == 1 then
-    local jars = vim.fn.glob(java_test_pkg .. "/extension/server/*.jar")
-    if jars ~= "" then return true end
-  end
-
-  for _, jar_path in ipairs(bundles) do
-    local lower = jar_path:lower()
-    if lower:find("java-test", 1, true)
-    or lower:find("junit", 1, true)
-    or lower:find("testrunner", 1, true)
-    or lower:find("com.microsoft.java.test", 1, true) then
-      return true
-    end
-  end
-
-  return false
-end
+-- Spring detection + java-test jar filtering live in core.util.jvm (shared with Kotlin).
+local jvm = require("core.util.jvm")
 
 return {
   {
@@ -53,10 +15,8 @@ return {
         group    = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
         callback = function(e)
           if vim.b[e.buf].jdtls_started then
-            -- Verify a jdtls client is actually attached to this buffer.
             local clients = vim.lsp.get_clients({ bufnr = e.buf, name = "jdtls" })
             if #clients > 0 then return end
-            -- No active client — clear the stale flag and re-attach.
             vim.b[e.buf].jdtls_started = nil
           end
 
@@ -65,17 +25,11 @@ return {
           local ok_setup, setup = pcall(require, "jdtls.setup")
           if not ok_setup then vim.notify("jdtls.setup failed to load", vim.log.levels.ERROR); return end
 
-          local data_dir    = vim.fn.stdpath("data")
-          local mason_root  = (function()
-            local ok_mr, mr = pcall(require, "mason-registry")
-            if ok_mr and mr.get_package then
-              local ok_pkg, pkg = pcall(mr.get_package, "jdtls")
-              if ok_pkg and pkg then return pkg:get_install_path() end
-            end
-            return data_dir .. "/mason/packages/jdtls"
-          end)()
+          local data_dir   = vim.fn.stdpath("data")
+          local mason      = require("core.util.mason")
+          local mason_root = mason.pkg("jdtls")
 
-          local root_dir = setup.find_root({ ".git","mvnw","gradlew","pom.xml","build.gradle" }) or vim.fn.getcwd()
+          local root_dir  = setup.find_root({ ".git","mvnw","gradlew","pom.xml","build.gradle" }) or vim.fn.getcwd()
           local workspace = data_dir .. "/jdtls-workspace/" .. vim.fn.sha256(root_dir)
 
           local config_dir = (function()
@@ -86,24 +40,28 @@ return {
             end
           end)()
 
-          local function safe_glob_split(pattern, label)
+          local function glob_jars(pattern, label)
             local result = vim.fn.glob(pattern)
             if result == "" then
               vim.schedule(function()
-                vim.notify(string.format("[java] %s not found.\nRun: :MasonInstall %s", label, label:lower():gsub(" ", "-")), vim.log.levels.WARN)
+                vim.notify(string.format("[java] %s not found.\nRun: :MasonInstall %s", label, label), vim.log.levels.WARN)
               end)
               return {}
             end
             return vim.split(result, "\n", { plain = true, trimempty = true })
           end
 
-          local bundles = safe_glob_split(mason_root:gsub("jdtls$", "java-debug-adapter") .. "/extension/server/com.microsoft.java.debug.plugin-*.jar", "java-debug-adapter")
-          vim.list_extend(bundles, safe_glob_split(mason_root:gsub("jdtls$", "java-test") .. "/extension/server/*.jar", "java-test"))
+          local debug_jars = glob_jars(mason.pkg("java-debug-adapter") .. "/extension/server/com.microsoft.java.debug.plugin-*.jar", "java-debug-adapter")
+          -- java-test ships non-bundle jars (runner, jacoco agent) that must NOT be passed as bundles.
+          local test_jars  = jvm.filter_test_bundles(glob_jars(mason.pkg("java-test") .. "/extension/server/*.jar", "java-test"))
+          local bundles = {}
+          vim.list_extend(bundles, debug_jars)
+          vim.list_extend(bundles, test_jars)
 
           local launcher = vim.fn.glob(mason_root .. "/plugins/org.eclipse.equinox.launcher_*.jar")
           if launcher == "" then vim.notify("[java] jdtls launcher not found — run :MasonInstall jdtls", vim.log.levels.ERROR); return end
 
-          local has_java_test = detect_java_test(bundles, mason_root)
+          local has_java_test = #test_jars > 0
 
           local function build_jdtls_config()
             return {
@@ -111,7 +69,7 @@ return {
                 "-Declipse.application=org.eclipse.jdt.ls.core.id1",
                 "-Dosgi.bundles.defaultStartLevel=4",
                 "-Declipse.product=org.eclipse.jdt.ls.core.product",
-                "-Dlog.protocol=true", "-Dlog.level=ALL", "-Xms1g",
+                "-Dlog.protocol=true", "-Dlog.level=WARNING", "-Xms1g",
                 "--add-modules=ALL-SYSTEM",
                 "--add-opens", "java.base/java.util=ALL-UNNAMED",
                 "--add-opens", "java.base/java.lang=ALL-UNNAMED",
@@ -161,7 +119,7 @@ return {
                   end)
                 end
 
-                if is_spring_project(root_dir) then
+                if jvm.is_spring_project(root_dir) then
                   local ok_runner, runner = pcall(require, "core.util.runner")
                   if ok_runner then
                     vim.list_extend(java_maps, {

@@ -59,7 +59,6 @@ local DEBOUNCE_MS = (type(vim.g.workflow_template_debounce_ms) == "number"
   and vim.g.workflow_template_debounce_ms or 300
 
 local function schedule_template_load()
-  -- Cancel any pending timer before creating a new one.
   if _buf_enter_timer then
     pcall(function()
       _buf_enter_timer:stop()
@@ -72,7 +71,6 @@ local function schedule_template_load()
   _buf_enter_timer = t
 
   t:start(DEBOUNCE_MS, 0, vim.schedule_wrap(function()
-    -- If a newer timer has replaced us, bail without touching it.
     if _buf_enter_timer ~= t then return end
     pcall(function() t:stop(); t:close() end)
     _buf_enter_timer = nil
@@ -112,12 +110,12 @@ end
 return {
   {
     "stevearc/overseer.nvim",
-    cmd  = { "OverseerRun", "OverseerToggle", "OverseerTaskAction", "OverseerClearCache" },
+    cmd  = { "OverseerRun", "OverseerToggle", "OverseerOpen", "OverseerClose", "OverseerShell", "OverseerTaskAction" },
     keys = {
       { "<leader>ot", "<cmd>OverseerToggle<cr>",     desc = "Overseer: task list"   },
       { "<leader>or", "<cmd>OverseerRun<cr>",        desc = "Overseer: run task"    },
       { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
-      { "<leader>oc", "<cmd>OverseerClearCache<cr>", desc = "Overseer: clear cache" },
+      { "<leader>oc", "<cmd>OverseerClose<cr>",      desc = "Overseer: close task list" },  -- :OverseerClearCache was removed upstream
       {
         "<leader>ob",
         function()
@@ -190,7 +188,6 @@ return {
         return
       end
 
-      -- Load templates for the current directory immediately on setup.
       load_project_templates()
 
       vim.api.nvim_create_autocmd("DirChanged", {
@@ -212,7 +209,6 @@ return {
         desc = "Debounced .overseer.lua template load on buffer enter",
       })
 
-      -- Stop any pending debounce timer on exit to avoid libuv handle leaks.
       vim.api.nvim_create_autocmd("VimLeavePre", {
         group    = vim.api.nvim_create_augroup("OverseerTimerCleanup", { clear = true }),
         once     = true,

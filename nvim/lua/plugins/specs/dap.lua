@@ -43,9 +43,7 @@ return {
   {
     "mfussenegger/nvim-dap",
     dependencies = { "rcarriga/nvim-dap-ui", "theHamsta/nvim-dap-virtual-text", "nvim-neotest/nvim-nio" },
-    -- F5–F11 and <leader>;{b,c,...} are owned by core/keymaps.lua, whose handlers
-    -- require("dap") (which lazy-loads it). Listing them here as rhs-less lazy keys
-    -- installed stubs that shadowed those mappings and never restored them.
+    -- F5–F11 and <leader>;{b,c,...} are owned by core/keymaps.lua
     keys = {
       { "<leader>;E", exception_breakpoints, desc = "DAP: Configure exception breakpoints" },
     },
@@ -164,10 +162,18 @@ return {
       end
 
       local function setup_kotlin()
+        local adapter = mason.bin("kotlin-debug-adapter")
+        if vim.fn.executable(adapter) ~= 1 then
+          vim.schedule(function() vim.notify("[dap] kotlin-debug-adapter not found.\nRun: :MasonInstall kotlin-debug-adapter", vim.log.levels.WARN) end)
+          return
+        end
+        dap.adapters.kotlin = { type = "executable", command = adapter, options = { auto_continue_if_many_stopped = false } }
         dap.configurations.kotlin = {
-          { type = "java", request = "attach", name = "Attach to Kotlin JVM", hostName = "127.0.0.1",
+          { type = "kotlin", request = "launch", name = "Launch (main class)", projectRoot = "${workspaceFolder}",
+            mainClass = function() return vim.fn.input("Main class (e.g. com.example.MainKt): ") end },
+          { type = "kotlin", request = "attach", name = "Attach (JDWP)", projectRoot = "${workspaceFolder}",
+            hostName = "127.0.0.1", timeout = 2000,
             port = function() return tonumber(vim.fn.input("JDWP port [5005]: ")) or 5005 end },
-          { type = "java", request = "launch", name = "Launch Kotlin", mainClass = "${file}" },
         }
       end
 
@@ -326,8 +332,6 @@ return {
           callback = run, desc = "Register DAP adapter: " .. entry.suffix,
         })
 
-        -- nvim-dap loads on first use — normally AFTER the relevant buffer's FileType
-        -- event already fired — so also cover buffers that are already open.
         for _, buf in ipairs(vim.api.nvim_list_bufs()) do
           if vim.api.nvim_buf_is_loaded(buf) and ft_wanted(vim.bo[buf].filetype, entry.pattern) then
             run(); break
@@ -454,6 +458,9 @@ return {
       })
     end,
   },
+
+  -- mason-nvim-dap removed: it expects adapter names (python/js/...), not Mason package
+  -- names, and :MasonInstallAll (packages.lua) already installs every DAP package.
 
   { "rcarriga/nvim-dap-virtual-text",
     dependencies = "mfussenegger/nvim-dap", event = "VeryLazy",

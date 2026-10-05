@@ -90,10 +90,19 @@ vim.api.nvim_create_autocmd("LspAttach", {
 
 return {
 
+  -- ── Word count in the statusline (was defined but never wired) ───────────────
+  {
+    "nvim-lualine/lualine.nvim",
+    optional = true,
+    opts = function(_, opts)
+      opts.sections = opts.sections or {}
+      opts.sections.lualine_x = opts.sections.lualine_x or {}
+      table.insert(opts.sections.lualine_x, 1, M.lualine_wordcount)
+    end,
+  },
+
   -- ── markview.nvim — inline buffer renderer ────────────────────────────────
   --
-  -- event = "VeryLazy" ensures treesitter is fully initialised before markview
-  -- loads, preventing the "nvim-treesitter not ready" startup warning.
   {
     "OXY2DEV/markview.nvim",
     ft           = { "markdown", "markdown_inline", "quarto", "rmd" },
@@ -102,53 +111,29 @@ return {
       "nvim-treesitter/nvim-treesitter",
       "nvim-tree/nvim-web-devicons",
     },
+    -- markview >= 25 nests options per language (preview / markdown / markdown_inline).
     opts = {
-      modes        = { "n", "no" },
-      hybrid_modes = { "n" },
-
-      headings = {
-        enable      = true,
-        shift_width = 0,
-        heading_1   = { style = "label", sign = icons.headings[1] },
-        heading_2   = { style = "label", sign = icons.headings[2] },
-        heading_3   = { style = "label", sign = icons.headings[3] },
-        heading_4   = { style = "label", sign = icons.headings[4] },
-        heading_5   = { style = "label", sign = icons.headings[5] },
-        heading_6   = { style = "label", sign = icons.headings[6] },
+      preview = { modes = { "n", "no" }, hybrid_modes = { "n" } },
+      markdown = {
+        headings = {
+          enable = true, shift_width = 0,
+          heading_1 = { sign = icons.headings[1] },
+          heading_2 = { sign = icons.headings[2] },
+          heading_3 = { sign = icons.headings[3] },
+          heading_4 = { sign = icons.headings[4] },
+          heading_5 = { sign = icons.headings[5] },
+          heading_6 = { sign = icons.headings[6] },
+        },
+        code_blocks      = { enable = true, min_width = 60, pad_amount = 2 },
+        tables           = { enable = true },
+        horizontal_rules = { enable = true },
       },
-
-      code_blocks = {
-        enable     = true,
-        style      = "block",
-        sign       = true,
-        min_width  = 60,
-        pad_amount = 2,
-        above      = "▄",
-        below      = "▀",
-      },
-
-      inline_codes = { enable = true },
-
-      checkboxes = {
-        enable    = true,
-        checked   = { text = "󰱒", hl = "MarkviewCheckboxChecked"   },
-        unchecked = { text = "󰄱", hl = "MarkviewCheckboxUnchecked" },
-        pending   = { text = "󰥔", hl = "MarkviewCheckboxPending"   },
-      },
-
-      bullets = {
-        enable  = true,
-        markers = { "●", "○", "◆", "◇" },
-      },
-
-      tables           = { enable = true, style = "rounded" },
-      horizontal_rules = { enable = true },
-
-      links = {
-        enable     = true,
-        hyperlinks = { enable = true },
-        images     = { enable = true },
-        emails     = { enable = true },
+      markdown_inline = {
+        inline_codes = { enable = true },
+        checkboxes   = { enable = true },
+        hyperlinks   = { enable = true },
+        images       = { enable = true },
+        emails       = { enable = true },
       },
     },
 

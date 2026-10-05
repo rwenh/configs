@@ -23,7 +23,7 @@ M.mason = {
   },
   dap = {
     "debugpy", "codelldb", "delve",
-    "js-debug-adapter", "java-debug-adapter", "java-test",
+    "js-debug-adapter", "java-debug-adapter", "java-test", "kotlin-debug-adapter",
     "elixir-ls",
   },
   formatters = {
