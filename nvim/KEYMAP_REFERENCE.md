@@ -1,4 +1,4 @@
-# KEYMAP REFERENCE — v2.5.0
+# KEYMAP REFERENCE — v2.6.1
 
 **Leader:** `Space`  
 Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
@@ -604,7 +604,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>jvs` | Spring Boot run — Spring projects only |
 | `<leader>jvS` | Spring Boot package (bootJar) — Spring projects only |
 
-> `:LspRestart` now correctly re-attaches jdtls without closing the buffer (v2.5.0).
+> `:LspRestart` now correctly re-attaches jdtls without closing the buffer (v2.6.1).
 
 ---
 

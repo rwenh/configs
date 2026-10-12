@@ -516,13 +516,10 @@ end
 -- ── Public: pipe ──────────────────────────────────────────────────────────────
 ---@param cmd        string
 ---@param stdin_text string
----@param opts       table?
-function M.pipe(cmd, stdin_text, opts)
+function M.pipe(cmd, stdin_text)
   if type(cmd) ~= "string" or cmd == "" then
     vim.notify("[runner] pipe(): cmd must be non-empty", vim.log.levels.ERROR); return
   end
-  opts = opts or {}
-
   local tmpfile = vim.fn.tempname()
   if not pcall(vim.fn.writefile, vim.split(stdin_text or "", "\n"), tmpfile) then
     vim.notify("[runner] pipe(): failed to write stdin temp file", vim.log.levels.ERROR); return

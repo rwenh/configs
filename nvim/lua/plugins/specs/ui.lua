@@ -257,7 +257,7 @@ local plugin_specs = {
       spec   = {
         {"<leader>b",group="buffer"},    {"<leader>e",group="explorer"},  {"<leader>f",group="find"},
         {"<leader>h",group="harpoon"},   {"<leader>o",group="overseer"},  {"<leader>q",group="session"},
-        {"<leader>s",group="split"},     {"<leader>t",group="test/theme"},{"<leader>u",group="ui"},
+        {"<leader>s",group="split"},     {"<leader>t",group="ts/table/coverage"},{"<leader>u",group="ui"},
         {"<leader>w",group="window"},    {"<leader>x",group="utils"},     {"<leader>,",group="lsp"},
         {"<leader>.",group="git"},       {"<leader>;",group="debug"},     {"<leader>'",group="run/test"},
         {"<leader>/",group="search"},    {"<leader>\\",group="terminal"}, {"<leader>uF",desc="Deep focus mode"},
@@ -265,7 +265,7 @@ local plugin_specs = {
         {"<leader>jv",group="java"},     {"<leader>ex",group="elixir"},   {"<leader>kt",group="kotlin"},
         {"<leader>cc",group="cpp/cmake"},{"<leader>vh",group="vhdl"},     {"<leader>ft",group="fortran"},
         {"<leader>z",group="zig"},       {"<leader>co",group="cobol"},    {"<leader>ts",group="typescript"},
-        {"<leader>jp",group="js-packages"},{"<leader>db",group="database"},{"<leader>re",group="rest"},
+        {"<leader>jp",group="js-packages"},{"<leader>js",group="js-tools"},{"<leader>db",group="database"},{"<leader>re",group="rest"},
         {"<leader>tc",group="test-coverage"},{"<leader>r",group="rust"},  {"<leader>c",group="c/code"},
         {"<leader>gc",group="git-conflict"},{"<leader>m",group="markdown"},
         {"<leader>.z",group="stash"},    {"<leader>.w",group="worktree"},

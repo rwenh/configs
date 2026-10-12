@@ -29,7 +29,7 @@ return {
              exclude_filetypes = { "lazy","mason","lspinfo","snacks_dashboard" } },
     config = function(_, opts) pcall(function() require("nvim-highlight-colors").setup(opts) end) end },
 
-  { "HiPhish/rainbow-delimiters.nvim", event = { "BufReadPre","BufNewFile" },
+  { "HiPhish/rainbow-delimiters.nvim", submodules = false, event = { "BufReadPre","BufNewFile" },
     config = function()
       local rd = require("rainbow-delimiters")
       pcall(function()

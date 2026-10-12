@@ -183,7 +183,7 @@ return {
     "nvim-treesitter/nvim-treesitter-context",
     event        = "BufReadPost",
     dependencies = { "nvim-treesitter/nvim-treesitter" },
-    opts = { enable = true, max_lines = 3, min_window_height = 0, multiline_threshold = 20, trim_scope = "outer", mode = "topline", zindex = 20 },
+    opts = { enable = true, on_attach = function(buf) return vim.bo[buf].filetype ~= "fortran" end, max_lines = 3, min_window_height = 0, multiline_threshold = 20, trim_scope = "outer", mode = "topline", zindex = 20 },
     config = function(_, opts)
       local ok, ctx = pcall(require, "treesitter-context")
       if ok then

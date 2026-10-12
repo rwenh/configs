@@ -118,7 +118,7 @@ return {
     cond  = function()
       return not vim.fn.expand("%:p"):find("node_modules", 1, true)
     end,
-    opts  = { colors = { up_to_date = "#3C4048", outdated = "#d19a66" } },
+    opts  = { highlights = { up_to_date = { fg = "#3C4048" }, outdated = { fg = "#d19a66" } } },
     config = function(_, opts)
       local ok, err = pcall(function() require("package-info").setup(opts) end)
       if not ok then

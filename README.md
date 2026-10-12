@@ -2,7 +2,7 @@
 
 > Modular Neovim IDE — lazy-loaded, LSP-first, 20+ languages.
 
-**Neovim 0.11+** · openSUSE Leap 16.0 · **v2.5.0**
+**Neovim 0.11+** · openSUSE Leap 16.0 · **v2.6.1**
 
 ---
 
@@ -419,6 +419,19 @@ Toggle: `<leader>ut` · Switch: `require("core.theme").switch("catppuccin")`
 - `<leader>uT` — Twilight only
 
 ---
+
+## Development
+
+```bash
+bash tests/run.sh                       # specs lint + smoke + keymaps + docs-not-stale (isolated sandbox)
+nvim --headless "+luafile scripts/gen_docs.lua"   # regenerate docs/*.generated.md
+luacheck --globals vim -- . ; stylua --check lua/core/lazy.lua init.lua tests scripts   # optional lint
+```
+
+Generated references (cannot drift; CI fails if stale): [docs/KEYMAPS.generated.md](docs/KEYMAPS.generated.md),
+[docs/PLUGINS.generated.md](docs/PLUGINS.generated.md). Rule for contributors: a plugin shared by several spec
+files must not set `init`/`config` in more than one of them (lazy.nvim keeps only the last);
+`tests/specs_lint.lua` enforces it.
 
 ## Updating
 

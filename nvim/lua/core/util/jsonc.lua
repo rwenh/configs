@@ -4,7 +4,7 @@
 local M = {}
 
 local BYTE = string.byte
-local QUOTE, BACKSLASH, SLASH, STAR, NL, COMMA = BYTE('"'), BYTE("\\"), BYTE("/"), BYTE("*"), BYTE("\n"), BYTE(",")
+local QUOTE, BACKSLASH, SLASH, STAR, COMMA = BYTE('"'), BYTE("\\"), BYTE("/"), BYTE("*"), BYTE(",")
 local RBRACKET, RBRACE = BYTE("]"), BYTE("}")
 
 --- Remove comments and trailing commas.

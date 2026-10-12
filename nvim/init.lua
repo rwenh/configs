@@ -1,10 +1,54 @@
--- ~/.config/nvim/init.lua — v2.5.0 entry point
+-- ~/.config/nvim/init.lua — v2.6.1 entry point
 --
--- Load order: bootstrap → options → autocmds → keymaps → commands → plugins → theme → highlights
+-- Load order: bootstrap → options → autocmds → keymaps → commands → lazy/plugins → theme → highlights
 
 -- 0. Byte-compile + cache Lua modules (Neovim 0.9+). Must be first. lazy.nvim
 --    detects it and stands down its own cache.
-if vim.loader then vim.loader.enable() end
+if vim.loader then
+  vim.loader.enable()
+end
+
+-- ── Poison-proof require ──────────────────────────────────────────────────────
+-- LuaJIT leaves a sentinel in package.loaded after a FAILED require, so the next
+-- require of that module reports "loop or previous error loading module 'X'" and
+-- hides the real error. safe_require() clears sentinels under the given prefixes,
+-- retries once, and returns the real error (with a traceback) if it still fails.
+local function clear_poison(prefixes)
+  local cleared = {}
+  for name, v in pairs(package.loaded) do
+    if type(name) == "string" and type(v) == "number" then
+      for _, p in ipairs(prefixes) do
+        if name == p or name:sub(1, #p + 1) == p .. "." then
+          package.loaded[name] = nil
+          table.insert(cleared, name)
+        end
+      end
+    end
+  end
+  return cleared
+end
+
+local function safe_require(mod, prefixes)
+  local ok, err = xpcall(require, debug.traceback, mod)
+  if ok then
+    return true
+  end
+  if tostring(err):find("loop or previous error loading module", 1, true) then
+    local cleared = clear_poison(prefixes or { mod })
+    local ok2, err2 = xpcall(require, debug.traceback, mod)
+    if ok2 then
+      return true
+    end
+    return false,
+      string.format(
+        "%s\n(cleared poisoned entries: %s)\nFIRST REAL ERROR:\n%s",
+        tostring(err),
+        #cleared > 0 and table.concat(cleared, ", ") or "none",
+        tostring(err2)
+      )
+  end
+  return false, err
+end
 
 -- 1. Bootstrap lazy.nvim + leader keys + version stamp (must be first)
 require("core.bootstrap")
@@ -21,17 +65,12 @@ require("core.keymaps")
 -- 5. User commands
 require("core.commands")
 
--- 6. Plugin manager + all plugin specs
---
-local _plugins_ok = true
-local _plugins_err = nil
-
-local ok, err = pcall(require, "plugins")
-if not ok then
-  _plugins_ok  = false
-  _plugins_err = err
+-- 6. Plugin manager + all plugin specs (core.lazy; was lua/plugins/init.lua)
+local _plugins_ok, _plugins_err = safe_require("core.lazy", { "core.lazy", "plugins" })
+if not _plugins_ok then
   vim.notify(
-    "[init.lua] plugins/init.lua failed to load:\n" .. tostring(err)
+    "[init.lua] core.lazy failed to load:\n"
+      .. tostring(_plugins_err)
       .. "\n\nTroubleshooting:\n"
       .. "  1. Delete ~/.local/share/nvim and ~/.cache/nvim\n"
       .. "  2. Restart Neovim — lazy.nvim will reinstall\n"
@@ -40,14 +79,13 @@ if not ok then
   )
 end
 
--- 7. Theme (after plugins so colorscheme plugins are available;
+-- 7. Theme (after plugins so colorscheme plugins are available)
 local ok_theme, theme_err = pcall(function()
   require("core.theme").setup()
 end)
 if not ok_theme then
   vim.notify(
-    "[init.lua] theme.setup() failed: " .. tostring(theme_err)
-    .. "\nFalling back to built-in 'default' colorscheme.",
+    "[init.lua] theme.setup() failed: " .. tostring(theme_err) .. "\nFalling back to built-in 'default' colorscheme.",
     vim.log.levels.WARN
   )
   pcall(vim.cmd.colorscheme, "default")
@@ -58,97 +96,30 @@ local ok_hl, hl_err = pcall(function()
   require("core.highlights").apply()
 end)
 if not ok_hl then
-  vim.notify(
-    "[init.lua] highlights.apply() failed: " .. tostring(hl_err),
-    vim.log.levels.WARN
-  )
+  vim.notify("[init.lua] highlights.apply() failed: " .. tostring(hl_err), vim.log.levels.WARN)
 end
 
 -- 9. Startup stats (only when plugins loaded successfully)
 if _plugins_ok then
   vim.api.nvim_create_autocmd("User", {
-    pattern  = "LazyDone",
-    once     = true,
+    pattern = "LazyDone",
+    once = true,
     callback = function()
       -- Cross-check lspconfig ↔ Mason naming drift (logs at DEBUG level only)
-      pcall(function() require("core.util.packages").validate() end)
-      pcall(function() require("core.util.packages").validate_dap() end)
+      pcall(function()
+        require("core.util.packages").validate()
+      end)
+      pcall(function()
+        require("core.util.packages").validate_dap()
+      end)
 
-      local typed_flags = {
-        -- Core display & behaviour
-        { "disable_highlight_overrides",   "boolean" },
-        { "disable_tint",                  "boolean" },
-        { "disable_smear_cursor",          "boolean" },
-        { "disable_mini_pairs",            "boolean" },
-        { "disable_autoformat",            "boolean" },
-        { "disable_treesitter_folds",      "boolean" },
-        { "disable_trim_whitespace",       "boolean" },
-        { "disable_theme_autoswitch",      "boolean" },
-        { "disable_project_configs",       "boolean" },
-        { "auto_cd_root",                  "boolean" },
-        { "runner_autosave",               "boolean" },
-        -- LSP & formatting
-        { "format_timeout_ms",             "number"  },
-        { "format_timeout_by_ft",          "table"   },
-        { "enable_pylint",                 "boolean" },
-        { "lsp_on_attach_overrides",       "table"   },
-        { "completion_sources_by_ft",      "table"   },
-        { "debugpy_python",                "string"  },
-        { "ts_import_preference",          "string"  },
-        -- DAP & testing
-        { "dap_bp_autosave_ms",            "number"  },
-        { "neotest_concurrency",           "number"  },
-        -- Task runner & workflow
-        { "mason_install_timeout_ms",      "number"  },
-        { "mason_extras",                  "table"   },
-        { "workflow_template_debounce_ms", "number"  },
-        { "overseer_auto_scroll",          "boolean" },
-        { "term_max_runs",                 "number"  },
-        { "terminal_tui_programs",         "table"   },
-        -- Project root & paths
-        { "path_max_walk_depth",           "number"  },
-        { "path_cache_ttl",                "number"  },
-        { "path_debug",                    "boolean" },
-        { "path_prefer_vcs",               "boolean" },
-        { "path_ignore_dirs",              "table"   },
-        { "cmake_build_dir",               "string"  },
-        { "lazy_cache_path",               "string"  },
-        -- UI extras
-        { "symbol_usage_max_lines",        "number"  },
-        { "force_mini_animate_scroll",     "boolean" },
-        { "octo_timeout_ms",               "number"  },
-        -- Language-specific
-        { "disable_vsg_format",            "boolean" },
-        { "elixir_use_nextls",             "boolean" },
-        { "kotlin_spring_cache_ttl",       "number"  },
-        { "python_venv_auto_refresh",      "boolean" },
-        { "python_docstring_style",        "string"  },
-        { "c_build_flags",                 "string"  },
-        { "cpp_build_flags",               "string"  },
-        { "fortran_build_flags",           "string"  },
-        { "rustaceanvim_features",         "table"   },
-        { "filetype_options",              "table"   },
-        { "spell_wordlist",                "string"  },
-        { "ts_disable",                    "table"   },
-        { "ts_auto_install",               "boolean" },
-        { "nextls_bin",                    "string"  },
-        { "cobol_format",                  "string"  },
-      }
-      local flag_issues = {}
-      for _, entry in ipairs(typed_flags) do
-        local key, expected = entry[1], entry[2]
-        local val = vim.g[key]
-        if val ~= nil and type(val) ~= expected then
-          table.insert(flag_issues, string.format(
-            "  vim.g.%-35s expected %-8s got %s",
-            key, expected, type(val)
-          ))
-        end
-      end
+      -- Flag names, types and defaults live in lua/core/flags.lua (single source of truth).
+      local ok_flags, flags = pcall(require, "core.flags")
+      local flag_issues = ok_flags and flags.type_issues() or {}
       if #flag_issues > 0 then
         vim.notify(
           "[init] Escape hatch type mismatch — these flags will silently use defaults:\n"
-          .. table.concat(flag_issues, "\n"),
+            .. table.concat(flag_issues, "\n"),
           vim.log.levels.WARN
         )
       end
@@ -156,10 +127,7 @@ if _plugins_ok then
       local ok_lazy, lazy = pcall(require, "lazy")
       if ok_lazy then
         local s = lazy.stats()
-        vim.notify(
-          string.format("⚡ %d plugins loaded in %.2fms", s.count, s.startuptime),
-          vim.log.levels.INFO
-        )
+        vim.notify(string.format("⚡ %d plugins loaded in %.2fms", s.count, s.startuptime), vim.log.levels.INFO)
       end
     end,
   })

@@ -1,4 +1,4 @@
-# INSTALL — v2.5.0
+# INSTALL — v2.6.1
 
 Complete installation guide. Quick-start: [README.md](README.md).
 
@@ -374,7 +374,7 @@ These modules contain no startup-only state and can be reloaded mid-session:
 | debugpy not found | `vim.g.debugpy_python = "/path/to/python"` |
 | Wrong project root | `vim.g.path_debug = true` · check DEBUG notifications |
 | Java workspace stale | Delete `~/.local/share/nvim/jdtls-workspace/` + restart |
-| `:LspRestart` not re-attaching jdtls | Ensure java.lua v2.5.0 — `jdtls_started` now clears on `LspDetach` |
+| `:LspRestart` not re-attaching jdtls | Ensure java.lua v2.6.1 — `jdtls_started` now clears on `LspDetach` |
 | Treesitter highlighting broken | `:TSUpdate` |
 | DAP adapter not found | `:MasonInstallAll` |
 | `gd` does nothing | `:LspInfo` · `:checkhealth lsp` |
@@ -387,8 +387,8 @@ These modules contain no startup-only state and can be reloaded mid-session:
 | telescope-fzf-native fails to load | `cd ~/.local/share/nvim/lazy/telescope-fzf-native.nvim && make` |
 | symbol-usage slow on large codebase | `vim.g.symbol_usage_max_lines = 1000` |
 | `Ctrl+h/j/k/l` stays inside Neovim | `is_vim` check missing from `.tmux.conf` |
-| Elixir env not re-checked on project switch | Ensure elixir.lua v2.5.0 |
-| Ruby bundler not re-checked on project switch | Ensure ruby.lua v2.5.0 |
+| Elixir env not re-checked on project switch | Ensure elixir.lua v2.6.1 |
+| Ruby bundler not re-checked on project switch | Ensure ruby.lua v2.6.1 |
 | Plugins drifting unexpectedly | Run `:Lazy lock` and commit `lazy-lock.json` |
 | `<Esc>` exits lazygit/TUI unexpectedly | See keymaps.lua comment for 3 workaround options |
 

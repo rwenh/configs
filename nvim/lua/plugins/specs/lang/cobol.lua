@@ -1,8 +1,6 @@
 -- lua/plugins/specs/lang/cobol.lua — COBOL development
 --
 
-local shared = require("plugins.specs.lang.shared")
-
 -- ── Dialect detection ──────────────────────────────────────────────────────────
 local function detect_dialect()
   local ok_path, path_util = pcall(require, "core.util.path")
@@ -167,6 +165,7 @@ return {
       }
     end)(),
   },
+
 
   -- COBOL uses Vim's regex syntax highlighting.
 }
