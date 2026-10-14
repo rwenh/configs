@@ -17,8 +17,7 @@ local ENV_PAT = {
   "internet connection",
   "tree%-sitter",
   "ENOENT",
-  'Key not present in Dictionary: "collapsed"',
-} -- last one: vim-dadbod-ui upstream, reproduces with -u NONE on 4 commits
+}
 local FAULT_PAT = {
   "failed to load",
   "setup failed",
@@ -35,8 +34,10 @@ local FAULT_PAT = {
 }
 local function classify(m)
   m = tostring(m)
+  -- vim-dadbod-ui runs `silent! call remove(s:dbui_icons, 'collapsed')` (plugin/db_ui.vim:120); the swallowed
+  -- E716 still lands in v:errmsg. Benign — behaviour.lua proves :DBUIToggle opens its drawer.
   if m:find('Key not present in Dictionary: "collapsed"', 1, true) then
-    return "env"
+    return "ignore"
   end
   for _, p in ipairs(FAULT_PAT) do
     if m:find(p) then
@@ -55,8 +56,10 @@ local function hook()
     if (l or vim.log.levels.INFO) < vim.log.levels.WARN then
       return
     end
-    local bucket = classify(m) == "env" and env or faults
-    table.insert(bucket, (tostring(m):gsub("\n", " ⏎ ")))
+    local kind = classify(m)
+    if kind ~= "ignore" then
+      table.insert(kind == "env" and env or faults, (tostring(m):gsub("\n", " ⏎ ")))
+    end
   end
 end
 hook()
@@ -65,7 +68,10 @@ local function drain_errmsg(tag)
   if vim.v.errmsg and vim.v.errmsg ~= "" then
     local m = vim.v.errmsg
     vim.v.errmsg = ""
-    table.insert(classify(m) == "env" and env or faults, ("[" .. tag .. "] " .. m:gsub("\n", " ⏎ ")))
+    local kind = classify(m)
+    if kind ~= "ignore" then
+      table.insert(kind == "env" and env or faults, ("[" .. tag .. "] " .. m:gsub("\n", " ⏎ ")))
+    end
   end
 end
 

@@ -2,6 +2,7 @@
 --
 
 local au = vim.api.nvim_create_autocmd
+local limits = require("core.util.limits")
 local ag = vim.api.nvim_create_augroup
 
 local function is_real_buf(buf)
@@ -85,7 +86,7 @@ au("BufWritePre", {
 
     -- O(1) size check — no line copies.
     local last = vim.api.nvim_buf_line_count(e.buf)
-    if vim.api.nvim_buf_get_offset(e.buf, last) > 500 * 1024 then return end
+    if vim.api.nvim_buf_get_offset(e.buf, last) > limits.large_file_bytes() then return end
 
     pcall(vim.api.nvim_buf_call, e.buf, function()
       if vim.fn.search([[\s\+$]], "nw") == 0 then return end
@@ -159,7 +160,6 @@ end)
 -- ── Large file optimisation ───────────────────────────────────────────────────
 --
 local large_file_group = ag("LargeFile", { clear = true })
-local LARGE_FILE_BYTES  = 500 * 1024
 
 local function set_win_local_for_buf(buf, key, val)
   local wins = vim.fn.win_findbuf(buf)
@@ -203,11 +203,11 @@ au("BufReadPre", {
   group    = large_file_group,
   callback = function(e)
     local ok, stat = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(e.buf))
-    if ok and stat and stat.size > LARGE_FILE_BYTES then
+    if ok and stat and stat.size > limits.large_file_bytes() then
       vim.b[e.buf].large_file = true
       apply_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("Large file — some features disabled", vim.log.levels.WARN)
+        vim.notify("Large file (over " .. limits.large_file_label() .. ") — some features disabled", vim.log.levels.WARN)
       end)
     end
   end,
@@ -234,7 +234,7 @@ au("BufWritePost", {
     local ok, stat = pcall(vim.uv.fs_stat, name)
     if not ok or not stat then return end
 
-    local is_large  = stat.size > LARGE_FILE_BYTES
+    local is_large  = stat.size > limits.large_file_bytes()
     local was_large = (vim.b[e.buf] and vim.b[e.buf].large_file) or false
     if is_large == was_large then return end -- no state change, nothing to do
 
@@ -242,13 +242,13 @@ au("BufWritePost", {
       vim.b[e.buf].large_file = true
       apply_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("Large file — some features disabled", vim.log.levels.WARN)
+        vim.notify("Large file (over " .. limits.large_file_label() .. ") — some features disabled", vim.log.levels.WARN)
       end)
     else
       vim.b[e.buf].large_file = nil
       lift_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("File back under 500 KB — large-file protections lifted", vim.log.levels.INFO)
+        vim.notify("File back under " .. limits.large_file_label() .. " — large-file protections lifted", vim.log.levels.INFO)
       end)
     end
   end,

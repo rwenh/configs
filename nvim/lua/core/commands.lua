@@ -179,7 +179,7 @@ end, { desc = "Resume last telescope picker" })
 if vim.g._mason_install_running == nil then vim.g._mason_install_running = false end
 
 cmd("MasonInstallAll", function(opts)
-  local dry_run = opts.args and opts.args:find("dry%-run", 1, true) ~= nil
+  local dry_run = opts.args and opts.args:find("dry-run", 1, true) ~= nil
 
   local ok, registry = pcall(require, "mason-registry")
   if not ok then vim.notify("mason-registry not available", vim.log.levels.ERROR); return end

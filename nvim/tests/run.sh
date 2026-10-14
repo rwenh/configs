@@ -13,9 +13,9 @@ nvim --headless "+Lazy! sync" "+qa" >/dev/null 2>&1
 nvim --headless "+TSUpdateSync" "+qa" >/dev/null 2>&1
 
 rc=0
-for t in specs_lint modules units smoke keymaps; do
+for t in specs_lint modules units behaviour smoke keymaps; do
   echo "── $t"
-  nvim --headless "+luafile $HERE/tests/$t.lua" 2>&1 | grep -a -E "^(==|  |specs_lint|modules|units|documented|MISSING)" || true
+  nvim --headless "+luafile $HERE/tests/$t.lua" 2>&1 | grep -a -E "^(==|  |specs_lint|modules|units|behaviour|documented|MISSING)" || true
   [ "${PIPESTATUS[0]}" -eq 0 ] || rc=1
 done
 echo "── docs"

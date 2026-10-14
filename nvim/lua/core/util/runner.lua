@@ -20,6 +20,26 @@ local function path()
   return nil
 end
 
+-- ── Launch helper ─────────────────────────────────────────────────────────────
+-- One place decides how a command is shown. The fallback uses termopen(), not
+-- `vim.cmd("split | terminal " .. cmd)`: ex parsing splits at `|`, so any pipeline
+-- in the command was silently broken when the float terminal was unavailable.
+
+---@param cmd  string
+---@param opts table?  { on_exit = fun() }; forwarded to term.float, honoured by the fallback
+local function launch(cmd, opts)
+  local t = term()
+  if t then
+    t.float(cmd, opts)
+    return
+  end
+  vim.cmd("new")  -- fresh buffer: termopen refuses a modified or shared buffer
+  local job = vim.fn.termopen(cmd, { on_exit = opts and opts.on_exit or nil })
+  if job <= 0 then
+    vim.notify("[runner] could not start terminal for: " .. cmd, vim.log.levels.ERROR)
+  end
+end
+
 -- ── Project config (.runner.lua) ──────────────────────────────────────────────
 --
 -- Example .runner.lua:
@@ -279,8 +299,7 @@ function M.run_file()
   if project_run then
     local cmd = type(project_run) == "function" and project_run(file) or tostring(project_run)
     if cmd and cmd ~= "" then
-      local t = term()
-      if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+      launch(cmd)
       return
     end
   end
@@ -289,8 +308,7 @@ function M.run_file()
   if not runner_fn then vim.notify("[runner] no runner for filetype: " .. ft, vim.log.levels.WARN); return end
   local cmd = runner_fn(file)
   if not cmd then vim.notify("[runner] no suitable runtime found for: " .. ft, vim.log.levels.ERROR); return end
-  local t = term()
-  if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+  launch(cmd)
 end
 
 -- ── Public: run_nearest_function ──────────────────────────────────────────────
@@ -452,8 +470,7 @@ function M.run_nearest_function()
     )
     return
   end
-  local t = term()
-  if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+  launch(cmd)
 end
 
 -- ── Public: run_selection ──────────────────────────────────────────────────────
@@ -497,20 +514,8 @@ function M.run_selection(start_line, end_line)
     end
   end
 
-  local t = term()
-  if t then
-    t.float(cmd, { on_exit = function() vim.schedule(cleanup) end })
-    vim.defer_fn(cleanup, 30000)
-  else
-    vim.cmd("split | terminal " .. cmd)
-    local term_buf = vim.api.nvim_get_current_buf()
-    local aug = "RunnerSelectionCleanup_" .. vim.fn.sha256(tmpfile):sub(1, 8)
-    vim.api.nvim_create_autocmd("TermClose", {
-      once = true, buffer = term_buf, group = vim.api.nvim_create_augroup(aug, { clear = true }),
-      callback = function() vim.schedule(cleanup); pcall(vim.api.nvim_del_augroup_by_name, aug) end,
-    })
-    vim.defer_fn(cleanup, 30000)
-  end
+  launch(cmd, { on_exit = function() vim.schedule(cleanup) end })
+  vim.defer_fn(cleanup, 30000)
 end
 
 -- ── Public: pipe ──────────────────────────────────────────────────────────────
@@ -527,15 +532,10 @@ function M.pipe(cmd, stdin_text)
 
   -- Use shell redirection (cmd < file) rather than cat | cmd.
   local full_cmd = cmd .. " < " .. vim.fn.shellescape(tmpfile)
-  local t = term()
-  if t then
-    t.float(full_cmd, {
-      on_exit = function() vim.schedule(function() pcall(os.remove, tmpfile) end) end,
-    })
-  else
-    vim.cmd("split | terminal " .. full_cmd)
-    vim.defer_fn(function() pcall(os.remove, tmpfile) end, 10000)
-  end
+  launch(full_cmd, {
+    on_exit = function() vim.schedule(function() pcall(os.remove, tmpfile) end) end,
+  })
+  vim.defer_fn(function() pcall(os.remove, tmpfile) end, 10000)
 end
 
 -- ── Public: detect_pkg_manager ────────────────────────────────────────────────
@@ -571,8 +571,7 @@ function M.run_tests()
   if project_test then
     local cmd = type(project_test) == "function" and project_test() or tostring(project_test)
     if cmd and cmd ~= "" then
-      local t = term()
-      if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+      launch(cmd)
       return
     end
   end
@@ -620,8 +619,7 @@ function M.run_tests()
     )
     return
   end
-  local t = term()
-  if t then t.float(cmd) else vim.cmd("split | terminal " .. cmd) end
+  launch(cmd)
 end
 
 return M

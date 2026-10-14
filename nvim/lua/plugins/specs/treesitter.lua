@@ -127,7 +127,7 @@ return {
           end
 
           local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
-          local is_large  = ok and stats and stats.size > (500 * 1024)
+          local is_large  = ok and stats and stats.size > require("core.util.limits").large_file_bytes()
           vim.b[buf]._ts_size_checked = true
           vim.b[buf]._ts_large        = is_large and true or false
           if is_large then return true end

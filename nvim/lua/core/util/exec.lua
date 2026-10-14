@@ -1,5 +1,6 @@
 -- lua/core/util/exec.lua — executable presence guards and version detection
 --
+-- Single owner of the version cache. core.util.mason delegates here, so there is one cache,
 
 local M = {}
 
@@ -7,6 +8,13 @@ local M = {}
 local _version_cache = {}
 
 local NOT_INSTALLED = false
+
+---@param bin string  name or path
+---@return string     resolved executable path, or bin itself when it is not on PATH
+local function resolve(bin)
+  local p = vim.fn.exepath(bin)
+  return (p ~= "" and p) or bin
+end
 
 -- ── Synchronous guards ────────────────────────────────────────────────────────
 
@@ -70,13 +78,14 @@ end
 ---@param pattern     string?  Lua pattern to extract version from output
 ---@return string|nil          version string, "installed", or nil
 function M.version(bin, version_cmd, pattern)
-  local cached = _version_cache[bin]
+  local key = resolve(bin)
+  local cached = _version_cache[key]
   if cached ~= nil then
     return cached ~= NOT_INSTALLED and cached or nil
   end
 
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[bin] = NOT_INSTALLED
+    _version_cache[key] = NOT_INSTALLED
     return nil
   end
 
@@ -88,11 +97,39 @@ function M.version(bin, version_cmd, pattern)
     ver = out:match(pattern or "%d+%.%d+%.?%d*") or "installed"
   end
 
-  _version_cache[bin] = ver
+  _version_cache[key] = ver
   return ver
 end
 
---- Clear the version cache (call after :MasonUpdate or tool upgrades).
+--- Argv-based synchronous probe: no shell, so paths with spaces or metacharacters are safe.
+--- Shares the cache with M.version and M.version_async.
+---@param argv    string[]  full argv; argv[1] is the binary
+---@param pattern string?   Lua pattern to extract the version (default: "%d+%.%d+%.?%d*")
+---@return string|nil
+function M.version_argv(argv, pattern)
+  local bin = argv[1]
+  local key = resolve(bin)
+  local cached = _version_cache[key]
+  if cached ~= nil then
+    return cached ~= NOT_INSTALLED and cached or nil
+  end
+
+  if vim.fn.executable(bin) ~= 1 then
+    _version_cache[key] = NOT_INSTALLED
+    return nil
+  end
+
+  local lines = vim.fn.systemlist(argv)
+  local ver = "installed"
+  if vim.v.shell_error == 0 and lines[1] then
+    ver = vim.trim(lines[1]):match(pattern or "%d+%.%d+%.?%d*") or "installed"
+  end
+
+  _version_cache[key] = ver
+  return ver
+end
+
+--- Clear the shared version cache (call after :MasonUpdate or tool upgrades).
 function M.clear_version_cache()
   _version_cache = {}
 end
@@ -111,34 +148,31 @@ end
 function M.version_async(bin, cmd, callback, pattern)
   if type(callback) ~= "function" then return end
 
-  -- Fast path: already cached (including a cached "not installed" result).
-  local cached = _version_cache[bin]
+  local key = resolve(bin)
+  local cached = _version_cache[key]
   if cached ~= nil then
     vim.schedule(function() callback(cached ~= NOT_INSTALLED and cached or nil) end)
     return
   end
 
   if vim.fn.executable(bin) ~= 1 then
-    _version_cache[bin] = NOT_INSTALLED
+    _version_cache[key] = NOT_INSTALLED
     vim.schedule(function() callback(nil) end)
     return
   end
 
-  -- vim.system available on Nvim 0.10+.
   if vim.system then
     vim.system(cmd, { text = true }, function(result)
-      local ver
+      local ver = "installed"
       if result.code == 0 and result.stdout and result.stdout ~= "" then
-        local out = vim.trim(result.stdout:match("([^\n]+)") or "")
-        ver = out:match(pattern or "%d+%.%d+%.?%d*") or "installed"
-      else
-        ver = "installed"
+        local first = vim.trim(result.stdout:match("([^\n]+)") or "")
+        ver = first:match(pattern or "%d+%.%d+%.?%d*") or "installed"
       end
-      _version_cache[bin] = ver
+      _version_cache[key] = ver
       vim.schedule(function() callback(ver) end)
     end)
   else
-    -- Synchronous fallback for Neovim < 0.10.
+    -- Synchronous fallback for Neovim < 0.10 (no vim.system).
     local ver = M.version(bin, table.concat(cmd, " "), pattern)
     vim.schedule(function() callback(ver) end)
   end

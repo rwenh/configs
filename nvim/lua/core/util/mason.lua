@@ -3,6 +3,8 @@
 
 local M = {}
 
+local exec = require("core.util.exec")
+
 local function normalize(p)
   local n = vim.fn.exepath(p)
   if n ~= "" then return n end
@@ -63,11 +65,8 @@ function M.js_debug_script()
   return nil
 end
 
--- ── Version cache ─────────────────────────────────────────────────────────────
-
-local _version_cache = {}
-
-local NOT_INSTALLED = false
+-- ── Version detection ─────────────────────────────────────────────────────────
+-- Delegates to core.util.exec: one cache, keyed by resolved path, one clear function.
 
 local VERSION_FLAGS = {
   stylua          = { "--version" },
@@ -87,80 +86,30 @@ local VERSION_FLAGS = {
 }
 
 ---@param name string
+---@return string[]  argv with the Mason-resolved binary first
+local function version_argv(name)
+  local bin   = M.bin(name)
+  local flags = VERSION_FLAGS[name] or { "--version" }
+  return { bin, unpack(flags) }
+end
+
+---@param name string
 ---@return string|nil
 function M.version(name)
-  local cached = _version_cache[name]
-  if cached ~= nil then
-    return cached ~= NOT_INSTALLED and cached or nil
-  end
-
-  local bin = M.bin(name)
-  if vim.fn.executable(bin) ~= 1 then
-    _version_cache[name] = NOT_INSTALLED
-    return nil
-  end
-
-  local flags = VERSION_FLAGS[name] or { "--version" }
-  local cmd   = { bin, unpack(flags) }
-  local out   = ""
-
-  local ok = pcall(function()
-    local result = vim.fn.systemlist(cmd)
-    if vim.v.shell_error == 0 and #result > 0 then
-      out = vim.trim(result[1])
-    end
-  end)
-
-  local ver = (ok and out ~= "") and (out:match("%d+%.%d+%.?%d*") or "installed")
-    or "installed"
-
-  _version_cache[name] = ver
-  return ver
+  return exec.version_argv(version_argv(name))
 end
 
 ---@param name     string
 ---@param callback fun(ver: string|nil)
 function M.version_async(name, callback)
   if type(callback) ~= "function" then return end
-
-  local cached = _version_cache[name]
-  if cached ~= nil then
-    vim.schedule(function() callback(cached ~= NOT_INSTALLED and cached or nil) end)
-    return
-  end
-
-  local bin = M.bin(name)
-  if vim.fn.executable(bin) ~= 1 then
-    _version_cache[name] = NOT_INSTALLED
-    vim.schedule(function() callback(nil) end)
-    return
-  end
-
-  local flags = VERSION_FLAGS[name] or { "--version" }
-  local cmd   = { bin, unpack(flags) }
-
-  if vim.system then
-    vim.system(cmd, { text = true }, function(result)
-      local ver
-      if result.code == 0 and result.stdout and result.stdout ~= "" then
-        local out = vim.trim(result.stdout:match("([^\n]+)") or "")
-        ver = out:match("%d+%.%d+%.?%d*") or "installed"
-      else
-        ver = "installed"
-      end
-      _version_cache[name] = ver
-      vim.schedule(function() callback(ver) end)
-    end)
-  else
-    -- Synchronous fallback for Neovim < 0.10 (no vim.system).
-    local ver = M.version(name)
-    vim.schedule(function() callback(ver) end)
-  end
+  local argv = version_argv(name)
+  exec.version_async(argv[1], argv, callback)
 end
 
---- Clear the version cache (call after :MasonUpdate or tool upgrades).
+--- Clear the shared version cache (call after :MasonUpdate or tool upgrades).
 function M.clear_version_cache()
-  _version_cache = {}
+  exec.clear_version_cache()
 end
 
 local function register_registry_hooks()

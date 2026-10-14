@@ -2,7 +2,7 @@
 --
 -- SINGLE SOURCE OF TRUTH. Consumed by:
 --   * init.lua           — type-checks the flags you set (warns instead of silently ignoring)
---   * tools/gen_docs.lua — generates the flag tables in README.md / INSTALL.md
+--   * scripts/gen_docs.lua — generates the flag tables in CHANGELOG.md
 --   * tests/unit_docs.lua — fails when code reads a vim.g flag that is not listed here
 --
 -- Set flags at the TOP of init.lua, before require("core.bootstrap").
@@ -36,6 +36,7 @@ M.list = {
   { group = "Core display & behaviour", name = "disable_mini_pairs",         type = "boolean", default = "false", effect = "Disable mini.pairs auto-close brackets" },
   { group = "Core display & behaviour", name = "disable_autoformat",         type = "boolean", default = "false", effect = "Disable format-on-save globally (`:ToggleAutoformat` flips it live)" },
   { group = "Core display & behaviour", name = "disable_treesitter_folds",   type = "boolean", default = "false", effect = "Use indent folding instead of treesitter" },
+  { group = "Core display & behaviour", name = "large_file_bytes", type = "number", default = "512000", effect = "Size in bytes above which buffers drop treesitter, folds, syntax and LSP-heavy features (default 500 KB)" },
   { group = "Core display & behaviour", name = "disable_trim_whitespace",    type = "boolean", default = "false", effect = "Don't trim trailing whitespace on save (per buffer: `vim.b.disable_trim_whitespace`)" },
   { group = "Core display & behaviour", name = "disable_theme_autoswitch",   type = "boolean", default = "false", effect = "Don't flip dark/light at `day_start`/`day_end` (startup choice only)" },
   { group = "Core display & behaviour", name = "theme_option_patches",       type = "table",   default = "nil",   effect = "Per-theme option patches, e.g. `{ tokyonight = { background = \"dark\" } }`" },

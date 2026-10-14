@@ -51,10 +51,10 @@ local function read(p)
   return s
 end
 
--- Parse KEYMAP_REFERENCE.md: backticked tokens in the first table column.
+-- Parse KEYMAPS.md: backticked tokens in the first table column.
 local function documented()
   local out, skipped = {}, 0
-  for line in read(vim.fn.stdpath("config") .. "/KEYMAP_REFERENCE.md"):gmatch("[^\n]+") do
+  for line in read(vim.fn.stdpath("config") .. "/KEYMAPS.md"):gmatch("[^\n]+") do
     local first = line:match("^|%s*(.-)%s*|")
     if first and first:find("`", 1, true) then
       for tok in first:gmatch("`([^`]+)`") do
@@ -101,6 +101,36 @@ vim.defer_fn(function()
     end
   end
   table.sort(missing)
+
+  -- Reverse check: every described leader map in the config must be documented in KEYMAPS.md.
+  local doc_set = {}
+  for _, tok in ipairs(docs) do
+    doc_set[lib.canon(tok)] = true
+  end
+  for _, fam in ipairs({
+    "<leader>;i",
+    "<leader>;o",
+    "<leader>;O",
+    "<leader>h1",
+    "<leader>h2",
+    "<leader>h3",
+    "<leader>h4",
+  }) do
+    doc_set[lib.canon(fam)] = true -- documented as shorthand (`;i / ;o / ;O`, `h1`–`h4`)
+  end
+  local undocumented, seen_u = {}, {}
+  for _, e in pairs(db) do
+    local internal = e.desc:find("^LSP:") or e.desc:find("^Java ") or e.desc == "which-key-trigger"
+    if e.lhs:find("^<Space>%S") and e.desc ~= "" and not internal and not doc_set[e.lhs] and not seen_u[e.lhs] then
+      seen_u[e.lhs] = true
+      table.insert(undocumented, (e.lhs:gsub("^<Space>", "<leader>")) .. "  — " .. e.desc)
+    end
+  end
+  table.sort(undocumented)
+  print(("UNDOCUMENTED (%d):"):format(#undocumented))
+  for _, u in ipairs(undocumented) do
+    print("  " .. u)
+  end
   print(
     ("documented keys checked: %d  (shorthand skipped: %d)  collected maps: %d"):format(
       checked,
@@ -112,5 +142,5 @@ vim.defer_fn(function()
   for _, m in ipairs(missing) do
     print("  " .. m)
   end
-  vim.cmd(#missing == 0 and "qa!" or "cquit 1")
+  vim.cmd((#missing == 0 and #undocumented == 0) and "qa!" or "cquit 1")
 end, 1500)

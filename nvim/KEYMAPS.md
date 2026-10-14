@@ -1,51 +1,6 @@
-# KEYMAP REFERENCE — v2.6.1
+# Keymaps — v2.6.1
 
-**Leader:** `Space`  
-Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
-
----
-
-## Contents
-
-- [Editing](#editing)
-- [Windows & Splits](#windows--splits)
-- [Buffers](#buffers)
-- [Navigation](#navigation)
-- [Find — Telescope](#find--telescope)
-- [File Explorer](#file-explorer)
-- [LSP](#lsp)
-- [Git](#git)
-- [Debug — DAP](#debug--dap)
-- [Run & Test](#run--test)
-- [Terminal](#terminal)
-- [UI & Focus](#ui--focus)
-- [Search & Replace](#search--replace)
-- [Harpoon](#harpoon)
-- [Editing Enhancements](#editing-enhancements--mini)
-- [Treesitter Text Objects](#treesitter-text-objects)
-- [Folding](#folding)
-- [Utilities](#utilities)
-- [Sessions](#sessions)
-- [Task Runner — Overseer](#task-runner--overseer)
-- [Language: Python](#language-python)
-- [Language: Rust](#language-rust)
-- [Language: Go](#language-go)
-- [Language: TypeScript / JavaScript](#language-typescript--javascript)
-- [Language: JavaScript Packages](#language-javascript-packages)
-- [Language: Java](#language-java)
-- [Language: Kotlin](#language-kotlin)
-- [Language: Ruby](#language-ruby)
-- [Language: Elixir](#language-elixir)
-- [Language: C](#language-c)
-- [Language: C++ / CMake](#language-c--cmake)
-- [Language: Fortran](#language-fortran)
-- [Language: Zig](#language-zig)
-- [Language: VHDL](#language-vhdl)
-- [Language: COBOL](#language-cobol)
-- [Language: Database](#language-database)
-- [Language: REST](#language-rest)
-- [Language: Markdown](#language-markdown)
-- [Language: HTML / CSS / Web](#language-html--css--web)
+**Leader:** `Space`. Buffer-local maps activate on `LspAttach` / `FileType`. Verified by `tests/keymaps.lua`: every key below exists, and every leader map in the config appears here.
 
 ---
 
@@ -312,7 +267,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>'a` | Run entire suite |
 | `<leader>'P` | Run suite in parallel (concurrency: `vim.g.neotest_concurrency`, default 4) |
 | `<leader>'d` | Debug nearest test |
-| `<leader>'w` / `'W` | Watch file / watch suite |
+| `<leader>'w` / `<leader>'W` | Watch file / watch suite |
 | `<leader>'o` | Open test output |
 | `<leader>'p` | Toggle output panel |
 | `<leader>'u` | Toggle summary tree |
@@ -469,8 +424,8 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>xl` | Lazy |
 | `<leader>xn` | Mason |
 | `<leader>xK` | Show global keymap conflicts |
-| `<leader>xx` / `xX` | Trouble: all / buffer diagnostics |
-| `<leader>xL` / `xQ` | Trouble: location list / quickfix |
+| `<leader>xx` / `<leader>xX` | Trouble: all / buffer diagnostics |
+| `<leader>xL` / `<leader>xQ` | Trouble: location list / quickfix |
 | `<leader>xu` | Undo tree |
 | `<leader>xg` | Generate docstring (Neogen) |
 | `<leader>xT` | Find TODOs (Telescope) |
@@ -687,6 +642,7 @@ Buffer-local keymaps activate on `LspAttach` or `FileType` for that buffer.
 | `<leader>ccc` | CMake clean |
 | `<leader>ccs` | Select target |
 | `<leader>ccd` | Generate docstring |
+| `<leader>ccx` | Compile & run single file (g++, no CMake; flags: `vim.g.cpp_build_flags`) |
 | `<leader>ch` | Switch header ↔ source (clangd) |
 
 ---
