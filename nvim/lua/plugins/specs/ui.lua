@@ -285,9 +285,6 @@ local plugin_specs = {
       on_open = function(term)
         vim.opt_local.number         = false
         vim.opt_local.relativenumber = false
-        if term.direction == "float" then
-          vim.keymap.set("t", "<ESC>", [[<C-\><C-n>]], { buffer = term.bufnr })
-        end
       end,
       hide_numbers       = true,
       shade_terminals    = true,

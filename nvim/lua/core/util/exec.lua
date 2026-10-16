@@ -1,6 +1,7 @@
 -- lua/core/util/exec.lua — executable presence guards and version detection
 --
 -- Single owner of the version cache. core.util.mason delegates here, so there is one cache,
+-- keyed by the RESOLVED executable path (not the name), and one clear function.
 
 local M = {}
 

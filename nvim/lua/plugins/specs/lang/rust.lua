@@ -151,11 +151,12 @@ tools = { hover_actions = { auto_focus = false } },
     optional = true,
     opts = function(_, opts)
       opts.formatters = opts.formatters or {}
-      local _edition_cache = {}
+      -- No cache: detection is a few small file reads per format, and a Cargo.toml edit
+      -- must take effect without restarting Neovim. (The old per-directory cache never
+      -- invalidated, so changing `edition` kept formatting with the previous value.)
       local function detect_edition()
         local dir = vim.fn.expand("%:p:h")
         if dir == "" then dir = vim.fn.getcwd() end
-        if _edition_cache[dir] then return _edition_cache[dir] end
         local found = "2021"
         for _, cargo in ipairs(vim.fs.find("Cargo.toml", { upward = true, path = dir, limit = math.huge })) do
           local ok, lines = pcall(vim.fn.readfile, cargo)
@@ -168,7 +169,6 @@ tools = { hover_actions = { auto_focus = false } },
             if hit then found = hit; break end
           end
         end
-        _edition_cache[dir] = found
         return found
       end
       opts.formatters.rustfmt = {

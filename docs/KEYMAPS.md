@@ -14,12 +14,8 @@
 | `Alt+j` / `Alt+k` | Normal, Visual | Move line / selection down / up |
 | `<` / `>` | Visual | Indent left / right, keep selection |
 
-> **Terminal `<Esc>` note** — exits to Normal mode, which interferes with nested
-> TUIs (lazygit, htop, etc.). Workarounds: delete the binding and use
-> `<C-\><C-n>`, map `<Esc><Esc>` for Normal and keep single `<Esc>` for the TUI,
-> or set `close_on_esc = false` in toggleterm opts. See `keymaps.lua` for full
-> options. LazyGit (`<leader>.g`) is unaffected — it uses a dedicated terminal
-> with its own escape mapping.
+> `<Esc>` leaves terminal mode in every terminal except full-screen programs listed in
+> `vim.g.terminal_tui_programs` (built in: lazygit, htop, yazi, and others). `<C-\><C-n>` always works.
 
 ---
 
@@ -31,6 +27,7 @@
 | `<leader>sh` | Horizontal split |
 | `<leader>se` | Equal splits |
 | `<leader>sx` | Close current split |
+| `q` | Close help, quickfix, and other ephemeral windows |
 | `<leader>sm` | Maximize / restore split |
 | `Ctrl+h/j/k/l` | Navigate left / down / up / right (Neovim split **or** tmux pane) |
 | `Ctrl+↑/↓` | Increase / decrease split height |
@@ -41,6 +38,13 @@
 > the keys behave identically to `<C-w>h/j/k/l`.
 
 ---
+
+## Scrolling
+
+| Key | Action |
+|-----|--------|
+| `<C-u>` / `<C-d>` | Half page up / down (smooth) |
+| `zt` / `zz` / `zb` | Cursor line to top / middle / bottom (smooth) |
 
 ## Buffers
 
@@ -62,13 +66,7 @@
 | Key | Action |
 |-----|--------|
 | `s` | Flash jump |
-| `]d` / `[d` | Next / prev diagnostic |
-| `]h` / `[h` | Next / prev git hunk |
-| `]b` / `[b` | Next / prev buffer |
 | `]t` / `[t` | Next / prev TODO |
-| `]f` / `[f` | Next / prev function start |
-| `]c` / `[c` | Next / prev class start |
-| `]a` / `[a` | Next / prev parameter start |
 | `<leader>uc` | Jump to enclosing treesitter context |
 | `-` | Oil: open parent directory |
 
@@ -296,7 +294,6 @@
 | `<leader>\v` | Normal | Vertical terminal |
 | `<Esc>` | Terminal | Exit terminal mode |
 
-> To use double-escape instead: `vim.keymap.del("t","<Esc>")` then map `<Esc><Esc>` to `<C-\><C-n>`.
 
 ---
 
@@ -332,8 +329,8 @@
 |-----|--------|
 | `<leader>ha` | Add current file |
 | `<leader>hm` | Quick menu |
-| `<leader>h1`–`h4` | Jump to file 1–4 |
-| `Alt+1`–`4` | Jump to file 1–4 (shortcut) |
+| `<leader>h1` to `<leader>h4` | Jump to file 1–4 |
+| `Alt+1` to `Alt+4` | Jump to file 1–4 (shortcut) |
 
 ---
 
@@ -387,6 +384,7 @@
 | `]c` / `[c` | Next / prev class start |
 | `]C` / `[C` | Next / prev class end |
 | `]a` / `[a` | Next / prev parameter |
+| `]A` / `[A` | Next / prev parameter end |
 
 ### Swap & Selection
 
@@ -405,7 +403,6 @@
 | `zR` / `zM` | Open / close all folds |
 | `zr` / `zm` | Open except imports / close by level |
 | `zo` / `zc` / `za` | Open / close / toggle fold |
-| `zp` | Preview fold (nvim-ufo) |
 
 ---
 

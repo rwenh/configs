@@ -34,7 +34,10 @@ local function launch(cmd, opts)
     return
   end
   vim.cmd("new")  -- fresh buffer: termopen refuses a modified or shared buffer
-  local job = vim.fn.termopen(cmd, { on_exit = opts and opts.on_exit or nil })
+  -- An empty Lua table is sent as a list, which termopen rejects (E475). Use a real dict.
+  local term_opts = vim.empty_dict()
+  if opts and opts.on_exit then term_opts.on_exit = opts.on_exit end
+  local job = vim.fn.termopen(cmd, term_opts)
   if job <= 0 then
     vim.notify("[runner] could not start terminal for: " .. cmd, vim.log.levels.ERROR)
   end

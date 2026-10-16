@@ -74,8 +74,42 @@ return {
       })
 
       -- ── lsp_setup ─────────────────────────────────────────────────────────
+      -- Binary each server needs on PATH. A server whose binary is absent is skipped and reported
+      -- once, instead of letting vim.lsp.enable fail on every matching buffer (one ERROR line per
+      -- attach attempt in lsp.log, plus a popup from Neovim for each spawn failure).
+      -- Keep in step with nvim-lspconfig's default cmd. A config-supplied cmd takes precedence.
+      local SERVER_BINARY = {
+        lua_ls                 = "lua-language-server",
+        basedpyright           = "basedpyright-langserver",
+        gopls                  = "gopls",
+        solargraph             = "solargraph",
+        clangd                 = "clangd",
+        tailwindcss            = "tailwindcss-language-server",
+        cssls                  = "vscode-css-language-server",
+        jsonls                 = "vscode-json-language-server",
+        yamlls                 = "yaml-language-server",
+        kotlin_language_server = "kotlin-language-server",
+        zls                    = "zls",
+        html                   = "vscode-html-language-server",
+      }
+      local missing_servers = {}
+
+      -- nvim-lspconfig resolves html/css/json/yaml/tailwind from node_modules/.bin under the
+      -- project root before the global name. Accept the cwd's node_modules too, so a locally
+      -- installed server is not skipped. (Limitation: checked once per session, from the cwd
+      -- at first attach, not per buffer root.)
+      local function available(bin)
+        return vim.fn.executable(bin) == 1
+          or vim.fn.executable(vim.fn.getcwd() .. "/node_modules/.bin/" .. bin) == 1
+      end
+
       local function lsp_setup(server, config)
         config = config or {}
+        local bin = (config.cmd and config.cmd[1]) or SERVER_BINARY[server]
+        if bin and not available(bin) then
+          table.insert(missing_servers, server .. " (" .. bin .. ")")
+          return
+        end
         local project_overrides = load_project_lsp_config()
         if project_overrides[server] then
           config = vim.tbl_deep_extend("force", config, project_overrides[server])
@@ -251,9 +285,18 @@ return {
         { server = "vhdl_ls",   binary = "vhdl_ls",              config = { filetypes = { "vhdl","vhd" } } },
         { server = "fortls",    binary = "fortls",                config = { filetypes = { "fortran" }, settings = { fortls = { notifyInit = true, nthreads = 4, hover_signature = true, use_signature_help = true } } } },
         { server = "sqls",      binary = "sqls",                  config = { filetypes = { "sql","mysql" }, on_attach = function(client, _) client.server_capabilities.renameProvider = false end } },
-        { server = "cobol_ls",  binary = "cobol-language-server", config = { filetypes = { "cobol" }, settings = { cobol = { dialects = { "gnucobol","ibm" } } } } },
+        { server = "cobol_ls",  binary = "cobol-language-support", config = { filetypes = { "cobol" }, settings = { cobol = { dialects = { "gnucobol","ibm" } } } } },
       }) do
         if vim.fn.executable(entry.binary or entry.server) == 1 then lsp_setup(entry.server, entry.config) end
+      end
+
+      if #missing_servers > 0 then
+        vim.notify(
+          "[lsp] " .. #missing_servers .. " language server(s) not on PATH, skipped: "
+            .. table.concat(missing_servers, ", ")
+            .. "\nInstall them with :MasonInstallAll (or :Mason). Their filetypes run without LSP until then.",
+          vim.log.levels.INFO
+        )
       end
 
       -- ── Diagnostics UI ────────────────────────────────────────────────────

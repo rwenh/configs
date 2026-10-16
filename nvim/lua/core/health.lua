@@ -179,7 +179,7 @@ function M.check()
   vim.health.start("nvim-ide LSP servers")
 
   lsp_check("Lua          (lua_ls)",                  "lua-language-server",         "lua-language-server")
-  lsp_check("Python       (basedpyright)",             "basedpyright",                "basedpyright")
+  lsp_check("Python       (basedpyright)",             "basedpyright-langserver",     "basedpyright")
   lsp_check("Rust         (rust-analyzer)",            "rust-analyzer",               nil, "rustup component add rust-analyzer")
   lsp_check("Go           (gopls)",                    "gopls",                       "gopls")
   lsp_check("C/C++        (clangd)",                   "clangd",                      "clangd")
@@ -197,11 +197,11 @@ function M.check()
   lsp_check("Fortran      (fortls)",                   "fortls",                      "fortls")
   lsp_check("SQL          (sqls)",                     "sqls",                        "sqls")
   do
-    if bin_ok("cobol-language-server") then
-      vim.health.ok("COBOL        (cobol-language-server)")
+    if bin_ok("cobol-language-support") then
+      vim.health.ok("COBOL        (cobol-language-support)")
     else
       vim.health.info(
-        "COBOL        (cobol-language-server) not found — no npm package currently provides "
+        "COBOL        (cobol-language-support) not found — no npm package currently provides "
         .. "a working standalone binary here (the previously-listed @broadcommfd/cobol-language-support "
         .. "does not exist on the npm registry). Broadcom/Code4z's COBOL Language Support ships as a "
         .. "VS Code extension, not a drop-in LSP binary. cobc compile/run (<leader>cob, <leader>coc) "

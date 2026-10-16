@@ -74,9 +74,25 @@ return {
 
     init = function()
       pcall(vim.filetype.add, { extension = { rest = "http" } })
-      if vim.fn.executable("curl") ~= 1 then
-        vim.notify("[rest] curl not found — kulala.nvim will not function.\nInstall: sudo zypper in curl", vim.log.levels.WARN)
-      end
+      -- lazy.nvim runs init at startup even for ft-lazy plugins, so the prerequisite checks wait
+      -- for the first .http/.rest buffer. Otherwise every user is warned at every startup.
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern  = { "http", "rest" },
+        once     = true,
+        group    = vim.api.nvim_create_augroup("KulalaPrereqs", { clear = true }),
+        callback = function()
+          if vim.fn.executable("curl") ~= 1 then
+            vim.notify("[rest] curl not found — kulala.nvim will not function.\nInstall: sudo zypper in curl", vim.log.levels.WARN)
+          end
+          if vim.fn.executable("tree-sitter") ~= 1 then
+            vim.notify(
+              "[rest] tree-sitter CLI not found — kulala.nvim builds its HTTP parser with it, so .http buffers may fail to load.\n"
+                .. "Install: sudo zypper in tree-sitter  (or: npm install -g tree-sitter-cli)",
+              vim.log.levels.WARN
+            )
+          end
+        end,
+      })
     end,
 
     opts = {
