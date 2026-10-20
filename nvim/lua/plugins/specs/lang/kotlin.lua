@@ -4,14 +4,6 @@
 -- The language server and debug adapter are wired in lsp.lua and dap.lua.
 -- Escape hatch: vim.g.kotlin_spring_cache_ttl (seconds; 0 disables the Spring detection cache).
 --
--- Design:
---   * Build, test, run and Spring Boot commands go through core.util.jvm, which maps each logical
---     task to the right Gradle or Maven goal.
---   * A file with no build file is compiled with kotlinc into stdpath("cache")/kotlin-run. The old
---     code wrote <file>.jar next to the source, which left artifacts in the working tree.
---   * Spring Boot detection is cached per project root for the TTL. The old DirChanged expiry only
---     touched stale entries and did nothing for fresh ones.
---   * One project resolver serves every keymap, instead of a copy inside each one.
 
 local shared = require("plugins.specs.lang.shared")
 local jvm = require("core.util.jvm")
