@@ -1,10 +1,5 @@
 -- lua/core/flags.lua — registry of every user-facing escape hatch (vim.g.*)
 --
--- SINGLE SOURCE OF TRUTH. Consumed by:
---   * init.lua           — type-checks the flags you set (warns instead of silently ignoring)
---   * scripts/gen_docs.lua — generates the flag tables in CHANGELOG.md
---   * tests/unit_docs.lua — fails when code reads a vim.g flag that is not listed here
---
 -- Set flags at the TOP of init.lua, before require("core.bootstrap").
 -- Add a flag here when you add a `vim.g.<name>` read anywhere in the config.
 
@@ -53,7 +48,7 @@ M.list = {
   { group = "LSP & formatting", name = "enable_pylint",            type = "boolean", default = "false", effect = "Opt-in pylint alongside ruff" },
   { group = "LSP & formatting", name = "lsp_on_attach_overrides",  type = "table",   default = "nil",  effect = "Per-server on_attach overrides, e.g. `{ lua_ls = function(c, b) end }`" },
   { group = "LSP & formatting", name = "completion_sources_by_ft", type = "table",   default = "nil",  effect = "Per-filetype blink.cmp sources, e.g. `{ sql = { \"lsp\", \"dadbod\", \"buffer\" } }` (SQL defaults to dadbod)" },
-  { group = "LSP & formatting", name = "debugpy_python",           type = "string",  default = "nil",  effect = "Pin the Python interpreter used by debugpy" },
+  { group = "LSP & formatting", name = "debugpy_python",           type = "string",  default = "nil",  effect = "Pin the Python interpreter for debugpy. It is probed for `import debugpy`; if the probe fails, auto-detection continues" },
   { group = "LSP & formatting", name = "ts_import_preference",     type = "string",  default = "\"non-relative\"", effect = "TypeScript import module-specifier preference" },
 
   -- ── DAP & testing ───────────────────────────────────────────────────────────
@@ -87,7 +82,10 @@ M.list = {
   { group = "Language-specific", name = "elixir_use_nextls",        type = "boolean", default = "false",  effect = "Use NextLS instead of elixir-ls (needs the `nextls` binary)" },
   { group = "Language-specific", name = "nextls_bin",               type = "string",  default = "\"nextls\"", effect = "Path to the NextLS binary" },
   { group = "Language-specific", name = "kotlin_spring_cache_ttl",  type = "number",  default = "300",    effect = "Spring Boot detection cache TTL (seconds; `0` = no cache)" },
-  { group = "Language-specific", name = "python_venv_auto_refresh", type = "boolean", default = "false",  effect = "Auto-refresh venv-selector on startup" },
+  { group = "Language-specific", name = "jdtls_heap_mb", type = "number", default = "1024", effect = "Initial heap for the jdtls JVM (`-Xms`), in MB" },
+  { group = "Language-specific", name = "python_venv_auto_refresh", type = "boolean", default = "true",  effect = "Auto-activate the cached venv for a project when a Python buffer opens (venv-selector `cached_venv_automatic_activation`); `false` turns it off" },
+  { group = "Language-specific", name = "python_probe_timeout_ms", type = "number", default = "4000", effect = "Timeout for each interpreter probe (`import debugpy`), in ms" },
+  { group = "Language-specific", name = "python_probe_ttl", type = "number", default = "120", effect = "Seconds a verified debugpy interpreter, or a miss, is cached per project root" },
   { group = "Language-specific", name = "python_docstring_style",   type = "string",  default = "\"google_docstrings\"", effect = "Neogen Python docstring convention" },
   { group = "Language-specific", name = "c_build_flags",            type = "string",  default = "\"-Wall -Wextra -g\"", effect = "GCC flags for `<leader>cb` (sanitised to `[A-Za-z0-9 -._=/+:,@]`)" },
   { group = "Language-specific", name = "cpp_build_flags",          type = "string",  default = "\"-Wall -std=c++17 -g\"", effect = "G++ flags for `<leader>ccx` and the runner" },
