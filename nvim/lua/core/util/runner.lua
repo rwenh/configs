@@ -1,328 +1,425 @@
 -- lua/core/util/runner.lua — code execution engine
 --
+-- Entry points: run_file, run_tests, run_nearest_function, run_selection, pipe.
+--
+-- Contract shared by every table below:
+--   * A runner, test or selection entry returns `cmd` on success, or `nil, reason`.
+--     The reason names the missing binary and its install hint, so a notification is
+--     actionable rather than "no runner found".
+--   * Project overrides (.runner.lua) run before the built-ins. The file is trust-gated
+--     through core.util.secure and memoised per (mtime, size) for CONFIG_TTL seconds.
+--     A declined trust prompt is memoised as well, so it is not repeated on every run.
+--     A later :trust takes effect within CONFIG_TTL seconds.
+--   * Gradle/Maven task translation belongs to core.util.jvm. This module only calls it.
+--   * Lua files run under this Neovim (`nvim -l`), so vim.* APIs resolve.
+--   * Reads vim.g.runner_autosave, c_build_flags, cpp_build_flags, fortran_build_flags,
+--     cmake_build_dir and disable_project_configs. All are registered in core/flags.lua.
 
 local M = {}
 
-local _term = nil
-local function term()
-  if _term then return _term end
-  local ok, t = pcall(require, "core.util.term")
-  if ok then _term = t; return _term end
-  vim.notify("[runner] core.util.term not available", vim.log.levels.WARN)
-  return nil
+local CONFIG_TTL = 30      -- seconds a parsed project file or a capability probe is reused
+local CLEANUP_MS = 30000   -- a temp source file is removed this long after launch
+
+-- ── Optional dependencies ─────────────────────────────────────────────────────
+-- A missing module degrades only the feature it serves.
+
+local function dep(name)
+  local ok, mod = pcall(require, name)
+  return ok and mod or nil
 end
 
-local _path = nil
-local function path()
-  if _path then return _path end
-  local ok, p = pcall(require, "core.util.path")
-  if ok then _path = p; return _path end
-  return nil
+local term   = dep("core.util.term")
+local path   = dep("core.util.path")
+local exec   = dep("core.util.exec")
+local secure = dep("core.util.secure")
+local jvm    = dep("core.util.jvm")
+
+-- ── Helpers ───────────────────────────────────────────────────────────────────
+
+local function sq(s) return vim.fn.shellescape(s) end
+
+local function root_of()
+  return (path and path.find_root()) or vim.fn.getcwd()
 end
 
--- ── Launch helper ─────────────────────────────────────────────────────────────
--- One place decides how a command is shown. The fallback uses termopen(), not
--- `vim.cmd("split | terminal " .. cmd)`: ex parsing splits at `|`, so any pipeline
--- in the command was silently broken when the float terminal was unavailable.
-
----@param cmd  string
----@param opts table?  { on_exit = fun() }; forwarded to term.float, honoured by the fallback
-local function launch(cmd, opts)
-  local t = term()
-  if t then
-    t.float(cmd, opts)
-    return
-  end
-  vim.cmd("new")  -- fresh buffer: termopen refuses a modified or shared buffer
-  -- An empty Lua table is sent as a list, which termopen rejects (E475). Use a real dict.
-  local term_opts = vim.empty_dict()
-  if opts and opts.on_exit then term_opts.on_exit = opts.on_exit end
-  local job = vim.fn.termopen(cmd, term_opts)
-  if job <= 0 then
-    vim.notify("[runner] could not start terminal for: " .. cmd, vim.log.levels.ERROR)
-  end
+local function pkg_root_of()
+  return (path and path.find_package_root()) or root_of()
 end
 
--- ── Project config (.runner.lua) ──────────────────────────────────────────────
---
--- Example .runner.lua:
---   return {
---     python     = { run = "python -m myapp", test = "pytest tests/ -v" },
---     javascript = { test = "npx jest --testPathPattern=src/" },
---   }
---
-local _project_runner_cache = {}
+local function cd(dir, cmd)
+  return "cd " .. sq(dir) .. " && " .. cmd
+end
 
-local function load_project_runner_config()
-  local p    = path()
-  local root = (p and p.find_root()) or vim.fn.getcwd()
-  if not root or root == "" then return {} end
-  if _project_runner_cache[root] ~= nil then return _project_runner_cache[root] end
+local function is_obj(v)
+  return type(v) == "table" and v or {}
+end
 
-  local cfg_file = root .. "/.runner.lua"
-  if vim.fn.filereadable(cfg_file) ~= 1 then
-    _project_runner_cache[root] = {}
-    return {}
+--- Directory of `file` relative to `root`: "." at the root, "./sub" below it.
+local function rel_dir(root, file)
+  local dir = vim.fn.fnamemodify(file, ":h")
+  if dir == root then return "." end
+  if vim.startswith(dir, root .. "/") then return "." .. dir:sub(#root + 1) end
+  return dir
+end
+
+--- First executable among `names`, or nil plus a reason that carries the install hint.
+local function first_bin(names, hint)
+  for _, n in ipairs(names) do
+    if vim.fn.executable(n) == 1 then return n end
   end
+  local msg = (#names == 1)
+    and ("'%s' not found on PATH"):format(names[1])
+    or ("none of %s found on PATH"):format(table.concat(names, ", "))
+  if hint then msg = msg .. "\n  install: " .. hint end
+  return nil, msg
+end
 
-  local ok, result = require("core.util.secure").load(cfg_file)   -- trust-gated, not dofile
-  if not ok or type(result) ~= "table" then
+-- ── Memoised file reads ───────────────────────────────────────────────────────
+-- Keyed by absolute path. Reused while (mtime, size) is unchanged and the entry is
+-- younger than CONFIG_TTL. Failures are memoised as well, which is what stops a
+-- declined trust prompt from reappearing on every run.
+
+local _memo = {}
+
+local function file_sig(p)
+  local st = vim.uv.fs_stat(p)
+  if not st then return "absent" end
+  return ("%d.%d:%d"):format(st.mtime.sec, st.mtime.nsec, st.size)
+end
+
+local function memo_file(file, compute)
+  local sig, now = file_sig(file), os.time()
+  local hit = _memo[file]
+  if hit and hit.sig == sig and (now - hit.at) < CONFIG_TTL then
+    return hit.value, hit.reason
+  end
+  local value, reason = compute()
+  _memo[file] = { sig = sig, at = now, value = value, reason = reason }
+  return value, reason
+end
+
+--- package.json of `root` as a table, or nil plus a reason.
+local function read_package_json(root)
+  local file = root .. "/package.json"
+  if vim.fn.filereadable(file) ~= 1 then return nil, "no package.json in " .. root end
+  return memo_file(file, function()
+    local ok, lines = pcall(vim.fn.readfile, file)
+    if not ok then return nil, "cannot read " .. file end
+    local okj, obj = pcall(vim.json.decode, table.concat(lines, "\n"))
+    if not okj or type(obj) ~= "table" then return nil, "invalid JSON in " .. file end
+    return obj
+  end)
+end
+
+-- ── Project overrides (.runner.lua) ───────────────────────────────────────────
+
+--- `.runner.lua` for the project root as a table keyed by filetype. Returns {} when
+--- the file is absent or project configs are disabled (silent: that is a choice).
+--- A present-but-unusable file is reported, with the reason, on every run.
+local function project_config()
+  if not (secure and secure.enabled()) then return {} end
+  local file = root_of() .. "/.runner.lua"
+  if vim.fn.filereadable(file) ~= 1 then return {} end
+  local cfg, reason = memo_file(file, function()
+    local ok, result = secure.load(file)
+    if not ok then return nil, tostring(result) end
+    if type(result) ~= "table" then
+      return nil, "returns " .. type(result) .. " instead of a table"
+    end
+    return result
+  end)
+  if cfg then return cfg end
+  vim.notify("[runner] .runner.lua not used: " .. reason, vim.log.levels.WARN)
+  return {}
+end
+
+--- Project override for (filetype, kind), or nil to fall through to the built-in.
+--- kind is "run" (arg = file) or "test" (no arg). A function may return nil to defer.
+local function project_command(ft, kind, arg)
+  local entry = project_config()[ft]
+  local v = type(entry) == "table" and entry[kind] or nil
+  if type(v) == "function" then
+    local ok, out = pcall(v, arg)
+    if not ok then
+      vim.notify(("[runner] .runner.lua %s.%s raised: %s"):format(ft, kind, tostring(out)), vim.log.levels.ERROR)
+      return nil
+    end
+    v = out
+  end
+  if v == nil then return nil end
+  if type(v) ~= "string" or v == "" then
     vim.notify(
-      "[runner] .runner.lua error: " .. tostring(result),
+      ("[runner] .runner.lua %s.%s must be a string or a function returning one"):format(ft, kind),
       vim.log.levels.WARN
     )
-    _project_runner_cache[root] = {}
-    return {}
+    return nil
   end
-
-  vim.notify("[runner] loaded project config from " .. cfg_file, vim.log.levels.INFO)
-  _project_runner_cache[root] = result
-  return result
+  return v
 end
 
-vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("RunnerProjectConfigCache", { clear = true }),
-  callback = function() _project_runner_cache = {} end,
-  desc     = "Invalidate .runner.lua cache on directory change",
-})
+-- ── Temp-file writes ─────────────────────────────────────────────────────────
 
----@param root   string
----@param task   string   gradle/maven task ("test", "build", "run", "bootRun", …)
----@param filter string?  test-name filter; only honoured when task == "test"
----@return string|nil
-function M.gradle_or_maven(root, task, filter)
-  local escaped = vim.fn.shellescape(root)
-  local want_filter = filter and filter ~= "" and task == "test"
-
-  local gradle
-  local gradlew = root .. "/gradlew"
-  if vim.fn.filereadable(gradlew) == 1 and vim.fn.executable(gradlew) == 1 then
-    gradle = "./gradlew"
-  elseif (vim.fn.filereadable(root .. "/build.gradle") == 1 or vim.fn.filereadable(root .. "/build.gradle.kts") == 1)
-      and vim.fn.executable("gradle") == 1 then
-    gradle = "gradle"
-  end
-  if gradle then
-    local cmd = "cd " .. escaped .. " && " .. gradle .. " " .. task
-    if want_filter then cmd = cmd .. " --tests " .. vim.fn.shellescape("*." .. filter) end
-    return cmd
-  end
-
-  if vim.fn.filereadable(root .. "/pom.xml") == 1 then
-    local mvnw = root .. "/mvnw"
-    local mvn  = (vim.fn.filereadable(mvnw) == 1 and vim.fn.executable(mvnw) == 1) and "./mvnw" or "mvn"
-    local cmd  = "cd " .. escaped .. " && " .. mvn .. " " .. ((task == "run") and "exec:java" or task)
-    -- Maven has no `--tests`; surefire filters with -Dtest=Class#method.
-    if want_filter then
-      cmd = cmd .. " -Dtest=" .. vim.fn.shellescape("*#" .. filter) .. " -Dsurefire.failIfNoSpecifiedTests=false"
-    end
-    return cmd
-  end
-  return nil
+--- Write `lines` to `file`. vim.fn.writefile raises E482 on failure rather than
+--- returning an error code, so it runs under pcall; the return code and the file on
+--- disk are then checked as well. Returns true, or false with a reason.
+local function write_lines(lines, file)
+  local ok, rc = pcall(vim.fn.writefile, lines, file)
+  if not ok then return false, (tostring(rc):gsub("^Vim:", "")) end
+  if rc ~= 0 then return false, "writefile returned " .. tostring(rc) end
+  if vim.fn.filereadable(file) ~= 1 then return false, "file not readable after write" end
+  return true
 end
 
---- Sanitised build flags (allow-list), warning when something was stripped.
-local function build_flags(raw, label)
-  local flags, changed = require("core.util.exec").sanitize_build_flags(raw)
+-- ── Launch ────────────────────────────────────────────────────────────────────
+
+--- Run `cmd` in a floating terminal (toggleterm), or in a split if toggleterm is absent.
+local function launch(cmd, opts)
+  if term then
+    term.float(cmd, opts)            -- toggleterm reports its own failures
+    return true
+  end
+  vim.cmd("new")                     -- termopen needs a fresh buffer
+  local term_opts = vim.empty_dict() -- an empty Lua table is sent as a list (E475)
+  if opts and opts.on_exit then term_opts.on_exit = opts.on_exit end
+  if vim.fn.termopen(cmd, term_opts) <= 0 then
+    vim.notify("[runner] could not start terminal for: " .. cmd, vim.log.levels.ERROR)
+    return false
+  end
+  return true
+end
+
+-- ── Build flags & compile/interpret helpers ───────────────────────────────────
+
+--- Sanitised build flags from vim.g[var], or nil plus a reason. Strips and warns on
+--- anything outside the allow-list (see core.util.exec).
+local function build_flags(var, default)
+  if not exec then return nil, "core.util.exec unavailable; refusing unsanitised " .. var end
+  local raw = vim.g[var] or default
+  local flags, changed = exec.sanitize_build_flags(raw)
   if changed then
     vim.notify(
-      "[runner] " .. label .. " contained unsafe characters that were stripped.\n"
-      .. "  original : " .. raw .. "\n  sanitised: " .. flags,
+      ("[runner] %s contained unsafe characters that were stripped.\n  original : %s\n  sanitised: %s")
+        :format(var, tostring(raw), flags),
       vim.log.levels.WARN
     )
   end
   return flags
 end
 
--- ── File runners ───────────────────────────────────────────────────────────────
-local runners = {
-  python = function(file)
-    for _, cmd in ipairs({ "python3", "python", "py" }) do
-      if vim.fn.executable(cmd) == 1 then return cmd .. " " .. vim.fn.shellescape(file) end
-    end
-  end,
-  rust = function(file)
-    local dir = vim.fn.fnamemodify(file, ":h")
-    local p   = path()
-    local cargo_root = (p and p.find_package_root(dir)) or (p and p.find_root(dir))
-    if cargo_root and vim.fn.filereadable(cargo_root .. "/Cargo.toml") == 1 then
-      return "cd " .. vim.fn.shellescape(cargo_root) .. " && cargo run"
-    end
-    local exe = vim.fn.fnamemodify(file, ":r")
-    return "rustc " .. vim.fn.shellescape(file) .. " -o " .. vim.fn.shellescape(exe) .. " && " .. vim.fn.shellescape(exe)
-  end,
-  go              = function(file) return "go run " .. vim.fn.shellescape(file) end,
-  javascript      = function(file) return vim.fn.executable("node") == 1 and "node " .. vim.fn.shellescape(file) or nil end,
-  typescript      = function(file)
-    if vim.fn.executable("tsx")     == 1 then return "tsx "     .. vim.fn.shellescape(file) end
-    if vim.fn.executable("ts-node") == 1 then return "ts-node " .. vim.fn.shellescape(file) end
-  end,
-  javascriptreact = function(file)
-    if vim.fn.executable("tsx")  == 1 then return "tsx "  .. vim.fn.shellescape(file) end
-    return vim.fn.executable("node") == 1 and "node " .. vim.fn.shellescape(file) or nil
-  end,
-  typescriptreact = function(file)
-    if vim.fn.executable("tsx")     == 1 then return "tsx "     .. vim.fn.shellescape(file) end
-    if vim.fn.executable("ts-node") == 1 then return "ts-node " .. vim.fn.shellescape(file) end
-  end,
-  lua    = function(file) return vim.fn.executable("lua") == 1 and "lua " .. vim.fn.shellescape(file) or nil end,
-  c = function(file)
-    if vim.fn.executable("gcc") ~= 1 then return nil end
-    local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = build_flags(vim.g.c_build_flags or "-Wall -Wextra -g", "c_build_flags")
-    return string.format(
-      "gcc %s -o %s %s && %s",
-      flags,
-      vim.fn.shellescape(exe),
-      vim.fn.shellescape(file),
-      vim.fn.shellescape(exe)
-    )
-  end,
-  cpp = function(file)
-    if vim.fn.executable("g++") ~= 1 then return nil end
-    local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = build_flags(vim.g.cpp_build_flags or "-Wall -std=c++17 -g", "cpp_build_flags")
-    return string.format(
-      "g++ %s -o %s %s && %s",
-      flags,
-      vim.fn.shellescape(exe),
-      vim.fn.shellescape(file),
-      vim.fn.shellescape(exe)
-    )
-  end,
-  java = function(file)
-    if vim.fn.executable("javac") ~= 1 or vim.fn.executable("java") ~= 1 then
-      return nil
-    end
-    local dir  = vim.fn.fnamemodify(file, ":h")
-    local name = vim.fn.fnamemodify(file, ":t:r")
-    return string.format(
-      "cd %s && javac %s && java %s",
-      vim.fn.shellescape(dir),
-      vim.fn.shellescape(file),
-      name
-    )
-  end,
-  sh     = function(file) return "bash " .. vim.fn.shellescape(file) end,
-  bash   = function(file) return "bash " .. vim.fn.shellescape(file) end,
-  julia  = function(file) return vim.fn.executable("julia")  == 1 and "julia "  .. vim.fn.shellescape(file) or nil end,
-  zig    = function(file) return vim.fn.executable("zig")    == 1 and "zig run " .. vim.fn.shellescape(file) or nil end,
-  nim    = function(file) return vim.fn.executable("nim")    == 1 and "nim c -r " .. vim.fn.shellescape(file) or nil end,
-  ruby   = function(file) return vim.fn.executable("ruby")   == 1 and "ruby "   .. vim.fn.shellescape(file) or nil end,
-  elixir = function(file) return vim.fn.executable("elixir") == 1 and "elixir " .. vim.fn.shellescape(file) or nil end,
-  kotlin = function(file)
-    if vim.fn.executable("kotlinc") ~= 1 then return nil end
-    local dir  = vim.fn.fnamemodify(file, ":h")
-    local name = vim.fn.fnamemodify(file, ":t:r")
-    local jar  = vim.fn.shellescape(name .. ".jar")
-    return string.format(
-      "cd %s && kotlinc %s -include-runtime -d %s && java -jar %s",
-      vim.fn.shellescape(dir),
-      vim.fn.shellescape(file),
-      jar, jar
-    )
-  end,
-  cobol = function(file)
-    if vim.fn.executable("cobc") ~= 1 then return nil end
-    local exe = vim.fn.fnamemodify(file, ":r")
-    return string.format(
-      "cobc -x -o %s %s && %s",
-      vim.fn.shellescape(exe),
-      vim.fn.shellescape(file),
-      vim.fn.shellescape(exe)
-    )
-  end,
-  fortran = function(file)
-    if vim.fn.executable("gfortran") ~= 1 then return nil end
-    local exe   = vim.fn.fnamemodify(file, ":r")
-    local flags = build_flags(vim.g.fortran_build_flags or "-Wall", "fortran_build_flags")
-    return string.format(
-      "gfortran %s -o %s %s && %s",
-      flags,
-      vim.fn.shellescape(exe),
-      vim.fn.shellescape(file),
-      vim.fn.shellescape(exe)
-    )
-  end,
-  vhdl = function(file)
-    if vim.fn.executable("ghdl") ~= 1 then return nil end
-    local entity = nil
-    local ok_rf, lines = pcall(vim.fn.readfile, file)
-    if ok_rf and lines then
-      for _, line in ipairs(lines) do
-        if line:lower():match("^%s*entity%s+[%w_]+%s+is") then
-          entity = line:match("[Ee][Nn][Tt][Ii][Tt][Yy]%s+([%w_]+)")
-          if entity then break end
-        end
-      end
-    end
-    if entity then
-      local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
-      local cmd = string.format(
-        "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
-        vim.fn.shellescape(file),
-        vim.fn.shellescape(entity),
-        vim.fn.shellescape(entity),
-        vim.fn.shellescape(vcd)
-      )
-      if vim.fn.executable("gtkwave") == 1 then
-        cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
-      end
-      return cmd
-    end
-    return "ghdl -s " .. vim.fn.shellescape(file)
-  end,
-}
-
--- ── Selection interpreters ─────────────────────────────────────────────────────
-local selection_interpreters = {
-  python          = function() return vim.fn.executable("python3") == 1 and "python3" or "python" end,
-  lua             = function() for _, v in ipairs({"lua","lua5.4","lua5.3","lua5.2","lua5.1"}) do if vim.fn.executable(v)==1 then return v end end end,
-  javascript      = function() return vim.fn.executable("node") == 1 and "node" or nil end,
-  typescript      = function() if vim.fn.executable("tsx")==1 then return "tsx" end; if vim.fn.executable("ts-node")==1 then return "ts-node" end end,
-  javascriptreact = function() if vim.fn.executable("tsx")==1 then return "tsx" end; return vim.fn.executable("node")==1 and "node" or nil end,
-  typescriptreact = function() if vim.fn.executable("tsx")==1 then return "tsx" end; if vim.fn.executable("ts-node")==1 then return "ts-node" end end,
-  ruby            = function() return vim.fn.executable("ruby")   == 1 and "ruby"   or nil end,
-  elixir          = function() return vim.fn.executable("elixir") == 1 and "elixir" or nil end,
-  sh              = function() return "bash" end,
-  bash            = function() return "bash" end,
-  julia           = function() return vim.fn.executable("julia")  == 1 and "julia"  or nil end,
-}
-
--- ── Public: run_file ───────────────────────────────────────────────────────────
-function M.run_file()
-  if vim.bo.buftype ~= "" then vim.notify("[runner] run_file: not a normal file buffer", vim.log.levels.WARN); return end
-  local file = vim.fn.expand("%:p")
-  local ft   = vim.bo.filetype
-  if file == "" or vim.fn.filereadable(file) ~= 1 then vim.notify("[runner] no valid file to run", vim.log.levels.ERROR); return end
-  if vim.bo.modified and (vim.g.runner_autosave ~= false) then pcall(vim.cmd, "write") end
-
-  local project_cfg = load_project_runner_config()
-  local project_run = project_cfg[ft] and project_cfg[ft].run
-  if project_run then
-    local cmd = type(project_run) == "function" and project_run(file) or tostring(project_run)
-    if cmd and cmd ~= "" then
-      launch(cmd)
-      return
-    end
-  end
-
-  local runner_fn = runners[ft]
-  if not runner_fn then vim.notify("[runner] no runner for filetype: " .. ft, vim.log.levels.WARN); return end
-  local cmd = runner_fn(file)
-  if not cmd then vim.notify("[runner] no suitable runtime found for: " .. ft, vim.log.levels.ERROR); return end
-  launch(cmd)
+--- `compiler flags -o exe file && exe`. The binary sits beside the source. A source
+--- with no extension would make exe == file and overwrite it, so it gets `.out`.
+local function compile_and_run(compiler, flags, file)
+  local exe = vim.fn.fnamemodify(file, ":r")
+  if exe == file then exe = file .. ".out" end
+  return ("%s %s -o %s %s && %s"):format(compiler, flags, sq(exe), sq(file), sq(exe))
 end
 
--- ── Public: run_nearest_function ──────────────────────────────────────────────
---
--- Names come from the tree-sitter `name` FIELD (not "first identifier child"), which
--- is what makes Go methods (field_identifier), Rust, Ruby and JS `const f = () => {}`
--- work. Test selection per language:
---   python  pytest -k NAME          go      go test -run ^NAME$
---   js/ts   vitest|jest -t NAME     rust    cargo test MOD::NAME
---   ruby    rspec --example NAME    elixir  mix test FILE:LINE
---   java/kotlin  gradle --tests / maven -Dtest=*#NAME
+--- Compiled language: check the compiler, sanitise its flags, compile and run.
+local function native(compiler, hint, var, default)
+  return function(file)
+    local bin, why = first_bin({ compiler }, hint)
+    if not bin then return nil, why end
+    local flags, ferr = build_flags(var, default)
+    if not flags then return nil, ferr end
+    return compile_and_run(bin, flags, file)
+  end
+end
+
+--- Interpreted language: `<bin> [args] file`.
+local function interpreted(bin, hint, args)
+  return function(file)
+    local b, why = first_bin({ bin }, hint)
+    if not b then return nil, why end
+    return sq(b) .. (args and (" " .. args) or "") .. " " .. sq(file)
+  end
+end
+
+--- Python interpreter: the active virtualenv first, then PATH.
+local function python_bin()
+  local venv = vim.env.VIRTUAL_ENV
+  if venv and venv ~= "" and vim.fn.executable(venv .. "/bin/python") == 1 then
+    return venv .. "/bin/python"
+  end
+  return first_bin({ "python3", "python", "py" }, "sudo zypper in python3")
+end
+
+-- ── Capability probes ─────────────────────────────────────────────────────────
+-- Does `py` import `mod`? Keyed by the resolved interpreter path, so two different
+-- pythons on PATH are probed separately. Memoised for CONFIG_TTL seconds.
+
+local _probe = {}
+
+local function python_has(py, mod)
+  local exe = vim.fn.exepath(py)
+  if exe == "" then exe = py end
+  local key, now = exe .. "\0" .. mod, os.time()
+  local hit = _probe[key]
+  if hit and (now - hit.at) < CONFIG_TTL then return hit.ok end
+  local r = vim.system({ exe, "-c", "import " .. mod }, { text = true }):wait(5000)
+  local ok = r.code == 0
+  _probe[key] = { ok = ok, at = now }
+  return ok
+end
+
+-- ── JavaScript / TypeScript runtimes ──────────────────────────────────────────
+
+local JS_HINT = "sudo zypper in nodejs   (TypeScript: npm install -g tsx)"
+
+local JS_RUNTIMES = {
+  javascript      = { "node" },
+  javascriptreact = { "tsx", "node" },
+  typescript      = { "tsx", "ts-node" },
+  typescriptreact = { "tsx", "ts-node" },
+}
+
+local JDK_HINT = "sudo zypper in java-17-openjdk-devel"
+
+-- ── File runners ──────────────────────────────────────────────────────────────
+-- Each takes the file and returns cmd, or nil plus reason.
+
+local function python_run(file)
+  local py, why = python_bin()
+  if not py then return nil, why end
+  return sq(py) .. " " .. sq(file)
+end
+
+local function js_run(ft)
+  return function(file)
+    local bin, why = first_bin(JS_RUNTIMES[ft], JS_HINT)
+    if not bin then return nil, why end
+    return sq(bin) .. " " .. sq(file)
+  end
+end
+
+local function lua_run(file)
+  -- This Neovim's own runtime, so vim.* APIs resolve.
+  return sq(vim.v.progpath) .. " -l " .. sq(file)
+end
+
+local function rust_run(file)
+  local crate = path and path.find_up({ "Cargo.toml" }, vim.fn.fnamemodify(file, ":h"))
+  if crate then
+    local cargo, why = first_bin({ "cargo" }, "https://rustup.rs")
+    if not cargo then return nil, why end
+    return cd(crate, "cargo run")
+  end
+  local rustc, why = first_bin({ "rustc" }, "https://rustup.rs")
+  if not rustc then return nil, why end
+  return compile_and_run(rustc, "", file)
+end
+
+local function java_run(file)
+  local javac, why = first_bin({ "javac" }, JDK_HINT)
+  if not javac then return nil, why end
+  local java, why2 = first_bin({ "java" }, JDK_HINT)
+  if not java then return nil, why2 end
+  local dir  = vim.fn.fnamemodify(file, ":h")
+  local name = vim.fn.fnamemodify(file, ":t:r")
+  return ("cd %s && %s %s && %s %s"):format(sq(dir), javac, sq(file), java, sq(name))
+end
+
+local function kotlin_run(file)
+  local kc, why = first_bin({ "kotlinc" }, "https://kotlinlang.org/docs/command-line.html")
+  if not kc then return nil, why end
+  local java, why2 = first_bin({ "java" }, JDK_HINT)
+  if not java then return nil, why2 end
+  local dir = vim.fn.fnamemodify(file, ":h")
+  local jar = sq(vim.fn.fnamemodify(file, ":t:r") .. ".jar")
+  return ("cd %s && %s %s -include-runtime -d %s && %s -jar %s"):format(
+    sq(dir), kc, sq(file), jar, java, jar)
+end
+
+local function cobol_run(file)
+  local cobc, why = first_bin({ "cobc" }, "sudo zypper in gnucobol")
+  if not cobc then return nil, why end
+  return compile_and_run(cobc, "-x", file)
+end
+
+local function vhdl_run(file)
+  local ghdl, why = first_bin({ "ghdl" }, "sudo zypper in ghdl")
+  if not ghdl then return nil, why end
+  local entity
+  local ok, lines = pcall(vim.fn.readfile, file)
+  if ok then
+    for _, line in ipairs(lines) do
+      local _, _, name = line:lower():find("^%s*entity%s+([%w_]+)%s+is")
+      if name then entity = name; break end
+    end
+  end
+  if not entity then
+    return sq(ghdl) .. " -s " .. sq(file)   -- no entity: syntax check only
+  end
+  local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
+  local cmd = ("%s -a %s && %s -e %s && %s -r %s --vcd=%s"):format(
+    sq(ghdl), sq(file), sq(ghdl), sq(entity), sq(ghdl), sq(entity), sq(vcd))
+  local gtkwave = first_bin({ "gtkwave" })
+  if gtkwave then cmd = cmd .. " && " .. sq(gtkwave) .. " " .. sq(vcd) end
+  return cmd
+end
+
+local RUNNERS = {
+  python          = python_run,
+  lua             = lua_run,
+  javascript      = js_run("javascript"),
+  javascriptreact = js_run("javascriptreact"),
+  typescript      = js_run("typescript"),
+  typescriptreact = js_run("typescriptreact"),
+  go              = interpreted("go", "sudo zypper in go", "run"),
+  rust            = rust_run,
+  c               = native("gcc", "sudo zypper in gcc", "c_build_flags", "-Wall -Wextra -g"),
+  cpp             = native("g++", "sudo zypper in gcc-c++", "cpp_build_flags", "-Wall -std=c++17 -g"),
+  java            = java_run,
+  kotlin          = kotlin_run,
+  sh              = interpreted("bash", nil),
+  bash            = interpreted("bash", nil),
+  ruby            = interpreted("ruby", "sudo zypper in ruby"),
+  elixir          = interpreted("elixir", "sudo zypper in elixir"),
+  julia           = interpreted("julia", "https://julialang.org/downloads/"),
+  zig             = interpreted("zig", "https://ziglang.org/download/", "run"),
+  nim             = interpreted("nim", "https://nim-lang.org/install.html", "c -r"),
+  cobol           = cobol_run,
+  fortran         = native("gfortran", "sudo zypper in gcc-fortran", "fortran_build_flags", "-Wall"),
+  vhdl            = vhdl_run,
+}
+
+-- ── Selection interpreters ────────────────────────────────────────────────────
+-- Each returns the command prefix (the temp file is appended), or nil plus reason.
+
+local function sel_bin(names, hint, args)
+  return function()
+    local b, why = first_bin(names, hint)
+    if not b then return nil, why end
+    return b .. (args and (" " .. args) or "")
+  end
+end
+
+local SELECTION = {
+  python = function()
+    local py, why = python_bin()
+    if not py then return nil, why end
+    return sq(py)
+  end,
+  lua             = function() return sq(vim.v.progpath) .. " -l" end,
+  javascript      = sel_bin(JS_RUNTIMES.javascript, JS_HINT),
+  javascriptreact = sel_bin(JS_RUNTIMES.javascriptreact, JS_HINT),
+  typescript      = sel_bin(JS_RUNTIMES.typescript, JS_HINT),
+  typescriptreact = sel_bin(JS_RUNTIMES.typescriptreact, JS_HINT),
+  ruby            = sel_bin({ "ruby" }, "sudo zypper in ruby"),
+  elixir          = sel_bin({ "elixir" }, "sudo zypper in elixir"),
+  julia           = sel_bin({ "julia" }, "https://julialang.org/downloads/"),
+  sh              = sel_bin({ "bash" }),
+  bash            = sel_bin({ "bash" }),
+}
+
+-- Temp-file extension per filetype, so tools that look at the suffix behave.
+local EXT = {
+  javascript = "js", javascriptreact = "jsx", typescript = "ts", typescriptreact = "tsx",
+  sh = "sh", bash = "sh", lua = "lua", python = "py", ruby = "rb", elixir = "exs", julia = "jl",
+}
+
+-- ── Nearest-function lookup (tree-sitter) ─────────────────────────────────────
+-- Names come from the tree-sitter `name` FIELD, which is what makes Go methods
+-- (field_identifier), Rust, Ruby and JS `const f = () => {}` work.
 
 local FUNCTION_NODE_TYPES = {
   function_definition  = true,  -- python, c, cpp
@@ -343,7 +440,7 @@ end
 
 local function nearest_function_name(buf)
   local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
-  if not ok then return nil end
+  if not ok or not node then return nil end
   while node do
     local t = node:type()
     local name_node
@@ -362,6 +459,7 @@ local function nearest_function_name(buf)
   return nil
 end
 
+--- Rust test path: enclosing `mod` names joined with `::`, then the function name.
 local function rust_qualified_name(buf, fname)
   local parts = {}
   local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
@@ -377,252 +475,394 @@ local function rust_qualified_name(buf, fname)
   return table.concat(parts, "::")
 end
 
+-- ── JavaScript package & test command ─────────────────────────────────────────
+
+local PACKAGE_MANAGERS = { npm = true, pnpm = true, yarn = true, bun = true }
+
+local LOCKFILES = {
+  { "bun.lockb", "bun" }, { "bun.lock", "bun" },
+  { "pnpm-lock.yaml", "pnpm" }, { "yarn.lock", "yarn" }, { "package-lock.json", "npm" },
+}
+
 local VITEST_CONFIGS = {
   "vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.config.mjs",
   "vitest.config.cjs", "vitest.workspace.ts", "vitest.workspace.js",
 }
 
----@param root string
----@return "vitest"|"jest"|nil
+--- Package manager: a declared `packageManager` field (corepack) wins, then lockfiles.
+function M.detect_pkg_manager(root)
+  local pkg = read_package_json(root)
+  local declared = pkg and type(pkg.packageManager) == "string"
+    and pkg.packageManager:match("^(%a+)@") or nil
+  if declared and PACKAGE_MANAGERS[declared] then return declared end
+  for _, e in ipairs(LOCKFILES) do
+    if vim.fn.filereadable(root .. "/" .. e[1]) == 1 then return e[2] end
+  end
+  return "npm"
+end
+
+--- "vitest" | "jest" | nil, from config files and package.json dependencies.
 function M.detect_js_runner(root)
   for _, f in ipairs(VITEST_CONFIGS) do
     if vim.fn.filereadable(root .. "/" .. f) == 1 then return "vitest" end
   end
-  local pkg = root .. "/package.json"
-  if vim.fn.filereadable(pkg) == 1 then
-    local ok, lines = pcall(vim.fn.readfile, pkg)
-    if ok then
-      local ok_j, obj = pcall(vim.json.decode, table.concat(lines, "\n"))
-      if ok_j and type(obj) == "table" then
-        local deps = vim.tbl_extend("force", obj.dependencies or {}, obj.devDependencies or {})
-        if deps.vitest then return "vitest" end
-        if deps.jest or obj.jest then return "jest" end
-      end
-    end
-  end
+  local pkg = read_package_json(root)
+  if not pkg then return nil end
+  local deps = vim.tbl_extend("force", is_obj(pkg.dependencies), is_obj(pkg.devDependencies))
+  if deps.vitest then return "vitest" end
+  if deps.jest or type(pkg.jest) == "table" then return "jest" end
   return nil
 end
 
-function M.run_nearest_function()
-  local ft  = vim.bo.filetype
-  local buf = vim.api.nvim_get_current_buf()
-
-  local function_name = nearest_function_name(buf)
-
-  local p    = path()
-  local root = (p and p.find_root()) or vim.fn.getcwd()
-  local er   = vim.fn.shellescape(root)
-
-  local function js_cmd()
-    local base = M.detect_js_test_cmd(root)
-    if not function_name then return "cd " .. er .. " && " .. base end
-    local q, runner = vim.fn.shellescape(function_name), M.detect_js_runner(root)
-    if runner == "vitest" then return "cd " .. er .. " && npx vitest run -t " .. q end
-    if runner == "jest"   then return "cd " .. er .. " && npx jest -t " .. q end
-    local sep = (base == "bun test") and " -t " or " -- -t "
-    return "cd " .. er .. " && " .. base .. sep .. q
-  end
-
-  local dispatch = {
-    python = function()
-      if not function_name then return "cd " .. er .. " && pytest" end
-      return "cd " .. er .. " && pytest -k " .. vim.fn.shellescape(function_name) .. " -v"
-    end,
-    javascript = js_cmd, typescript = js_cmd, javascriptreact = js_cmd, typescriptreact = js_cmd,
-    go = function()
-      if not function_name then return "cd " .. er .. " && go test ./..." end
-      return "cd " .. er .. " && go test ./... -run " .. vim.fn.shellescape("^" .. function_name .. "$")
-    end,
-    rust = function()
-      if not function_name then return "cd " .. er .. " && cargo test" end
-      return "cd " .. er .. " && cargo test " .. vim.fn.shellescape(rust_qualified_name(buf, function_name))
-    end,
-    ruby = function()
-      if not function_name then return "cd " .. er .. " && bundle exec rspec" end
-      return "cd " .. er .. " && bundle exec rspec --example " .. vim.fn.shellescape(function_name)
-    end,
-    elixir = function()
-      -- `mix test --only NAME` filters by TAG, not by function; FILE:LINE is the real selector.
-      local file = vim.fn.expand("%:p")
-      local rel  = vim.startswith(file, root .. "/") and file:sub(#root + 2) or file
-      return "cd " .. er .. " && mix test " .. vim.fn.shellescape(rel .. ":" .. vim.fn.line("."))
-    end,
-    java   = function() return M.gradle_or_maven(root, "test", function_name) end,
-    kotlin = function() return M.gradle_or_maven(root, "test", function_name) end,
-  }
-
-  local thunk = dispatch[ft]
-  if not thunk then
-    vim.notify(
-      "[runner] run_nearest_function: unsupported filetype '" .. ft .. "' — falling back to run_file",
-      vim.log.levels.INFO
-    )
-    M.run_file()
-    return
-  end
-
-  if function_name then
-    vim.notify("[runner] Running nearest function: " .. function_name, vim.log.levels.INFO)
-  end
-
-  local cmd = thunk()
-  if not cmd then
-    vim.notify(
-      "[runner] " .. ft .. ": no build tool detected (no gradlew/gradle or pom.xml found under " .. root .. ")",
-      vim.log.levels.WARN
-    )
-    return
-  end
-  launch(cmd)
-end
-
--- ── Public: run_selection ──────────────────────────────────────────────────────
---
-function M.run_selection(start_line, end_line)
-  local ft  = vim.bo.filetype
-  local buf = vim.api.nvim_get_current_buf()
-
-  if not start_line or not end_line then
-    local ok_s, mark_s = pcall(vim.api.nvim_buf_get_mark, buf, "<")
-    local ok_e, mark_e = pcall(vim.api.nvim_buf_get_mark, buf, ">")
-    local lcount = vim.api.nvim_buf_line_count(buf)
-    local sl = ok_s and mark_s[1] or 0
-    local el = ok_e and mark_e[1] or 0
-    if not (ok_s and ok_e and sl > 0 and el > 0 and sl <= lcount and el <= lcount) then
-      vim.notify("[runner] no valid visual selection", vim.log.levels.WARN); return
-    end
-    start_line = sl; end_line = el
-  end
-  if start_line > end_line then start_line, end_line = end_line, start_line end
-
-  local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
-  local code  = table.concat(lines, "\n")
-  local resolver = selection_interpreters[ft]
-  if not resolver then vim.notify("[runner] no selection interpreter for: " .. ft, vim.log.levels.WARN); return end
-  local interpreter = resolver()
-  if not interpreter then vim.notify("[runner] runtime not found for: " .. ft, vim.log.levels.ERROR); return end
-
-  local EXT_MAP = { javascript="js", typescript="ts", javascriptreact="js", typescriptreact="ts", sh="sh", bash="sh", lua="lua" }
-  local tmpfile = vim.fn.tempname() .. "." .. (EXT_MAP[ft] or ft)
-  if not pcall(vim.fn.writefile, vim.split(code, "\n"), tmpfile) then
-    vim.notify("[runner] failed to write temp file", vim.log.levels.ERROR); return
-  end
-
-  local cmd     = interpreter .. " " .. vim.fn.shellescape(tmpfile)
-  local cleaned = false
-  local function cleanup()
-    if not cleaned then
-      cleaned = true
-      pcall(os.remove, tmpfile)
-    end
-  end
-
-  launch(cmd, { on_exit = function() vim.schedule(cleanup) end })
-  vim.defer_fn(cleanup, 30000)
-end
-
--- ── Public: pipe ──────────────────────────────────────────────────────────────
----@param cmd        string
----@param stdin_text string
-function M.pipe(cmd, stdin_text)
-  if type(cmd) ~= "string" or cmd == "" then
-    vim.notify("[runner] pipe(): cmd must be non-empty", vim.log.levels.ERROR); return
-  end
-  local tmpfile = vim.fn.tempname()
-  if not pcall(vim.fn.writefile, vim.split(stdin_text or "", "\n"), tmpfile) then
-    vim.notify("[runner] pipe(): failed to write stdin temp file", vim.log.levels.ERROR); return
-  end
-
-  -- Use shell redirection (cmd < file) rather than cat | cmd.
-  local full_cmd = cmd .. " < " .. vim.fn.shellescape(tmpfile)
-  launch(full_cmd, {
-    on_exit = function() vim.schedule(function() pcall(os.remove, tmpfile) end) end,
-  })
-  vim.defer_fn(function() pcall(os.remove, tmpfile) end, 10000)
-end
-
--- ── Public: detect_pkg_manager ────────────────────────────────────────────────
---
----@param root string
----@return "npm"|"pnpm"|"yarn"|"bun"
-function M.detect_pkg_manager(root)
-  if vim.fn.filereadable(root .. "/bun.lockb") == 1 or vim.fn.filereadable(root .. "/bun.lock") == 1 then return "bun" end
-  if vim.fn.filereadable(root .. "/pnpm-lock.yaml") == 1 then return "pnpm" end
-  if vim.fn.filereadable(root .. "/yarn.lock") == 1 then return "yarn" end
-  return "npm"
-end
-
--- ── Public: detect_js_test_cmd ────────────────────────────────────────────────
---
+--- The command that runs the project's test suite.
 function M.detect_js_test_cmd(root)
   local pm = M.detect_pkg_manager(root)
-  if pm == "bun"  then return "bun test"  end
+  if pm == "bun"  then return "bun test" end
   if pm == "pnpm" then return "pnpm test" end
   if pm == "yarn" then return "yarn test" end
   return "npm test"
 end
 
--- ── Public: run_tests ─────────────────────────────────────────────────────────
-function M.run_tests()
-  local ft   = vim.bo.filetype
-  local p    = path()
-  local root = (p and p.find_root()) or vim.fn.getcwd()
-  local er   = vim.fn.shellescape(root)
+--- Why the JS test command would fail, or nil when it can run. bun needs no script.
+function M.js_test_problem(root)
+  if M.detect_pkg_manager(root) == "bun" then return nil end
+  local pkg, why = read_package_json(root)
+  if not pkg then return why end
+  if type(is_obj(pkg.scripts).test) ~= "string" then
+    return 'package.json has no "test" script (add one, or use bun test)'
+  end
+  return nil
+end
 
-  local project_cfg  = load_project_runner_config()
-  local project_test = project_cfg[ft] and project_cfg[ft].test
-  if project_test then
-    local cmd = type(project_test) == "function" and project_test() or tostring(project_test)
-    if cmd and cmd ~= "" then
-      launch(cmd)
+-- ── Test and nearest-test entries ─────────────────────────────────────────────
+-- Each takes a ctx and returns cmd or nil plus reason. ctx.nearest selects the
+-- nearest-function scope; otherwise the whole suite runs.
+
+local function test_python(ctx)
+  local py, why = python_bin()
+  if not py then return nil, why end
+  if not python_has(py, "pytest") then
+    return nil, ("pytest is not importable from %s\n  install: %s -m pip install pytest"):format(py, py)
+  end
+  local target = ""
+  if ctx.nearest then
+    target = " " .. sq(ctx.file)
+    if ctx.name then target = target .. " -k " .. sq(ctx.name) .. " -v" end
+  end
+  return cd(ctx.root, sq(py) .. " -m pytest" .. target)
+end
+
+local function test_js(ctx)
+  local root = ctx.pkg
+  local problem = M.js_test_problem(root)
+  if problem then return nil, problem end
+  local base = M.detect_js_test_cmd(root)
+  if not (ctx.nearest and ctx.name) then return cd(root, base) end
+  local q = sq(ctx.name)
+  local runner = M.detect_js_runner(root)
+  if runner == "vitest" then return cd(root, "npx vitest run -t " .. q) end
+  if runner == "jest" then return cd(root, "npx jest -t " .. q) end
+  local sep = (base == "bun test") and " -t " or " -- -t "
+  return cd(root, base .. sep .. q)
+end
+
+local function test_go(ctx)
+  local go, why = first_bin({ "go" }, "sudo zypper in go")
+  if not go then return nil, why end
+  local target, run = "./...", ""
+  if ctx.nearest then
+    target = rel_dir(ctx.root, ctx.file)
+    if ctx.name then run = " -run " .. sq("^" .. ctx.name .. "$") end
+  end
+  return cd(ctx.root, go .. " test " .. sq(target) .. run)
+end
+
+local function test_rust(ctx)
+  local cargo, why = first_bin({ "cargo" }, "https://rustup.rs")
+  if not cargo then return nil, why end
+  if ctx.nearest and ctx.name then
+    return cd(ctx.root, cargo .. " test " .. sq(rust_qualified_name(ctx.buf, ctx.name)))
+  end
+  return cd(ctx.root, cargo .. " test")
+end
+
+local function test_ruby(ctx)
+  local cmd
+  if vim.fn.filereadable(ctx.root .. "/Gemfile") == 1 then
+    if vim.fn.executable("bundle") ~= 1 then
+      return nil, "Gemfile present but bundle is not on PATH\n  install: gem install bundler"
+    end
+    cmd = "bundle exec rspec"
+  else
+    local rspec, why = first_bin({ "rspec" }, "gem install rspec")
+    if not rspec then return nil, why end
+    cmd = rspec
+  end
+  if ctx.nearest then cmd = cmd .. " " .. sq(ctx.file .. ":" .. ctx.line) end
+  return cd(ctx.root, cmd)
+end
+
+local function test_mix(ctx)
+  local mix, why = first_bin({ "mix" }, "sudo zypper in elixir")
+  if not mix then return nil, why end
+  local cmd = mix .. " test"
+  if ctx.nearest then
+    local root = ctx.root
+    local rel = vim.startswith(ctx.file, root .. "/") and ctx.file:sub(#root + 2) or ctx.file
+    cmd = cmd .. " " .. sq(rel .. ":" .. ctx.line)
+  end
+  return cd(ctx.root, cmd)
+end
+
+local function test_jvm(ctx)
+  if not jvm then return nil, "core.util.jvm is unavailable" end
+  return jvm.command(ctx.root, "test", ctx.nearest and ctx.name or nil)
+end
+
+local function test_zig(ctx)
+  local zig, why = first_bin({ "zig" }, "https://ziglang.org/download/")
+  if not zig then return nil, why end
+  if vim.fn.filereadable(ctx.root .. "/build.zig") ~= 1 then
+    return nil, "no build.zig in " .. ctx.root
+  end
+  return cd(ctx.root, zig .. " build test")
+end
+
+local function test_ctest(ctx)
+  local ctest, why = first_bin({ "ctest" }, "sudo zypper in cmake")
+  if not ctest then return nil, why end
+  local build = tostring(vim.g.cmake_build_dir or "build")
+  if vim.fn.isdirectory(ctx.root .. "/" .. build) ~= 1 then
+    return nil, ("no %s/ directory yet — configure and build first (<leader>ccb)"):format(build)
+  end
+  return cd(ctx.root, ctest .. " --test-dir " .. sq(build) .. " --output-on-failure")
+end
+
+local TESTS = {
+  python          = test_python,
+  rust            = test_rust,
+  go              = test_go,
+  javascript      = test_js,
+  javascriptreact = test_js,
+  typescript      = test_js,
+  typescriptreact = test_js,
+  ruby            = test_ruby,
+  elixir          = test_mix,
+  java            = test_jvm,
+  kotlin          = test_jvm,
+  zig             = test_zig,
+  c               = test_ctest,
+  cpp             = test_ctest,
+}
+
+-- Filetypes where "run the nearest test" is meaningful.
+local NEAREST_OK = {
+  python = true, rust = true, go = true, ruby = true, elixir = true, java = true, kotlin = true,
+  javascript = true, javascriptreact = true, typescript = true, typescriptreact = true,
+}
+
+local TEST_INFO = {
+  fortran = "Fortran has no standard unit-test runner.\nUse <leader>ftb to build & run.",
+  vhdl    = "VHDL has no standard unit-test runner.\nUse <leader>vhr (GHDL Run & View).",
+  cobol   = "COBOL has no standard unit-test runner.\nUse <leader>cob to compile & run.",
+}
+
+local function test_ctx(nearest)
+  local buf = vim.api.nvim_get_current_buf()
+  return {
+    buf     = buf,
+    nearest = nearest,
+    root    = root_of(),
+    pkg     = pkg_root_of(),
+    file    = vim.fn.expand("%:p"),
+    line    = vim.fn.line("."),
+    name    = nearest and nearest_function_name(buf) or nil,
+  }
+end
+
+-- ── Public: run_file ──────────────────────────────────────────────────────────
+
+function M.run_file()
+  if vim.bo.buftype ~= "" then
+    vim.notify("[runner] run_file: not a normal file buffer", vim.log.levels.WARN)
+    return
+  end
+  if vim.bo.modified and vim.g.runner_autosave ~= false then
+    local ok, err = pcall(vim.cmd, "write")
+    if not ok then
+      vim.notify("[runner] autosave failed; running the version on disk\n" .. tostring(err), vim.log.levels.WARN)
+    end
+  end
+  local file = vim.fn.expand("%:p")
+  if file == "" or vim.fn.filereadable(file) ~= 1 then
+    vim.notify("[runner] no file on disk to run (save it first)", vim.log.levels.ERROR)
+    return
+  end
+
+  local ft  = vim.bo.filetype
+  local cmd = project_command(ft, "run", file)
+  if not cmd then
+    local runner = RUNNERS[ft]
+    if not runner then
+      vim.notify("[runner] no runner for filetype '" .. ft .. "' (add one in .runner.lua)", vim.log.levels.WARN)
+      return
+    end
+    local why
+    cmd, why = runner(file)
+    if not cmd then
+      vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
       return
     end
   end
+  launch(cmd)
+end
 
-  local info_msgs = {
-    fortran = "Fortran has no standard unit-test runner.\nUse <leader>ftb to build & run.",
-    vhdl    = "VHDL has no standard unit-test runner.\nUse <leader>vhr (GHDL Run & View).",
-    cobol   = "COBOL has no standard unit-test runner.\nUse <leader>cob to compile & run.",
-  }
-  if info_msgs[ft] then vim.notify(info_msgs[ft], vim.log.levels.INFO); return end
+-- ── Public: run_tests ─────────────────────────────────────────────────────────
 
-  local function ctest_thunk()
-    if vim.fn.executable("ctest") ~= 1 then
-      vim.notify("C/C++ tests use CTest but `ctest` was not found.", vim.log.levels.INFO); return nil
-    end
-    return "cd " .. er .. " && ctest --test-dir " .. vim.fn.shellescape(vim.g.cmake_build_dir or "build") .. " --output-on-failure"
+function M.run_tests()
+  local ft  = vim.bo.filetype
+  local cmd = project_command(ft, "test")
+  if cmd then launch(cmd); return end
+  if TEST_INFO[ft] then
+    vim.notify(TEST_INFO[ft], vim.log.levels.INFO)
+    return
   end
-
-  local js_root = (p and p.find_package_root()) or root
-  local js_test = function()
-    return "cd " .. vim.fn.shellescape(js_root) .. " && " .. M.detect_js_test_cmd(js_root)
+  local fn = TESTS[ft]
+  if not fn then
+    vim.notify("[runner] no test runner for: " .. ft, vim.log.levels.WARN)
+    return
   end
+  local c, why = fn(test_ctx(false))
+  if not c then
+    vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
+    return
+  end
+  launch(c)
+end
 
-  local dispatch = {
-    python          = function() return "cd " .. er .. " && pytest" end,
-    rust            = function() return "cd " .. er .. " && cargo test" end,
-    go              = function() return "cd " .. er .. " && go test ./..." end,
-    javascript      = js_test, typescript = js_test,
-    javascriptreact = js_test, typescriptreact = js_test,
-    ruby            = function() return "cd " .. er .. " && bundle exec rspec" end,
-    elixir          = function() return "cd " .. er .. " && mix test" end,
-    kotlin          = function() return M.gradle_or_maven(root, "test") end,
-    java            = function() return M.gradle_or_maven(root, "test") end,
-    zig             = function() return "cd " .. er .. " && zig build test" end,
-    c = ctest_thunk, cpp = ctest_thunk,
-  }
+-- ── Public: run_nearest_function ──────────────────────────────────────────────
+-- Scope is the nearest function when one is found. Without a name, the scope is the
+-- file (python, ruby, elixir) or the package (go, JS, rust), never the whole project.
 
-  local thunk = dispatch[ft]
-  if not thunk then vim.notify("[runner] no test runner for: " .. ft, vim.log.levels.WARN); return end
-  local cmd = thunk()
-  if not cmd then
+function M.run_nearest_function()
+  local ft = vim.bo.filetype
+  if not NEAREST_OK[ft] then
     vim.notify(
-      "[runner] " .. ft .. ": no build tool detected (no gradlew or pom.xml found under " .. root .. ")",
+      ("[runner] nearest-test run is not available for %s; use <leader>'t for the suite"):format(ft),
       vim.log.levels.WARN
     )
     return
   end
+  local ctx = test_ctx(true)
+  local cmd, why = TESTS[ft](ctx)
+  if not cmd then
+    vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
+    return
+  end
+  if ctx.name then
+    vim.notify("[runner] running nearest function: " .. ctx.name, vim.log.levels.INFO)
+  end
   launch(cmd)
+end
+
+-- ── Public: run_selection ─────────────────────────────────────────────────────
+
+function M.run_selection(start_line, end_line)
+  local ft  = vim.bo.filetype
+  local buf = vim.api.nvim_get_current_buf()
+
+  if not start_line or not end_line then
+    -- Called without a range: read the last visual marks.
+    local lcount = vim.api.nvim_buf_line_count(buf)
+    local ok_s, ms = pcall(vim.api.nvim_buf_get_mark, buf, "<")
+    local ok_e, me = pcall(vim.api.nvim_buf_get_mark, buf, ">")
+    local sl = ok_s and ms[1] or 0
+    local el = ok_e and me[1] or 0
+    if not (sl > 0 and el > 0 and sl <= lcount and el <= lcount) then
+      vim.notify("[runner] no valid visual selection", vim.log.levels.WARN)
+      return
+    end
+    start_line, end_line = sl, el
+  end
+  if start_line > end_line then start_line, end_line = end_line, start_line end
+
+  local sel = SELECTION[ft]
+  if not sel then
+    vim.notify("[runner] no selection interpreter for: " .. ft, vim.log.levels.WARN)
+    return
+  end
+  local interp, why = sel()
+  if not interp then
+    vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
+    return
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
+  local tmp = vim.fn.tempname() .. "." .. (EXT[ft] or ft)
+  local wrote, werr = write_lines(lines, tmp)
+  if not wrote then
+    vim.notify("[runner] could not write the selection to " .. tmp .. ": " .. werr, vim.log.levels.ERROR)
+    return
+  end
+
+  local cleaned = false
+  local function cleanup()
+    if cleaned then return end
+    cleaned = true
+    pcall(os.remove, tmp)
+  end
+  launch(interp .. " " .. sq(tmp), { on_exit = function() vim.schedule(cleanup) end })
+  vim.defer_fn(cleanup, CLEANUP_MS)
+end
+
+-- ── Public: pipe ──────────────────────────────────────────────────────────────
+
+---@param cmd        string
+---@param stdin_text string
+function M.pipe(cmd, stdin_text)
+  if type(cmd) ~= "string" or cmd == "" then
+    vim.notify("[runner] pipe(): cmd must be non-empty", vim.log.levels.ERROR)
+    return
+  end
+  local tmp = vim.fn.tempname()
+  local wrote, werr = write_lines(vim.split(stdin_text or "", "\n", { plain = true }), tmp)
+  if not wrote then
+    vim.notify("[runner] pipe(): could not write stdin to " .. tmp .. ": " .. werr, vim.log.levels.ERROR)
+    return
+  end
+  launch(cmd .. " < " .. sq(tmp), {
+    on_exit = function() vim.schedule(function() pcall(os.remove, tmp) end) end,
+  })
+  vim.defer_fn(function() pcall(os.remove, tmp) end, CLEANUP_MS)
+end
+
+-- ── Public: Gradle/Maven (stable entry for java.lua and kotlin.lua) ───────────
+
+--- Build command for a Gradle-named task. Delegates to core.util.jvm.
+---@return string|nil cmd
+---@return string|nil reason
+function M.gradle_or_maven(root, task, filter)
+  if not jvm then return nil, "core.util.jvm is unavailable" end
+  return jvm.command(root, task, filter)
+end
+
+-- ── Self-check ────────────────────────────────────────────────────────────────
+
+--- Internal consistency of the dispatch tables. Empty when sound.
+---@return string[] issues
+function M.validate()
+  local issues = {}
+  for ft in pairs(NEAREST_OK) do
+    if not TESTS[ft] then
+      table.insert(issues, "nearest-test filetype without a test entry: " .. ft)
+    end
+  end
+  for ft in pairs(SELECTION) do
+    if not RUNNERS[ft] then
+      table.insert(issues, "selection interpreter without a file runner: " .. ft)
+    end
+  end
+  return issues
 end
 
 return M
