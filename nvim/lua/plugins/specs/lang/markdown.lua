@@ -1,44 +1,71 @@
 -- lua/plugins/specs/lang/markdown.lua — Markdown development
 --
 
-local icons = require("core.util.icons")
+local icons  = require("core.util.icons")
+local shared = require("plugins.specs.lang.shared")
+
+local function notify(msg, level)
+  vim.notify("[markdown] " .. msg, level or vim.log.levels.WARN)
+end
 
 -- ── Word count ────────────────────────────────────────────────────────────────
-
-local M = {}
-
-function M.word_count(buf)
-  buf = buf or vim.api.nvim_get_current_buf()
-  local ft = vim.bo[buf].filetype
-  if ft ~= "markdown" and ft ~= "markdown_inline" then return nil end
-
-  local ok, wc = pcall(vim.fn.wordcount)
-  if ok and type(wc) == "table" and type(wc.words) == "number" then
-    return wc.words
-  end
-
-  -- Fallback: manual count skipping YAML frontmatter.
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+---@param lines string[]
+---@return integer
+local function count_prose_words(lines)
   local count = 0
-  local in_fm = false
+  local in_frontmatter, in_code = false, false
+  local code_char, code_len = nil, 0
 
   for idx, line in ipairs(lines) do
-    if idx == 1 and line == "---" then
-      in_fm = true
-    elseif in_fm and line == "---" then
-      in_fm = false
-    elseif not in_fm then
-      local plain = line
-        :gsub("%[(.-)%]%(.-%)", "%1")
-        :gsub("[#*_`~>]", " ")
-        :gsub("%-%-%-+", "")
-      for _ in plain:gmatch("%S+") do count = count + 1 end
+    if idx == 1 and line:match("^%-%-%-%s*$") then
+      in_frontmatter = true
+    elseif in_frontmatter then
+      if line:match("^%-%-%-%s*$") or line:match("^%.%.%.%s*$") then in_frontmatter = false end
+    elseif in_code then
+      local close = line:match("^%s*(`+)%s*$") or line:match("^%s*(~+)%s*$")
+      if close and close:sub(1, 1) == code_char and #close >= code_len then
+        in_code = false
+      end
+    else
+      local open = line:match("^%s*(```+)") or line:match("^%s*(~~~+)")
+      if open then
+        in_code, code_char, code_len = true, open:sub(1, 1), #open
+      else
+        local text = line
+          :gsub("<!%-%-.-%-%->", " ")   -- inline HTML comments
+          :gsub("`[^`]*`", " ")         -- inline code
+          :gsub("!%[(.-)%]%b()", "%1")  -- images → alt text
+          :gsub("%[(.-)%]%b()", "%1")   -- links → link text
+          :gsub("<[^>]+>", " ")         -- HTML tags
+          :gsub("https?://%S+", " ")    -- bare URLs
+        for token in text:gmatch("%S+") do
+          if token:find("[%w\128-\255]") then count = count + 1 end
+        end
+      end
     end
   end
   return count
 end
 
-M.lualine_wordcount = {
+---@param buf integer?
+---@return integer|nil
+local function word_count(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local ft = vim.bo[buf].filetype
+  if ft ~= "markdown" and ft ~= "markdown_inline" then return nil end
+  if vim.b[buf].large_file then return nil end
+
+  local tick = vim.api.nvim_buf_get_changedtick(buf)
+  local cached = vim.b[buf]._md_word_count
+  if type(cached) == "table" and cached.tick == tick then return cached.words end
+
+  local words = count_prose_words(vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+  vim.b[buf]._md_word_count = { tick = tick, words = words }
+  return words
+end
+local M = { word_count = word_count }
+
+local lualine_wordcount = {
   function()
     local n = M.word_count()
     if not n then return "" end
@@ -50,9 +77,36 @@ M.lualine_wordcount = {
   end,
 }
 
--- ── Frontmatter schema hint (yamlls) ─────────────────────────────────────────
---
-local _yamlls_configured_clients = {}
+-- ── Render toggle (markview.nvim) ─────────────────────────────────────────────
+local function toggle_render()
+  local ok, actions = pcall(require, "markview.actions")
+  if not ok then
+    notify("markview.nvim is not loaded — run :Lazy")
+    return
+  end
+  local ok_call, err = pcall(actions.toggle, vim.api.nvim_get_current_buf())
+  if not ok_call then notify("render toggle failed: " .. tostring(err), vim.log.levels.ERROR) end
+end
+
+-- ── Browser preview (peek.nvim) ───────────────────────────────────────────────
+local function toggle_preview()
+  if vim.fn.executable("deno") ~= 1 then
+    notify("deno not found — browser preview unavailable.\nInstall: sudo zypper in deno  (or: cargo install deno)")
+    return
+  end
+  local ok, peek = pcall(require, "peek")
+  if not ok then
+    notify("peek.nvim is not loaded — run :Lazy")
+    return
+  end
+  local ok_call, err = pcall(function()
+    if peek.is_open() then peek.close() else peek.open() end
+  end)
+  if not ok_call then notify("preview failed: " .. tostring(err), vim.log.levels.ERROR) end
+end
+
+-- ── Frontmatter schema hint (yamlls) ──────────────────────────────────────────
+local _yamlls_configured = {}
 
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("MarkdownFrontmatter", { clear = true }),
@@ -61,56 +115,43 @@ vim.api.nvim_create_autocmd("LspAttach", {
     if not client or client.name ~= "yamlls" then return end
     local ft = vim.bo[e.buf].filetype
     if ft ~= "markdown" and ft ~= "yaml" then return end
-
-    if _yamlls_configured_clients[client.id] then return end
-    _yamlls_configured_clients[client.id] = true
+    if _yamlls_configured[client.id] then return end
+    _yamlls_configured[client.id] = true
 
     local ok, err = pcall(function()
       client.notify("workspace/didChangeConfiguration", {
         settings = vim.tbl_deep_extend("keep", client.config.settings or {}, {
-          yaml = {
-            validate   = true,
-            hover      = true,
-            completion = true,
-            format     = { enable = false },
-          },
+          yaml = { validate = true, hover = true, completion = true, format = { enable = false } },
         }),
       })
     end)
     if not ok then
-      _yamlls_configured_clients[client.id] = nil
-      vim.notify(
-        "[markdown] yamlls didChangeConfiguration failed: " .. tostring(err),
-        vim.log.levels.DEBUG
-      )
+      _yamlls_configured[client.id] = nil
+      notify("yamlls configuration update failed: " .. tostring(err), vim.log.levels.DEBUG)
     end
   end,
-  desc = "Enhance yamlls for Markdown frontmatter buffers (once per client)",
+  desc = "Enhance yamlls for markdown frontmatter buffers (once per client)",
 })
 
 return {
 
-  -- ── Word count in the statusline (was defined but never wired) ───────────────
+  -- ── Word count in the statusline ───────────────────────────────────────────
   {
     "nvim-lualine/lualine.nvim",
     optional = true,
     opts = function(_, opts)
       opts.sections = opts.sections or {}
       opts.sections.lualine_x = opts.sections.lualine_x or {}
-      table.insert(opts.sections.lualine_x, 1, M.lualine_wordcount)
+      table.insert(opts.sections.lualine_x, 1, lualine_wordcount)
     end,
   },
 
-  -- ── markview.nvim — inline buffer renderer ────────────────────────────────
-  --
+  -- ── markview.nvim — inline renderer ────────────────────────────────────────
   {
     "OXY2DEV/markview.nvim",
     ft           = { "markdown", "markdown_inline", "quarto", "rmd" },
     event        = "VeryLazy",
-    dependencies = {
-      "nvim-treesitter/nvim-treesitter",
-      "nvim-tree/nvim-web-devicons",
-    },
+    dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-tree/nvim-web-devicons" },
     -- markview >= 25 nests options per language (preview / markdown / markdown_inline).
     opts = {
       preview = { modes = { "n", "no" }, hybrid_modes = { "n" } },
@@ -136,79 +177,46 @@ return {
         emails       = { enable = true },
       },
     },
-
     config = function(_, opts)
       local ok, err = pcall(function() require("markview").setup(opts) end)
       if not ok then
-        vim.notify(
-          "[markdown] markview.nvim setup failed: " .. tostring(err)
-          .. "\nRun :Lazy update markview.nvim",
-          vim.log.levels.WARN
-        )
+        notify("markview.nvim setup failed: " .. tostring(err) .. "\nRun :Lazy update markview.nvim")
       end
     end,
-
     keys = {
-      {
-        "<leader>mv",
-        function() pcall(function() require("markview").toggle() end) end,
-        desc = "Markdown Toggle Render (markview)",
-        ft   = "markdown",
-      },
+      { "<leader>mv", toggle_render, desc = "Markdown toggle render (markview)", ft = "markdown" },
     },
   },
 
-  -- ── peek.nvim — browser preview ───────────────────────────────────────────
-  --
+  -- ── peek.nvim — browser preview ────────────────────────────────────────────
   {
     "toppair/peek.nvim",
     ft    = { "markdown" },
     build = "deno task --quiet build:fast",
-
     config = function()
-      if vim.fn.executable("deno") ~= 1 then
-        vim.notify(
-          "[markdown] deno not found — browser preview unavailable.\n"
-          .. "Install: sudo zypper in deno  (or: cargo install deno)",
-          vim.log.levels.WARN
-        )
-        return
-      end
-
+      -- toggle_preview() explains a missing deno when the key is pressed.
+      if vim.fn.executable("deno") ~= 1 then return end
       local ok, peek = pcall(require, "peek")
       if not ok then return end
-      pcall(peek.setup, {
+      local ok_setup, err = pcall(peek.setup, {
         auto_load        = false,
         close_on_bdelete = true,
         syntax           = true,
         theme            = "dark",
         update_on_change = true,
-        app              = "browser",
+        app              = "browser",   -- opened with the default browser (see peek's main.ts)
         filetype         = { "markdown" },
         throttle_at      = 200000,
         throttle_time    = "auto",
       })
+      if not ok_setup then notify("peek.nvim setup failed: " .. tostring(err)) end
     end,
-
     keys = {
-      {
-        "<leader>mp",
-        function()
-          local ok, peek = pcall(require, "peek")
-          if not ok then return end
-          if peek.is_open() then
-            pcall(peek.close)
-          else
-            pcall(peek.open)
-          end
-        end,
-        desc = "Markdown Toggle Browser Preview (peek)",
-        ft   = "markdown",
-      },
+      { "<leader>mp", toggle_preview, desc = "Markdown toggle browser preview (peek)", ft = "markdown" },
     },
   },
 
-  -- ── vim-markdown ──────────────────────────────────────────────────────────
+  -- ── vim-markdown (syntax + frontmatter; folding is handled by treesitter) ──
   {
     "preservim/vim-markdown",
     ft   = { "markdown" },
@@ -219,17 +227,17 @@ return {
     end,
   },
 
-  -- ── Table mode ────────────────────────────────────────────────────────────
+  -- ── Table mode ─────────────────────────────────────────────────────────────
   {
     "dhruvasagar/vim-table-mode",
     ft   = { "markdown" },
     cmd  = "TableModeToggle",
     keys = {
-      { "<leader>tm", "<cmd>TableModeToggle<CR>", desc = "Table Mode Toggle" },
+      { "<leader>tm", "<cmd>TableModeToggle<CR>", desc = "Table mode toggle" },
     },
   },
 
-  -- ── Link checker + word count keymaps ─────────────────────────────────────
+  -- ── Link checker and word count keymaps ────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     ft   = "markdown",
@@ -238,18 +246,14 @@ return {
         "<leader>ml",
         function()
           if vim.fn.executable("markdown-link-check") ~= 1 then
-            vim.notify(
-              "[markdown] markdown-link-check not found.\n"
-              .. "Install: npm i -g markdown-link-check",
-              vim.log.levels.WARN
-            )
+            notify("markdown-link-check not found.\nInstall: npm i -g markdown-link-check")
             return
           end
           require("core.util.term").float(
             "markdown-link-check " .. vim.fn.shellescape(vim.fn.expand("%:p"))
           )
         end,
-        desc = "Markdown Check Links",
+        desc = "Markdown check links",
         ft   = "markdown",
       },
       {
@@ -257,13 +261,12 @@ return {
         function()
           local n = M.word_count()
           if n then
-            vim.notify(
-              string.format("[markdown] Word count: %d", n),
-              vim.log.levels.INFO
-            )
+            notify(string.format("Word count: %d", n), vim.log.levels.INFO)
+          else
+            notify("Word count unavailable for this buffer (large file or not markdown)")
           end
         end,
-        desc = "Markdown Word Count",
+        desc = "Markdown word count",
         ft   = "markdown",
       },
     },
