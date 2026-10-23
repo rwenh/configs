@@ -3,81 +3,73 @@
 
 local shared = require("plugins.specs.lang.shared")
 
-local _module_type_cache = {}
+-- ── Module system (ESM / CJS) ─────────────────────────────────────────────────
+local MODULE_TTL = 30
+local _module_cache = {}
 
-local function detect_module_type()
-  local ok_path, path_util = pcall(require, "core.util.path")
-  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-  if not root or root == "" then return nil end
-
-  if _module_type_cache[root] ~= nil then
-    return _module_type_cache[root] or nil   -- return nil for false sentinel
-  end
-
-  local pkg_file = root .. "/package.json"
-  if vim.fn.filereadable(pkg_file) ~= 1 then
-    _module_type_cache[root] = false   -- sentinel: no package.json
-    return nil
-  end
-
-  local ok_read, lines = pcall(vim.fn.readfile, pkg_file)
-  if not ok_read then
-    _module_type_cache[root] = false
-    return nil
-  end
-
-  local content = table.concat(lines, "\n")
-  local ok_json, pkg = pcall(vim.json.decode, content)
-  if not ok_json or type(pkg) ~= "table" then
-    _module_type_cache[root] = false
-    return nil
-  end
-
-  local t = (pkg["type"] == "module") and "esm" or "cjs"
-  _module_type_cache[root] = t
-  return t
+local function read_package_type(root)
+  local pkg = root .. "/package.json"
+  if vim.fn.filereadable(pkg) ~= 1 then return nil end
+  local ok_read, lines = pcall(vim.fn.readfile, pkg)
+  if not ok_read then return nil end
+  local ok_json, obj = pcall(vim.json.decode, table.concat(lines, "\n"))
+  if not ok_json or type(obj) ~= "table" then return nil end
+  return obj.type == "module" and "esm" or "cjs"
 end
 
-local function notify_module_type()
-  local t = detect_module_type()
-  if not t then
-    vim.notify("[js] No package.json found — module type unknown", vim.log.levels.INFO)
-  else
-    local label = t == "esm" and "ES Modules (type: \"module\")" or "CommonJS (default)"
-    vim.notify("[js] Module system: " .. label, vim.log.levels.INFO)
-  end
+---@param root string?
+---@return "esm"|"cjs"|nil  nil when there is no package.json
+local function module_kind(root)
+  root = root or shared.project_root()
+  local now = os.time()
+  local cached = _module_cache[root]
+  if cached and (now - cached.at) < MODULE_TTL then return cached.kind or nil end
+  local kind = read_package_type(root)
+  _module_cache[root] = { at = now, kind = kind or false }
+  return kind
 end
 
-vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("JsModuleTypeCache", { clear = true }),
-  callback = function() _module_type_cache = {} end,
-})
+local function is_esm() return module_kind() == "esm" end
+local function is_cjs() return module_kind() ~= "esm" end
 
+-- ── Node version (async, once per session) ────────────────────────────────────
 local _node_checked = false
+
 local function check_node_version()
   if _node_checked then return end
   _node_checked = true
   if vim.fn.executable("node") ~= 1 then return end
-  local out = vim.trim(vim.fn.system("node --version 2>/dev/null"))
-  if out == "" then return end
-  local major = tonumber(out:match("v(%d+)"))
-  if major and major < 18 then
-    vim.notify(
-      "[js] Node " .. out .. " detected — version 18+ recommended for LSP servers.\n"
-      .. "Upgrade: https://nodejs.org",
-      vim.log.levels.WARN
-    )
-  end
+  require("core.util.exec").version_async("node", { "node", "--version" }, function(ver)
+    local major = ver and tonumber(ver:match("^(%d+)"))
+    if major and major < 18 then
+      vim.notify(
+        string.format(
+          "[js] Node %s detected — version 18+ recommended for LSP servers.\nUpgrade: https://nodejs.org",
+          ver
+        ),
+        vim.log.levels.WARN
+      )
+    end
+  end)
 end
 
--- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+vim.api.nvim_create_autocmd("FileType", {
+  pattern  = shared.JS_FT,
+  once     = true,
+  group    = vim.api.nvim_create_augroup("JsEnvCheck", { clear = true }),
+  callback = function() vim.schedule(check_node_version) end,
+})
+
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ────────
 require("core.util.snippets").register("javascript", function(s, t, i, _, ref)
-  local module_type = detect_module_type()
-  local use_esm     = (module_type == "esm")
   return {
-    s("imp", use_esm and {
+    -- Two snippets share the trigger; LuaSnip expands whichever condition holds at the cursor.
+    s({ trig = "imp", name = "import (ESM)", dscr = "ESM default import",
+        condition = is_esm, show_condition = is_esm }, {
       t("import "), i(1, "name"), t(" from '"), i(2, "module"), t("'"),
-    } or {
+    }),
+    s({ trig = "imp", name = "require (CJS)", dscr = "CommonJS require",
+        condition = is_cjs, show_condition = is_cjs }, {
       t("const "), i(1, "name"), t(" = require('"), i(2, "module"), t("')"),
     }),
     s("afn", {
@@ -101,14 +93,30 @@ require("core.util.snippets").register("javascript", function(s, t, i, _, ref)
   }
 end)
 
--- File scope, NOT a toggleterm `init` (lazy keeps one `init` per plugin; the last
--- lang spec's won, so this check never ran).
-vim.api.nvim_create_autocmd("FileType", {
-  pattern  = shared.JS_FT,
-  once     = true,
-  group    = vim.api.nvim_create_augroup("JsEnvCheck", { clear = true }),
-  callback = function() vim.schedule(check_node_version) end,
-})
+-- ── Module-type notification ──────────────────────────────────────────────────
+local function notify_module_type()
+  local kind = module_kind()
+  local label = ({
+    esm = 'ES Modules (type: "module")',
+    cjs = "CommonJS (default)",
+  })[kind] or "unknown (no package.json found)"
+  vim.notify("[js] Module system: " .. label, vim.log.levels.INFO)
+end
+
+-- ── package-info.nvim ─────────────────────────────────────────────────────────
+local function package_info(fn_name)
+  return function()
+    local ok, pi = pcall(require, "package-info")
+    if not ok then
+      vim.notify("[js] package-info.nvim is not loaded — run :Lazy", vim.log.levels.WARN)
+      return
+    end
+    local ok_call, err = pcall(pi[fn_name])
+    if not ok_call then
+      vim.notify("[js] package-info " .. fn_name .. " failed: " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end
+end
 
 return {
   {
@@ -118,19 +126,24 @@ return {
     cond  = function()
       return not vim.fn.expand("%:p"):find("node_modules", 1, true)
     end,
-    opts  = { highlights = { up_to_date = { fg = "#3C4048" }, outdated = { fg = "#d19a66" } } },
+    opts = {
+      highlights = {
+        up_to_date = { fg = "#3C4048" },
+        outdated   = { fg = "#d19a66" },
+      },
+    },
     config = function(_, opts)
       local ok, err = pcall(function() require("package-info").setup(opts) end)
       if not ok then
-        vim.notify("[javascript] package-info setup failed: " .. tostring(err), vim.log.levels.WARN)
+        vim.notify("[js] package-info setup failed: " .. tostring(err), vim.log.levels.WARN)
       end
     end,
     keys = {
-      { "<leader>jps", function() pcall(function() require("package-info").show()           end) end, desc = "Show package versions" },
-      { "<leader>jpu", function() pcall(function() require("package-info").update()         end) end, desc = "Update package"        },
-      { "<leader>jpd", function() pcall(function() require("package-info").delete()         end) end, desc = "Delete package"        },
-      { "<leader>jpi", function() pcall(function() require("package-info").install()        end) end, desc = "Install package"       },
-      { "<leader>jpc", function() pcall(function() require("package-info").change_version() end) end, desc = "Change version"        },
+      { "<leader>jps", package_info("show"),            desc = "Show package versions" },
+      { "<leader>jpu", package_info("update"),          desc = "Update package"        },
+      { "<leader>jpd", package_info("delete"),          desc = "Delete package"        },
+      { "<leader>jpi", package_info("install"),         desc = "Install package"       },
+      { "<leader>jpc", package_info("change_version"),  desc = "Change version"        },
     },
   },
 
@@ -138,10 +151,9 @@ return {
     "akinsho/toggleterm.nvim",
     ft = shared.JS_FT,
     keys = {
-      { "<leader>jsm", function() notify_module_type() end, desc = "JS Show module type (ESM / CJS)", ft = shared.JS_FT },
+      { "<leader>jsm", notify_module_type, desc = "JS Show module type (ESM / CJS)", ft = shared.JS_FT },
     },
   },
-
 
   shared.treesitter({ "javascript", "jsdoc" }),
 }
