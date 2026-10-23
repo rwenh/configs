@@ -1,150 +1,58 @@
--- lua/plugins/specs/lang/css.lua — CSS development
+-- lua/plugins/specs/lang/css.lua — CSS, CSS modules and Tailwind
 --
 
 local shared = require("plugins.specs.lang.shared")
 
--- ── Stylelint config detection ────────────────────────────────────────────────
-local function has_stylelint_config()
-  local ok_path, path = pcall(require, "core.util.path")
-  local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-  if not root or root == "" then return false end
-  local candidates = { ".stylelintrc", ".stylelintrc.json", ".stylelintrc.js",
-                       ".stylelintrc.cjs", ".stylelintrc.yaml", ".stylelintrc.yml",
-                       "stylelint.config.js", "stylelint.config.cjs" }
-  for _, f in ipairs(candidates) do
-    if vim.fn.filereadable(root .. "/" .. f) == 1 then return true end
-  end
-  -- Also check package.json for a "stylelint" key.
-  local pkg = root .. "/package.json"
-  if vim.fn.filereadable(pkg) == 1 then
-    local ok, lines = pcall(vim.fn.readfile, pkg)
-    if ok then
-      local content = table.concat(lines, "\n")
-      local ok_j, obj = pcall(vim.json.decode, content)
-      if ok_j and type(obj) == "table" and obj["stylelint"] then return true end
-    end
-  end
-  return false
-end
-
-local _stylelint_registered = false
-
-local function try_register_stylelint()
-  if _stylelint_registered then return end
-  if vim.fn.executable("stylelint") ~= 1 then return end
-  if not has_stylelint_config() then
-    vim.notify(
-      "[css] stylelint found but no config detected — linter skipped.\n"
-      .. "Create .stylelintrc.json to enable it.",
-      vim.log.levels.DEBUG
-    )
-    return
-  end
-  local ok, lint = pcall(require, "lint")
-  if not ok then return end
-  for _, ft in ipairs({ "css", "scss", "less" }) do
-    lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
-    if not vim.tbl_contains(lint.linters_by_ft[ft], "stylelint") then
-      table.insert(lint.linters_by_ft[ft], "stylelint")
-    end
-  end
-  _stylelint_registered = true
-  vim.notify("[css] stylelint registered (config detected)", vim.log.levels.DEBUG)
-end
-
-vim.api.nvim_create_autocmd("FileType", {
-  pattern  = { "css", "scss", "less" },
-  group    = vim.api.nvim_create_augroup("StylelintConditional", { clear = true }),
-  callback = try_register_stylelint,
-  desc = "Conditionally register stylelint when config is present (re-checked on every relevant buffer, not just the first)",
+-- stylelint lints only projects that configure it.
+shared.gate_linter({ "css", "scss", "less" }, "stylelint", {
+  files = {
+    ".stylelintrc", ".stylelintrc.json", ".stylelintrc.js", ".stylelintrc.cjs",
+    ".stylelintrc.yaml", ".stylelintrc.yml", "stylelint.config.js", "stylelint.config.cjs",
+  },
+  pkg_key = "stylelint",
+  bin     = "stylelint",
 })
 
-vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("StylelintRecheck", { clear = true }),
-  callback = function()
-    if _stylelint_registered then return end
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf) then
-        local ft = vim.bo[buf].filetype
-        if vim.tbl_contains({ "css", "scss", "less" }, ft) then
-          try_register_stylelint()
-          return
-        end
-      end
-    end
-  end,
-  desc = "Re-check stylelint config when the working directory changes",
-})
+-- ── CSS modules LSP ───────────────────────────────────────────────────────────
+local _cssmodules_enabled = false
+local _cssmodules_missing_reported = false
 
--- ── cssmodules LSP setup helper ───────────────────────────────────────────────
---
-local _cssmodules_setup_done = false
-
-local function setup_cssmodules_lsp()
+local function enable_cssmodules_lsp()
+  if _cssmodules_enabled then return end
   if vim.fn.executable("cssmodules-language-server") ~= 1 then
-    if not _cssmodules_setup_done then
-      vim.schedule(function()
-        vim.notify(
-          "[css] cssmodules-language-server not found — CSS module completion unavailable.\n"
-          .. "Install: npm i -g cssmodules-language-server",
-          vim.log.levels.DEBUG
-        )
-      end)
-      _cssmodules_setup_done = true
+    if not _cssmodules_missing_reported then
+      _cssmodules_missing_reported = true
+      vim.notify(
+        "[css] cssmodules-language-server not found — CSS module completion unavailable.\n"
+        .. "Install: npm i -g cssmodules-language-server",
+        vim.log.levels.DEBUG
+      )
     end
     return
   end
-
-  local cfg = {
+  vim.lsp.config("cssmodules_ls", {
     init_options = { isCSSModules = true },
-    filetypes    = { "css","scss","less","typescriptreact","javascriptreact" },
-  }
-
-  if vim.fn.has("nvim-0.11") == 1 then
-    pcall(function()
-      vim.lsp.config("cssmodules_ls", cfg)
-      vim.lsp.enable("cssmodules_ls")
-    end)
-  else
-    local ok, lspconfig = pcall(require, "lspconfig")
-    if ok then pcall(function() lspconfig.cssmodules_ls.setup(cfg) end) end
-  end
-
-  _cssmodules_setup_done = true
+    filetypes    = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
+  })
+  vim.lsp.enable("cssmodules_ls")
+  _cssmodules_enabled = true
 end
 
--- ── cssmodules LSP + CSS-variable jump ───────────────────────────────────────
--- File scope, NOT spec `init`s: lazy keeps one `init` per plugin, so these (and
--- the html/cpp ones) overwrote each other and only the last survived.
 vim.api.nvim_create_autocmd("BufReadPost", {
   pattern  = { "*.css", "*.scss", "*.less", "*.tsx", "*.jsx" },
   once     = true,
   group    = vim.api.nvim_create_augroup("CssModulesLspInit", { clear = true }),
-  callback = function() vim.schedule(setup_cssmodules_lsp) end,
-  desc     = "Setup cssmodules LSP on first CSS/TSX/JSX buffer",
+  callback = function() vim.schedule(enable_cssmodules_lsp) end,
+  desc     = "Enable the cssmodules LSP on the first CSS/TSX/JSX buffer",
 })
 
-vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("CssModulesLspDir", { clear = true }),
-  callback = function()
-    _cssmodules_setup_done = false
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf)
-      and vim.tbl_contains({ "css","scss","less","typescriptreact","javascriptreact" }, vim.bo[buf].filetype) then
-        vim.schedule(setup_cssmodules_lsp)
-        return
-      end
-    end
-  end,
-  desc = "Re-setup cssmodules LSP when working directory changes",
-})
-
+-- ── CSS custom-property jump ──────────────────────────────────────────────────
 vim.api.nvim_create_autocmd("LspAttach", {
   group    = vim.api.nvim_create_augroup("CssVarJump", { clear = true }),
   callback = function(e)
     local client = vim.lsp.get_client_by_id(e.data.client_id)
     if not client or client.name ~= "cssls" then return end
-    if not vim.tbl_contains({ "css","scss","less" }, vim.bo[e.buf].filetype) then return end
+    if not vim.tbl_contains({ "css", "scss", "less" }, vim.bo[e.buf].filetype) then return end
 
     vim.keymap.set("n", "<leader>cv", function()
       local word = vim.fn.expand("<cword>")
@@ -153,32 +61,34 @@ vim.api.nvim_create_autocmd("LspAttach", {
         return
       end
       local ok, tb = pcall(require, "telescope.builtin")
-      if ok then
-        local ok_path, path = pcall(require, "core.util.path")
-        local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-        pcall(tb.live_grep, {
-          default_text = word .. ":",
-          cwd          = root,
-          prompt_title = "CSS variable definition: " .. word,
-        })
-      else
+      if not ok then
         vim.lsp.buf.definition()
+        return
       end
+      pcall(tb.live_grep, {
+        default_text = word .. ":",
+        cwd          = shared.project_root(),
+        prompt_title = "CSS variable definition: " .. word,
+      })
     end, { buffer = e.buf, desc = "CSS jump to variable definition" })
   end,
-  desc = "Register CSS variable jump keymap on cssls attach",
+  desc = "Register the CSS variable jump keymap when cssls attaches",
 })
 
+-- ── Tailwind ──────────────────────────────────────────────────────────────────
+local TAILWIND_CONFIGS = {
+  "tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs",
+  "tailwind.config.mjs", "tailwind.config.cts", "tailwind.config.mts",
+}
+
 return {
-  -- ── Tailwind CSS ───────────────────────────────────────────────────────────
-  --   https://github.com/laytan/tailwind-tools.nvim
-  --
   {
-    "laytan/tailwind-tools.nvim",
+    "luckasRanarison/tailwind-tools.nvim",
     cond = function()
-      return vim.fn.findfile("tailwind.config.js",  ".;") ~= ""
-          or vim.fn.findfile("tailwind.config.ts",  ".;") ~= ""
-          or vim.fn.findfile("tailwind.config.cjs", ".;") ~= ""
+      for _, name in ipairs(TAILWIND_CONFIGS) do
+        if vim.fn.findfile(name, ".;") ~= "" then return true end
+      end
+      return false
     end,
     ft           = shared.WEB_FT,
     dependencies = { "nvim-treesitter/nvim-treesitter" },
@@ -188,17 +98,14 @@ return {
       server         = { override = false },
     },
     config = function(_, opts)
-      local ok, err = pcall(function() require("tailwind-tools").setup(opts) end)
+      local ok, tt = pcall(require, "tailwind-tools")
       if not ok then
-        vim.notify(
-          "[css] tailwind-tools.nvim failed to load: " .. tostring(err) .. "\n"
-          .. "Possible causes:\n"
-          .. "  1. The plugin repository name is incorrect.\n"
-          .. "     Expected: https://github.com/laytan/tailwind-tools.nvim\n"
-          .. "  2. The plugin has not been installed. Run: :Lazy install\n"
-          .. "  3. The plugin has been renamed. Update the spec name in css.lua.",
-          vim.log.levels.WARN
-        )
+        vim.notify("[css] tailwind-tools.nvim did not load — run :Lazy install", vim.log.levels.WARN)
+        return
+      end
+      local ok_setup, err = pcall(tt.setup, opts)
+      if not ok_setup then
+        vim.notify("[css] tailwind-tools.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
       end
     end,
   },
