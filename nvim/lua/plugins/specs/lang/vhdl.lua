@@ -2,28 +2,59 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
+local exec   = require("core.util.exec")
+local path   = require("core.util.path")
+local vhdl   = require("core.util.vhdl")
 
--- ── vhdl_ls config file detection ─────────────────────────────────────────────
+local function term() return require("core.util.term") end
+
+local function notify(msg, level)
+  vim.notify("[vhdl] " .. msg, level or vim.log.levels.INFO)
+end
+
+---@param start string?  directory to start from (default: the buffer's directory)
+---@return string        project root, or the working directory when no marker is found
+local function project_root(start)
+  return path.find_root(start) or vim.fn.getcwd()
+end
+
+---@return string|nil  absolute path of the current buffer, or nil (with a warning) when unnamed
+local function current_file()
+  local file = vim.fn.expand("%:p")
+  if file == "" then
+    notify("this buffer has no file on disk", vim.log.levels.WARN)
+    return nil
+  end
+  return file
+end
+
+---@return string[]
+local function buffer_lines()
+  return vim.api.nvim_buf_get_lines(0, 0, -1, false)
+end
+
+-- ── vhdl_ls.toml: one notice per project root per session ─────────────────────
+local _noticed = {}
+
 vim.api.nvim_create_autocmd("FileType", {
   pattern  = "vhdl",
-  once     = true,
   group    = vim.api.nvim_create_augroup("VhdlLsConfigCheck", { clear = true }),
-  callback = function()
-    local ok_path, path = pcall(require, "core.util.path")
-    local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-    if root and vim.fn.filereadable(root .. "/vhdl_ls.toml") ~= 1 then
-      vim.notify(
-        "[vhdl] No vhdl_ls.toml found at project root.\n"
-        .. "Library analysis will be limited. Create vhdl_ls.toml — see:\n"
-        .. "https://github.com/VHDL-LS/rust_hdl#configuration",
-        vim.log.levels.DEBUG
+  callback = function(e)
+    local name = vim.api.nvim_buf_get_name(e.buf)
+    local root = project_root(name ~= "" and vim.fn.fnamemodify(name, ":h") or nil)
+    if _noticed[root] then return end
+    _noticed[root] = true
+    if vim.fn.filereadable(root .. "/vhdl_ls.toml") ~= 1 then
+      notify(
+        "no vhdl_ls.toml in " .. root .. ": vhdl_ls will analyse without library paths. "
+          .. "See https://github.com/VHDL-LS/rust_hdl#configuration"
       )
     end
   end,
-  desc = "Check for vhdl_ls.toml on first VHDL buffer open",
+  desc = "Notice when a VHDL project has no vhdl_ls.toml (once per root)",
 })
 
--- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──────────
 require("core.util.snippets").register("vhdl", function(s, t, i, _, ref)
   return {
     s("entity", {
@@ -53,130 +84,148 @@ require("core.util.snippets").register("vhdl", function(s, t, i, _, ref)
   }
 end)
 
+-- ── ghdl ──────────────────────────────────────────────────────────────────────
+local function ghdl_ready()
+  return exec.require_bin("ghdl", "sudo zypper in ghdl")
+end
+
+---@param cmd string  shell command, run from the project root
+local function ghdl_in_root(cmd)
+  term().float(term().cd_prefix(project_root()) .. cmd)
+end
+
+---@return boolean  false when the save failed and the command must not run
+local function save_for_run()
+  if not (vim.bo.modified and vim.g.runner_autosave ~= false) then return true end
+  local ok, err = pcall(vim.cmd, "silent write")
+  if not ok then notify("could not save before running: " .. tostring(err), vim.log.levels.WARN) end
+  return ok
+end
+
+---@return string|nil  nil on cancel, or when the answer is not a VHDL identifier
+local function ask_entity(prompt)
+  local default = vhdl.parse_entity(buffer_lines()) or ""
+  local name = vim.trim(vim.fn.input(prompt, default))
+  if name == "" then return nil end
+  if not vhdl.is_identifier(name) then
+    notify(("'%s' is not a valid VHDL identifier"):format(name), vim.log.levels.WARN)
+    return nil
+  end
+  return name
+end
+
+local function analyse()
+  local file = current_file()
+  if not file or not ghdl_ready() or not save_for_run() then return end
+  ghdl_in_root("ghdl -a " .. vim.fn.shellescape(file))
+end
+
+local function elaborate()
+  if not ghdl_ready() then return end
+  local entity = ask_entity("Entity to elaborate: ")
+  if entity then ghdl_in_root("ghdl -e " .. vim.fn.shellescape(entity)) end
+end
+
+local function simulate()
+  local file = current_file()
+  if not file or not ghdl_ready() or not save_for_run() then return end
+  local entity = ask_entity("Entity to simulate: ")
+  if not entity then return end
+  local vcd = project_root() .. "/" .. entity .. "_wave.vcd"
+  local cmd = vhdl.run_chain(file, entity, vcd)
+  if vim.fn.executable("gtkwave") == 1 then
+    cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
+  else
+    cmd = cmd .. " && echo " .. vim.fn.shellescape("VCD written to " .. vcd .. " (gtkwave is not installed)")
+  end
+  ghdl_in_root(cmd)
+end
+
+local function syntax_check()
+  local file = current_file()
+  if not file or not ghdl_ready() or not save_for_run() then return end
+  ghdl_in_root("ghdl -s " .. vim.fn.shellescape(file))
+end
+
+-- ── Testbench skeleton ────────────────────────────────────────────────────────
+local function write_testbench()
+  local file = current_file()
+  if not file then return end
+  local name, ports, generics, err = vhdl.parse_entity(buffer_lines())
+  if err then
+    notify(err .. "; fix the declaration first", vim.log.levels.WARN)
+    return
+  end
+  if not name then
+    notify("no entity declaration found in this buffer", vim.log.levels.WARN)
+    return
+  end
+
+  local out = vim.fn.fnamemodify(file, ":h") .. "/tb_" .. name .. ".vhd"
+  local lines, unresolved = vhdl.testbench(name, ports, generics)
+
+  local function write()
+    -- writefile raises on failure (E482) and returns -1 on others; check both.
+    local ok, rc = pcall(vim.fn.writefile, lines, out)
+    if not ok then
+      notify("could not write " .. out .. ": " .. tostring(rc), vim.log.levels.ERROR)
+      return
+    end
+    if rc ~= 0 then
+      notify("could not write " .. out .. " (writefile returned " .. tostring(rc) .. ")", vim.log.levels.ERROR)
+      return
+    end
+    if #unresolved > 0 then
+      notify(("generic(s) %s have no default and an unknown type; replace <value> before analysing")
+        :format(table.concat(unresolved, ", ")), vim.log.levels.WARN)
+    end
+    vim.cmd("edit " .. vim.fn.fnameescape(out))
+  end
+
+  if vim.fn.filereadable(out) == 1 then
+    vim.ui.input({ prompt = out .. " exists. Overwrite? [y/N]: " }, function(answer)
+      if answer == "y" or answer == "Y" then
+        write()
+      else
+        notify("testbench generation cancelled")
+      end
+    end)
+  else
+    write()
+  end
+end
+
+-- ── Formatter: vsg ────────────────────────────────────────────────────────────
+local function vsg_enabled()
+  return not vim.g.disable_vsg_format and vim.fn.executable("vsg") == 1
+end
+
 return {
-  -- ── Conform: vsg formatter ─────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters     = opts.formatters or {}
-      -- vsg: `--output` is not a flag and `--stdin --fix` crashes (it tries to os.stat("stdin")).
-      -- The working mode is in-place `--fix -f FILE`; conform runs it on a temp copy and reads it back.
+      opts.formatters = opts.formatters or {}
       opts.formatters.vsg = {
-        command = "vsg",
-        args    = { "--fix", "-f", "$FILENAME" },
-        stdin   = false,
-        exit_codes = { 0, 1 },   -- 1 = "unfixable violations remain", not a crash
-        condition = function()
-          if vim.g.disable_vsg_format then return false end
-          if vim.fn.executable("vsg") ~= 1 then
-            vim.notify(
-              "[vhdl] vsg not found — format-on-save disabled.\nInstall: pip install vsg",
-              vim.log.levels.DEBUG
-            )
-            return false
-          end
-          return true
-        end,
+        command    = "vsg",
+        args       = { "--fix", "-f", "$FILENAME" },
+        stdin      = false,
+        exit_codes = { 0, 1 },
+        condition  = vsg_enabled,
       }
     end,
   },
 
   shared.treesitter({ "vhdl" }),
 
-  -- ── GHDL + testbench keymaps ───────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
     keys = {
-      { "<leader>vha",
-        function()
-          local exec = require("core.util.exec")
-          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-          require("core.util.term").float(
-            "ghdl -a " .. vim.fn.shellescape(vim.fn.expand("%:p"))
-          )
-        end,
-        desc = "GHDL Analyze current file", ft = "vhdl" },
-
-      { "<leader>vhe",
-        function()
-          local exec = require("core.util.exec")
-          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-          local entity = vim.fn.input("Entity name to elaborate: ")
-          if entity == "" then return end
-          require("core.util.term").float("ghdl -e " .. vim.fn.shellescape(entity))
-        end,
-        desc = "GHDL Elaborate (prompt entity)", ft = "vhdl" },
-
-      { "<leader>vhr",
-        function()
-          local exec = require("core.util.exec")
-          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-
-          local file   = vim.fn.expand("%:p")
-          local entity = vim.fn.input("Entity name to simulate: ")
-          if entity == "" then return end
-
-          local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
-
-          -- Chain: analyze current file → elaborate entity → run + VCD output
-          local cmd = string.format(
-            "ghdl -a %s && ghdl -e %s && ghdl -r %s --vcd=%s",
-            vim.fn.shellescape(file),
-            vim.fn.shellescape(entity),
-            vim.fn.shellescape(entity),
-            vim.fn.shellescape(vcd)
-          )
-
-          if vim.fn.executable("gtkwave") == 1 then
-            cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
-          else
-            cmd = cmd
-              .. string.format(" && echo 'VCD written to %s (gtkwave not found)'", vcd)
-          end
-
-          require("core.util.term").float(cmd)
-        end,
-        desc = "GHDL Analyze + Elaborate + Run + View (gtkwave)", ft = "vhdl" },
-
-      { "<leader>vhc",
-        function()
-          local exec = require("core.util.exec")
-          if not exec.require_bin("ghdl", "sudo zypper in ghdl") then return end
-          require("core.util.term").float(
-            "ghdl -s " .. vim.fn.shellescape(vim.fn.expand("%:p"))
-          )
-        end,
-        desc = "GHDL Syntax Check", ft = "vhdl" },
-
-      -- ── Testbench generator ───────────────────────────────────────────────
-      {
-        "<leader>vht",
-        function()
-          local file = vim.fn.expand("%:p")
-          local ok_r, lines = pcall(vim.fn.readfile, file)
-          if not ok_r then
-            vim.notify("[vhdl] Cannot read current file", vim.log.levels.ERROR)
-            return
-          end
-
-          local vhdl = require("core.util.vhdl")
-          local entity_name, ports, generics = vhdl.parse_entity(lines)
-          if not entity_name then
-            vim.notify("[vhdl] No entity declaration found", vim.log.levels.WARN)
-            return
-          end
-
-          local tb_file = vim.fn.fnamemodify(file, ":h") .. "/tb_" .. entity_name .. ".vhd"
-          local ok_w = pcall(vim.fn.writefile, vhdl.testbench(entity_name, ports, generics), tb_file)
-          if ok_w then
-            vim.notify("[vhdl] Testbench created: " .. tb_file, vim.log.levels.INFO)
-            vim.cmd("edit " .. vim.fn.fnameescape(tb_file))
-          else
-            vim.notify("[vhdl] Failed to write testbench file", vim.log.levels.ERROR)
-          end
-        end,
-        desc = "VHDL Generate testbench skeleton", ft = "vhdl" },
+      { "<leader>vha", analyse,         desc = "GHDL Analyze current file",             ft = "vhdl" },
+      { "<leader>vhe", elaborate,       desc = "GHDL Elaborate (prompt entity)",        ft = "vhdl" },
+      { "<leader>vhr", simulate,        desc = "GHDL Analyze + Elaborate + Run + View", ft = "vhdl" },
+      { "<leader>vhc", syntax_check,    desc = "GHDL Syntax Check",                     ft = "vhdl" },
+      { "<leader>vht", write_testbench, desc = "VHDL Generate testbench skeleton",      ft = "vhdl" },
     },
   },
 }
