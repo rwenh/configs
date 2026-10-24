@@ -2,67 +2,100 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
+local exec   = require("core.util.exec")
+local path   = require("core.util.path")
 
--- ── Fortran filetype registration ──────────────────────────────────────────
---
-pcall(function()
-  vim.filetype.add({
-    extension = {
-      f90  = "fortran", f95  = "fortran", f03  = "fortran",
-      f08  = "fortran", f18  = "fortran",
-      F90  = "fortran", F95  = "fortran", F03  = "fortran",
-      ["for"] = "fortran",
-      fpp  = "fortran",
-    },
-  })
-end)
+local function term() return require("core.util.term") end
 
--- ── fprettify config detection ─────────────────────────────────────────────
-
-local _fprettify_args_cache = {}
-
-local function fprettify_args()
-  local ok_path, path_util = pcall(require, "core.util.path")
-  local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-
-  -- Cache per project root to avoid repeated filesystem reads on every format.
-  if _fprettify_args_cache[root] then return _fprettify_args_cache[root] end
-
-  local config_candidates = {
-    root .. "/.fprettify.toml",
-    root .. "/.fprettify.rc",
-    root .. "/setup.cfg",
-  }
-
-  for _, f in ipairs(config_candidates) do
-    if vim.fn.filereadable(f) == 1 then
-      if f:find("setup.cfg", 1, true) then
-        local lines = vim.fn.readfile(f)
-        local has_section = false
-        for _, line in ipairs(lines) do
-          if line:match("^%[fprettify%]") then has_section = true; break end
-        end
-        if not has_section then goto continue end
-      end
-      local result = { "--stdout", "-" }
-      _fprettify_args_cache[root] = result
-      return result
-    end
-    ::continue::
-  end
-
-  local result = { "--indent", "2", "--stdout", "-" }
-  _fprettify_args_cache[root] = result
-  return result
+local function notify(msg, level)
+  vim.notify("[fortran] " .. msg, level or vim.log.levels.INFO)
 end
 
--- Invalidate the cache when the working directory changes.
-vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("FortranFprettifyCache", { clear = true }),
-  callback = function() _fprettify_args_cache = {} end,
+local CONFIG_NAME    = ".fprettify.rc"
+local DEFAULT_INDENT = 2   -- fprettify's own default is 3; the other languages in this config use 2
+
+-- ── Filetypes ─────────────────────────────────────────────────────────────────
+vim.filetype.add({
+  extension = {
+    f = "fortran", F = "fortran", f77 = "fortran", F77 = "fortran",
+    f90 = "fortran", F90 = "fortran", f95 = "fortran", F95 = "fortran",
+    f03 = "fortran", F03 = "fortran", f08 = "fortran", F08 = "fortran",
+    f18 = "fortran", F18 = "fortran",
+    ["for"] = "fortran", FOR = "fortran", fpp = "fortran",
+  },
 })
 
--- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──
+-- ── fprettify ─────────────────────────────────────────────────────────────────
+
+---@param dir string
+---@return boolean
+local function config_applies(dir)
+  if vim.fn.filereadable(vim.fn.expand("~/" .. CONFIG_NAME)) == 1 then return true end
+  return path.find_up({ CONFIG_NAME }, dir) ~= nil
+end
+
+--- Arguments for in-place formatting of conform's temp copy. "$FILENAME" is conform's own token.
+---@param file string  the file being formatted (the temp copy, which sits beside the buffer)
+---@return string[]
+local function fprettify_args(file)
+  local args = {}
+  if not config_applies(vim.fn.fnamemodify(file, ":h")) then
+    args = { "--indent", tostring(DEFAULT_INDENT) }
+  end
+  table.insert(args, "$FILENAME")
+  return args
+end
+
+-- ── Build and check ───────────────────────────────────────────────────────────
+---@return string  cache directory for objects and modules (created on demand)
+local function run_dir()
+  local dir = vim.fn.stdpath("cache") .. "/fortran-run"
+  vim.fn.mkdir(dir, "p")
+  return dir
+end
+
+--- gfortran invocation with the user's build flags (sanitised), modules sent to run_dir().
+---@param file string
+---@param extra string  extra arguments, already shell-escaped
+---@return string
+local function gfortran(file, extra)
+  local raw = vim.g.fortran_build_flags or "-Wall"
+  local flags, changed = shared.sanitize_build_flags(raw)
+  if changed then
+    notify(("fortran_build_flags contained unsafe characters, stripped.\n  original : %s\n  sanitised: %s")
+      :format(raw, flags), vim.log.levels.WARN)
+  end
+  return ("gfortran %s -J %s %s %s"):format(flags, vim.fn.shellescape(run_dir()), extra, vim.fn.shellescape(file))
+end
+
+local function current_file()
+  local file = vim.fn.expand("%:p")
+  if file == "" then notify("this buffer has no file on disk", vim.log.levels.WARN) end
+  return file
+end
+
+local function build_and_run()
+  local file = current_file()
+  if file == "" or not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
+  local exe = run_dir() .. "/" .. vim.fn.fnamemodify(vim.fn.tempname(), ":t")
+  local q = vim.fn.shellescape
+  term().float(string.format(
+    "if %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
+    gfortran(file, "-o " .. q(exe)), q(exe), q(exe)))
+end
+
+local function syntax_check()
+  local file = current_file()
+  if file == "" or not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
+  term().float(gfortran(file, "-fsyntax-only"))
+end
+
+local function format_buffer()
+  if not exec.require_bin("fprettify", "pip install fprettify") then return end
+  require("core.util.format").run({})
+end
+
+-- ── Snippets (queued; flushed once by completion.lua's LuaSnip config) ──────────
 require("core.util.snippets").register("fortran", function(s, t, i, _, ref)
   return {
     s("program", {
@@ -107,100 +140,31 @@ require("core.util.snippets").register("fortran", function(s, t, i, _, ref)
 end)
 
 return {
-  -- ── Conform: fprettify custom config ──────────────────────────────────────
+  -- ── Conform: fprettify ────────────────────────────────────────────────────
   {
     "stevearc/conform.nvim",
     optional = true,
     opts = function(_, opts)
-      opts.formatters           = opts.formatters or {}
+      opts.formatters = opts.formatters or {}
       opts.formatters.fprettify = {
-        command = "fprettify",
-        args    = function() return fprettify_args() end,
-        stdin   = true,
-        condition = function()
-          if vim.fn.executable("fprettify") ~= 1 then
-            vim.notify(
-              "[fortran] fprettify not found — format-on-save disabled.\n"
-              .. "Install: pip install fprettify",
-              vim.log.levels.DEBUG
-            )
-            return false
-          end
-          return true
-        end,
+        command   = "fprettify",
+        args      = function(_, ctx) return fprettify_args(ctx.filename) end,
+        stdin     = false,
+        condition = function() return vim.fn.executable("fprettify") == 1 end,
       }
     end,
   },
 
   shared.treesitter({ "fortran" }),
 
-  -- ── Build keymaps ──────────────────────────────────────────────────────────
+  -- ── Build and check keymaps ───────────────────────────────────────────────
   {
     "akinsho/toggleterm.nvim",
-    keys = (function()
-      local function build_and_run(file)
-        local exec = require("core.util.exec")
-        if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
-        local exe = vim.fn.tempname()
-
-        local raw_flags      = vim.g.fortran_build_flags or "-Wall"
-        local flags, changed = shared.sanitize_build_flags(raw_flags)
-
-        if changed then
-          vim.notify(
-            "[fortran] fortran_build_flags contained unsafe characters that were stripped.\n"
-            .. "  original : " .. raw_flags .. "\n"
-            .. "  sanitised: " .. flags,
-            vim.log.levels.WARN
-          )
-        end
-
-        require("core.util.term").float(string.format(
-          "if gfortran %s -o %s %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
-          flags,
-          vim.fn.shellescape(exe),
-          vim.fn.shellescape(file),
-          vim.fn.shellescape(exe),
-          vim.fn.shellescape(exe)
-        ))
-      end
-
-      return {
-        {
-          "<leader>ftb",
-          function() build_and_run(vim.fn.expand("%:p")) end,
-          desc = "Fortran Build & Run",
-          ft   = "fortran",
-        },
-        {
-          "<leader>ftc",
-          function()
-            local exec = require("core.util.exec")
-            if not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then return end
-            require("core.util.term").float(
-              "gfortran -Wall -fsyntax-only "
-              .. vim.fn.shellescape(vim.fn.expand("%:p"))
-            )
-          end,
-          desc = "Fortran Check Syntax",
-          ft   = "fortran",
-        },
-        {
-          "<leader>ftm",
-          function() shared.run_make() end,
-          desc = "Fortran Make",
-          ft   = "fortran",
-        },
-        {
-          "<leader>ftf",
-          function()
-            -- Via conform (stdin → buffer).
-            require("core.util.format").run({})
-          end,
-          desc = "Fortran Format (fprettify)",
-          ft   = "fortran",
-        },
-      }
-    end)(),
+    keys = {
+      { "<leader>ftb", build_and_run, desc = "Fortran Build & Run",      ft = "fortran" },
+      { "<leader>ftc", syntax_check,  desc = "Fortran Check Syntax",     ft = "fortran" },
+      { "<leader>ftm", function() shared.run_make() end, desc = "Fortran Make", ft = "fortran" },
+      { "<leader>ftf", format_buffer, desc = "Fortran Format (fprettify)", ft = "fortran" },
+    },
   },
 }
