@@ -1,6 +1,6 @@
 # Keymaps — v2.6.1
 
-**Leader:** `Space`. Buffer-local maps activate on `LspAttach` / `FileType`. Verified by `tests/keymaps.lua`: every key below exists, and every leader map in the config appears here.
+**Leader:** `Space`. Buffer-local maps activate on `LspAttach` / `FileType`. Maintained by hand: the bindings live in `lua/core/keymaps.lua` and `lua/plugins/specs/*`.
 
 ---
 
@@ -241,7 +241,7 @@
 | `<leader>;E` | Configure exception breakpoints (active session only) |
 
 > Breakpoints are auto-saved every `vim.g.dap_bp_autosave_ms` ms (default 60 s)
-> and restored on next session via `~/.local/share/nvim/dap-breakpoints.json`.
+> and restored on next session from `stdpath("data")/dap-breakpoints/`, one file per project root.
 
 ---
 
@@ -447,7 +447,7 @@
 | `<leader>or` | Run task |
 | `<leader>ob` | Run build template |
 | `<leader>oa` | Task action menu |
-| `<leader>oc` | Clear cache |
+| `<leader>oc` | Close task list |
 | `<leader>os` | Run shell command as task |
 
 > Per-project tasks: place `.overseer.lua` at the project root returning a list
@@ -556,7 +556,6 @@
 | `<leader>jvs` | Spring Boot run — Spring projects only |
 | `<leader>jvS` | Spring Boot package (bootJar) — Spring projects only |
 
-> `:LspRestart` now correctly re-attaches jdtls without closing the buffer (v2.6.1).
 
 ---
 
