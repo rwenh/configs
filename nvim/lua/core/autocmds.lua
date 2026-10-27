@@ -6,39 +6,55 @@ local limits = require("core.util.limits")
 local ag = vim.api.nvim_create_augroup
 
 local function is_real_buf(buf)
-  local ok, bt = pcall(function() return vim.bo[buf].buftype end)
+  local ok, bt = pcall(function()
+    return vim.bo[buf].buftype
+  end)
   return ok and bt == ""
 end
 
 local EPHEMERAL_FT = {
-  "help", "man", "qf", "lspinfo", "checkhealth",
-  "notify", "startuptime", "OverseerList",
+  "help",
+  "man",
+  "qf",
+  "lspinfo",
+  "checkhealth",
+  "notify",
+  "startuptime",
+  "OverseerList",
 }
 
 -- ── Highlight on yank ─────────────────────────────────────────────────────────
 au("TextYankPost", {
-  group    = ag("HighlightYank", { clear = true }),
-  callback = function() pcall((vim.hl or vim.highlight).on_yank, { timeout = 200 }) end,
+  group = ag("HighlightYank", { clear = true }),
+  callback = function()
+    pcall((vim.hl or vim.highlight).on_yank, { timeout = 200 })
+  end,
 })
 
 -- ── Restore cursor position ───────────────────────────────────────────────────
 au("BufReadPost", {
-  group    = ag("RestoreCursor", { clear = true }),
+  group = ag("RestoreCursor", { clear = true }),
   callback = function(e)
-    if not is_real_buf(e.buf) then return end
+    if not is_real_buf(e.buf) then
+      return
+    end
     local ok, mark = pcall(vim.api.nvim_buf_get_mark, e.buf, '"')
-    if not ok or not mark then return end
+    if not ok or not mark then
+      return
+    end
     local lcount = vim.api.nvim_buf_line_count(e.buf)
     if mark[1] and mark[1] > 0 and mark[1] <= lcount then
       local wins = vim.fn.win_findbuf(e.buf)
-      if #wins > 0 then pcall(vim.api.nvim_win_set_cursor, wins[1], mark) end
+      if #wins > 0 then
+        pcall(vim.api.nvim_win_set_cursor, wins[1], mark)
+      end
     end
   end,
 })
 
 -- ── Resize splits (phase 2 fix #2: no tab flicker) ───────────────────────────
 au("VimResized", {
-  group    = ag("ResizeSplits", { clear = true }),
+  group = ag("ResizeSplits", { clear = true }),
   callback = function()
     local current_tab = vim.api.nvim_get_current_tabpage()
     for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
@@ -55,8 +71,8 @@ au("VimResized", {
 
 -- ── Close ephemeral windows with 'q' ─────────────────────────────────────────
 au("FileType", {
-  group    = ag("CloseWithQ", { clear = true }),
-  pattern  = EPHEMERAL_FT,
+  group = ag("CloseWithQ", { clear = true }),
+  pattern = EPHEMERAL_FT,
   callback = function(e)
     pcall(function()
       vim.bo[e.buf].buflisted = false
@@ -71,25 +87,45 @@ au("FileType", {
 -- copied every line three times just to measure the size.
 -- Opt-out: vim.g.disable_trim_whitespace = true, or per buffer vim.b.disable_trim_whitespace.
 local TRIM_SKIP_FT = {
-  markdown = true, markdown_inline = true, diff = true, rst = true,
-  asciidoc = true, mail = true, patch = true, gitsendemail = true,
+  markdown = true,
+  markdown_inline = true,
+  diff = true,
+  rst = true,
+  asciidoc = true,
+  mail = true,
+  patch = true,
+  gitsendemail = true,
 }
 
 au("BufWritePre", {
-  group    = ag("TrimWhitespace", { clear = true }),
+  group = ag("TrimWhitespace", { clear = true }),
   callback = function(e)
-    if vim.g.disable_trim_whitespace or vim.b[e.buf].disable_trim_whitespace then return end
-    if not is_real_buf(e.buf) then return end
-    if vim.bo[e.buf].binary or not vim.bo[e.buf].modifiable then return end
-    if vim.b[e.buf] and vim.b[e.buf].large_file then return end
-    if TRIM_SKIP_FT[vim.bo[e.buf].filetype] then return end
+    if vim.g.disable_trim_whitespace or vim.b[e.buf].disable_trim_whitespace then
+      return
+    end
+    if not is_real_buf(e.buf) then
+      return
+    end
+    if vim.bo[e.buf].binary or not vim.bo[e.buf].modifiable then
+      return
+    end
+    if vim.b[e.buf] and vim.b[e.buf].large_file then
+      return
+    end
+    if TRIM_SKIP_FT[vim.bo[e.buf].filetype] then
+      return
+    end
 
     -- O(1) size check — no line copies.
     local last = vim.api.nvim_buf_line_count(e.buf)
-    if vim.api.nvim_buf_get_offset(e.buf, last) > limits.large_file_bytes() then return end
+    if vim.api.nvim_buf_get_offset(e.buf, last) > limits.large_file_bytes() then
+      return
+    end
 
     pcall(vim.api.nvim_buf_call, e.buf, function()
-      if vim.fn.search([[\s\+$]], "nw") == 0 then return end
+      if vim.fn.search([[\s\+$]], "nw") == 0 then
+        return
+      end
       local view = vim.fn.winsaveview()
       vim.cmd([[silent! keepjumps keeppatterns %s/\s\+$//e]])
       vim.fn.winrestview(view)
@@ -100,16 +136,20 @@ au("BufWritePre", {
 -- ── Check for external file changes (phase 3 fix #22) ────────────────────────
 --
 au({ "FocusGained", "TermClose", "TermLeave" }, {
-  group    = ag("Checktime", { clear = true }),
+  group = ag("Checktime", { clear = true }),
   callback = function(e)
     local buf = e.buf or vim.api.nvim_get_current_buf()
-    local ok, bt = pcall(function() return vim.bo[buf].buftype end)
-    if not ok or bt ~= "" then return end
+    local ok, bt = pcall(function()
+      return vim.bo[buf].buftype
+    end)
+    if not ok or bt ~= "" then
+      return
+    end
 
     if vim.bo[buf].modified then
       vim.notify(
         "[autocmds] Skipped automatic checktime — buffer has unsaved changes.\n"
-        .. "Run :checktime manually when you are ready to reload.",
+          .. "Run :checktime manually when you are ready to reload.",
         vim.log.levels.DEBUG
       )
       return
@@ -121,29 +161,39 @@ au({ "FocusGained", "TermClose", "TermLeave" }, {
 
 -- ── Terminal UI cleanup ───────────────────────────────────────────────────────
 au("TermOpen", {
-  group    = ag("Terminal", { clear = true }),
+  group = ag("Terminal", { clear = true }),
   callback = function()
     pcall(function()
-      vim.opt_local.number         = false
+      vim.opt_local.number = false
       vim.opt_local.relativenumber = false
-      vim.opt_local.signcolumn     = "no"
+      vim.opt_local.signcolumn = "no"
     end)
   end,
 })
 
 -- ── Auto CD to project root ───────────────────────────────────────────────────
 au("BufEnter", {
-  group    = ag("AutoCdRoot", { clear = true }),
+  group = ag("AutoCdRoot", { clear = true }),
   callback = function(e)
-    if not vim.g.auto_cd_root then return end
-    if not is_real_buf(e.buf) then return end
+    if not vim.g.auto_cd_root then
+      return
+    end
+    if not is_real_buf(e.buf) then
+      return
+    end
     local name = vim.api.nvim_buf_get_name(e.buf)
-    if name == "" then return end
+    if name == "" then
+      return
+    end
     local ok, path_util = pcall(require, "core.util.path")
-    if not ok then return end
+    if not ok then
+      return
+    end
     local buf_dir = vim.fn.fnamemodify(name, ":h")
-    local root    = path_util.find_root(buf_dir)
-    if root and root ~= vim.fn.getcwd() then pcall(vim.cmd.lcd, root) end
+    local root = path_util.find_root(buf_dir)
+    if root and root ~= vim.fn.getcwd() then
+      pcall(vim.cmd.lcd, root)
+    end
   end,
 })
 
@@ -151,8 +201,14 @@ au("BufEnter", {
 pcall(function()
   vim.filetype.add({
     extension = {
-      cob="cobol", cbl="cobol", cpy="cobol", CBL="cobol", COB="cobol",
-      vhd="vhdl",  vhdl="vhdl", vho="vhdl",
+      cob = "cobol",
+      cbl = "cobol",
+      cpy = "cobol",
+      CBL = "cobol",
+      COB = "cobol",
+      vhd = "vhdl",
+      vhdl = "vhdl",
+      vho = "vhdl",
     },
   })
 end)
@@ -194,61 +250,80 @@ local function lift_large_file_state(buf)
   end)
   pcall(function()
     vim.b[buf]._ts_size_checked = nil
-    vim.b[buf]._ts_large        = nil
+    vim.b[buf]._ts_large = nil
   end)
   pcall(vim.treesitter.start, buf)
 end
 
 au("BufReadPre", {
-  group    = large_file_group,
+  group = large_file_group,
   callback = function(e)
     local ok, stat = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(e.buf))
     if ok and stat and stat.size > limits.large_file_bytes() then
       vim.b[e.buf].large_file = true
       apply_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("Large file (over " .. limits.large_file_label() .. ") — some features disabled", vim.log.levels.WARN)
+        vim.notify(
+          "Large file (over " .. limits.large_file_label() .. ") — some features disabled",
+          vim.log.levels.WARN
+        )
       end)
     end
   end,
 })
 au("BufReadPost", {
-  group    = large_file_group,
+  group = large_file_group,
   callback = function(e)
-    if vim.b[e.buf] and vim.b[e.buf].large_file then pcall(vim.treesitter.stop, e.buf) end
+    if vim.b[e.buf] and vim.b[e.buf].large_file then
+      pcall(vim.treesitter.stop, e.buf)
+    end
   end,
 })
 au("BufWinEnter", {
-  group    = large_file_group,
+  group = large_file_group,
   callback = function(e)
     if vim.b[e.buf] and vim.b[e.buf].large_file then
-      pcall(function() vim.opt_local.foldmethod = "manual" end)
+      pcall(function()
+        vim.opt_local.foldmethod = "manual"
+      end)
     end
   end,
 })
 au("BufWritePost", {
-  group    = large_file_group,
+  group = large_file_group,
   callback = function(e)
     local name = vim.api.nvim_buf_get_name(e.buf)
-    if name == "" then return end
+    if name == "" then
+      return
+    end
     local ok, stat = pcall(vim.uv.fs_stat, name)
-    if not ok or not stat then return end
+    if not ok or not stat then
+      return
+    end
 
-    local is_large  = stat.size > limits.large_file_bytes()
+    local is_large = stat.size > limits.large_file_bytes()
     local was_large = (vim.b[e.buf] and vim.b[e.buf].large_file) or false
-    if is_large == was_large then return end -- no state change, nothing to do
+    if is_large == was_large then
+      return
+    end -- no state change, nothing to do
 
     if is_large then
       vim.b[e.buf].large_file = true
       apply_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("Large file (over " .. limits.large_file_label() .. ") — some features disabled", vim.log.levels.WARN)
+        vim.notify(
+          "Large file (over " .. limits.large_file_label() .. ") — some features disabled",
+          vim.log.levels.WARN
+        )
       end)
     else
       vim.b[e.buf].large_file = nil
       lift_large_file_state(e.buf)
       vim.schedule(function()
-        vim.notify("File back under " .. limits.large_file_label() .. " — large-file protections lifted", vim.log.levels.INFO)
+        vim.notify(
+          "File back under " .. limits.large_file_label() .. " — large-file protections lifted",
+          vim.log.levels.INFO
+        )
       end)
     end
   end,
@@ -257,9 +332,9 @@ au("BufWritePost", {
 
 -- ── NvimIdeReady user event (phase 2 fix #1: fires after LazyDone) ───────────
 vim.api.nvim_create_autocmd("User", {
-  pattern  = "LazyDone",
-  once     = true,
-  group    = ag("NvimIdeReadyBridge", { clear = true }),
+  pattern = "LazyDone",
+  once = true,
+  group = ag("NvimIdeReadyBridge", { clear = true }),
   callback = function()
     vim.api.nvim_exec_autocmds("User", { pattern = "NvimIdeReady", modeline = false })
   end,

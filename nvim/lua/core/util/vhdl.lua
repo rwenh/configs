@@ -8,14 +8,21 @@ local CLASS_KEYWORDS = { signal = true, constant = true, variable = true }
 
 -- Values for generics that have no default, keyed by the base name of the type.
 local PLACEHOLDER = {
-  std_logic = "'0'", std_ulogic = "'0'", bit = "'0'",
+  std_logic = "'0'",
+  std_ulogic = "'0'",
+  bit = "'0'",
   boolean = "false",
-  integer = "0", natural = "0", positive = "1",
+  integer = "0",
+  natural = "0",
+  positive = "1",
   real = "0.0",
   time = "0 ns",
   string = '""',
-  std_logic_vector = "(others => '0')", std_ulogic_vector = "(others => '0')",
-  bit_vector = "(others => '0')", unsigned = "(others => '0')", signed = "(others => '0')",
+  std_logic_vector = "(others => '0')",
+  std_ulogic_vector = "(others => '0')",
+  bit_vector = "(others => '0')",
+  unsigned = "(others => '0')",
+  signed = "(others => '0')",
 }
 
 ---@param c string  one character, or ""
@@ -34,10 +41,14 @@ function M.strip_comment(line)
     local ch = line:sub(i, i)
     if in_str then
       if ch == '"' then
-        if line:sub(i + 1, i + 1) == '"' then i = i + 1 else in_str = false end
+        if line:sub(i + 1, i + 1) == '"' then
+          i = i + 1
+        else
+          in_str = false
+        end
       end
     elseif ch == "'" and line:sub(i + 2, i + 2) == "'" and not is_ident(line:sub(i - 1, i - 1)) then
-      i = i + 2   -- character literal such as '"'; an attribute like clk'event is not one
+      i = i + 2 -- character literal such as '"'; an attribute like clk'event is not one
     elseif ch == '"' then
       in_str = true
     elseif ch == "-" and line:sub(i + 1, i + 1) == "-" then
@@ -54,7 +65,9 @@ end
 ---@return string|nil err
 local function group(text, low, keyword)
   local _, e = low:find("%f[%w_]" .. keyword .. "%s*%(")
-  if not e then return nil end
+  if not e then
+    return nil
+  end
   local depth = 1
   for i = e + 1, #text do
     local c = text:sub(i, i)
@@ -62,7 +75,9 @@ local function group(text, low, keyword)
       depth = depth + 1
     elseif c == ")" then
       depth = depth - 1
-      if depth == 0 then return text:sub(e + 1, i - 1) end
+      if depth == 0 then
+        return text:sub(e + 1, i - 1)
+      end
     end
   end
   return nil, "unbalanced parentheses in the " .. keyword .. " clause"
@@ -74,7 +89,9 @@ local function split_decls(body)
   local out = {}
   for decl in (body .. ";"):gmatch("(.-);") do
     decl = vim.trim((decl:gsub("%s+", " ")))
-    if decl ~= "" then out[#out + 1] = decl end
+    if decl ~= "" then
+      out[#out + 1] = decl
+    end
   end
   return out
 end
@@ -84,7 +101,9 @@ end
 local function names_of(names_part)
   local names = {}
   for n in names_part:gmatch("[%w_]+") do
-    if not CLASS_KEYWORDS[n:lower()] then names[#names + 1] = n end
+    if not CLASS_KEYWORDS[n:lower()] then
+      names[#names + 1] = n
+    end
   end
   return names
 end
@@ -112,12 +131,16 @@ end
 ---@return string|nil err  set when a clause is present but malformed; ports and generics are nil then
 function M.parse_entity(lines)
   local clean = {}
-  for _, l in ipairs(lines) do clean[#clean + 1] = M.strip_comment(l) end
+  for _, l in ipairs(lines) do
+    clean[#clean + 1] = M.strip_comment(l)
+  end
   local text = table.concat(clean, "\n")
   local low = text:lower()
 
   local s, e = low:find("%f[%w_]entity%s+[%w_]+%s+is%f[^%w_]")
-  if not s then return nil, {}, {} end
+  if not s then
+    return nil, {}, {}
+  end
   local name = text:sub(s, e):match("^%a+%s+([%w_]+)")
 
   -- An entity header contains no `end` keyword, so the first one closes the declaration.
@@ -127,7 +150,9 @@ function M.parse_entity(lines)
   local generics, ports = {}, {}
 
   local gbody, gerr = group(rtext, rlow, "generic")
-  if gerr then return name, nil, nil, gerr end
+  if gerr then
+    return name, nil, nil, gerr
+  end
   if gbody then
     for _, decl in ipairs(split_decls(gbody)) do
       local names_part, rest = decl:match("^([%w_,%s]+):%s*(.+)$")
@@ -143,7 +168,9 @@ function M.parse_entity(lines)
   end
 
   local pbody, perr = group(rtext, rlow, "port")
-  if perr then return name, nil, nil, perr end
+  if perr then
+    return name, nil, nil, perr
+  end
   if pbody then
     for _, decl in ipairs(split_decls(pbody)) do
       local names_part, rest = decl:match("^([%w_,%s]+):%s*(.+)$")
@@ -251,7 +278,9 @@ end
 function M.run_chain(file, entity, vcd)
   local q = vim.fn.shellescape
   local cmd = ("ghdl -a %s && ghdl -e %s && ghdl -r %s"):format(q(file), q(entity), q(entity))
-  if vcd and vcd ~= "" then cmd = cmd .. " --vcd=" .. q(vcd) end
+  if vcd and vcd ~= "" then
+    cmd = cmd .. " --vcd=" .. q(vcd)
+  end
   return cmd
 end
 

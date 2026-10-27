@@ -3,33 +3,55 @@
 
 return {
   { "williamboman/mason.nvim", cmd = "Mason", build = ":MasonUpdate", opts = { ui = { border = "rounded" } } },
-  { "williamboman/mason-lspconfig.nvim", dependencies = "mason.nvim",
+  {
+    "williamboman/mason-lspconfig.nvim",
+    dependencies = "mason.nvim",
     opts = {
       ensure_installed = require("core.util.packages").lspconfig,
       automatic_enable = false,
-      handlers = { function() end },   -- v1 compat: never auto-setup
-    } },
+      handlers = { function() end }, -- v1 compat: never auto-setup
+    },
+  },
 
-  { "aznhe21/actions-preview.nvim", lazy = true,
-    opts = { telescope = { sorting_strategy = "ascending", layout_strategy = "vertical",
-      layout_config = { width = 0.8, height = 0.9, prompt_position = "top" } } },
-    config = function(_, opts) pcall(function() require("actions-preview").setup(opts) end) end },
+  {
+    "aznhe21/actions-preview.nvim",
+    lazy = true,
+    opts = {
+      telescope = {
+        sorting_strategy = "ascending",
+        layout_strategy = "vertical",
+        layout_config = { width = 0.8, height = 0.9, prompt_position = "top" },
+      },
+    },
+    config = function(_, opts)
+      pcall(function()
+        require("actions-preview").setup(opts)
+      end)
+    end,
+  },
 
   {
     "neovim/nvim-lspconfig",
-    event        = { "BufReadPre", "BufNewFile" },
+    event = { "BufReadPre", "BufNewFile" },
     dependencies = { "mason-lspconfig.nvim", "saghen/blink.cmp", "aznhe21/actions-preview.nvim" },
     config = function()
       local nvim_011 = vim.fn.has("nvim-0.11") == 1
+      local packages = require("core.util.packages")
+      local projconf = require("core.util.projconf")
 
       -- ── Capabilities (memoised) ────────────────────────────────────────────
       local _caps = nil
       local function get_capabilities()
-        if _caps then return _caps end
+        if _caps then
+          return _caps
+        end
         local ok, blink = pcall(require, "blink.cmp")
         if ok then
           local ok2, caps = pcall(blink.get_lsp_capabilities)
-          if ok2 and type(caps) == "table" and caps.textDocument ~= nil then _caps = caps; return _caps end
+          if ok2 and type(caps) == "table" and caps.textDocument ~= nil then
+            _caps = caps
+            return _caps
+          end
         end
         _caps = vim.lsp.protocol.make_client_capabilities()
         return _caps
@@ -37,61 +59,32 @@ return {
 
       -- ── Per-server on_attach override table ───────────────────────────────
       local function run_user_on_attach(server_name, client, bufnr)
-        local overrides = type(vim.g.lsp_on_attach_overrides) == "table"
-          and vim.g.lsp_on_attach_overrides or {}
+        local overrides = type(vim.g.lsp_on_attach_overrides) == "table" and vim.g.lsp_on_attach_overrides or {}
         local fn = overrides[server_name]
-        if type(fn) == "function" then pcall(fn, client, bufnr) end
+        if type(fn) == "function" then
+          pcall(fn, client, bufnr)
+        end
       end
 
-      -- ── Per-project .lspconfig.lua loader ─────────────────────────────────
-      local _project_lsp_cache = {}
-
+      -- ── Per-project .lspconfig.lua (core.util.projconf) ─────────────────────
       local function load_project_lsp_config()
         local ok_path, path_util = pcall(require, "core.util.path")
         local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-        if not root or root == "" then return {} end
-        if _project_lsp_cache[root] then return _project_lsp_cache[root] end
-
-        local cfg_file = root .. "/.lspconfig.lua"
-        if vim.fn.filereadable(cfg_file) ~= 1 then
-          _project_lsp_cache[root] = {}; return {}
+        local res = projconf.load(root, ".lspconfig.lua")
+        if res.ok then
+          return res.value
         end
-
-        local ok, result = require("core.util.secure").load(cfg_file)   -- trust-gated, not dofile
-        if not ok or type(result) ~= "table" then
-          vim.notify("[lsp] .lspconfig.lua error: " .. tostring(result), vim.log.levels.WARN)
-          _project_lsp_cache[root] = {}; return {}
+        if not res.absent then
+          vim.notify("[lsp] .lspconfig.lua not used: " .. res.reason, vim.log.levels.WARN)
         end
-
-        vim.notify("[lsp] loaded project overrides from .lspconfig.lua", vim.log.levels.INFO)
-        _project_lsp_cache[root] = result
-        return result
+        return {}
       end
-
-      vim.api.nvim_create_autocmd({ "DirChanged" }, {
-        group    = vim.api.nvim_create_augroup("LspProjectConfigCache", { clear = true }),
-        callback = function() _project_lsp_cache = {} end,
-      })
+      -- Read once, when the servers are configured. A later change of directory does not re-apply it.
+      local project_overrides = load_project_lsp_config()
 
       -- ── lsp_setup ─────────────────────────────────────────────────────────
-      -- Binary each server needs on PATH. A server whose binary is absent is skipped and reported
-      -- once, instead of letting vim.lsp.enable fail on every matching buffer (one ERROR line per
-      -- attach attempt in lsp.log, plus a popup from Neovim for each spawn failure).
-      -- Keep in step with nvim-lspconfig's default cmd. A config-supplied cmd takes precedence.
-      local SERVER_BINARY = {
-        lua_ls                 = "lua-language-server",
-        basedpyright           = "basedpyright-langserver",
-        gopls                  = "gopls",
-        solargraph             = "solargraph",
-        clangd                 = "clangd",
-        tailwindcss            = "tailwindcss-language-server",
-        cssls                  = "vscode-css-language-server",
-        jsonls                 = "vscode-json-language-server",
-        yamlls                 = "yaml-language-server",
-        kotlin_language_server = "kotlin-language-server",
-        zls                    = "zls",
-        html                   = "vscode-html-language-server",
-      }
+      -- Each server's binary comes from core.util.packages. A server whose binary is absent is skipped
+      -- and reported once, instead of failing on every attach. A config-supplied cmd takes precedence.
       local missing_servers = {}
 
       -- nvim-lspconfig resolves html/css/json/yaml/tailwind from node_modules/.bin under the
@@ -99,67 +92,83 @@ return {
       -- installed server is not skipped. (Limitation: checked once per session, from the cwd
       -- at first attach, not per buffer root.)
       local function available(bin)
-        return vim.fn.executable(bin) == 1
-          or vim.fn.executable(vim.fn.getcwd() .. "/node_modules/.bin/" .. bin) == 1
+        return vim.fn.executable(bin) == 1 or vim.fn.executable(vim.fn.getcwd() .. "/node_modules/.bin/" .. bin) == 1
       end
 
       local function lsp_setup(server, config)
         config = config or {}
-        local bin = (config.cmd and config.cmd[1]) or SERVER_BINARY[server]
+        local bin = (config.cmd and config.cmd[1]) or packages.bin(server)
         if bin and not available(bin) then
           table.insert(missing_servers, server .. " (" .. bin .. ")")
           return
         end
-        local project_overrides = load_project_lsp_config()
         if project_overrides[server] then
           config = vim.tbl_deep_extend("force", config, project_overrides[server])
         end
         config.capabilities = vim.tbl_deep_extend("force", get_capabilities(), config.capabilities or {})
         local user_on_attach = config.on_attach
         config.on_attach = function(client, bufnr)
-          if type(user_on_attach) == "function" then pcall(user_on_attach, client, bufnr) end
+          if type(user_on_attach) == "function" then
+            pcall(user_on_attach, client, bufnr)
+          end
           run_user_on_attach(server, client, bufnr)
         end
         if nvim_011 then
-          pcall(function() vim.lsp.config(server, config); vim.lsp.enable(server) end)
+          pcall(function()
+            vim.lsp.config(server, config)
+            vim.lsp.enable(server)
+          end)
         else
           local ok, lspconfig = pcall(require, "lspconfig")
-          if ok then pcall(function() lspconfig[server].setup(config) end) end
+          if ok then
+            pcall(function()
+              lspconfig[server].setup(config)
+            end)
+          end
         end
       end
 
       -- ── diag_jump ─────────────────────────────────────────────────────────
       local function diag_jump(count)
-        if nvim_011 then pcall(function() vim.diagnostic.jump({ count = count, float = true }) end)
+        if nvim_011 then
+          pcall(function()
+            vim.diagnostic.jump({ count = count, float = true })
+          end)
         else
           local fn = count > 0 and vim.diagnostic.goto_next or vim.diagnostic.goto_prev
-          for _ = 1, math.abs(count) do pcall(fn, { float = true }) end
+          for _ = 1, math.abs(count) do
+            pcall(fn, { float = true })
+          end
         end
       end
 
       local function cmd_or_fallback(cmd_str, fallback_fn)
-        if not pcall(vim.cmd, cmd_str) then pcall(fallback_fn) end
+        if not pcall(vim.cmd, cmd_str) then
+          pcall(fallback_fn)
+        end
       end
 
       -- ── LspAttach keymaps ─────────────────────────────────────────────────
       vim.api.nvim_create_autocmd("LspAttach", {
-        group    = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
+        group = vim.api.nvim_create_augroup("LspKeymaps", { clear = true }),
         callback = function(e)
           local function map(keys, fn, desc, mode)
             vim.keymap.set(mode or "n", keys, fn, { buffer = e.buf, desc = "LSP: " .. desc })
           end
-          map("gd", vim.lsp.buf.definition,     "Go to Definition")
-          map("gD", vim.lsp.buf.declaration,    "Go to Declaration")
+          map("gd", vim.lsp.buf.definition, "Go to Definition")
+          map("gD", vim.lsp.buf.declaration, "Go to Declaration")
           map("gi", vim.lsp.buf.implementation, "Go to Implementation")
-          map("gr", vim.lsp.buf.references,     "References")
-          map("K",  vim.lsp.buf.hover,          "Hover Docs")
+          map("gr", vim.lsp.buf.references, "References")
+          map("K", vim.lsp.buf.hover, "Hover Docs")
           map("<leader>k", vim.lsp.buf.signature_help, "Signature Help")
 
           local function code_action()
             local ok = pcall(function()
               require("actions-preview").code_actions()
             end)
-            if not ok then vim.lsp.buf.code_action() end
+            if not ok then
+              vim.lsp.buf.code_action()
+            end
           end
           map("<leader>,a", code_action, "Code Action")
           map("<leader>,a", code_action, "Code Action", "v")
@@ -169,7 +178,7 @@ return {
 
           local function fmt()
             local format = require("core.util.format")
-            local mode   = vim.fn.mode()
+            local mode = vim.fn.mode()
             if mode == "v" or mode == "V" or mode == "\22" then
               -- The visual-mode mapping used to format the WHOLE buffer (range ignored).
               local l1, l2 = vim.fn.line("v"), vim.fn.line(".")
@@ -190,8 +199,12 @@ return {
             vim.notify("Diagnostics " .. (en and "disabled" or "enabled"))
           end, "Toggle Diagnostics")
           map("<leader>ty", vim.lsp.buf.type_definition, "Type Definition")
-          map("]d", function() diag_jump(1)  end, "Next Diagnostic")
-          map("[d", function() diag_jump(-1) end, "Prev Diagnostic")
+          map("]d", function()
+            diag_jump(1)
+          end, "Next Diagnostic")
+          map("[d", function()
+            diag_jump(-1)
+          end, "Prev Diagnostic")
 
           local client = vim.lsp.get_client_by_id(e.data.client_id)
           if client and client.server_capabilities.inlayHintProvider then
@@ -203,7 +216,11 @@ return {
           end
           if client and client.server_capabilities.documentSymbolProvider then
             local ok, navic = pcall(require, "nvim-navic")
-            if ok then pcall(function() navic.attach(client, e.buf) end) end
+            if ok then
+              pcall(function()
+                navic.attach(client, e.buf)
+              end)
+            end
           end
           map("<leader>,o", function()
             cmd_or_fallback("Trouble lsp_document_symbols toggle", vim.lsp.buf.document_symbol)
@@ -211,11 +228,17 @@ return {
         end,
       })
 
--- ── Servers ───────────────────────────────────────────────────────────────
+      -- ── Servers ───────────────────────────────────────────────────────────────
 
       local servers = {
         lua_ls = {
-          settings = { Lua = { diagnostics = { globals = { "vim" } }, workspace = { checkThirdParty = false }, telemetry = { enable = false } } },
+          settings = {
+            Lua = {
+              diagnostics = { globals = { "vim" } },
+              workspace = { checkThirdParty = false },
+              telemetry = { enable = false },
+            },
+          },
         },
         basedpyright = {
           settings = { basedpyright = { analysis = { typeCheckingMode = "basic" } } },
@@ -228,53 +251,73 @@ return {
         },
       }
 
-      for server, config in pairs(servers) do lsp_setup(server, config) end
+      for server, config in pairs(servers) do
+        lsp_setup(server, config)
+      end
 
       -- ── Elixir: only start elixir-ls when NextLS is NOT wanted ────────────
       if not vim.g.elixir_use_nextls then
         local elixirls_cmd = (function()
           local mason_ls = vim.fn.stdpath("data") .. "/mason/packages/elixir-ls/language_server.sh"
-          if vim.fn.filereadable(mason_ls) == 1 then return { mason_ls } end
+          if vim.fn.filereadable(mason_ls) == 1 then
+            return { mason_ls }
+          end
           local sys = vim.fn.exepath("elixir-ls")
           return sys ~= "" and { sys } or { "elixir-ls" }
         end)()
         lsp_setup("elixirls", {
           cmd = elixirls_cmd,
-          settings = { elixirLS = {
-            dialyzerEnabled  = true,
-            fetchDeps        = false,
-            enableTestLenses = true,
-            suggestSpecs     = true,
-          }},
+          settings = {
+            elixirLS = {
+              dialyzerEnabled = true,
+              fetchDeps = false,
+              enableTestLenses = true,
+              suggestSpecs = true,
+            },
+          },
         })
       end
 
-      for _, s in ipairs({ "tailwindcss","cssls","jsonls","yamlls","kotlin_language_server","zls" }) do
+      for _, s in ipairs({ "tailwindcss", "cssls", "jsonls", "yamlls", "kotlin_language_server", "zls" }) do
         lsp_setup(s, {})
       end
 
       lsp_setup("clangd", {
-        cmd = { "clangd", "--background-index", "--clang-tidy", "--header-insertion=iwyu", "--completion-style=detailed" },
+        cmd = {
+          "clangd",
+          "--background-index",
+          "--clang-tidy",
+          "--header-insertion=iwyu",
+          "--completion-style=detailed",
+        },
       })
 
       lsp_setup("html", {
-        filetypes    = { "html", "htmldjango", "jinja.html" },
+        filetypes = { "html", "htmldjango", "jinja.html" },
         init_options = { provideFormatter = false },
       })
 
       -- ── TypeScript fallback ────────────────────────────────────────────────
       do
         local ts_tools_present = (function()
-          if package.loaded["typescript-tools"] then return true end
+          if package.loaded["typescript-tools"] then
+            return true
+          end
           local ok, lazy_cfg = pcall(require, "lazy.core.config")
-          if ok and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] then return true end
+          if ok and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] then
+            return true
+          end
           return #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0
         end)()
         if not ts_tools_present then
-          if vim.fn.executable("typescript-language-server") == 1 then lsp_setup("ts_ls", {})
+          if vim.fn.executable("typescript-language-server") == 1 then
+            lsp_setup("ts_ls", {})
           else
             vim.schedule(function()
-              vim.notify("[lsp] typescript-tools.nvim not found and typescript-language-server not on PATH.", vim.log.levels.WARN)
+              vim.notify(
+                "[lsp] typescript-tools.nvim not found and typescript-language-server not on PATH.",
+                vim.log.levels.WARN
+              )
             end)
           end
         end
@@ -282,17 +325,38 @@ return {
 
       -- ── Optional servers ───────────────────────────────────────────────────
       for _, entry in ipairs({
-        { server = "vhdl_ls",   binary = "vhdl_ls",              config = { filetypes = { "vhdl","vhd" } } },
-        { server = "fortls",    binary = "fortls",                config = { filetypes = { "fortran" }, settings = { fortls = { notifyInit = true, nthreads = 4, hover_signature = true, use_signature_help = true } } } },
-        { server = "sqls",      binary = "sqls",                  config = { filetypes = { "sql","mysql" }, on_attach = function(client, _) client.server_capabilities.renameProvider = false end } },
-        { server = "cobol_ls",  binary = "cobol-language-support", config = { filetypes = { "cobol" }, settings = { cobol = { dialects = { "gnucobol","ibm" } } } } },
+        { server = "vhdl_ls", binary = "vhdl_ls", config = { filetypes = { "vhdl", "vhd" } } },
+        {
+          server = "fortls",
+          binary = "fortls",
+          config = {
+            filetypes = { "fortran" },
+            settings = {
+              fortls = { notifyInit = true, nthreads = 4, hover_signature = true, use_signature_help = true },
+            },
+          },
+        },
+        {
+          server = "sqls",
+          binary = "sqls",
+          config = {
+            filetypes = { "sql", "mysql" },
+            on_attach = function(client, _)
+              client.server_capabilities.renameProvider = false
+            end,
+          },
+        },
       }) do
-        if vim.fn.executable(entry.binary or entry.server) == 1 then lsp_setup(entry.server, entry.config) end
+        if vim.fn.executable(entry.binary or entry.server) == 1 then
+          lsp_setup(entry.server, entry.config)
+        end
       end
 
       if #missing_servers > 0 then
         vim.notify(
-          "[lsp] " .. #missing_servers .. " language server(s) not on PATH, skipped: "
+          "[lsp] "
+            .. #missing_servers
+            .. " language server(s) not on PATH, skipped: "
             .. table.concat(missing_servers, ", ")
             .. "\nInstall them with :MasonInstallAll (or :Mason). Their filetypes run without LSP until then.",
           vim.log.levels.INFO
@@ -302,16 +366,20 @@ return {
       -- ── Diagnostics UI ────────────────────────────────────────────────────
       local icons = require("core.util.icons")
       vim.diagnostic.config({
-        virtual_text  = { prefix = "●", spacing = 4 },
+        virtual_text = { prefix = "●", spacing = 4 },
         -- keys must be severity constants; string keys like `Error` are ignored (no signs)
-        signs         = { text = {
-          [vim.diagnostic.severity.ERROR] = icons.diagnostics.Error,
-          [vim.diagnostic.severity.WARN]  = icons.diagnostics.Warn,
-          [vim.diagnostic.severity.HINT]  = icons.diagnostics.Hint,
-          [vim.diagnostic.severity.INFO]  = icons.diagnostics.Info,
-        } },
-        underline = true, severity_sort = true, update_in_insert = false,
-        float     = { border = "rounded", source = true },
+        signs = {
+          text = {
+            [vim.diagnostic.severity.ERROR] = icons.diagnostics.Error,
+            [vim.diagnostic.severity.WARN] = icons.diagnostics.Warn,
+            [vim.diagnostic.severity.HINT] = icons.diagnostics.Hint,
+            [vim.diagnostic.severity.INFO] = icons.diagnostics.Info,
+          },
+        },
+        underline = true,
+        severity_sort = true,
+        update_in_insert = false,
+        float = { border = "rounded", source = true },
       })
     end,
   },
@@ -322,62 +390,103 @@ return {
   {
     "stevearc/conform.nvim",
     event = "BufWritePre",
-    opts  = {
+    opts = {
       formatters_by_ft = {
-        lua="stylua", python={"black","isort"}, go={"goimports","gofumpt"}, rust="rustfmt",
-        javascript="prettier", javascriptreact="prettier", typescript="prettier", typescriptreact="prettier",
-        html="prettier", css="prettier", scss="prettier", less="prettier",
-        json="prettier", yaml="prettier", markdown="prettier",
-        sh="shfmt", ruby="rubocop", kotlin="ktlint", c="clang-format", cpp="clang-format",
-        fortran="fprettify", zig="zigfmt", vhdl="vsg", elixir="mix",
+        lua = "stylua",
+        python = { "black", "isort" },
+        go = { "goimports", "gofumpt" },
+        rust = "rustfmt",
+        javascript = "prettier",
+        javascriptreact = "prettier",
+        typescript = "prettier",
+        typescriptreact = "prettier",
+        html = "prettier",
+        css = "prettier",
+        scss = "prettier",
+        less = "prettier",
+        json = "prettier",
+        yaml = "prettier",
+        markdown = "prettier",
+        sh = "shfmt",
+        ruby = "rubocop",
+        kotlin = "ktlint",
+        c = "clang-format",
+        cpp = "clang-format",
+        fortran = "fprettify",
+        zig = "zigfmt",
+        vhdl = "vsg",
+        elixir = "mix",
       },
-      format_on_save = function(bufnr) return require("core.util.format").on_save(bufnr) end,
+      format_on_save = function(bufnr)
+        return require("core.util.format").on_save(bufnr)
+      end,
     },
     config = function(_, opts)
       if vim.fn.executable("sqlfmt") == 1 then
-        opts.formatters_by_ft.sql   = { "sqlfmt" }
+        opts.formatters_by_ft.sql = { "sqlfmt" }
         opts.formatters_by_ft.mysql = { "sqlfmt" }
       end
       local ok, conform = pcall(require, "conform")
-      if ok then pcall(conform.setup, opts) end
+      if ok then
+        pcall(conform.setup, opts)
+      end
     end,
   },
 
   -- ── nvim-lint ─────────────────────────────────────────────────────────────
   {
     "mfussenegger/nvim-lint",
-    event  = "BufReadPost",
+    event = "BufReadPost",
     config = function()
       local lint = require("lint")
       local function merge_linters(ft, linters)
         lint.linters_by_ft[ft] = lint.linters_by_ft[ft] or {}
         local seen = {}
-        for _, l in ipairs(lint.linters_by_ft[ft]) do seen[l] = true end
+        for _, l in ipairs(lint.linters_by_ft[ft]) do
+          seen[l] = true
+        end
         for _, l in ipairs(linters) do
-          if not seen[l] then table.insert(lint.linters_by_ft[ft], l); seen[l] = true end
+          if not seen[l] then
+            table.insert(lint.linters_by_ft[ft], l)
+            seen[l] = true
+          end
         end
       end
-      merge_linters("python",     { "ruff" })
-      merge_linters("ruby",       { "rubocop" })
+      if vim.fn.executable("ruff") == 1 then
+        merge_linters("python", { "ruff" })
+      end
+      if vim.fn.executable("rubocop") == 1 then
+        merge_linters("ruby", { "rubocop" })
+      end
 
       if vim.g.enable_pylint == true and vim.fn.executable("pylint") == 1 then
         merge_linters("python", { "pylint" })
       end
 
       if vim.fn.executable("eslint_d") == 1 then
-        for _, ft in ipairs({ "javascript","typescript","javascriptreact","typescriptreact" }) do
+        for _, ft in ipairs({ "javascript", "typescript", "javascriptreact", "typescriptreact" }) do
           merge_linters(ft, { "eslint_d" })
         end
       end
       if vim.fn.executable("shellcheck") == 1 then
-        merge_linters("sh",   { "shellcheck" })
+        merge_linters("sh", { "shellcheck" })
         merge_linters("bash", { "shellcheck" })
       end
-      if vim.fn.executable("htmlhint")   == 1 then merge_linters("html", { "htmlhint" })   end
-      if vim.fn.executable("clang-tidy") == 1 then merge_linters("c",    { "clang-tidy" }) end
-      vim.api.nvim_create_autocmd({ "BufWritePost","InsertLeave" }, {
-        group    = vim.api.nvim_create_augroup("NvimLint", { clear = true }),
-        callback = function() pcall(function() lint.try_lint() end) end,
+      -- html's htmlhint is owned by lang/html.lua (gated on its config file). The clang-tidy linter is
+      -- registered under "clangtidy": nvim-lint's key has no hyphen, and the hyphenated name never ran.
+      if vim.fn.executable("clang-tidy") == 1 then
+        merge_linters("c", { "clangtidy" })
+      end
+      local _lint_reported = {}
+      vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
+        group = vim.api.nvim_create_augroup("NvimLint", { clear = true }),
+        callback = function()
+          local ok, err = pcall(lint.try_lint)
+          if not ok and not _lint_reported[tostring(err)] then
+            _lint_reported[tostring(err)] = true
+            vim.notify("[lint] " .. tostring(err), vim.log.levels.WARN)
+          end
+        end,
       })
     end,
   },

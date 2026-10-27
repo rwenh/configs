@@ -23,7 +23,9 @@ function M.load(path)
   if not M.enabled() then
     return false, "project configs disabled (vim.g.disable_project_configs)"
   end
-  if vim.fn.filereadable(path) ~= 1 then return false, "not readable: " .. path end
+  if vim.fn.filereadable(path) ~= 1 then
+    return false, "not readable: " .. path
+  end
 
   local content = vim.secure and vim.secure.read(path) or nil
   if content == nil then
@@ -32,7 +34,9 @@ function M.load(path)
 
   local loader = loadstring or load
   local chunk, err = loader(content, "@" .. path)
-  if not chunk then return false, "parse error: " .. tostring(err) end
+  if not chunk then
+    return false, "parse error: " .. tostring(err)
+  end
   return pcall(chunk)
 end
 

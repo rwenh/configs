@@ -6,9 +6,9 @@ local M = {}
 -- ── Defaults ──────────────────────────────────────────────────────────────────
 
 local DEFAULTS = {
-  direction     = "float",
+  direction = "float",
   close_on_exit = false,
-  hidden        = true,    -- don't pollute :ToggleTerm cycling with one-shot runs
+  hidden = true, -- don't pollute :ToggleTerm cycling with one-shot runs
 }
 
 -- ── Bounded history of one-shot runs ──────────────────────────────────────────
@@ -23,7 +23,9 @@ local function max_runs()
 end
 
 local function job_finished(t)
-  if not t.job_id then return true end
+  if not t.job_id then
+    return true
+  end
   local ok, r = pcall(vim.fn.jobwait, { t.job_id }, 0)
   return ok and r[1] ~= -1
 end
@@ -31,10 +33,12 @@ end
 local function track(t)
   table.insert(_recent, t)
   local i = 1
-  while #_recent > max_runs() and i < #_recent do   -- never the newest
+  while #_recent > max_runs() and i < #_recent do -- never the newest
     if job_finished(_recent[i]) then
       local old = table.remove(_recent, i)
-      pcall(function() old:shutdown() end)
+      pcall(function()
+        old:shutdown()
+      end)
     else
       i = i + 1
     end
@@ -49,7 +53,9 @@ local _registry = {}
 ---@param root string  absolute path to the target directory
 ---@return string      shell fragment including trailing space, or "" on blank root
 function M.cd_prefix(root)
-  if not root or root == "" then return "" end
+  if not root or root == "" then
+    return ""
+  end
   return "cd " .. vim.fn.shellescape(root) .. " && "
 end
 
@@ -63,8 +69,7 @@ function M.float(cmd, opts)
 
   local ok_req, terminal = pcall(require, "toggleterm.terminal")
   if not ok_req then
-    vim.notify("[term] toggleterm not available — cannot launch terminal",
-      vim.log.levels.ERROR)
+    vim.notify("[term] toggleterm not available — cannot launch terminal", vim.log.levels.ERROR)
     return
   end
 
@@ -76,8 +81,7 @@ function M.float(cmd, opts)
     track(term)
   end)
   if not ok_toggle then
-    vim.notify("[term] failed to open terminal: " .. tostring(err),
-      vim.log.levels.ERROR)
+    vim.notify("[term] failed to open terminal: " .. tostring(err), vim.log.levels.ERROR)
   end
 end
 
@@ -95,9 +99,9 @@ function M.float_at_root(cmd, opts)
   if not root or root == "" then
     vim.notify(
       "[term] float_at_root(): could not resolve project root.\n"
-      .. "The command was not launched. Possible causes:\n"
-      .. "  • No root markers (Cargo.toml, package.json, .git, …) found above the current file.\n"
-      .. "  • vim.g.path_debug = true  shows the detection trace in :messages.",
+        .. "The command was not launched. Possible causes:\n"
+        .. "  • No root markers (Cargo.toml, package.json, .git, …) found above the current file.\n"
+        .. "  • vim.g.path_debug = true  shows the detection trace in :messages.",
       vim.log.levels.WARN
     )
     return
@@ -124,14 +128,20 @@ function M.open(name, cmd, opts)
   end
 
   if _registry[name] then
-    local ok = pcall(function() _registry[name]:toggle() end)
+    local ok = pcall(function()
+      _registry[name]:toggle()
+    end)
     if not ok then
       _registry[name] = nil
 
       if type(cmd) ~= "string" or cmd == "" then
         vim.notify(
-          "[term] open('" .. name .. "'): terminal became stale.\n"
-          .. "Re-call M.open('" .. name .. "', '<your-command>') to restart it.",
+          "[term] open('"
+            .. name
+            .. "'): terminal became stale.\n"
+            .. "Re-call M.open('"
+            .. name
+            .. "', '<your-command>') to restart it.",
           vim.log.levels.WARN
         )
         return
@@ -144,17 +154,14 @@ function M.open(name, cmd, opts)
   end
 
   if type(cmd) ~= "string" or cmd == "" then
-    vim.notify(
-      "[term] open('" .. name .. "'): cmd is required for the first invocation",
-      vim.log.levels.ERROR
-    )
+    vim.notify("[term] open('" .. name .. "'): cmd is required for the first invocation", vim.log.levels.ERROR)
     return
   end
 
   local cfg = vim.tbl_extend("force", DEFAULTS, opts or {}, {
-    cmd          = cmd,
+    cmd = cmd,
     display_name = name,
-    on_close     = function()
+    on_close = function()
       if _registry[name] then
         _registry[name] = nil
       end
@@ -188,15 +195,14 @@ function M.send(name, text, nl)
 
   local t = _registry[name]
   if not t then
-    vim.notify(
-      "[term] send(): no terminal named '" .. name .. "' — open it first with M.open()",
-      vim.log.levels.WARN
-    )
+    vim.notify("[term] send(): no terminal named '" .. name .. "' — open it first with M.open()", vim.log.levels.WARN)
     return
   end
 
   local payload = (nl ~= false) and (text .. "\n") or text
-  local ok, err = pcall(function() t:send(payload) end)
+  local ok, err = pcall(function()
+    t:send(payload)
+  end)
   if not ok then
     vim.notify("[term] send('" .. name .. "'): " .. tostring(err), vim.log.levels.WARN)
   end
@@ -212,7 +218,9 @@ end
 function M.close(name)
   local t = _registry[name]
   if t then
-    pcall(function() t:shutdown() end)
+    pcall(function()
+      t:shutdown()
+    end)
     _registry[name] = nil
   end
 end
@@ -220,7 +228,9 @@ end
 ---@return string[]
 function M.list()
   local names = {}
-  for k in pairs(_registry) do table.insert(names, k) end
+  for k in pairs(_registry) do
+    table.insert(names, k)
+  end
   table.sort(names)
   return names
 end

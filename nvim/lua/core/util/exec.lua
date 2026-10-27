@@ -23,7 +23,9 @@ end
 ---@param hint  string?  optional install hint — shown after "not found" message
 ---@return boolean
 function M.require_bin(name, hint)
-  if vim.fn.executable(name) == 1 then return true end
+  if vim.fn.executable(name) == 1 then
+    return true
+  end
   local msg = string.format("[exec] '%s' not found.", name)
   if hint and hint ~= "" then
     msg = msg .. "\nInstall: " .. hint
@@ -36,7 +38,9 @@ end
 ---@param hint  string?
 ---@return boolean
 function M.warn_bin(name, hint)
-  if vim.fn.executable(name) == 1 then return true end
+  if vim.fn.executable(name) == 1 then
+    return true
+  end
   local msg = string.format("[exec] '%s' not found (optional).", name)
   if hint and hint ~= "" then
     msg = msg .. "\nInstall: " .. hint
@@ -51,7 +55,9 @@ function M.find_first(names)
   for _, name in ipairs(names) do
     if vim.fn.executable(name) == 1 then
       local p = vim.fn.exepath(name)
-      if p and p ~= "" then return p end
+      if p and p ~= "" then
+        return p
+      end
     end
   end
   return nil
@@ -64,7 +70,9 @@ function M.require_all(names, hint)
   for _, name in ipairs(names) do
     if vim.fn.executable(name) ~= 1 then
       local msg = string.format("[exec] '%s' not found.", name)
-      if hint and hint ~= "" then msg = msg .. "\nInstall: " .. hint end
+      if hint and hint ~= "" then
+        msg = msg .. "\nInstall: " .. hint
+      end
       vim.notify(msg, vim.log.levels.ERROR)
       return false
     end
@@ -147,18 +155,24 @@ end
 ---@param callback fun(ver: string|nil)  called on the main loop
 ---@param pattern  string?   Lua pattern to extract version (default: "%d+%.%d+%.?%d*")
 function M.version_async(bin, cmd, callback, pattern)
-  if type(callback) ~= "function" then return end
+  if type(callback) ~= "function" then
+    return
+  end
 
   local key = resolve(bin)
   local cached = _version_cache[key]
   if cached ~= nil then
-    vim.schedule(function() callback(cached ~= NOT_INSTALLED and cached or nil) end)
+    vim.schedule(function()
+      callback(cached ~= NOT_INSTALLED and cached or nil)
+    end)
     return
   end
 
   if vim.fn.executable(bin) ~= 1 then
     _version_cache[key] = NOT_INSTALLED
-    vim.schedule(function() callback(nil) end)
+    vim.schedule(function()
+      callback(nil)
+    end)
     return
   end
 
@@ -170,12 +184,16 @@ function M.version_async(bin, cmd, callback, pattern)
         ver = first:match(pattern or "%d+%.%d+%.?%d*") or "installed"
       end
       _version_cache[key] = ver
-      vim.schedule(function() callback(ver) end)
+      vim.schedule(function()
+        callback(ver)
+      end)
     end)
   else
     -- Synchronous fallback for Neovim < 0.10 (no vim.system).
     local ver = M.version(bin, table.concat(cmd, " "), pattern)
-    vim.schedule(function() callback(ver) end)
+    vim.schedule(function()
+      callback(ver)
+    end)
   end
 end
 
@@ -189,8 +207,8 @@ end
 ---@return string sanitized
 ---@return boolean changed
 function M.sanitize_build_flags(flags)
-  local raw   = tostring(flags or "")
-  local clean = raw:gsub("[^%w%s%-%._=/+:,@]", "")
+  local raw = tostring(flags or "")
+  local clean = raw:gsub("[^%w %-%._=/+:,@]", "")
   return clean, clean ~= raw
 end
 

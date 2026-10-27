@@ -4,8 +4,8 @@
 return {
   {
     "saghen/blink.cmp",
-    version      = "1.*",
-    event        = { "InsertEnter", "CmdlineEnter" },
+    version = "1.*",
+    event = { "InsertEnter", "CmdlineEnter" },
     dependencies = {
       "rafamadriz/friendly-snippets",
       "L3MON4D3/LuaSnip",
@@ -13,39 +13,48 @@ return {
 
     opts = {
       keymap = {
-        preset        = "default",
+        preset = "default",
         ["<C-Space>"] = { "show", "show_documentation", "hide_documentation" },
-        ["<C-q>"]     = { "hide" },
-        ["<CR>"]      = { "accept", "fallback" },
-        ["<Tab>"]     = { "snippet_forward",  "fallback" },
-        ["<S-Tab>"]   = { "snippet_backward", "fallback" },
-        ["<C-p>"]     = { "select_prev" },
-        ["<C-n>"]     = { "select_next" },
-        ["<C-k>"]     = { "select_prev" },
-        ["<C-j>"]     = { "select_next" },
-        ["<C-b>"]     = { "scroll_documentation_up",   "fallback" },
-        ["<C-f>"]     = { "scroll_documentation_down", "fallback" },
+        ["<C-q>"] = { "hide" },
+        ["<CR>"] = { "accept", "fallback" },
+        ["<Tab>"] = { "snippet_forward", "fallback" },
+        ["<S-Tab>"] = { "snippet_backward", "fallback" },
+        ["<C-p>"] = { "select_prev" },
+        ["<C-n>"] = { "select_next" },
+        ["<C-k>"] = { "select_prev" },
+        ["<C-j>"] = { "select_next" },
+        ["<C-b>"] = { "scroll_documentation_up", "fallback" },
+        ["<C-f>"] = { "scroll_documentation_down", "fallback" },
       },
 
       appearance = {
         use_nvim_cmp_as_default = false,
-        nerd_font_variant       = "mono",
+        nerd_font_variant = "mono",
       },
 
       sources = {
         default = { "lsp", "path", "snippets", "buffer" },
         providers = {
-          lsp      = { name = "LSP",      module = "blink.cmp.sources.lsp",      min_keyword_length = 0 },
-          path     = { name = "Path",     module = "blink.cmp.sources.path" },
+          lsp = { name = "LSP", module = "blink.cmp.sources.lsp", min_keyword_length = 0 },
+          path = { name = "Path", module = "blink.cmp.sources.path" },
           snippets = { name = "Snippets", module = "blink.cmp.sources.snippets", min_keyword_length = 2 },
-          buffer   = { name = "Buffer",   module = "blink.cmp.sources.buffer",   min_keyword_length = 2, score_offset = -3 },
-          cmdline  = { name = "cmdline",  module = "blink.cmp.sources.cmdline",  min_keyword_length = 0 },
-          dadbod   = { name = "Dadbod",   module = "vim_dadbod_completion.blink" },
+          buffer = {
+            name = "Buffer",
+            module = "blink.cmp.sources.buffer",
+            min_keyword_length = 2,
+            score_offset = -3,
+          },
+          cmdline = { name = "cmdline", module = "blink.cmp.sources.cmdline", min_keyword_length = 0 },
+          dadbod = { name = "Dadbod", module = "vim_dadbod_completion.blink" },
         },
         per_filetype = vim.tbl_extend(
           "keep",
           type(vim.g.completion_sources_by_ft) == "table" and vim.g.completion_sources_by_ft or {},
-          { sql = { "dadbod", "snippets", "buffer" }, mysql = { "dadbod", "snippets", "buffer" }, plsql = { "dadbod", "snippets", "buffer" } }
+          {
+            sql = { "dadbod", "snippets", "buffer" },
+            mysql = { "dadbod", "snippets", "buffer" },
+            plsql = { "dadbod", "snippets", "buffer" },
+          }
         ),
       },
 
@@ -55,18 +64,18 @@ return {
         accept = { auto_brackets = { enabled = true } },
         menu = {
           border = "rounded",
-          draw   = {
+          draw = {
             treesitter = { "lsp" },
-            columns    = {
+            columns = {
               { "label", "label_description", gap = 1 },
               { "kind_icon", "kind" },
             },
           },
         },
         documentation = {
-          auto_show          = true,
+          auto_show = true,
           auto_show_delay_ms = 200,
-          window             = { border = "rounded" },
+          window = { border = "rounded" },
         },
         ghost_text = { enabled = true },
       },
@@ -75,37 +84,54 @@ return {
     },
 
     config = function(_, opts)
-
       -- ── LuaSnip integration ─────────────────────────────────────────────────
       local has_ls, ls = pcall(require, "luasnip")
       if not has_ls then
         ls = nil
         vim.notify(
           "[completion] LuaSnip not loaded — snippets will use native vim.snippet.\n"
-          .. "Run :Lazy install to ensure LuaSnip is installed.",
+            .. "Run :Lazy install to ensure LuaSnip is installed.",
           vim.log.levels.WARN
         )
       else
-        pcall(function() require("luasnip.loaders.from_vscode").lazy_load() end)
+        pcall(function()
+          require("luasnip.loaders.from_vscode").lazy_load()
+        end)
       end
 
       opts.snippets = {
         expand = function(snippet)
-          if has_ls and ls then pcall(function() ls.lsp_expand(snippet) end)
-          else pcall(function() vim.snippet.expand(snippet) end) end
+          if has_ls and ls then
+            pcall(function()
+              ls.lsp_expand(snippet)
+            end)
+          else
+            pcall(function()
+              vim.snippet.expand(snippet)
+            end)
+          end
         end,
         active = function(filter)
-          if has_ls and ls then return ls.jumpable(filter and filter.direction or 1) end
+          if has_ls and ls then
+            return ls.jumpable(filter and filter.direction or 1)
+          end
           return vim.snippet.active(filter)
         end,
         jump = function(direction)
-          if has_ls and ls then ls.jump(direction)
-          else vim.snippet.jump(direction) end
+          if has_ls and ls then
+            ls.jump(direction)
+          else
+            vim.snippet.jump(direction)
+          end
         end,
       }
 
-      local ok = pcall(function() require("blink.cmp").setup(opts) end)
-      if not ok then vim.notify("blink.cmp setup failed", vim.log.levels.ERROR) end
+      local ok = pcall(function()
+        require("blink.cmp").setup(opts)
+      end)
+      if not ok then
+        vim.notify("blink.cmp setup failed", vim.log.levels.ERROR)
+      end
     end,
   },
 
@@ -114,7 +140,9 @@ return {
     "L3MON4D3/LuaSnip",
     config = function()
       local ok, snippets = pcall(require, "core.util.snippets")
-      if ok then snippets.flush() end
+      if ok then
+        snippets.flush()
+      end
     end,
   },
 }

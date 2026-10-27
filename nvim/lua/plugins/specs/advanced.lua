@@ -3,47 +3,99 @@
 
 return {
 
-  { "nvim-tree/nvim-web-devicons", lazy = false, priority = 950,
+  {
+    "nvim-tree/nvim-web-devicons",
+    lazy = false,
+    priority = 950,
     opts = { default = true, color_icons = true, variant = "default", strict = true },
-    config = function(_, opts) require("nvim-web-devicons").setup(opts) end },
+    config = function(_, opts)
+      require("nvim-web-devicons").setup(opts)
+    end,
+  },
 
-  { "max397574/better-escape.nvim", event = "InsertEnter",
-    opts = { timeout = 200, default_mappings = false,
-             mappings = { i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } } } } },
+  {
+    "max397574/better-escape.nvim",
+    event = "InsertEnter",
+    opts = {
+      timeout = 200,
+      default_mappings = false,
+      mappings = { i = { j = { k = "<Esc>" }, k = { j = "<Esc>" } } },
+    },
+  },
 
-  { "andymass/vim-matchup", event = { "BufReadPost","BufNewFile" },
+  {
+    "andymass/vim-matchup",
+    event = { "BufReadPost", "BufNewFile" },
     init = function()
       vim.g.matchup_matchparen_offscreen = { method = "popup" }
-      vim.g.matchup_matchparen_deferred  = 1
-    end },
+      vim.g.matchup_matchparen_deferred = 1
+    end,
+  },
 
-  { "nvim-treesitter/nvim-treesitter", optional = true,
-    opts = function(_, opts) opts.matchup = opts.matchup or {}; opts.matchup.enable = true end },
+  {
+    "nvim-treesitter/nvim-treesitter",
+    optional = true,
+    opts = function(_, opts)
+      opts.matchup = opts.matchup or {}
+      opts.matchup.enable = true
+    end,
+  },
 
-  { "SmiteshP/nvim-navic", event = "LspAttach",
-    opts = { icons = require("core.util.icons").kinds, lsp = { auto_attach = false },
-             highlight = true, separator = " > ", depth_limit = 5, safe_output = true } },
+  {
+    "SmiteshP/nvim-navic",
+    event = "LspAttach",
+    opts = {
+      icons = require("core.util.icons").kinds,
+      lsp = { auto_attach = false },
+      highlight = true,
+      separator = " > ",
+      depth_limit = 5,
+      safe_output = true,
+    },
+  },
 
-  { "brenoprata10/nvim-highlight-colors", event = "BufReadPost",
-    opts = { render = "background", enable_named_colors = true, enable_tailwind = true,
-             exclude_filetypes = { "lazy","mason","lspinfo","snacks_dashboard" } },
-    config = function(_, opts) pcall(function() require("nvim-highlight-colors").setup(opts) end) end },
+  {
+    "brenoprata10/nvim-highlight-colors",
+    event = "BufReadPost",
+    opts = {
+      render = "background",
+      enable_named_colors = true,
+      enable_tailwind = true,
+      exclude_filetypes = { "lazy", "mason", "lspinfo", "snacks_dashboard" },
+    },
+    config = function(_, opts)
+      pcall(function()
+        require("nvim-highlight-colors").setup(opts)
+      end)
+    end,
+  },
 
-  { "HiPhish/rainbow-delimiters.nvim", submodules = false, event = { "BufReadPre","BufNewFile" },
+  {
+    "HiPhish/rainbow-delimiters.nvim",
+    submodules = false,
+    event = { "BufReadPre", "BufNewFile" },
     config = function()
       local rd = require("rainbow-delimiters")
       pcall(function()
         require("rainbow-delimiters.setup").setup({
-          strategy  = { [""] = rd.strategy["global"], vim = rd.strategy["local"] },
-          query     = { [""] = "rainbow-delimiters", lua = "rainbow-blocks" },
-          highlight = { "RainbowDelimiterRed","RainbowDelimiterYellow","RainbowDelimiterBlue",
-                        "RainbowDelimiterOrange","RainbowDelimiterGreen","RainbowDelimiterViolet","RainbowDelimiterCyan" },
-          blacklist = { "html","markdown","" },
+          strategy = { [""] = rd.strategy["global"], vim = rd.strategy["local"] },
+          query = { [""] = "rainbow-delimiters", lua = "rainbow-blocks" },
+          highlight = {
+            "RainbowDelimiterRed",
+            "RainbowDelimiterYellow",
+            "RainbowDelimiterBlue",
+            "RainbowDelimiterOrange",
+            "RainbowDelimiterGreen",
+            "RainbowDelimiterViolet",
+            "RainbowDelimiterCyan",
+          },
+          blacklist = { "html", "markdown", "" },
         })
       end)
-    end },
+    end,
+  },
 
-  { "tpope/vim-repeat",  event = "VeryLazy" },
+  { "tpope/vim-repeat", event = "VeryLazy" },
   { "tpope/vim-abolish", event = "VeryLazy" },
   { "gbprod/stay-in-place.nvim", event = "VeryLazy", opts = {} },
 
@@ -54,18 +106,30 @@ return {
   {
     "echasnovski/mini.nvim",
     event = "VeryLazy",
-    keys  = {
-      { "gc", mode = { "n","v" } }, { "gcc" },
-      { "ga", mode = { "n","v" } }, { "gA", mode = { "n","v" } },
+    keys = {
+      { "gc", mode = { "n", "v" } },
+      { "gcc" },
+      { "ga", mode = { "n", "v" } },
+      { "gA", mode = { "n", "v" } },
       { "gS" },
-      { "gsa", mode = "v" }, { "gsd" }, { "gsf" }, { "gsF" }, { "gsh" }, { "gsr" },
-      { "<A-h>", mode = { "n","v" } }, { "<A-j>", mode = { "n","v" } },
-      { "<A-k>", mode = { "n","v" } }, { "<A-l>", mode = { "n","v" } },
+      { "gsa", mode = "v" },
+      { "gsd" },
+      { "gsf" },
+      { "gsF" },
+      { "gsh" },
+      { "gsr" },
+      { "<A-h>", mode = { "n", "v" } },
+      { "<A-j>", mode = { "n", "v" } },
+      { "<A-k>", mode = { "n", "v" } },
+      { "<A-l>", mode = { "n", "v" } },
       {
         "<leader>em",
         function()
           local ok, mf = pcall(require, "mini.files")
-          if not ok then vim.notify("[mini.files] not available", vim.log.levels.WARN); return end
+          if not ok then
+            vim.notify("[mini.files] not available", vim.log.levels.WARN)
+            return
+          end
           mf.open(vim.fn.expand("%:p:h"), true)
         end,
         desc = "mini.files (current dir)",
@@ -74,7 +138,10 @@ return {
         "<leader>eM",
         function()
           local ok, mf = pcall(require, "mini.files")
-          if not ok then vim.notify("[mini.files] not available", vim.log.levels.WARN); return end
+          if not ok then
+            vim.notify("[mini.files] not available", vim.log.levels.WARN)
+            return
+          end
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           mf.open(root, true)
@@ -84,7 +151,9 @@ return {
     },
     config = function()
       local function setup(mod, opts)
-        local ok, err = pcall(function() require("mini." .. mod).setup(opts) end)
+        local ok, err = pcall(function()
+          require("mini." .. mod).setup(opts)
+        end)
         if not ok then
           vim.notify(string.format("[mini.%s] setup failed: %s", mod, tostring(err)), vim.log.levels.WARN)
         end
@@ -98,24 +167,29 @@ return {
       -- would shadow flash's `s`.
       setup("surround", {
         mappings = {
-          add = "gsa", delete = "gsd", find = "gsf", find_left = "gsF",
-          highlight = "gsh", replace = "gsr", update_n_lines = "gsn",
+          add = "gsa",
+          delete = "gsd",
+          find = "gsf",
+          find_left = "gsF",
+          highlight = "gsh",
+          replace = "gsr",
+          update_n_lines = "gsn",
         },
       })
 
       if vim.g.disable_mini_pairs ~= true then
         setup("pairs", {
-          modes   = { insert = true, command = false, terminal = false },
+          modes = { insert = true, command = false, terminal = false },
           mappings = {
-            ["("]  = { action = "open",  pair = "()",  neigh_pattern = "[^\\]." },
-            ["["]  = { action = "open",  pair = "[]",  neigh_pattern = "[^\\]." },
-            ["{"]  = { action = "open",  pair = "{}",  neigh_pattern = "[^\\]." },
-            [")"]  = { action = "close", pair = "()",  neigh_pattern = "[^\\]." },
-            ["]"]  = { action = "close", pair = "[]",  neigh_pattern = "[^\\]." },
-            ["}"]  = { action = "close", pair = "{}",  neigh_pattern = "[^\\]." },
-            ['"']  = { action = "closeopen", pair = '""', neigh_pattern = "[^\\].", register = { cr = false } },
-            ["'"]  = { action = "closeopen", pair = "''", neigh_pattern = "[^%a\\].", register = { cr = false } },
-            ["`"]  = { action = "closeopen", pair = "``", neigh_pattern = "[^\\].", register = { cr = false } },
+            ["("] = { action = "open", pair = "()", neigh_pattern = "[^\\]." },
+            ["["] = { action = "open", pair = "[]", neigh_pattern = "[^\\]." },
+            ["{"] = { action = "open", pair = "{}", neigh_pattern = "[^\\]." },
+            [")"] = { action = "close", pair = "()", neigh_pattern = "[^\\]." },
+            ["]"] = { action = "close", pair = "[]", neigh_pattern = "[^\\]." },
+            ["}"] = { action = "close", pair = "{}", neigh_pattern = "[^\\]." },
+            ['"'] = { action = "closeopen", pair = '""', neigh_pattern = "[^\\].", register = { cr = false } },
+            ["'"] = { action = "closeopen", pair = "''", neigh_pattern = "[^%a\\].", register = { cr = false } },
+            ["`"] = { action = "closeopen", pair = "``", neigh_pattern = "[^\\].", register = { cr = false } },
           },
         })
       end
@@ -129,33 +203,38 @@ return {
   },
 
   -- ── undotree ──────────────────────────────────────────────────────────────
-  { "mbbill/undotree", cmd = "UndotreeToggle",
+  {
+    "mbbill/undotree",
+    cmd = "UndotreeToggle",
     keys = { { "<leader>xu", "<cmd>UndotreeToggle<CR>", desc = "Undo Tree" } },
     init = function()
       vim.g.undotree_SetFocusWhenToggle = 1
-      vim.g.undotree_ShortIndicators    = 1
-      vim.g.undotree_WindowLayout       = 2
-    end },
+      vim.g.undotree_ShortIndicators = 1
+      vim.g.undotree_WindowLayout = 2
+    end,
+  },
 
   -- ── nvim-ufo ──────────────────────────────────────────────────────────────
   {
     "kevinhwang91/nvim-ufo",
-    event = "VeryLazy", dependencies = { "kevinhwang91/promise-async" },
+    event = "VeryLazy",
+    dependencies = { "kevinhwang91/promise-async" },
     opts = function()
       local function fold_text(virtText, lnum, endLnum, width, truncate)
         local newVirtText = {}
-        local suffix      = ("  %d "):format(endLnum - lnum)
-        local sufWidth    = vim.fn.strdisplaywidth(suffix)
+        local suffix = ("  %d "):format(endLnum - lnum)
+        local sufWidth = vim.fn.strdisplaywidth(suffix)
         local targetWidth = width - sufWidth
-        local curWidth    = 0
+        local curWidth = 0
         for _, chunk in ipairs(virtText) do
-          local chunkText  = chunk[1]
+          local chunkText = chunk[1]
           local chunkWidth = vim.fn.strdisplaywidth(chunkText)
           if targetWidth > curWidth + chunkWidth then
             table.insert(newVirtText, chunk)
           else
             chunkText = truncate(chunkText, targetWidth - curWidth)
-            table.insert(newVirtText, { chunkText, chunk[2] }); break
+            table.insert(newVirtText, { chunkText, chunk[2] })
+            break
           end
           curWidth = curWidth + chunkWidth
         end
@@ -163,9 +242,9 @@ return {
         return newVirtText
       end
       return {
-        fold_virt_text_handler  = fold_text,
-        open_fold_hl_timeout    = 400,
-        close_fold_kinds_for_ft = { _ = { "imports","comment" } },
+        fold_virt_text_handler = fold_text,
+        open_fold_hl_timeout = 400,
+        close_fold_kinds_for_ft = { _ = { "imports", "comment" } },
         provider_selector = function(bufnr)
           if vim.b[bufnr] and vim.b[bufnr].large_file then
             return { "indent" }
@@ -176,8 +255,12 @@ return {
     end,
     config = function(_, opts)
       local ok, ufo = pcall(require, "ufo")
-      if not ok then return end
-      pcall(function() ufo.setup(opts) end)
+      if not ok then
+        return
+      end
+      pcall(function()
+        ufo.setup(opts)
+      end)
       vim.keymap.set("n", "zR", ufo.openAllFolds)
       vim.keymap.set("n", "zM", ufo.closeAllFolds)
       vim.keymap.set("n", "zr", ufo.openFoldsExceptKinds)
@@ -186,41 +269,50 @@ return {
   },
 
   -- ── neogen ────────────────────────────────────────────────────────────────
-  { "danymat/neogen", lazy = true, cmd = "Neogen",
+  {
+    "danymat/neogen",
+    lazy = true,
+    cmd = "Neogen",
     keys = { { "<leader>xg", "<cmd>Neogen<CR>", desc = "Generate docstring" } },
     dependencies = { "nvim-treesitter/nvim-treesitter", "L3MON4D3/LuaSnip" },
     opts = {
       snippet_engine = "luasnip",
       languages = {
-        lua        = { template = { annotation_convention = "emmylua"           } },
-        typescript = { template = { annotation_convention = "tsdoc"             } },
-        javascript = { template = { annotation_convention = "jsdoc"             } },
-        rust       = { template = { annotation_convention = "nightly"           } },
-        go         = { template = { annotation_convention = "go"                } },
-        cpp        = { template = { annotation_convention = "doxygen"           } },
-        c          = { template = { annotation_convention = "doxygen"           } },
-        python     = { template = { annotation_convention = "google_docstrings" } },
-        java       = { template = { annotation_convention = "javadoc"           } },
-        kotlin     = { template = { annotation_convention = "kdoc"              } },
+        lua = { template = { annotation_convention = "emmylua" } },
+        typescript = { template = { annotation_convention = "tsdoc" } },
+        javascript = { template = { annotation_convention = "jsdoc" } },
+        rust = { template = { annotation_convention = "nightly" } },
+        go = { template = { annotation_convention = "go" } },
+        cpp = { template = { annotation_convention = "doxygen" } },
+        c = { template = { annotation_convention = "doxygen" } },
+        python = { template = { annotation_convention = "google_docstrings" } },
+        java = { template = { annotation_convention = "javadoc" } },
+        kotlin = { template = { annotation_convention = "kdoc" } },
       },
-    } },
+    },
+  },
 
   -- ── mini.animate ──────────────────────────────────────────────────────────
   --
-  { "echasnovski/mini.animate", event = "VeryLazy",
+  {
+    "echasnovski/mini.animate",
+    event = "VeryLazy",
     config = function()
       local ok, animate = pcall(require, "mini.animate")
-      if not ok then return end
+      if not ok then
+        return
+      end
 
       local neoscroll_active = package.loaded["neoscroll"]
         or #vim.api.nvim_get_runtime_file("lua/neoscroll.lua", false) > 0
         or #vim.api.nvim_get_runtime_file("lua/neoscroll/init.lua", false) > 0
 
       local mouse_scrolled = false
-      for _, dir in ipairs({ "Up","Down" }) do
+      for _, dir in ipairs({ "Up", "Down" }) do
         local key = "<ScrollWheel" .. dir .. ">"
-        vim.keymap.set({ "","i" }, key, function()
-          mouse_scrolled = true; return key
+        vim.keymap.set({ "", "i" }, key, function()
+          mouse_scrolled = true
+          return key
         end, { expr = true })
       end
 
@@ -231,16 +323,21 @@ return {
         scroll_cfg = { enable = false }
         vim.notify(
           "[advanced] mini.animate scroll disabled — neoscroll.nvim is active.\n"
-          .. "Set vim.g.force_mini_animate_scroll = true to override.",
+            .. "Set vim.g.force_mini_animate_scroll = true to override.",
           vim.log.levels.DEBUG
         )
       else
         scroll_cfg = {
-          timing    = animate.gen_timing.linear({ duration = 80, unit = "total" }),
+          timing = animate.gen_timing.linear({ duration = 80, unit = "total" }),
           subscroll = animate.gen_subscroll.equal({
             predicate = function(total_scroll)
-              if vim.b[0] and vim.b[0].large_file then return false end
-              if mouse_scrolled then mouse_scrolled = false; return false end
+              if vim.b[0] and vim.b[0].large_file then
+                return false
+              end
+              if mouse_scrolled then
+                mouse_scrolled = false
+                return false
+              end
               return math.abs(total_scroll) > 5
             end,
           }),
@@ -248,12 +345,13 @@ return {
       end
 
       animate.setup({
-        resize = { timing = animate.gen_timing.linear({ duration = 50,  unit = "total" }) },
-        open   = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
-        close  = { timing = animate.gen_timing.linear({ duration = 40,  unit = "total" }) },
+        resize = { timing = animate.gen_timing.linear({ duration = 50, unit = "total" }) },
+        open = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
+        close = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
         scroll = scroll_cfg,
         -- smear-cursor.nvim owns cursor motion; two cursor animators fight.
         cursor = { enable = vim.g.disable_smear_cursor == true },
       })
-    end },
+    end,
+  },
 }

@@ -6,22 +6,30 @@
 --   3. DATABASE_URL / DB_URL / DATABASE_URI in <root>/.env   (.env, .env.local, .env.development)
 --
 
+local flags = require("core.flags")
+local cache = require("core.util.cache")
+
 local M = {}
 
-local STATE   = "_nvim_db_source"    -- { url, kind, name, label, root } of the URL we wrote last
-local CLEARED = "_nvim_db_cleared"   -- project root where the user cleared the connection
-local TTL     = 30                   -- seconds a dotenv read is trusted without re-checking
+local STATE = "_nvim_db_source" -- { url, kind, name, label, root } of the URL we wrote last
+local CLEARED = "_nvim_db_cleared" -- project root where the user cleared the connection
 local MAX_DOTENV_BYTES = 64 * 1024
-local MAX_URL_BYTES    = 2048
+local MAX_URL_BYTES = 2048
 
 local DEFAULT_ENV_VARS = { "DATABASE_URL", "DB_URL", "DATABASE_URI" }
-local DEFAULT_DOTENV   = { ".env", ".env.local", ".env.development" }
+local DEFAULT_DOTENV = { ".env", ".env.local", ".env.development" }
 
 local DIALECT_BY_SCHEME = {
-  postgres = "pg", postgresql = "pg", pgsql = "pg", pg = "pg",
-  mysql = "mysql", mariadb = "mysql",
-  sqlite = "sqlite", sqlite3 = "sqlite",
-  mssql = "mssql", sqlserver = "mssql",
+  postgres = "pg",
+  postgresql = "pg",
+  pgsql = "pg",
+  pg = "pg",
+  mysql = "mysql",
+  mariadb = "mysql",
+  sqlite = "sqlite",
+  sqlite3 = "sqlite",
+  mssql = "mssql",
+  sqlserver = "mssql",
 }
 
 -- Each query lists user tables and views only, so it is safe to run as-is.
@@ -40,8 +48,10 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;]],
 }
 
 local function list_flag(name, default)
-  local v = vim.g[name]
-  if type(v) == "table" and #v > 0 then return v end
+  local v = flags.get(name, nil)
+  if type(v) == "table" and #v > 0 then
+    return v
+  end
   return default
 end
 
@@ -54,13 +64,19 @@ end
 function M.parse_dotenv_line(line)
   line = (line or ""):gsub("\r$", "")
   local key, rest = line:match("^%s*export%s+([%w_]+)%s*=(.*)$")
-  if not key then key, rest = line:match("^%s*([%w_]+)%s*=(.*)$") end
-  if not key then return nil, nil end
+  if not key then
+    key, rest = line:match("^%s*([%w_]+)%s*=(.*)$")
+  end
+  if not key then
+    return nil, nil
+  end
   rest = vim.trim(rest)
   local q = rest:sub(1, 1)
   if q == '"' or q == "'" then
     local close = rest:find(q, 2, true)
-    if not close then return nil, nil end
+    if not close then
+      return nil, nil
+    end
     return key, rest:sub(2, close - 1)
   end
   local value = rest:gsub("%s+#.*$", "")
@@ -72,9 +88,15 @@ end
 ---@return boolean ok
 ---@return string? reason
 function M.validate_url(url)
-  if type(url) ~= "string" or url == "" then return false, "empty value" end
-  if #url > MAX_URL_BYTES then return false, ("longer than %d bytes"):format(MAX_URL_BYTES) end
-  if url:find("[%c%s]") then return false, "contains whitespace or control characters" end
+  if type(url) ~= "string" or url == "" then
+    return false, "empty value"
+  end
+  if #url > MAX_URL_BYTES then
+    return false, ("longer than %d bytes"):format(MAX_URL_BYTES)
+  end
+  if url:find("[%c%s]") then
+    return false, "contains whitespace or control characters"
+  end
   if not url:match("^%a[%w+.-]*:") then
     return false, "no scheme (expected something like postgres://user@host/db)"
   end
@@ -84,7 +106,9 @@ end
 ---@param url any
 ---@return string|nil dialect  "pg" | "mysql" | "sqlite" | "mssql", or nil when unknown
 function M.dialect(url)
-  if type(url) ~= "string" then return nil end
+  if type(url) ~= "string" then
+    return nil
+  end
   local scheme = url:match("^(%a[%w+.-]*):")
   return scheme and DIALECT_BY_SCHEME[scheme:lower()] or nil
 end
@@ -108,31 +132,48 @@ function M.project_root(buf)
   return found or dir
 end
 
--- ── Dotenv reads (mtime + size + TTL memo; a miss is cached as a table too) ─
+-- ── Dotenv reads ───────────────────────────────────────────────────────────
+-- A .env file is read only through vim.secure: the first time it appears, you are asked (once per
+-- content hash), like every other project file. A refusal is asked again after DECLINE_TTL seconds.
+-- Off entirely with vim.g.disable_project_configs. Results are cached against the file signature.
 
-local _dotenv = {}
+local DECLINE_TTL = 60
+local _dotenv = cache.new({ name = "dburl.dotenv", ttl = DECLINE_TTL })
 
 local function dotenv_lookup(file, names)
-  local st = vim.uv.fs_stat(file)
-  if not st or st.type ~= "file" or st.size > MAX_DOTENV_BYTES then return nil, nil end
-  local memo_key = file .. "\0" .. table.concat(names, ",")
-  local now = os.time()
-  local hit = _dotenv[memo_key]
-  if hit and hit.mtime == st.mtime.sec and hit.size == st.size and (now - hit.at) < TTL then
-    return hit.key, hit.url
-  end
   local wanted = {}
-  for _, n in ipairs(names) do wanted[n] = true end
-  local key, url
-  local ok, lines = pcall(vim.fn.readfile, file)
-  if ok then
-    for _, line in ipairs(lines) do
-      local k, v = M.parse_dotenv_line(line)
-      if k and wanted[k] and v and v ~= "" then key, url = k, v; break end
-    end
+  for _, n in ipairs(names) do
+    wanted[n] = true
   end
-  _dotenv[memo_key] = { at = now, mtime = st.mtime.sec, size = st.size, key = key, url = url }
+  local key, url = _dotenv:memo(file .. "\0" .. table.concat(names, ","), file, function()
+    local st = vim.uv.fs_stat(file)
+    if not st or st.type ~= "file" or st.size > MAX_DOTENV_BYTES then
+      return nil, nil
+    end
+    local content = vim.secure.read(file) -- prompts once per content hash; nil when refused
+    if type(content) ~= "string" then
+      return nil, nil
+    end
+    for _, line in ipairs(vim.split(content, "\n", { plain = true })) do
+      local k, v = M.parse_dotenv_line(line)
+      if k and wanted[k] and v and v ~= "" then
+        return k, v
+      end
+    end
+    return nil, nil
+  end, {
+    ttl_for = function(k, u)
+      return (k and u) and math.huge or DECLINE_TTL
+    end,
+  })
   return key, url
+end
+
+local function dotenv_files()
+  if flags.get("disable_project_configs", false) == true then
+    return {}
+  end
+  return list_flag("db_url_dotenv_files", DEFAULT_DOTENV)
 end
 
 --- First URL available for `root`, or nil. Writes nothing.
@@ -142,14 +183,19 @@ local function candidate(root)
   for _, name in ipairs(names) do
     local raw = vim.env[name]
     local v = type(raw) == "string" and vim.trim(raw) or ""
-    if v ~= "" then return { url = v, kind = "env", name = name, label = "$" .. name } end
+    if v ~= "" then
+      return { url = v, kind = "env", name = name, label = "$" .. name }
+    end
   end
-  for _, f in ipairs(list_flag("db_url_dotenv_files", DEFAULT_DOTENV)) do
+  for _, f in ipairs(dotenv_files()) do
     local file = root .. "/" .. f
     local key, url = dotenv_lookup(file, names)
     if key then
       return {
-        url = url, kind = "dotenv", name = key, root = root,
+        url = url,
+        kind = "dotenv",
+        name = key,
+        root = root,
         label = vim.fn.fnamemodify(file, ":~:.") .. " (" .. key .. ")",
       }
     end
@@ -163,8 +209,12 @@ end
 ---@return table|nil
 function M.current()
   local s = vim.g[STATE]
-  if type(s) ~= "table" or type(s.url) ~= "string" then return nil end
-  if vim.g.db ~= s.url then return nil end
+  if type(s) ~= "table" or type(s.url) ~= "string" then
+    return nil
+  end
+  if vim.g.db ~= s.url then
+    return nil
+  end
   return s
 end
 
@@ -181,13 +231,13 @@ local function apply(cand)
     return nil
   end
   vim.g.db = cand.url
-  if vim.g.db ~= cand.url then   -- verify-after-write
+  if vim.g.db ~= cand.url then -- verify-after-write
     unset()
     vim.notify("[database] could not set g:db from " .. cand.label, vim.log.levels.ERROR)
     return nil
   end
   vim.g[STATE] = { url = cand.url, kind = cand.kind, name = cand.name, root = cand.root, label = cand.label }
-  if not M.current() then        -- verify the bookkeeping as well
+  if not M.current() then -- verify the bookkeeping as well
     unset()
     return nil
   end
@@ -200,7 +250,9 @@ end
 ---@return table|nil source  the source in effect afterwards, or nil
 function M.sync(root)
   -- A clear lasts only while you stay in the project that was cleared.
-  if vim.g[CLEARED] and vim.g[CLEARED] ~= root then vim.g[CLEARED] = nil end
+  if vim.g[CLEARED] and vim.g[CLEARED] ~= root then
+    vim.g[CLEARED] = nil
+  end
 
   local ours = M.current()
   -- A dotenv URL belongs to the project it came from.
@@ -209,15 +261,23 @@ function M.sync(root)
     ours = nil
   end
   -- Anything in g:db that this module did not write is a manual choice. Leave it alone.
-  if not ours and type(vim.g.db) == "string" and vim.g.db ~= "" then return nil end
-  if vim.g[CLEARED] == root then return nil end
+  if not ours and type(vim.g.db) == "string" and vim.g.db ~= "" then
+    return nil
+  end
+  if vim.g[CLEARED] == root then
+    return nil
+  end
 
   local cand = candidate(root)
   if not cand then
-    if ours then unset() end
+    if ours then
+      unset()
+    end
     return nil
   end
-  if ours and ours.url == cand.url then return ours end
+  if ours and ours.url == cand.url then
+    return ours
+  end
   return apply(cand)
 end
 
@@ -228,7 +288,9 @@ end
 function M.clear(root)
   unset()
   vim.g[CLEARED] = root
-  if vim.g.db ~= nil then return false, "g:db is still set" end
+  if vim.g.db ~= nil then
+    return false, "g:db is still set"
+  end
   local raw = vim.env.DATABASE_URL
   if type(raw) == "string" and vim.trim(raw) ~= "" then
     return true, "$DATABASE_URL still applies to :DB, which falls back to it"

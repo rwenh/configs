@@ -5,23 +5,34 @@ local M = {}
 
 -- ── Filetype lists ────────────────────────────────────────────────────────────
 
-M.JS_FT    = { "javascript", "javascriptreact" }
-M.TS_FT    = { "typescript", "typescriptreact" }
+M.JS_FT = { "javascript", "javascriptreact" }
+M.TS_FT = { "typescript", "typescriptreact" }
 M.JS_TS_FT = { "javascript", "javascriptreact", "typescript", "typescriptreact" }
 
 M.WEB_FT = {
-  "html", "htmldjango", "jinja.html",
-  "css", "scss", "less",
-  "javascript", "javascriptreact",
-  "typescript", "typescriptreact",
-  "vue", "svelte",
+  "html",
+  "htmldjango",
+  "jinja.html",
+  "css",
+  "scss",
+  "less",
+  "javascript",
+  "javascriptreact",
+  "typescript",
+  "typescriptreact",
+  "vue",
+  "svelte",
 }
 
 M.TAILWIND_FT = {
-  "html", "css",
-  "javascript", "javascriptreact",
-  "typescript", "typescriptreact",
-  "vue", "svelte",
+  "html",
+  "css",
+  "javascript",
+  "javascriptreact",
+  "typescript",
+  "typescriptreact",
+  "vue",
+  "svelte",
 }
 
 -- ── Spec helpers ──────────────────────────────────────────────────────────────
@@ -35,7 +46,9 @@ function M.treesitter(parsers)
     opts = function(_, opts)
       if type(opts.ensure_installed) == "table" then
         local seen = {}
-        for _, p in ipairs(opts.ensure_installed) do seen[p] = true end
+        for _, p in ipairs(opts.ensure_installed) do
+          seen[p] = true
+        end
         for _, p in ipairs(parsers) do
           if not seen[p] then
             table.insert(opts.ensure_installed, p)
@@ -65,7 +78,9 @@ function M.project_root(start)
   local ok, path = pcall(require, "core.util.path")
   if ok then
     local ok_find, found = pcall(path.find_root, start)
-    if ok_find then root = found end
+    if ok_find then
+      root = found
+    end
   end
   return root or vim.fn.getcwd()
 end
@@ -89,7 +104,9 @@ function M.has_project_config(root, spec)
   local key = table.concat({ root, table.concat(files, ","), spec.pkg_key or "" }, "\0")
   local now = os.time()
   local cached = _config_cache[key]
-  if cached and (now - cached.at) < CONFIG_TTL then return cached.hit end
+  if cached and (now - cached.at) < CONFIG_TTL then
+    return cached.hit
+  end
 
   local hit = false
   for _, name in ipairs(files) do
@@ -121,10 +138,14 @@ end
 ---@return boolean wanted
 function M.sync_linter(fts, linter, spec)
   local ok, lint = pcall(require, "lint")
-  if not ok or type(lint) ~= "table" then return false end
+  if not ok or type(lint) ~= "table" then
+    return false
+  end
 
   local wanted = M.has_project_config(M.project_root(), spec)
-  if wanted and spec.bin and vim.fn.executable(spec.bin) ~= 1 then wanted = false end
+  if wanted and spec.bin and vim.fn.executable(spec.bin) ~= 1 then
+    wanted = false
+  end
 
   lint.linters_by_ft = lint.linters_by_ft or {}
   for _, ft in ipairs(fts) do
@@ -152,9 +173,11 @@ end
 function M.gate_linter(fts, linter, spec)
   M.sync_linter(fts, linter, spec)
   vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "FileType", "DirChanged" }, {
-    group    = vim.api.nvim_create_augroup("LinterGate_" .. linter, { clear = true }),
-    callback = function() M.sync_linter(fts, linter, spec) end,
-    desc     = "Keep " .. linter .. " in step with the project's configuration",
+    group = vim.api.nvim_create_augroup("LinterGate_" .. linter, { clear = true }),
+    callback = function()
+      M.sync_linter(fts, linter, spec)
+    end,
+    desc = "Keep " .. linter .. " in step with the project's configuration",
   })
 end
 
@@ -175,7 +198,9 @@ end
 function M.symlink_compile_commands(prefix, extra)
   local root = M.project_root()
   local dst = root .. "/compile_commands.json"
-  if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then return end
+  if vim.fn.filereadable(dst) == 1 or vim.fn.isdirectory(dst) == 1 then
+    return
+  end
 
   local build_dir = vim.g.cmake_build_dir or "build"
   local candidates = {
@@ -184,15 +209,20 @@ function M.symlink_compile_commands(prefix, extra)
     root .. "/build/Release/compile_commands.json",
     root .. "/.build/compile_commands.json",
   }
-  if type(extra) == "table" then vim.list_extend(candidates, extra) end
+  if type(extra) == "table" then
+    vim.list_extend(candidates, extra)
+  end
 
   for _, src in ipairs(candidates) do
     if vim.fn.filereadable(src) == 1 then
       local shown = vim.fn.fnamemodify(src, ":~:.")
       if vim.fn.executable("ln") ~= 1 then
         vim.notify(
-          "[" .. prefix .. "] compile_commands.json found at " .. shown
-          .. " but 'ln' is not on PATH — skipping symlink.",
+          "["
+            .. prefix
+            .. "] compile_commands.json found at "
+            .. shown
+            .. " but 'ln' is not on PATH — skipping symlink.",
           vim.log.levels.DEBUG
         )
         return
@@ -202,8 +232,12 @@ function M.symlink_compile_commands(prefix, extra)
         vim.notify("[" .. prefix .. "] compile_commands.json linked from " .. shown, vim.log.levels.INFO)
       else
         vim.notify(
-          "[" .. prefix .. "] found " .. shown .. " but could not link it into the project root"
-          .. " — check write permissions.",
+          "["
+            .. prefix
+            .. "] found "
+            .. shown
+            .. " but could not link it into the project root"
+            .. " — check write permissions.",
           vim.log.levels.WARN
         )
       end

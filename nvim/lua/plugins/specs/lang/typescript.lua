@@ -2,9 +2,11 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
-local jsonc  = require("core.util.jsonc")
+local jsonc = require("core.util.jsonc")
 
-local notify = function(msg, level) vim.notify("[ts] " .. msg, level or vim.log.levels.INFO) end
+local notify = function(msg, level)
+  vim.notify("[ts] " .. msg, level or vim.log.levels.INFO)
+end
 
 local TSCONFIG_CANDIDATES = { "tsconfig.json", "tsconfig.base.json", "tsconfig.app.json", "tsconfig.node.json" }
 
@@ -19,11 +21,15 @@ local BARREL_EXCLUDE = { "%.test%.[tj]sx?$", "%.spec%.[tj]sx?$", "%.stories%.[tj
 local function load_tsconfig(file, depth)
   depth = depth or 0
   local cfg = jsonc.read(file)
-  if not cfg then return nil end
+  if not cfg then
+    return nil
+  end
   local has_paths = cfg.compilerOptions and cfg.compilerOptions.paths
   if type(cfg.extends) == "string" and cfg.extends:sub(1, 1) == "." and depth < 5 and not has_paths then
     local base = vim.fs.normalize(vim.fn.fnamemodify(file, ":h") .. "/" .. cfg.extends)
-    if not base:match("%.json$") then base = base .. ".json" end
+    if not base:match("%.json$") then
+      base = base .. ".json"
+    end
     local parent = load_tsconfig(base, depth + 1)
     if parent then
       cfg.compilerOptions = vim.tbl_deep_extend("keep", cfg.compilerOptions or {}, parent.compilerOptions or {})
@@ -37,7 +43,9 @@ end
 local function find_tsconfig(root)
   for _, name in ipairs(TSCONFIG_CANDIDATES) do
     local f = root .. "/" .. name
-    if vim.fn.filereadable(f) == 1 then return f end
+    if vim.fn.filereadable(f) == 1 then
+      return f
+    end
   end
   return nil
 end
@@ -56,7 +64,9 @@ local function barrel_lines(dir)
     local stem = vim.fn.fnamemodify(f, ":t:r")
     local excluded = base == "index.ts" or base == "index.tsx"
     for _, pat in ipairs(BARREL_EXCLUDE) do
-      if f:match(pat) then excluded = true end
+      if f:match(pat) then
+        excluded = true
+      end
     end
     -- foo.ts and foo.tsx would produce the same export twice.
     if not excluded and not seen[stem] then
@@ -117,7 +127,10 @@ local function show_paths()
   end
   local cfg = load_tsconfig(tsconfig)
   if not cfg then
-    notify("Could not parse " .. vim.fn.fnamemodify(tsconfig, ":t") .. " — check for syntax errors.", vim.log.levels.WARN)
+    notify(
+      "Could not parse " .. vim.fn.fnamemodify(tsconfig, ":t") .. " — check for syntax errors.",
+      vim.log.levels.WARN
+    )
     return
   end
   local paths = cfg.compilerOptions and cfg.compilerOptions.paths
@@ -149,31 +162,60 @@ end
 return {
   {
     "pmizio/typescript-tools.nvim",
-    ft           = shared.JS_TS_FT,
+    ft = shared.JS_TS_FT,
     dependencies = { "nvim-lua/plenary.nvim", "neovim/nvim-lspconfig" },
     opts = {
       settings = {
         tsserver_file_preferences = {
-          importModuleSpecifierPreference         = vim.g.ts_import_preference or "non-relative",
-          includeInlayParameterNameHints          = "literals",
-          includeInlayVariableTypeHints           = false,
+          importModuleSpecifierPreference = vim.g.ts_import_preference or "non-relative",
+          includeInlayParameterNameHints = "literals",
+          includeInlayVariableTypeHints = false,
           includeInlayFunctionLikeReturnTypeHints = true,
         },
       },
     },
     config = function(_, opts)
-      local ok, err = pcall(function() require("typescript-tools").setup(opts) end)
-      if not ok then notify("typescript-tools setup failed: " .. tostring(err), vim.log.levels.WARN) end
+      local ok, err = pcall(function()
+        require("typescript-tools").setup(opts)
+      end)
+      if not ok then
+        notify("typescript-tools setup failed: " .. tostring(err), vim.log.levels.WARN)
+      end
     end,
     keys = {
-      { "<leader>tso", "<cmd>TSToolsOrganizeImports<cr>",       desc = "TS Organize Imports",      ft = shared.JS_TS_FT },
-      { "<leader>tsi", "<cmd>TSToolsAddMissingImports<cr>",     desc = "TS Add Missing Imports",   ft = shared.JS_TS_FT },
-      { "<leader>tsr", "<cmd>TSToolsRemoveUnusedImports<cr>",   desc = "TS Remove Unused Imports", ft = shared.JS_TS_FT },
-      { "<leader>tsf", "<cmd>TSToolsFixAll<cr>",                desc = "TS Fix All Auto-fixable",  ft = shared.JS_TS_FT },
-      { "<leader>tsd", "<cmd>TSToolsGoToSourceDefinition<cr>",  desc = "TS Go To Source Def",      ft = shared.JS_TS_FT },
-      { "<leader>tsc", jump_tsconfig,  desc = "TS Jump to tsconfig.json",                      ft = shared.JS_TS_FT },
-      { "<leader>tsb", write_barrel,   desc = "TS Generate barrel (index.ts)",                 ft = shared.JS_TS_FT },
-      { "<leader>tsp", show_paths,     desc = "TS Show tsconfig paths aliases",                ft = shared.JS_TS_FT },
+      {
+        "<leader>tso",
+        "<cmd>TSToolsOrganizeImports<cr>",
+        desc = "TS Organize Imports",
+        ft = shared.JS_TS_FT,
+      },
+      {
+        "<leader>tsi",
+        "<cmd>TSToolsAddMissingImports<cr>",
+        desc = "TS Add Missing Imports",
+        ft = shared.JS_TS_FT,
+      },
+      {
+        "<leader>tsr",
+        "<cmd>TSToolsRemoveUnusedImports<cr>",
+        desc = "TS Remove Unused Imports",
+        ft = shared.JS_TS_FT,
+      },
+      {
+        "<leader>tsf",
+        "<cmd>TSToolsFixAll<cr>",
+        desc = "TS Fix All Auto-fixable",
+        ft = shared.JS_TS_FT,
+      },
+      {
+        "<leader>tsd",
+        "<cmd>TSToolsGoToSourceDefinition<cr>",
+        desc = "TS Go To Source Def",
+        ft = shared.JS_TS_FT,
+      },
+      { "<leader>tsc", jump_tsconfig, desc = "TS Jump to tsconfig.json", ft = shared.JS_TS_FT },
+      { "<leader>tsb", write_barrel, desc = "TS Generate barrel (index.ts)", ft = shared.JS_TS_FT },
+      { "<leader>tsp", show_paths, desc = "TS Show tsconfig paths aliases", ft = shared.JS_TS_FT },
     },
   },
 

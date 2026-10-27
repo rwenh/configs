@@ -9,12 +9,16 @@ local _go_env_checked_root = nil
 local function check_go_env()
   local ok_path, path_util = pcall(require, "core.util.path")
   local root = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-  if root == _go_env_checked_root then return end
+  if root == _go_env_checked_root then
+    return
+  end
   _go_env_checked_root = root
 
   local has_goimports = vim.fn.executable("goimports") == 1
-  local has_gofumpt   = vim.fn.executable("gofumpt")   == 1
-  if has_goimports and has_gofumpt then return end
+  local has_gofumpt = vim.fn.executable("gofumpt") == 1
+  if has_goimports and has_gofumpt then
+    return
+  end
 
   if vim.fn.executable("go") ~= 1 then
     vim.notify("[go] `go` not found on PATH — Go tooling checks skipped.\nInstall Go >= 1.21.", vim.log.levels.WARN)
@@ -22,18 +26,23 @@ local function check_go_env()
   end
 
   vim.system({ "go", "env", "GOPATH" }, { text = true }, function(result)
-    if result.code ~= 0 or not result.stdout or vim.trim(result.stdout) == "" then return end
+    if result.code ~= 0 or not result.stdout or vim.trim(result.stdout) == "" then
+      return
+    end
 
-    local gopath  = vim.trim(result.stdout)
+    local gopath = vim.trim(result.stdout)
     local bin_dir = gopath .. "/bin"
-    local path    = os.getenv("PATH") or ""
+    local path = os.getenv("PATH") or ""
 
     vim.schedule(function()
       if not path:find(bin_dir, 1, true) then
         vim.notify(
-          "[go] " .. bin_dir .. " is not in $PATH.\n"
-          .. "goimports / gofumpt may not be found by formatters.\n"
-          .. "Add to your shell profile: export PATH=$PATH:" .. bin_dir,
+          "[go] "
+            .. bin_dir
+            .. " is not in $PATH.\n"
+            .. "goimports / gofumpt may not be found by formatters.\n"
+            .. "Add to your shell profile: export PATH=$PATH:"
+            .. bin_dir,
           vim.log.levels.WARN
         )
         return
@@ -46,10 +55,7 @@ local function check_go_env()
         )
       end
       if not has_gofumpt then
-        vim.notify(
-          "[go] gofumpt not found.\nInstall: go install mvdan.cc/gofumpt@latest",
-          vim.log.levels.WARN
-        )
+        vim.notify("[go] gofumpt not found.\nInstall: go install mvdan.cc/gofumpt@latest", vim.log.levels.WARN)
       end
     end)
   end)
@@ -59,43 +65,80 @@ return {
   {
     "ray-x/go.nvim",
     dependencies = "ray-x/guihua.lua",
-    ft    = GO_FT,
+    ft = GO_FT,
     build = false,
     config = function()
-      local ok, err = pcall(function() require("go").setup({ lsp_cfg = false }) end)
-      if not ok then vim.notify("go.nvim setup failed: " .. tostring(err), vim.log.levels.WARN); return end
+      local ok, err = pcall(function()
+        require("go").setup({ lsp_cfg = false })
+      end)
+      if not ok then
+        vim.notify("go.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
+        return
+      end
       vim.schedule(check_go_env)
 
       vim.api.nvim_create_autocmd("DirChanged", {
-        group    = vim.api.nvim_create_augroup("GoEnvRecheck", { clear = true }),
+        group = vim.api.nvim_create_augroup("GoEnvRecheck", { clear = true }),
         callback = function()
           local ft = vim.bo[vim.api.nvim_get_current_buf()].filetype
-          if vim.tbl_contains(GO_FT, ft) then vim.schedule(check_go_env) end
+          if vim.tbl_contains(GO_FT, ft) then
+            vim.schedule(check_go_env)
+          end
         end,
         desc = "Re-check Go environment on project switch",
       })
     end,
     keys = {
-      { "<leader>got", "<cmd>GoTest<cr>",     desc = "Go Test",              ft = GO_FT },
-      { "<leader>gof", "<cmd>GoTestFunc<cr>", desc = "Go Test Function",     ft = GO_FT },
-      { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go Coverage",          ft = GO_FT },
-      { "<leader>gor", "<cmd>GoRun<cr>",      desc = "Go Run",               ft = GO_FT },
-      { "<leader>gob", "<cmd>GoBuild<cr>",    desc = "Go Build",             ft = GO_FT },
-      { "<leader>goi", "<cmd>GoImpl<cr>",     desc = "Go Impl",              ft = GO_FT },
-      { "<leader>goa", "<cmd>GoAddTag<cr>",   desc = "Go Add Struct Tag",    ft = GO_FT },
-      { "<leader>goA", "<cmd>GoRmTag<cr>",    desc = "Go Remove Struct Tag", ft = GO_FT },
-      { "<leader>gom", function()
+      { "<leader>got", "<cmd>GoTest<cr>", desc = "Go Test", ft = GO_FT },
+      { "<leader>gof", "<cmd>GoTestFunc<cr>", desc = "Go Test Function", ft = GO_FT },
+      { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go Coverage", ft = GO_FT },
+      { "<leader>gor", "<cmd>GoRun<cr>", desc = "Go Run", ft = GO_FT },
+      { "<leader>gob", "<cmd>GoBuild<cr>", desc = "Go Build", ft = GO_FT },
+      { "<leader>goi", "<cmd>GoImpl<cr>", desc = "Go Impl", ft = GO_FT },
+      { "<leader>goa", "<cmd>GoAddTag<cr>", desc = "Go Add Struct Tag", ft = GO_FT },
+      { "<leader>goA", "<cmd>GoRmTag<cr>", desc = "Go Remove Struct Tag", ft = GO_FT },
+      {
+        "<leader>gom",
+        function()
           -- :GoMod does not exist; go.nvim ships GoModInit/Tidy/Vendor/Dnld/Graph/Why.
           vim.ui.select({ "Tidy", "Init", "Vendor", "Dnld", "Graph", "Why" }, { prompt = "go mod:" }, function(c)
-            if c then pcall(vim.cmd, "GoMod" .. c) end
+            if c then
+              pcall(vim.cmd, "GoMod" .. c)
+            end
           end)
-        end, desc = "Go Mod (pick subcommand)", ft = GO_FT },
-      { "<leader>gog", function() require("core.util.term").float_at_root("go generate ./...") end, desc = "Go Generate", ft = GO_FT },
-      { "<leader>goe", function()
-          local ok_t = pcall(function() require("core.util.term").float_at_root("go env") end)
-          if not ok_t then vim.notify(vim.fn.system("go env 2>/dev/null"), vim.log.levels.INFO) end
-        end, desc = "Go Env", ft = GO_FT },
-      { "<leader>gov", function() require("core.util.term").float_at_root("go vet ./...") end, desc = "Go Vet", ft = GO_FT },
+        end,
+        desc = "Go Mod (pick subcommand)",
+        ft = GO_FT,
+      },
+      {
+        "<leader>gog",
+        function()
+          require("core.util.term").float_at_root("go generate ./...")
+        end,
+        desc = "Go Generate",
+        ft = GO_FT,
+      },
+      {
+        "<leader>goe",
+        function()
+          local ok_t = pcall(function()
+            require("core.util.term").float_at_root("go env")
+          end)
+          if not ok_t then
+            vim.notify(vim.fn.system("go env 2>/dev/null"), vim.log.levels.INFO)
+          end
+        end,
+        desc = "Go Env",
+        ft = GO_FT,
+      },
+      {
+        "<leader>gov",
+        function()
+          require("core.util.term").float_at_root("go vet ./...")
+        end,
+        desc = "Go Vet",
+        ft = GO_FT,
+      },
     },
   },
   shared.treesitter({ "go", "gomod", "gowork", "gosum" }),

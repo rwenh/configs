@@ -1,14 +1,22 @@
--- lua/core/lazy.lua — lazy.nvim spec loader (was lua/plugins/init.lua)
+-- lua/core/lazy.lua — lazy.nvim spec loader and setup options (was lua/plugins/init.lua)
 --
--- Why this moved: the module name `plugins` is a require-cycle / poisoned-require
--- magnet ("loop or previous error loading module 'plugins'"). The loader now lives
--- under `core.lazy`; `lua/plugins/` holds only spec files, imported by name.
+-- Why this lives under core.lazy: the module name `plugins` is a require-cycle and poisoned-require
+-- magnet. This module builds the spec list; lua/plugins/ holds only spec files, imported by name.
 --
--- Lockfile: after :Lazy update run :Lazy lock and commit lazy-lock.json;
--- on a new machine run :Lazy restore.
+-- The config root is found from this file's own location, not from stdpath("config"), so the
+-- repository works from any checkout. The language spec directory and the docs generator
+-- (scripts/gen_docs.lua) both depend on that.
+--
+-- Setup is explicit: init.lua calls M.setup(). The generator calls M.specs() and M.opts() and runs
+-- lazy.setup itself with installs disabled.
+--
+-- Lockfile: after :Lazy update, run :Lazy lock and commit lazy-lock.json. On a new machine, run :Lazy restore.
 
+local ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 vim.opt.rtp:prepend(lazypath)
+
+local M = {}
 
 local function safe_spec(mod)
   local ok, result = pcall(require, mod)
@@ -44,7 +52,7 @@ local function collect_specs()
   vim.list_extend(specs, core_specs)
 
   local already = already_imported_lang_stems(core_specs)
-  local lang_path = vim.fn.stdpath("config") .. "/lua/plugins/specs/lang"
+  local lang_path = ROOT .. "/lua/plugins/specs/lang"
   local ok_scan, entries = pcall(vim.fn.readdir, lang_path)
   if ok_scan then
     table.sort(entries)
@@ -61,7 +69,13 @@ local function collect_specs()
   return specs
 end
 
-require("lazy").setup(collect_specs(), {
+--- The complete spec list: every core spec plus any language spec not imported explicitly.
+---@return table[]
+function M.specs()
+  return collect_specs()
+end
+
+local BASE_OPTS = {
   defaults = { version = false, lazy = true },
   install = { colorscheme = { "tokyonight", "catppuccin", "habamax" } },
   checker = { enabled = true, notify = false, frequency = 86400 },
@@ -111,4 +125,19 @@ require("lazy").setup(collect_specs(), {
       },
     },
   },
-})
+}
+
+--- lazy.nvim setup options, with `overrides` merged over the defaults.
+---@param overrides table?
+---@return table
+function M.opts(overrides)
+  return vim.tbl_deep_extend("force", BASE_OPTS, overrides or {})
+end
+
+--- Run lazy.nvim setup with the full spec list.
+---@param overrides table?
+function M.setup(overrides)
+  require("lazy").setup(collect_specs(), M.opts(overrides))
+end
+
+return M

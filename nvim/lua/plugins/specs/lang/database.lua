@@ -5,7 +5,7 @@
 -- vim-dadbod-completion (omnifunc; blink.cmp uses its own provider).
 
 local shared = require("plugins.specs.lang.shared")
-local dburl  = require("core.util.dburl")
+local dburl = require("core.util.dburl")
 
 local function sync_here()
   dburl.sync(dburl.project_root(0))
@@ -27,8 +27,10 @@ local function open_schema_scratch()
   local query = dburl.schema_query(url)
   if not query then
     local scheme = url:match("^(%a[%w+.-]*):") or "?"
-    vim.notify(("[database] no built-in schema query for '%s' — browse it with <leader>dbu"):format(scheme),
-      vim.log.levels.WARN)
+    vim.notify(
+      ("[database] no built-in schema query for '%s' — browse it with <leader>dbu"):format(scheme),
+      vim.log.levels.WARN
+    )
     return
   end
   local header = ("-- Schema introspection (%s). Run it with :%%DB\n"):format(dburl.dialect(url))
@@ -39,7 +41,7 @@ local function open_schema_scratch()
     vim.bo[buf].bufhidden = "wipe"
     vim.bo[buf].swapfile = false
     vim.bo[buf].filetype = "sql"
-    vim.b[buf].db = url   -- :%DB keeps targeting this connection even if g:db changes later
+    vim.b[buf].db = url -- :%DB keeps targeting this connection even if g:db changes later
     vim.api.nvim_buf_set_name(buf, ("schema-introspection#%d.sql"):format(buf))
   end)
   if not ok then
@@ -57,43 +59,49 @@ local function clear_connection()
     vim.notify("[database] clear failed: " .. tostring(note), vim.log.levels.ERROR)
     return
   end
-  vim.notify("[database] connection cleared for this project" .. (note and (" — " .. note) or ""),
-    vim.log.levels.INFO)
+  vim.notify(
+    "[database] connection cleared for this project" .. (note and (" — " .. note) or ""),
+    vim.log.levels.INFO
+  )
 end
 
 -- File scope, so the omnifunc exists before the first SQL buffer gets typed in.
 vim.api.nvim_create_autocmd("FileType", {
-  group    = vim.api.nvim_create_augroup("DadbodOmnifunc", { clear = true }),
-  pattern  = { "sql", "mysql", "plsql" },
-  callback = function(e) vim.bo[e.buf].omnifunc = "vim_dadbod_completion#omni" end,
-  desc     = "Use vim-dadbod-completion as the omnifunc for SQL buffers",
+  group = vim.api.nvim_create_augroup("DadbodOmnifunc", { clear = true }),
+  pattern = { "sql", "mysql", "plsql" },
+  callback = function(e)
+    vim.bo[e.buf].omnifunc = "vim_dadbod_completion#omni"
+  end,
+  desc = "Use vim-dadbod-completion as the omnifunc for SQL buffers",
 })
 
 vim.api.nvim_create_autocmd("DirChanged", {
-  group    = vim.api.nvim_create_augroup("DatabaseUrlSync", { clear = true }),
-  callback = function() vim.schedule(sync_here) end,
-  desc     = "Re-resolve the database connection when the working directory changes",
+  group = vim.api.nvim_create_augroup("DatabaseUrlSync", { clear = true }),
+  callback = function()
+    vim.schedule(sync_here)
+  end,
+  desc = "Re-resolve the database connection when the working directory changes",
 })
 
 return {
   {
     "kristijanhusak/vim-dadbod-ui",
     dependencies = { "tpope/vim-dadbod", "kristijanhusak/vim-dadbod-completion" },
-    cmd  = { "DBUI", "DBUIToggle", "DBUIAddConnection", "DBUIFindBuffer" },
+    cmd = { "DBUI", "DBUIToggle", "DBUIAddConnection", "DBUIFindBuffer" },
     keys = {
-      { "<leader>dbu", with_connection("DBUIToggle"),        desc = "DB UI Toggle" },
+      { "<leader>dbu", with_connection("DBUIToggle"), desc = "DB UI Toggle" },
       { "<leader>dba", with_connection("DBUIAddConnection"), desc = "DB Add Connection" },
-      { "<leader>dbf", with_connection("DBUIFindBuffer"),    desc = "DB Find Buffer" },
-      { "<leader>dbs", open_schema_scratch,                  desc = "DB Schema Introspection (scratch buffer)" },
-      { "<leader>dbc", clear_connection,                     desc = "DB Clear Connection" },
+      { "<leader>dbf", with_connection("DBUIFindBuffer"), desc = "DB Find Buffer" },
+      { "<leader>dbs", open_schema_scratch, desc = "DB Schema Introspection (scratch buffer)" },
+      { "<leader>dbc", clear_connection, desc = "DB Clear Connection" },
     },
     init = function()
       -- g:db_ui_show_database_icon was removed: documented upstream but never read by the code.
-      vim.g.db_ui_use_nerd_fonts           = 1
-      vim.g.db_ui_save_location            = vim.fn.stdpath("data") .. "/dadbod-ui"
+      vim.g.db_ui_use_nerd_fonts = 1
+      vim.g.db_ui_save_location = vim.fn.stdpath("data") .. "/dadbod-ui"
       vim.g.db_ui_force_echo_notifications = 1
-      vim.g.db_ui_win_position             = "left"
-      vim.g.db_ui_winwidth                 = 40
+      vim.g.db_ui_win_position = "left"
+      vim.g.db_ui_winwidth = 40
       vim.schedule(sync_here)
     end,
   },

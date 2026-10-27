@@ -7,6 +7,7 @@
 
 local shared = require("plugins.specs.lang.shared")
 local jvm = require("core.util.jvm")
+local flags = require("core.flags")
 
 local WARN, INFO = vim.log.levels.WARN, vim.log.levels.INFO
 
@@ -15,8 +16,10 @@ local WARN, INFO = vim.log.levels.WARN, vim.log.levels.INFO
 ---@param min     integer
 ---@return integer
 local function int_flag(name, default, min)
-  local v = vim.g[name]
-  if type(v) == "number" and v >= min then return math.floor(v) end
+  local v = flags.get(name, default)
+  if type(v) == "number" and v >= min then
+    return math.floor(v)
+  end
   return default
 end
 
@@ -36,7 +39,9 @@ local _spring = {}
 local function is_spring(root)
   local ttl = int_flag("kotlin_spring_cache_ttl", 300, 0)
   local entry = _spring[root]
-  if ttl > 0 and entry and (os.time() - entry.at) < ttl then return entry.value end
+  if ttl > 0 and entry and (os.time() - entry.at) < ttl then
+    return entry.value
+  end
   local value = jvm.is_spring_project(root)
   _spring[root] = { at = os.time(), value = value }
   return value
@@ -58,17 +63,23 @@ end
 local function single_file_cmd(file, run)
   local jar = single_file_jar(file)
   local cmd = string.format("kotlinc %s -include-runtime -d %s", vim.fn.shellescape(file), vim.fn.shellescape(jar))
-  if run then cmd = cmd .. " && java -jar " .. vim.fn.shellescape(jar) end
+  if run then
+    cmd = cmd .. " && java -jar " .. vim.fn.shellescape(jar)
+  end
   return cmd
 end
 
 ---@param file string
 ---@return string
-local function compile_only(file) return single_file_cmd(file, false) end
+local function compile_only(file)
+  return single_file_cmd(file, false)
+end
 
 ---@param file string
 ---@return string
-local function compile_and_run(file) return single_file_cmd(file, true) end
+local function compile_and_run(file)
+  return single_file_cmd(file, true)
+end
 
 -- ── Dispatch ──────────────────────────────────────────────────────────────────
 
@@ -81,7 +92,9 @@ local function dispatch(task, opts, fallback)
   local cmd, err = jvm.command(project_root(), task)
   if not cmd and fallback then
     local file = vim.api.nvim_buf_get_name(0)
-    if file ~= "" then cmd = fallback(file) end
+    if file ~= "" then
+      cmd = fallback(file)
+    end
   end
   if not cmd then
     vim.notify("[kotlin] " .. tostring(err) .. ". kotlinc is needed for single-file builds.", WARN)
@@ -111,7 +124,9 @@ local function kdoc(kind)
       return
     end
     local ok2, err = pcall(neogen.generate, { type = kind })
-    if not ok2 then vim.notify("[kotlin] KDoc: " .. tostring(err), WARN) end
+    if not ok2 then
+      vim.notify("[kotlin] KDoc: " .. tostring(err), WARN)
+    end
   end
 end
 
@@ -120,14 +135,15 @@ end
 local function doctor()
   local root = project_root()
   local mason = require("core.util.mason")
-  local tool = jvm.build_tool(root) or "none"
+  local detected, why = jvm.detect_tool(root)
+  local tool = detected and (detected.kind .. " (" .. detected.exe .. ")") or "none"
   local spring_declared = is_spring(root)
   local rows = {}
   local function row(ok, label, detail)
     rows[#rows + 1] = string.format("  %s %-22s %s", ok and "✓" or "✗", label, detail or "")
   end
 
-  row(tool ~= "none", "build tool", tool == "none" and "no Gradle or Maven build file" or tool)
+  row(detected ~= nil, "build tool", detected and tool or (why or "no Gradle or Maven build file"))
   row(spring_declared, "spring boot", spring_declared and "declared in the build file" or "not declared")
   row(vim.fn.executable("kotlinc") == 1, "kotlinc", "needed for single-file builds")
   row(mason.bin_ok("kotlin-language-server"), "kotlin-language-server", "LSP — :MasonInstall kotlin-language-server")
@@ -151,11 +167,21 @@ end
 
 local function keys()
   return {
-    kt("<leader>ktb", function() dispatch("build", nil, compile_only) end, "Kotlin build"),
-    kt("<leader>ktt", function() dispatch("test", nil, nil) end, "Kotlin test"),
-    kt("<leader>ktr", function() dispatch("run", nil, compile_and_run) end, "Kotlin run"),
-    kt("<leader>kts", function() spring("spring-run", { close_on_exit = false }) end, "Kotlin Spring Boot run"),
-    kt("<leader>ktS", function() spring("spring-package", nil) end, "Kotlin Spring Boot package"),
+    kt("<leader>ktb", function()
+      dispatch("build", nil, compile_only)
+    end, "Kotlin build"),
+    kt("<leader>ktt", function()
+      dispatch("test", nil, nil)
+    end, "Kotlin test"),
+    kt("<leader>ktr", function()
+      dispatch("run", nil, compile_and_run)
+    end, "Kotlin run"),
+    kt("<leader>kts", function()
+      spring("bootRun", { close_on_exit = false })
+    end, "Kotlin Spring Boot run"),
+    kt("<leader>ktS", function()
+      spring("bootJar", nil)
+    end, "Kotlin Spring Boot package"),
     kt("<leader>ktd", kdoc("func"), "Kotlin generate KDoc (function)"),
     kt("<leader>ktD", kdoc("class"), "Kotlin generate KDoc (class)"),
   }

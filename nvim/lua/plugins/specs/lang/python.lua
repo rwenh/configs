@@ -7,6 +7,7 @@
 --
 
 local bkm = require("core.util.buf_keymap")
+local flags = require("core.flags")
 
 local PROBE_SRC = "import debugpy, sys; sys.stdout.write(debugpy.__version__)"
 local VENV_DIRNAMES = { ".venv", "venv", "env", ".env" }
@@ -22,8 +23,10 @@ local DEFAULT_PROBE_TTL_S = 120
 ---@param min     integer
 ---@return integer
 local function int_flag(name, default, min)
-  local v = vim.g[name]
-  if type(v) == "number" and v >= min then return math.floor(v) end
+  local v = flags.get(name, default)
+  if type(v) == "number" and v >= min then
+    return math.floor(v)
+  end
   return default
 end
 
@@ -31,15 +34,19 @@ end
 ---@param default boolean
 ---@return boolean
 local function bool_flag(name, default)
-  local v = vim.g[name]
-  if type(v) == "boolean" then return v end
+  local v = flags.get(name, default)
+  if type(v) == "boolean" then
+    return v
+  end
   return default
 end
 
 ---@return string
 local function docstring_style()
   local v = vim.g.python_docstring_style
-  if v == nil or DOCSTRING_STYLES[v] then return v or "google_docstrings" end
+  if v == nil or DOCSTRING_STYLES[v] then
+    return v or "google_docstrings"
+  end
   vim.schedule(function()
     vim.notify(
       string.format(
@@ -66,7 +73,9 @@ local function guarded(mod, fn)
       return
     end
     local ok2, err = pcall(fn, m)
-    if not ok2 then vim.notify("[python] " .. tostring(err), vim.log.levels.WARN) end
+    if not ok2 then
+      vim.notify("[python] " .. tostring(err), vim.log.levels.WARN)
+    end
   end
 end
 
@@ -75,7 +84,9 @@ end
 ---@param dir string  a virtualenv / prefix directory
 ---@return string
 local function venv_python(dir)
-  if vim.fn.has("win32") == 1 then return dir .. "\\Scripts\\python.exe" end
+  if vim.fn.has("win32") == 1 then
+    return dir .. "\\Scripts\\python.exe"
+  end
   return dir .. "/bin/python"
 end
 
@@ -94,18 +105,26 @@ end
 local function candidates(root)
   local out, seen = {}, {}
   local function add(path, why)
-    if type(path) ~= "string" or path == "" or vim.fn.executable(path) ~= 1 then return end
+    if type(path) ~= "string" or path == "" or vim.fn.executable(path) ~= 1 then
+      return
+    end
     local real = vim.uv.fs_realpath(path) or path
-    if seen[real] then return end
+    if seen[real] then
+      return
+    end
     seen[real] = true
     out[#out + 1] = { path = path, why = why }
   end
 
   local pinned = vim.g.debugpy_python
-  if type(pinned) == "string" and pinned ~= "" then add(vim.fn.expand(pinned), "vim.g.debugpy_python") end
+  if type(pinned) == "string" and pinned ~= "" then
+    add(vim.fn.expand(pinned), "vim.g.debugpy_python")
+  end
 
   local active = vim.env.VIRTUAL_ENV
-  if active and active ~= "" then add(venv_python(active), "$VIRTUAL_ENV") end
+  if active and active ~= "" then
+    add(venv_python(active), "$VIRTUAL_ENV")
+  end
 
   for _, name in ipairs(VENV_DIRNAMES) do
     add(venv_python(root .. "/" .. name), "./" .. name)
@@ -116,7 +135,9 @@ local function candidates(root)
     local pinfile = vim.fn.findfile(".python-version", root .. ";")
     if pinfile ~= "" then
       local ver = vim.trim(vim.fn.readfile(pinfile)[1] or "")
-      if ver ~= "" then add(pyenv .. "/versions/" .. ver .. "/bin/python", "pyenv " .. ver) end
+      if ver ~= "" then
+        add(pyenv .. "/versions/" .. ver .. "/bin/python", "pyenv " .. ver)
+      end
     end
   end
 
@@ -132,19 +153,27 @@ end
 local function probe(path, timeout_ms, done)
   local settled = false
   local function settle(version)
-    if settled then return end
+    if settled then
+      return
+    end
     settled = true
-    vim.schedule(function() done(version) end)
+    vim.schedule(function()
+      done(version)
+    end)
   end
 
   local ok, handle = pcall(vim.system, { path, "-c", PROBE_SRC }, { text = true, timeout = timeout_ms }, function(res)
     local v = res.code == 0 and vim.trim(res.stdout or "") or ""
     settle(v ~= "" and v or nil)
   end)
-  if not ok then return settle(nil) end
+  if not ok then
+    return settle(nil)
+  end
 
   vim.defer_fn(function()
-    if settled then return end
+    if settled then
+      return
+    end
     pcall(handle.kill, handle, 9)
     settle(nil)
   end, timeout_ms + 500)
@@ -169,7 +198,9 @@ local function resolve(root, done)
   local key = root .. "\0" .. (vim.env.VIRTUAL_ENV or "")
   local v = _verdicts[key]
   if v and (os.time() - v.at) < int_flag("python_probe_ttl", DEFAULT_PROBE_TTL_S, 1) then
-    vim.schedule(function() done(v.hit, v.tried) end)
+    vim.schedule(function()
+      done(v.hit, v.tried)
+    end)
     return
   end
   if _inflight[key] then
@@ -182,13 +213,17 @@ local function resolve(root, done)
     _verdicts[key] = { hit = hit, tried = tried, at = os.time() }
     local waiters = _inflight[key] or {}
     _inflight[key] = nil
-    for _, w in ipairs(waiters) do w(hit, tried) end
+    for _, w in ipairs(waiters) do
+      w(hit, tried)
+    end
   end
 
   local timeout = int_flag("python_probe_timeout_ms", DEFAULT_PROBE_TIMEOUT_MS, 100)
   local list, tried = candidates(root), {}
   local function step(i)
-    if i > #list then return finish(nil, tried) end
+    if i > #list then
+      return finish(nil, tried)
+    end
     local c = list[i]
     probe(c.path, timeout, function(version)
       if not version then
@@ -220,7 +255,9 @@ local _wired = { entry = nil, configs_included = false }
 local function wire(path, why, version)
   local ok_dap, dap = pcall(require, "dap")
   local ok_dp, dp = pcall(require, "dap-python")
-  if not (ok_dap and ok_dp) then return false, "nvim-dap / nvim-dap-python not loadable" end
+  if not (ok_dap and ok_dp) then
+    return false, "nvim-dap / nvim-dap-python not loadable"
+  end
 
   local previous = { python = dap.adapters.python, debugpy = dap.adapters.debugpy }
   local ok, err = pcall(dp.setup, path, { include_configs = not _wired.configs_included })
@@ -231,7 +268,9 @@ local function wire(path, why, version)
 
   _wired.configs_included = true
   _wired.entry = { path = path, why = why, version = version }
-  dp.resolve_python = function() return _wired.entry and _wired.entry.path or nil end
+  dp.resolve_python = function()
+    return _wired.entry and _wired.entry.path or nil
+  end
   return true
 end
 
@@ -247,7 +286,9 @@ local function sync(reason)
   local root = project_root()
   _latest_root = root
   resolve(root, function(hit, tried)
-    if _latest_root ~= root then return end
+    if _latest_root ~= root then
+      return
+    end
     if not hit then
       if reason == "startup" or not _reported[root] then
         _reported[root] = true
@@ -264,7 +305,9 @@ local function sync(reason)
       return
     end
     _reported[root] = nil
-    if _wired.entry and _wired.entry.path == hit.path then return end
+    if _wired.entry and _wired.entry.path == hit.path then
+      return
+    end
     local ok, err = wire(hit.path, hit.why, hit.version)
     if not ok then
       vim.notify("[python] could not wire the debugpy adapter (" .. hit.path .. "): " .. err, vim.log.levels.WARN)
@@ -275,18 +318,24 @@ local function sync(reason)
 end
 
 local function on_context_change()
-  if vim.bo.filetype ~= "python" or vim.bo.buftype ~= "" then return end
+  if vim.bo.filetype ~= "python" or vim.bo.buftype ~= "" then
+    return
+  end
   sync("context")
 end
 
 local function start_debugpy()
   local ok, err = wire(PROVISIONAL, "provisional", "unverified")
-  if not ok then vim.notify("[python] debugpy wiring failed: " .. err, vim.log.levels.WARN) end
+  if not ok then
+    vim.notify("[python] debugpy wiring failed: " .. err, vim.log.levels.WARN)
+  end
   sync("startup")
 
   vim.api.nvim_create_autocmd({ "BufEnter", "DirChanged" }, {
     group = vim.api.nvim_create_augroup("PythonDebugpyResync", { clear = true }),
-    callback = function() vim.schedule(on_context_change) end,
+    callback = function()
+      vim.schedule(on_context_change)
+    end,
     desc = "Keep the debugpy adapter on the interpreter of the current project",
   })
 end
@@ -322,7 +371,9 @@ local function doctor()
 
   -- Verify afresh: drop this root's cached answer so the report reflects the machine now.
   for key in pairs(_verdicts) do
-    if vim.startswith(key, root .. "\0") then _verdicts[key] = nil end
+    if vim.startswith(key, root .. "\0") then
+      _verdicts[key] = nil
+    end
   end
   _reported[root] = nil
   resolve(root, function(hit, tried)
@@ -345,9 +396,20 @@ vim.api.nvim_create_user_command("PythonDebugDoctor", doctor, {
 -- ── Keymaps ───────────────────────────────────────────────────────────────────
 
 local DAP_MAPS = {
-  { "n", "<leader>pydm", guarded("dap-python", function(d) d.test_method() end), "Python debug method" },
-  { "n", "<leader>pydc", guarded("dap-python", function(d) d.test_class() end), "Python debug class" },
-  { { "n", "v" }, "<leader>pyds", guarded("dap-python", function(d) d.debug_selection() end), "Python debug selection" },
+  { "n", "<leader>pydm", guarded("dap-python", function(d)
+    d.test_method()
+  end), "Python debug method" },
+  { "n", "<leader>pydc", guarded("dap-python", function(d)
+    d.test_class()
+  end), "Python debug class" },
+  {
+    { "n", "v" },
+    "<leader>pyds",
+    guarded("dap-python", function(d)
+      d.debug_selection()
+    end),
+    "Python debug selection",
+  },
   { "n", "<leader>pydi", doctor, "Python debug doctor" },
 }
 
@@ -379,9 +441,13 @@ local function repl_command()
   local py = _wired.entry and _wired.entry.path
   if py then
     local ipy = vim.fn.fnamemodify(py, ":h") .. "/ipython"
-    if vim.fn.executable(ipy) == 1 then return { ipy, "--no-autoindent" } end
+    if vim.fn.executable(ipy) == 1 then
+      return { ipy, "--no-autoindent" }
+    end
   end
-  if vim.fn.executable("ipython") == 1 then return { "ipython", "--no-autoindent" } end
+  if vim.fn.executable("ipython") == 1 then
+    return { "ipython", "--no-autoindent" }
+  end
   return { py or "python3" }
 end
 
@@ -403,7 +469,9 @@ local function setup_iron()
     },
     keymaps = {},
   })
-  if not ok then vim.notify("[python] iron.nvim setup failed: " .. tostring(err), vim.log.levels.WARN) end
+  if not ok then
+    vim.notify("[python] iron.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
+  end
 end
 
 -- Operator-pending send: `<leader>pyrc{motion}`. The expr mapping sets operatorfunc and returns "g@",
@@ -412,7 +480,9 @@ end
 -- leaves ours set, which is harmless: every plugin sets its own operatorfunc before `g@`.
 _G._nvim_iron_opfunc = function(motion)
   vim.o.operatorfunc = _G._nvim_iron_opfunc_prev or ""
-  with_iron(function(core) core.send_motion(motion) end)()
+  with_iron(function(core)
+    core.send_motion(motion)
+  end)()
 end
 
 local function iron_operator()
@@ -425,23 +495,42 @@ local function setup_iron_operator()
   local group = vim.api.nvim_create_augroup("PythonIronOperator", { clear = true })
   local function register(buf)
     vim.keymap.set("n", "<leader>pyrc", iron_operator, {
-      buffer = buf, expr = true, silent = true, desc = "REPL send motion (operator)",
+      buffer = buf,
+      expr = true,
+      silent = true,
+      desc = "REPL send motion (operator)",
     })
   end
   vim.api.nvim_create_autocmd("FileType", {
-    group = group, pattern = "python", callback = function(e) register(e.buf) end,
+    group = group,
+    pattern = "python",
+    callback = function(e)
+      register(e.buf)
+    end,
   })
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "python" then register(buf) end
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].filetype == "python" then
+      register(buf)
+    end
   end
 end
 
 local IRON_MAPS = {
-  { "n", "<leader>pyrl", with_iron(function(c) c.send_line() end), "REPL send line" },
-  { "v", "<leader>pyrv", with_iron(function(c) c.visual_send() end), "REPL send visual selection" },
-  { "n", "<leader>pyru", with_iron(function(c) c.send_until_cursor() end), "REPL send until cursor" },
-  { "n", "<leader>pyrq", with_iron(function(c) c.close_repl() end), "REPL quit" },
-  { "n", "<leader>pyrx", python_only(with_iron(function(c) c.send(nil, string.char(12)) end)), "REPL clear" },
+  { "n", "<leader>pyrl", with_iron(function(c)
+    c.send_line()
+  end), "REPL send line" },
+  { "v", "<leader>pyrv", with_iron(function(c)
+    c.visual_send()
+  end), "REPL send visual selection" },
+  { "n", "<leader>pyru", with_iron(function(c)
+    c.send_until_cursor()
+  end), "REPL send until cursor" },
+  { "n", "<leader>pyrq", with_iron(function(c)
+    c.close_repl()
+  end), "REPL quit" },
+  { "n", "<leader>pyrx", python_only(with_iron(function(c)
+    c.send(nil, string.char(12))
+  end)), "REPL clear" },
 }
 
 -- ── Specs ─────────────────────────────────────────────────────────────────────
@@ -463,7 +552,9 @@ return {
       { "<leader>pyv", "<cmd>VenvSelect<cr>", desc = "Python select venv" },
     },
     config = function(_, opts)
-      local ok, err = pcall(function() require("venv-selector").setup(opts) end)
+      local ok, err = pcall(function()
+        require("venv-selector").setup(opts)
+      end)
       if not ok then
         vim.notify(
           "[python] venv-selector setup failed: " .. tostring(err) .. "\nRun :Lazy update venv-selector.nvim",
@@ -493,7 +584,9 @@ return {
       { "<leader>pyrr", "<cmd>IronRestart<cr>", desc = "Python REPL restart" },
       {
         "<leader>pyri",
-        python_only(with_iron(function(c) c.send(nil, string.char(3)) end)),
+        python_only(with_iron(function(c)
+          c.send(nil, string.char(3))
+        end)),
         desc = "Python REPL interrupt",
       },
     },
@@ -514,7 +607,13 @@ return {
       opts.languages.python = { template = { annotation_convention = docstring_style() } }
     end,
     keys = {
-      { "<leader>pyg", guarded("neogen", function(n) n.generate() end), desc = "Python generate docstring" },
+      {
+        "<leader>pyg",
+        guarded("neogen", function(n)
+          n.generate()
+        end),
+        desc = "Python generate docstring",
+      },
     },
   },
 

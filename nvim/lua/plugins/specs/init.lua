@@ -9,47 +9,47 @@
 
 return {
   -- ── Core plugin infrastructure ─────────────────────────────────────────────
-  { import = "plugins.specs.ui"         },
-  { import = "plugins.specs.editor"     },
+  { import = "plugins.specs.ui" },
+  { import = "plugins.specs.editor" },
   { import = "plugins.specs.completion" },
   { import = "plugins.specs.treesitter" },
-  { import = "plugins.specs.lsp"        },
-  { import = "plugins.specs.git"        },
-  { import = "plugins.specs.dap"        },
-  { import = "plugins.specs.test"       },
-  { import = "plugins.specs.advanced"   },
-  { import = "plugins.specs.hud"        },
-  { import = "plugins.specs.workflow"   },
+  { import = "plugins.specs.lsp" },
+  { import = "plugins.specs.git" },
+  { import = "plugins.specs.dap" },
+  { import = "plugins.specs.test" },
+  { import = "plugins.specs.advanced" },
+  { import = "plugins.specs.hud" },
+  { import = "plugins.specs.workflow" },
 
   -- ── Language specs ─────────────────────────────────────────────────────────
   -- Systems languages
-  { import = "plugins.specs.lang.c"          },
-  { import = "plugins.specs.lang.cpp"        },
-  { import = "plugins.specs.lang.rust"       },
-  { import = "plugins.specs.lang.go"         },
-  { import = "plugins.specs.lang.python"     },
-  { import = "plugins.specs.lang.java"       },
-  { import = "plugins.specs.lang.kotlin"     },
+  { import = "plugins.specs.lang.c" },
+  { import = "plugins.specs.lang.cpp" },
+  { import = "plugins.specs.lang.rust" },
+  { import = "plugins.specs.lang.go" },
+  { import = "plugins.specs.lang.python" },
+  { import = "plugins.specs.lang.java" },
+  { import = "plugins.specs.lang.kotlin" },
 
   -- Web / scripted
   { import = "plugins.specs.lang.javascript" },
   { import = "plugins.specs.lang.typescript" },
-  { import = "plugins.specs.lang.web"        },
-  { import = "plugins.specs.lang.html"       },
-  { import = "plugins.specs.lang.css"        },
+  { import = "plugins.specs.lang.web" },
+  { import = "plugins.specs.lang.html" },
+  { import = "plugins.specs.lang.css" },
 
   -- Data / markup
-  { import = "plugins.specs.lang.database"   },
-  { import = "plugins.specs.lang.markdown"   },
-  { import = "plugins.specs.lang.rest"       },
+  { import = "plugins.specs.lang.database" },
+  { import = "plugins.specs.lang.markdown" },
+  { import = "plugins.specs.lang.rest" },
 
   -- Scripted / JVM
-  { import = "plugins.specs.lang.ruby"       },
-  { import = "plugins.specs.lang.elixir"     },
+  { import = "plugins.specs.lang.ruby" },
+  { import = "plugins.specs.lang.elixir" },
 
   -- Esoteric / domain-specific
-  { import = "plugins.specs.lang.fortran"    },
-  { import = "plugins.specs.lang.zig"        },
-  { import = "plugins.specs.lang.cobol"      },
-  { import = "plugins.specs.lang.vhdl"       },
+  { import = "plugins.specs.lang.fortran" },
+  { import = "plugins.specs.lang.zig" },
+  { import = "plugins.specs.lang.cobol" },
+  { import = "plugins.specs.lang.vhdl" },
 }

@@ -5,29 +5,41 @@ return {
 
   -- ── Harpoon ────────────────────────────────────────────────────────────────
   {
-    "ThePrimeagen/harpoon", branch = "harpoon2",
+    "ThePrimeagen/harpoon",
+    branch = "harpoon2",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-telescope/telescope.nvim" },
     event = "VeryLazy",
     opts = {
       settings = {
-        save_on_toggle = true, save_on_change = true, enter_on_select = false,
+        save_on_toggle = true,
+        save_on_change = true,
+        enter_on_select = false,
         key = function()
           local ok, path = pcall(require, "core.util.path")
-          if ok then local root = path.find_root(); if root and root ~= "" then return root end end
+          if ok then
+            local root = path.find_root()
+            if root and root ~= "" then
+              return root
+            end
+          end
           return vim.uv.cwd() or ""
         end,
       },
     },
     config = function(_, opts)
-      local ok, err = pcall(function() require("harpoon"):setup(opts) end)
-      if not ok then vim.notify("harpoon setup failed: " .. tostring(err), vim.log.levels.WARN) end
+      local ok, err = pcall(function()
+        require("harpoon"):setup(opts)
+      end)
+      if not ok then
+        vim.notify("harpoon setup failed: " .. tostring(err), vim.log.levels.WARN)
+      end
     end,
   },
 
   -- ── Telescope ──────────────────────────────────────────────────────────────
   {
     "nvim-telescope/telescope.nvim",
-    cmd          = "Telescope",
+    cmd = "Telescope",
     dependencies = {
       "nvim-lua/plenary.nvim",
       "nvim-telescope/telescope-fzf-native.nvim",
@@ -37,27 +49,40 @@ return {
       local ok = pcall(function()
         require("telescope").setup({
           defaults = {
-            layout_strategy  = "horizontal",
-            layout_config    = { height = 0.9, preview_cutoff = 120, prompt_position = "bottom" },
+            layout_strategy = "horizontal",
+            layout_config = { height = 0.9, preview_cutoff = 120, prompt_position = "bottom" },
             sorting_strategy = "ascending",
             file_ignore_patterns = { "node_modules/", "^%.git/", "%.venv/", "__pycache__/", "^dist/", "^build/" },
           },
-          extensions = { fzf = { fuzzy = true, override_generic_sorter = true, override_file_sorter = true, case_mode = "smart_case" } },
+          extensions = {
+            fzf = {
+              fuzzy = true,
+              override_generic_sorter = true,
+              override_file_sorter = true,
+              case_mode = "smart_case",
+            },
+          },
         })
         -- Only load fzf extension if the native library was actually built.
-        local ok_fzf = pcall(function() require("telescope").load_extension("fzf") end)
+        local ok_fzf = pcall(function()
+          require("telescope").load_extension("fzf")
+        end)
         if not ok_fzf then
           vim.notify(
             "[telescope] fzf-native extension failed to load.\n"
-            .. "The native library may not have been compiled. Run:\n"
-            .. "  cd ~/.local/share/nvim/lazy/telescope-fzf-native.nvim && make\n"
-            .. "Falling back to built-in sorter.",
+              .. "The native library may not have been compiled. Run:\n"
+              .. "  cd ~/.local/share/nvim/lazy/telescope-fzf-native.nvim && make\n"
+              .. "Falling back to built-in sorter.",
             vim.log.levels.DEBUG
           )
         end
-        pcall(function() require("telescope").load_extension("git_worktree") end)
+        pcall(function()
+          require("telescope").load_extension("git_worktree")
+        end)
       end)
-      if not ok then vim.notify("telescope setup failed", vim.log.levels.WARN) end
+      if not ok then
+        vim.notify("telescope setup failed", vim.log.levels.WARN)
+      end
     end,
   },
 
@@ -65,7 +90,7 @@ return {
   --
   {
     "nvim-telescope/telescope-fzf-native.nvim",
-    lazy  = true,
+    lazy = true,
     build = (function()
       if vim.fn.executable("cmake") == 1 then
         return "cmake -S. -Bbuild -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release && cmake --install build --prefix build"
@@ -86,7 +111,9 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           local ok, tb = pcall(require, "telescope.builtin")
-          if ok then pcall(tb.live_grep, { cwd = root, prompt_title = "Grep: " .. vim.fn.fnamemodify(root, ":~") }) end
+          if ok then
+            pcall(tb.live_grep, { cwd = root, prompt_title = "Grep: " .. vim.fn.fnamemodify(root, ":~") })
+          end
         end,
         desc = "Live grep (project root)",
       },
@@ -96,7 +123,9 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           local ok, tb = pcall(require, "telescope.builtin")
-          if ok then pcall(tb.find_files, { cwd = root, prompt_title = "Files: " .. vim.fn.fnamemodify(root, ":~") }) end
+          if ok then
+            pcall(tb.find_files, { cwd = root, prompt_title = "Files: " .. vim.fn.fnamemodify(root, ":~") })
+          end
         end,
         desc = "Find files (project root)",
       },
@@ -142,13 +171,15 @@ return {
           pcall(tb.find_files, {
             find_command = { "cat", tmpfile },
             prompt_title = "Recent files (frecency)",
-            cwd          = root,
+            cwd = root,
           })
 
           vim.defer_fn(function()
             -- Only delete if the file still exists (not already cleaned up).
             local ok_stat, _ = pcall(vim.uv.fs_stat, tmpfile)
-            if ok_stat then pcall(os.remove, tmpfile) end
+            if ok_stat then
+              pcall(os.remove, tmpfile)
+            end
           end, 30000)
         end,
         desc = "Frequent/recent files (mini.visits)",
@@ -159,11 +190,14 @@ return {
   -- ── Spectre ────────────────────────────────────────────────────────────────
   {
     "nvim-pack/nvim-spectre",
-    cmd          = "Spectre",
+    cmd = "Spectre",
     dependencies = "nvim-lua/plenary.nvim",
     opts = {
-      color_devicons = true, open_cmd = "noswapfile vnew",
-      find_engine  = { rg = { cmd = "rg", args = { "--color=never","--no-heading","--with-filename","--line-number","--column" } } },
+      color_devicons = true,
+      open_cmd = "noswapfile vnew",
+      find_engine = {
+        rg = { cmd = "rg", args = { "--color=never", "--no-heading", "--with-filename", "--line-number", "--column" } },
+      },
       replace_engine = { sed = { cmd = "sed", args = nil } },
     },
   },
@@ -173,20 +207,20 @@ return {
     "folke/todo-comments.nvim",
     -- event-loaded so TODO/FIXME comments are highlighted; cmd-only meant no highlighting
     -- until the first :TodoTelescope or ]t.
-    event        = { "BufReadPost", "BufNewFile" },
-    cmd          = { "TodoTelescope", "TodoQuickFix", "TodoLocList" },
+    event = { "BufReadPost", "BufNewFile" },
+    cmd = { "TodoTelescope", "TodoQuickFix", "TodoLocList" },
     dependencies = "nvim-lua/plenary.nvim",
     keys = { { "<leader>xT", "<cmd>TodoTelescope<cr>", desc = "Find TODOs" } },
     opts = {
       signs = false,
       keywords = {
-        FIX  = { icon = " ", color = "error",   alt = { "FIXME","BUG","FIXIT","ISSUE" } },
+        FIX = { icon = " ", color = "error", alt = { "FIXME", "BUG", "FIXIT", "ISSUE" } },
         TODO = { icon = " ", color = "info" },
         HACK = { icon = " ", color = "warning" },
-        WARN = { icon = " ", color = "warning", alt = { "WARNING","XXX" } },
-        PERF = { icon = " ", alt  = { "OPTIM","PERFORMANCE","OPTIMIZE" } },
-        NOTE = { icon = " ", color = "hint",    alt = { "INFO" } },
-        TEST = { icon = "⚙ ", color = "test",   alt = { "TESTING","PASSED","FAILED" } },
+        WARN = { icon = " ", color = "warning", alt = { "WARNING", "XXX" } },
+        PERF = { icon = " ", alt = { "OPTIM", "PERFORMANCE", "OPTIMIZE" } },
+        NOTE = { icon = " ", color = "hint", alt = { "INFO" } },
+        TEST = { icon = "⚙ ", color = "test", alt = { "TESTING", "PASSED", "FAILED" } },
       },
     },
   },
@@ -194,24 +228,28 @@ return {
   -- ── Neo-tree ───────────────────────────────────────────────────────────────
   {
     "nvim-neo-tree/neo-tree.nvim",
-    branch       = "v3.x",
-    cmd          = "Neotree",
+    branch = "v3.x",
+    cmd = "Neotree",
     dependencies = { "nvim-lua/plenary.nvim", "nvim-tree/nvim-web-devicons", "MunifTanjim/nui.nvim" },
     keys = {
-      { "<leader>ee", "<cmd>Neotree reveal<cr>",  desc = "Toggle explorer"  },
-      { "<leader>ef", "<cmd>Neotree focus<cr>",   desc = "Focus explorer"   },
-      { "<leader>ec", "<cmd>Neotree close<cr>",   desc = "Close explorer"   },
+      { "<leader>ee", "<cmd>Neotree reveal<cr>", desc = "Toggle explorer" },
+      { "<leader>ef", "<cmd>Neotree focus<cr>", desc = "Focus explorer" },
+      { "<leader>ec", "<cmd>Neotree close<cr>", desc = "Close explorer" },
       { "<leader>er", "<cmd>Neotree refresh<cr>", desc = "Refresh explorer" },
     },
     opts = {
-      close_if_last_window = false, popup_border_style = "rounded",
-      enable_git_status = true, enable_diagnostics = true,
+      close_if_last_window = false,
+      popup_border_style = "rounded",
+      enable_git_status = true,
+      enable_diagnostics = true,
       filesystem = {
-        follow_current_file   = { enabled = true, leave_dirs_open = false },
+        follow_current_file = { enabled = true, leave_dirs_open = false },
         hijack_netrw_behavior = "open_current",
-        use_libuv             = true,
+        use_libuv = true,
         filtered_items = {
-          visible = false, hide_dotfiles = true, hide_gitignored = true,
+          visible = false,
+          hide_dotfiles = true,
+          hide_gitignored = true,
           always_show = { ".env", ".gitignore" },
         },
       },
@@ -222,24 +260,56 @@ return {
   {
     "folke/flash.nvim",
     event = "VeryLazy",
-    opts  = { modes = { search = { enabled = false }, char = { enabled = false } } },
-    config = function(_, opts) pcall(function() require("flash").setup(opts) end) end,
+    opts = { modes = { search = { enabled = false }, char = { enabled = false } } },
+    config = function(_, opts)
+      pcall(function()
+        require("flash").setup(opts)
+      end)
+    end,
   },
 
   -- ── vim-tmux-navigator ────────────────────────────────────────────────────
   {
     "christoomey/vim-tmux-navigator",
-    cmd = { "TmuxNavigateLeft","TmuxNavigateDown","TmuxNavigateUp","TmuxNavigateRight" },
+    cmd = { "TmuxNavigateLeft", "TmuxNavigateDown", "TmuxNavigateUp", "TmuxNavigateRight" },
     init = function()
-      vim.g.tmux_navigator_no_mappings   = 1
-      vim.g.tmux_navigator_no_wrap       = 1
+      vim.g.tmux_navigator_no_mappings = 1
+      vim.g.tmux_navigator_no_wrap = 1
       vim.g.tmux_navigator_preserve_zoom = 1
     end,
     keys = {
-      { "<C-h>", "<cmd>TmuxNavigateLeft<cr>",  mode = "n", noremap = true, silent = true, desc = "Navigate left  (split/pane)" },
-      { "<C-j>", "<cmd>TmuxNavigateDown<cr>",  mode = "n", noremap = true, silent = true, desc = "Navigate down  (split/pane)" },
-      { "<C-k>", "<cmd>TmuxNavigateUp<cr>",    mode = "n", noremap = true, silent = true, desc = "Navigate up    (split/pane)" },
-      { "<C-l>", "<cmd>TmuxNavigateRight<cr>", mode = "n", noremap = true, silent = true, desc = "Navigate right (split/pane)" },
+      {
+        "<C-h>",
+        "<cmd>TmuxNavigateLeft<cr>",
+        mode = "n",
+        noremap = true,
+        silent = true,
+        desc = "Navigate left  (split/pane)",
+      },
+      {
+        "<C-j>",
+        "<cmd>TmuxNavigateDown<cr>",
+        mode = "n",
+        noremap = true,
+        silent = true,
+        desc = "Navigate down  (split/pane)",
+      },
+      {
+        "<C-k>",
+        "<cmd>TmuxNavigateUp<cr>",
+        mode = "n",
+        noremap = true,
+        silent = true,
+        desc = "Navigate up    (split/pane)",
+      },
+      {
+        "<C-l>",
+        "<cmd>TmuxNavigateRight<cr>",
+        mode = "n",
+        noremap = true,
+        silent = true,
+        desc = "Navigate right (split/pane)",
+      },
     },
   },
 
@@ -248,12 +318,33 @@ return {
     "folke/persistence.nvim",
     event = "BufReadPre",
     config = function()
-      require("persistence").setup({ dir = vim.fn.stdpath("state") .. "/sessions/", options = vim.opt.sessionoptions:get() })
+      require("persistence").setup({
+        dir = vim.fn.stdpath("state") .. "/sessions/",
+        options = vim.opt.sessionoptions:get(),
+      })
     end,
     keys = {
-      { "<leader>qs", function() require("persistence").load() end,                desc = "Restore session"      },
-      { "<leader>ql", function() require("persistence").load({ last = true }) end, desc = "Restore last session" },
-      { "<leader>qd", function() require("persistence").stop() end,                desc = "Stop session saving"  },
+      {
+        "<leader>qs",
+        function()
+          require("persistence").load()
+        end,
+        desc = "Restore session",
+      },
+      {
+        "<leader>ql",
+        function()
+          require("persistence").load({ last = true })
+        end,
+        desc = "Restore last session",
+      },
+      {
+        "<leader>qd",
+        function()
+          require("persistence").stop()
+        end,
+        desc = "Stop session saving",
+      },
     },
   },
 
@@ -263,16 +354,18 @@ return {
     cmd = "Template",
     config = function()
       local ok, template = pcall(require, "template")
-      if not ok then return end
+      if not ok then
+        return
+      end
       local function git_cfg(key)
         local val = vim.fn.system("git config " .. key):gsub("\n", "")
         return (val ~= "" and not val:find("^fatal")) and val or nil
       end
       pcall(function()
         template.setup({
-          temp_dir     = vim.fn.stdpath("config") .. "/templates",
-          auto_name    = false,
-          author_name  = git_cfg("user.name")  or "Your Name",
+          temp_dir = vim.fn.stdpath("config") .. "/templates",
+          auto_name = false,
+          author_name = git_cfg("user.name") or "Your Name",
           author_email = git_cfg("user.email") or "your.email@example.com",
           web_devicons = true,
         })

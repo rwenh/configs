@@ -11,8 +11,12 @@ local RBRACKET, RBRACE = BYTE("]"), BYTE("}")
 ---@param text string
 ---@return string
 function M.strip(text)
-  if type(text) ~= "string" then return "" end
-  if text:sub(1, 3) == "\239\187\191" then text = text:sub(4) end   -- UTF-8 BOM
+  if type(text) ~= "string" then
+    return ""
+  end
+  if text:sub(1, 3) == "\239\187\191" then
+    text = text:sub(4)
+  end -- UTF-8 BOM
 
   -- pass 1: comments
   local out, n, i, in_str = {}, #text, 1, false
@@ -32,7 +36,7 @@ function M.strip(text)
       out[#out + 1] = '"'
       i = i + 1
     elseif c == SLASH and BYTE(text, i + 1) == SLASH then
-      local e = text:find("\n", i, true)          -- keep the newline (line numbers)
+      local e = text:find("\n", i, true) -- keep the newline (line numbers)
       i = e or (n + 1)
     elseif c == SLASH and BYTE(text, i + 1) == STAR then
       local e = text:find("*/", i + 2, true)
@@ -63,9 +67,13 @@ function M.strip(text)
       i = i + 1
     elseif c == COMMA then
       local j = i + 1
-      while j <= n and s:sub(j, j):match("%s") do j = j + 1 end
+      while j <= n and s:sub(j, j):match("%s") do
+        j = j + 1
+      end
       local nx = BYTE(s, j)
-      if nx ~= RBRACKET and nx ~= RBRACE then out[#out + 1] = "," end
+      if nx ~= RBRACKET and nx ~= RBRACE then
+        out[#out + 1] = ","
+      end
       i = i + 1
     else
       out[#out + 1] = s:sub(i, i)
@@ -81,7 +89,9 @@ end
 ---@return string?   err
 function M.decode(text)
   local ok, res = pcall(vim.json.decode, M.strip(text))
-  if ok and type(res) == "table" then return res end
+  if ok and type(res) == "table" then
+    return res
+  end
   return nil, ok and "top-level value is not an object/array" or tostring(res)
 end
 
@@ -91,7 +101,9 @@ end
 ---@return string? err
 function M.read(path)
   local ok, lines = pcall(vim.fn.readfile, path)
-  if not ok then return nil, "cannot read " .. path end
+  if not ok then
+    return nil, "cannot read " .. path
+  end
   return M.decode(table.concat(lines, "\n"))
 end
 

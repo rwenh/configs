@@ -67,6 +67,14 @@ require("core.commands")
 
 -- 6. Plugin manager + all plugin specs (core.lazy; was lua/plugins/init.lua)
 local _plugins_ok, _plugins_err = safe_require("core.lazy", { "core.lazy", "plugins" })
+if _plugins_ok then
+  local ok_setup, setup_err = pcall(function()
+    require("core.lazy").setup()
+  end)
+  if not ok_setup then
+    _plugins_ok, _plugins_err = false, setup_err
+  end
+end
 if not _plugins_ok then
   vim.notify(
     "[init.lua] core.lazy failed to load:\n"

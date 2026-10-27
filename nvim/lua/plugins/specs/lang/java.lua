@@ -6,13 +6,20 @@
 
 local bkm = require("core.util.buf_keymap")
 local jvm = require("core.util.jvm")
+local flags = require("core.flags")
 
 local MIN_JAVA = 17
 local JAVA_TTL_S = 600
 local BUNDLE_TTL_S = 60
 local ROOT_MARKERS = {
-  ".git", "mvnw", "gradlew", "pom.xml",
-  "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+  ".git",
+  "mvnw",
+  "gradlew",
+  "pom.xml",
+  "build.gradle",
+  "build.gradle.kts",
+  "settings.gradle",
+  "settings.gradle.kts",
 }
 local ERROR, WARN, INFO = vim.log.levels.ERROR, vim.log.levels.WARN, vim.log.levels.INFO
 
@@ -21,8 +28,10 @@ local ERROR, WARN, INFO = vim.log.levels.ERROR, vim.log.levels.WARN, vim.log.lev
 ---@param min     integer
 ---@return integer
 local function int_flag(name, default, min)
-  local v = vim.g[name]
-  if type(v) == "number" and v >= min then return math.floor(v) end
+  local v = flags.get(name, default)
+  if type(v) == "number" and v >= min then
+    return math.floor(v)
+  end
   return default
 end
 
@@ -33,7 +42,9 @@ local _java = { at = 0, major = nil }
 
 ---@return integer|nil
 local function java_major()
-  if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then return _java.major end
+  if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then
+    return _java.major
+  end
   local major
   if vim.fn.executable("java") == 1 then
     local ok, res = pcall(function()
@@ -63,11 +74,17 @@ local _bundles = nil
 
 ---@return { debug: string[], test: string[] }
 local function bundles()
-  if _bundles and (os.time() - _bundles.at) < BUNDLE_TTL_S then return _bundles end
+  if _bundles and (os.time() - _bundles.at) < BUNDLE_TTL_S then
+    return _bundles
+  end
   local mason = require("core.util.mason")
   _bundles = {
     at = os.time(),
-    debug = vim.fn.glob(mason.pkg("java-debug-adapter") .. "/extension/server/com.microsoft.java.debug.plugin-*.jar", false, true),
+    debug = vim.fn.glob(
+      mason.pkg("java-debug-adapter") .. "/extension/server/com.microsoft.java.debug.plugin-*.jar",
+      false,
+      true
+    ),
     test = jvm.filter_test_bundles(vim.fn.glob(mason.pkg("java-test") .. "/extension/server/*.jar", false, true)),
   }
   return _bundles
@@ -90,10 +107,15 @@ end
 ---@return { level: integer, msg: string }[]
 local function problems(f)
   local out = {}
-  local function add(level, msg) out[#out + 1] = { level = level, msg = msg } end
+  local function add(level, msg)
+    out[#out + 1] = { level = level, msg = msg }
+  end
 
   if not f.java then
-    add(ERROR, "java is not on PATH. Install a JDK " .. MIN_JAVA .. "+: sudo zypper in java-" .. MIN_JAVA .. "-openjdk-devel")
+    add(
+      ERROR,
+      "java is not on PATH. Install a JDK " .. MIN_JAVA .. "+: sudo zypper in java-" .. MIN_JAVA .. "-openjdk-devel"
+    )
   elseif not f.major then
     add(WARN, "could not read a version from `java -version`; jdtls may fail to start")
   elseif f.major < MIN_JAVA then
@@ -108,10 +130,16 @@ local function problems(f)
     add(ERROR, "jdtls has no config directory for this OS: " .. f.jdtls.config_dir .. "\nRun: :MasonInstall jdtls")
   end
   if #f.debug == 0 then
-    add(WARN, "java-debug-adapter is not installed, so Java debugging is unavailable. Run: :MasonInstall java-debug-adapter")
+    add(
+      WARN,
+      "java-debug-adapter is not installed, so Java debugging is unavailable. Run: :MasonInstall java-debug-adapter"
+    )
   end
   if #f.test == 0 then
-    add(INFO, "java-test is not installed, so <leader>jvt and <leader>jvn are unavailable. Run: :MasonInstall java-test")
+    add(
+      INFO,
+      "java-test is not installed, so <leader>jvt and <leader>jvn are unavailable. Run: :MasonInstall java-test"
+    )
   end
   return out
 end
@@ -127,8 +155,12 @@ local function report(list)
   local now, blocking = {}, false
   for _, p in ipairs(list) do
     now[p.msg] = true
-    if p.level == ERROR then blocking = true end
-    if not _shown[p.msg] then vim.notify("[java] " .. p.msg, p.level) end
+    if p.level == ERROR then
+      blocking = true
+    end
+    if not _shown[p.msg] then
+      vim.notify("[java] " .. p.msg, p.level)
+    end
   end
   _shown = now
   return blocking
@@ -146,7 +178,9 @@ end
 ---@param opts any
 local function call(fn, opts)
   local ok, err = pcall(fn, opts)
-  if not ok then vim.notify("[java] " .. tostring(err), WARN) end
+  if not ok then
+    vim.notify("[java] " .. tostring(err), WARN)
+  end
 end
 
 --- Refactors read the '< and '> marks, which only update when visual mode ends. Leave it first.
@@ -162,9 +196,11 @@ end
 ---@param bufnr integer
 ---@param jdtls table
 local function ensure_dap(bufnr, jdtls)
-  if vim.b[bufnr].jdtls_dap_ready then return end
+  if vim.b[bufnr].jdtls_dap_ready then
+    return
+  end
   local ok, err = pcall(function()
-    jdtls.setup_dap({ hotcodereplace = "auto" })   -- idempotent: returns early once the adapter exists
+    jdtls.setup_dap({ hotcodereplace = "auto" }) -- idempotent: returns early once the adapter exists
     require("jdtls.dap").setup_dap_main_class_configs()
   end)
   if ok then
@@ -194,14 +230,36 @@ end
 ---@return table[]
 local function keymap_specs(bufnr, jdtls, root, has_test, is_spring)
   local maps = {
-    { "n", "<leader>jvo", function() call(jdtls.organize_imports) end, "Java organize imports" },
-    { "n", "<leader>jvv", function() call(jdtls.extract_variable, { visual = false }) end, "Java extract variable" },
+    {
+      "n",
+      "<leader>jvo",
+      function()
+        call(jdtls.organize_imports)
+      end,
+      "Java organize imports",
+    },
+    {
+      "n",
+      "<leader>jvv",
+      function()
+        call(jdtls.extract_variable, { visual = false })
+      end,
+      "Java extract variable",
+    },
     { "v", "<leader>jvv", visual_call(jdtls.extract_variable), "Java extract variable (selection)" },
-    { "n", "<leader>jvc", function() call(jdtls.extract_constant, { visual = false }) end, "Java extract constant" },
+    {
+      "n",
+      "<leader>jvc",
+      function()
+        call(jdtls.extract_constant, { visual = false })
+      end,
+      "Java extract constant",
+    },
     { "v", "<leader>jvc", visual_call(jdtls.extract_constant), "Java extract constant (selection)" },
     { "v", "<leader>jvm", visual_call(jdtls.extract_method), "Java extract method (selection)" },
     {
-      "n", "<leader>jvR",
+      "n",
+      "<leader>jvR",
       function()
         local ok, err = pcall(jdtls.update_project_config)
         if ok then
@@ -216,15 +274,45 @@ local function keymap_specs(bufnr, jdtls, root, has_test, is_spring)
 
   if has_test then
     vim.list_extend(maps, {
-      { "n", "<leader>jvt", function() ensure_dap(bufnr, jdtls); call(jdtls.test_class, { bufnr = bufnr }) end, "Java test class" },
-      { "n", "<leader>jvn", function() ensure_dap(bufnr, jdtls); call(jdtls.test_nearest_method, { bufnr = bufnr }) end, "Java test nearest method" },
+      {
+        "n",
+        "<leader>jvt",
+        function()
+          ensure_dap(bufnr, jdtls)
+          call(jdtls.test_class, { bufnr = bufnr })
+        end,
+        "Java test class",
+      },
+      {
+        "n",
+        "<leader>jvn",
+        function()
+          ensure_dap(bufnr, jdtls)
+          call(jdtls.test_nearest_method, { bufnr = bufnr })
+        end,
+        "Java test nearest method",
+      },
     })
   end
 
   if is_spring then
     vim.list_extend(maps, {
-      { "n", "<leader>jvs", function() build_in_terminal(root, "spring-run", { close_on_exit = false }) end, "Java Spring Boot run" },
-      { "n", "<leader>jvS", function() build_in_terminal(root, "spring-package", nil) end, "Java Spring Boot package" },
+      {
+        "n",
+        "<leader>jvs",
+        function()
+          build_in_terminal(root, "bootRun", { close_on_exit = false })
+        end,
+        "Java Spring Boot run",
+      },
+      {
+        "n",
+        "<leader>jvS",
+        function()
+          build_in_terminal(root, "bootJar", nil)
+        end,
+        "Java Spring Boot package",
+      },
     })
   end
 
@@ -246,7 +334,9 @@ local function make_on_attach(root, jdtls, has_test, is_spring)
       once = true,
       callback = function(ev)
         local client = ev.data and vim.lsp.get_client_by_id(ev.data.client_id)
-        if client and client.name == "jdtls" then vim.b[bufnr].jdtls_started = nil end
+        if client and client.name == "jdtls" then
+          vim.b[bufnr].jdtls_started = nil
+        end
       end,
       desc = "Let the next Java open of this buffer attach jdtls again",
     })
@@ -272,11 +362,16 @@ local function build_config(f, root, jdtls, has_test, is_spring)
       "-Dlog.level=WARNING",
       "-Xms" .. heap .. "m",
       "--add-modules=ALL-SYSTEM",
-      "--add-opens", "java.base/java.util=ALL-UNNAMED",
-      "--add-opens", "java.base/java.lang=ALL-UNNAMED",
-      "-jar", f.jdtls.launcher,
-      "-configuration", f.jdtls.config_dir,
-      "-data", workspace_for(root),
+      "--add-opens",
+      "java.base/java.util=ALL-UNNAMED",
+      "--add-opens",
+      "java.base/java.lang=ALL-UNNAMED",
+      "-jar",
+      f.jdtls.launcher,
+      "-configuration",
+      f.jdtls.config_dir,
+      "-data",
+      workspace_for(root),
     },
     root_dir = root,
     settings = {
@@ -294,9 +389,15 @@ end
 --- Attach jdtls to one buffer. Idempotent until that buffer's jdtls client detaches.
 ---@param buf integer
 local function start_for_buffer(buf)
-  if not vim.api.nvim_buf_is_valid(buf) then return end
-  if vim.bo[buf].buftype ~= "" or vim.bo[buf].filetype ~= "java" then return end
-  if vim.b[buf].jdtls_started then return end
+  if not vim.api.nvim_buf_is_valid(buf) then
+    return
+  end
+  if vim.bo[buf].buftype ~= "" or vim.bo[buf].filetype ~= "java" then
+    return
+  end
+  if vim.b[buf].jdtls_started then
+    return
+  end
 
   local ok_jdtls, jdtls = pcall(require, "jdtls")
   if not ok_jdtls then
@@ -305,7 +406,9 @@ local function start_for_buffer(buf)
   end
 
   local f = facts()
-  if report(problems(f)) then return end
+  if report(problems(f)) then
+    return
+  end
 
   local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":p:h")
   local root = require("core.util.path").find_up(ROOT_MARKERS, dir) or dir
@@ -317,8 +420,11 @@ local function start_for_buffer(buf)
     vim.b[buf].jdtls_started = true
   else
     vim.notify(
-      string.format("[java] jdtls failed to start: %s\nIf the workspace is corrupt, remove %s and reopen.",
-        tostring(err), workspace_for(root)),
+      string.format(
+        "[java] jdtls failed to start: %s\nIf the workspace is corrupt, remove %s and reopen.",
+        tostring(err),
+        workspace_for(root)
+      ),
       WARN
     )
   end
@@ -335,14 +441,20 @@ local function doctor()
 
   row(f.java, "java", f.java and (f.major and ("major " .. f.major) or "version unknown") or "missing")
   row(f.javac, "javac", f.javac and "found" or "missing — a JDK is needed, not just a JRE")
-  row(f.jdtls.launcher ~= nil, "jdtls", f.jdtls.launcher or ("missing under " .. f.jdtls.root .. " — :MasonInstall jdtls"))
+  row(
+    f.jdtls.launcher ~= nil,
+    "jdtls",
+    f.jdtls.launcher or ("missing under " .. f.jdtls.root .. " — :MasonInstall jdtls")
+  )
   row(vim.fn.isdirectory(f.jdtls.config_dir) == 1, "jdtls config", f.jdtls.config_dir)
   row(#f.debug > 0, "java-debug", #f.debug > 0 and f.debug[1] or "missing — :MasonInstall java-debug-adapter")
   row(#f.test > 0, "java-test", #f.test > 0 and (#f.test .. " bundle(s)") or "missing — :MasonInstall java-test")
 
   local blocking = false
   for _, p in ipairs(problems(f)) do
-    if p.level == ERROR then blocking = true end
+    if p.level == ERROR then
+      blocking = true
+    end
   end
   local out = { "Java doctor" }
   vim.list_extend(out, rows)
@@ -364,12 +476,16 @@ return {
       vim.api.nvim_create_autocmd("FileType", {
         pattern = "java",
         group = vim.api.nvim_create_augroup("JdtlsAttach", { clear = true }),
-        callback = function(e) start_for_buffer(e.buf) end,
+        callback = function(e)
+          start_for_buffer(e.buf)
+        end,
       })
       -- The buffer that triggered lazy-loading may not replay FileType, so cover every loaded Java buffer.
       -- The per-buffer guard makes a double call harmless.
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_is_loaded(buf) then start_for_buffer(buf) end
+        if vim.api.nvim_buf_is_loaded(buf) then
+          start_for_buffer(buf)
+        end
       end
     end,
   },
@@ -383,7 +499,11 @@ return {
     keys = {
       {
         "<leader>jvg",
-        function() call(function() require("neogen").generate() end) end,
+        function()
+          call(function()
+            require("neogen").generate()
+          end)
+        end,
         desc = "Java generate Javadoc",
         ft = "java",
       },

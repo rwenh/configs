@@ -9,7 +9,9 @@ end
 
 local function mason_installed(pkg_name)
   local ok, registry = pcall(require, "mason-registry")
-  if not ok then return false end
+  if not ok then
+    return false
+  end
   local ok_pkg, pkg = pcall(registry.get_package, pkg_name)
   return ok_pkg and pkg and pkg:is_installed()
 end
@@ -17,12 +19,17 @@ end
 local _checked_mason_lsp_pkgs = {}
 
 local function lsp_check(label, binary, mason_pkg, advice)
-  if mason_pkg then _checked_mason_lsp_pkgs[mason_pkg] = true end
+  if mason_pkg then
+    _checked_mason_lsp_pkgs[mason_pkg] = true
+  end
   local installed = (binary and bin_ok(binary)) or (mason_pkg and mason_installed(mason_pkg))
   if installed then
     vim.health.ok(label)
   else
-    vim.health.warn(label .. " not found", { advice or (mason_pkg and (":MasonInstall " .. mason_pkg) or ("Install: " .. (binary or ""))) })
+    vim.health.warn(
+      label .. " not found",
+      { advice or (mason_pkg and (":MasonInstall " .. mason_pkg) or ("Install: " .. (binary or ""))) }
+    )
   end
 end
 
@@ -36,7 +43,7 @@ local function ts_tools_check()
   local ok_lazy, lazy_cfg = pcall(require, "lazy.core.config")
   local declared = ok_lazy and lazy_cfg.plugins and lazy_cfg.plugins["typescript-tools.nvim"] ~= nil
   local loaded = package.loaded["typescript-tools"] ~= nil
-    or declared   -- lazy (ft=...) plugins are not on the rtp until first use
+    or declared -- lazy (ft=...) plugins are not on the rtp until first use
     or #vim.api.nvim_get_runtime_file("lua/typescript-tools/init.lua", false) > 0
 
   if loaded then
@@ -50,7 +57,7 @@ local function ts_tools_check()
   else
     vim.health.info(
       "TypeScript   (tsc compiler) not found on PATH — fine if 'typescript' is a local "
-      .. "devDependency instead of a global install; install globally with: npm install -g typescript"
+        .. "devDependency instead of a global install; install globally with: npm install -g typescript"
     )
   end
 end
@@ -86,16 +93,14 @@ function M.check()
   if ver.major > 0 or ver.minor >= 11 then
     vim.health.ok(string.format("Neovim v%d.%d.%d", ver.major, ver.minor, ver.patch))
   else
-    vim.health.error(
-      string.format("Neovim v%d.%d.%d — v0.11+ required", ver.major, ver.minor, ver.patch)
-    )
+    vim.health.error(string.format("Neovim v%d.%d.%d — v0.11+ required", ver.major, ver.minor, ver.patch))
   end
 
   vim.health.info("nvim-ide version: " .. tostring(vim.g.nvim_ide_version or "unknown"))
 
   if bin_ok("node") then
     local node_ver = vim.trim(vim.fn.system("node --version 2>/dev/null"))
-    local major    = tonumber(node_ver:match("v(%d+)"))
+    local major = tonumber(node_ver:match("v(%d+)"))
     if major and major >= 18 then
       vim.health.ok("node " .. node_ver)
     elseif major then
@@ -106,13 +111,13 @@ function M.check()
   end
 
   for _, entry in ipairs({
-    { "git",       "git",       nil },
-    { "ripgrep",   "rg",        "sudo zypper in ripgrep" },
-    { "fd",        "fd",        "sudo zypper in fd"      },
-    { "lazygit",   "lazygit",   "sudo zypper in lazygit" },
-    { "python3",   "python3",   "sudo zypper in python3" },
-    { "cargo",     "cargo",     "sudo zypper in cargo"   },
-    { "gcc/clang", "gcc",       "sudo zypper in gcc"     },
+    { "git", "git", nil },
+    { "ripgrep", "rg", "sudo zypper in ripgrep" },
+    { "fd", "fd", "sudo zypper in fd" },
+    { "lazygit", "lazygit", "sudo zypper in lazygit" },
+    { "python3", "python3", "sudo zypper in python3" },
+    { "cargo", "cargo", "sudo zypper in cargo" },
+    { "gcc/clang", "gcc", "sudo zypper in gcc" },
   }) do
     local label, binary, advice = entry[1], entry[2], entry[3]
     if bin_ok(binary) then
@@ -178,45 +183,47 @@ function M.check()
   -- ── LSP servers ───────────────────────────────────────────────────────────
   vim.health.start("nvim-ide LSP servers")
 
-  lsp_check("Lua          (lua_ls)",                  "lua-language-server",         "lua-language-server")
-  lsp_check("Python       (basedpyright)",             "basedpyright-langserver",     "basedpyright")
-  lsp_check("Rust         (rust-analyzer)",            "rust-analyzer",               nil, "rustup component add rust-analyzer")
-  lsp_check("Go           (gopls)",                    "gopls",                       "gopls")
-  lsp_check("C/C++        (clangd)",                   "clangd",                      "clangd")
-  lsp_check("Ruby         (solargraph)",               "solargraph",                  "solargraph", "gem install solargraph")
-  lsp_check("Elixir       (elixir-ls)",                nil,                           "elixir-ls")
-  lsp_check("Java         (jdtls)",                    nil,                           "jdtls")
-  lsp_check("Kotlin       (kotlin-language-server)",   "kotlin-language-server",      "kotlin-language-server")
+  lsp_check("Lua          (lua_ls)", "lua-language-server", "lua-language-server")
+  lsp_check("Python       (basedpyright)", "basedpyright-langserver", "basedpyright")
+  lsp_check("Rust         (rust-analyzer)", "rust-analyzer", nil, "rustup component add rust-analyzer")
+  lsp_check("Go           (gopls)", "gopls", "gopls")
+  lsp_check("C/C++        (clangd)", "clangd", "clangd")
+  lsp_check("Ruby         (solargraph)", "solargraph", "solargraph", "gem install solargraph")
+  lsp_check("Elixir       (elixir-ls)", nil, "elixir-ls")
+  lsp_check("Java         (jdtls)", nil, "jdtls")
+  lsp_check("Kotlin       (kotlin-language-server)", "kotlin-language-server", "kotlin-language-server")
   ts_tools_check()
-  lsp_check("HTML         (html-lsp)",                 "vscode-html-language-server", "html-lsp")
-  lsp_check("CSS          (cssls)",                    "vscode-css-language-server",  "css-lsp")
-  lsp_check("JSON         (jsonls)",                   "vscode-json-language-server", "json-lsp")
-  lsp_check("YAML         (yamlls)",                   "yaml-language-server",        "yaml-language-server")
-  lsp_check("Tailwind     (tailwindcss-ls)",           "tailwindcss-language-server", "tailwindcss-language-server")
-  lsp_check("Zig          (zls)",                      "zls",                         "zls")
-  lsp_check("Fortran      (fortls)",                   "fortls",                      "fortls")
-  lsp_check("SQL          (sqls)",                     "sqls",                        "sqls")
+  lsp_check("HTML         (html-lsp)", "vscode-html-language-server", "html-lsp")
+  lsp_check("CSS          (cssls)", "vscode-css-language-server", "css-lsp")
+  lsp_check("JSON         (jsonls)", "vscode-json-language-server", "json-lsp")
+  lsp_check("YAML         (yamlls)", "yaml-language-server", "yaml-language-server")
+  lsp_check("Tailwind     (tailwindcss-ls)", "tailwindcss-language-server", "tailwindcss-language-server")
+  lsp_check("Zig          (zls)", "zls", "zls")
+  lsp_check("Fortran      (fortls)", "fortls", "fortls")
+  lsp_check("SQL          (sqls)", "sqls", "sqls")
   do
     if bin_ok("cobol-language-support") then
       vim.health.ok("COBOL        (cobol-language-support)")
     else
       vim.health.info(
         "COBOL        (cobol-language-support) not found — no npm package currently provides "
-        .. "a working standalone binary here (the previously-listed @broadcommfd/cobol-language-support "
-        .. "does not exist on the npm registry). Broadcom/Code4z's COBOL Language Support ships as a "
-        .. "VS Code extension, not a drop-in LSP binary. cobc compile/run (<leader>cob, <leader>coc) "
-        .. "works without it."
+          .. "a working standalone binary here (the previously-listed @broadcommfd/cobol-language-support "
+          .. "does not exist on the npm registry). Broadcom/Code4z's COBOL Language Support ships as a "
+          .. "VS Code extension, not a drop-in LSP binary. cobc compile/run (<leader>cob, <leader>coc) "
+          .. "works without it."
       )
     end
   end
-  lsp_check("VHDL         (vhdl_ls)",                  "vhdl_ls",                     nil, "cargo install vhdl_ls")
+  lsp_check("VHDL         (vhdl_ls)", "vhdl_ls", nil, "cargo install vhdl_ls")
 
   do
     local ok_pkgs, packages = pcall(require, "core.util.packages")
     if ok_pkgs then
       local missing = {}
       for _, pkg in ipairs(packages.get("lsp")) do
-        if not _checked_mason_lsp_pkgs[pkg] then table.insert(missing, pkg) end
+        if not _checked_mason_lsp_pkgs[pkg] then
+          table.insert(missing, pkg)
+        end
       end
       if #missing > 0 then
         vim.health.warn(
@@ -230,21 +237,21 @@ function M.check()
   -- ── Formatters ────────────────────────────────────────────────────────────
   vim.health.start("nvim-ide formatters")
 
-  fmt_check("stylua     (Lua)",                "stylua")
-  fmt_check("black      (Python)",             "black")
-  fmt_check("isort      (Python)",             "isort")
-  fmt_check("ruff       (Python)",             "ruff")
-  fmt_check("goimports  (Go)",                 "goimports")
-  fmt_check("gofumpt    (Go)",                 "gofumpt")
-  fmt_check("prettier   (Web/JSON/YAML/MD)",   "prettier")
-  fmt_check("eslint_d   (JS/TS)",              "eslint_d")
-  fmt_check("rubocop    (Ruby)",               "rubocop")
-  fmt_check("ktlint     (Kotlin)",             "ktlint")
-  fmt_check("clang-format (C/C++)",            "clang-format")
-  fmt_check("fprettify  (Fortran)",            "fprettify")
-  fmt_check("shfmt      (Shell)",              "shfmt")
-  fmt_check("vsg        (VHDL)",               "vsg")
-  fmt_check("sqlfmt     (SQL)",                "sqlfmt",     true)
+  fmt_check("stylua     (Lua)", "stylua")
+  fmt_check("black      (Python)", "black")
+  fmt_check("isort      (Python)", "isort")
+  fmt_check("ruff       (Python)", "ruff")
+  fmt_check("goimports  (Go)", "goimports")
+  fmt_check("gofumpt    (Go)", "gofumpt")
+  fmt_check("prettier   (Web/JSON/YAML/MD)", "prettier")
+  fmt_check("eslint_d   (JS/TS)", "eslint_d")
+  fmt_check("rubocop    (Ruby)", "rubocop")
+  fmt_check("ktlint     (Kotlin)", "ktlint")
+  fmt_check("clang-format (C/C++)", "clang-format")
+  fmt_check("fprettify  (Fortran)", "fprettify")
+  fmt_check("shfmt      (Shell)", "shfmt")
+  fmt_check("vsg        (VHDL)", "vsg")
+  fmt_check("sqlfmt     (SQL)", "sqlfmt", true)
 
   -- ── DAP adapters ──────────────────────────────────────────────────────────
   vim.health.start("nvim-ide DAP adapters")
@@ -255,7 +262,7 @@ function M.check()
   local function dap_check(label, binary, mason_bin_name, fallback_path, advice)
     local found = (binary and bin_ok(binary))
       or (mason_bin_name and vim.fn.executable(mason_bin .. mason_bin_name) == 1)
-      or (fallback_path   and vim.fn.filereadable(fallback_path) == 1)
+      or (fallback_path and vim.fn.filereadable(fallback_path) == 1)
     if found then
       vim.health.ok(label)
     else
@@ -263,12 +270,9 @@ function M.check()
     end
   end
 
-  dap_check("Python       (debugpy)",
-    "debugpy", "debugpy", nil, "pip install debugpy")
-  dap_check("C/C++/Rust/Zig (codelldb)",
-    nil, "codelldb", nil)
-  dap_check("Go           (delve/dlv)",
-    "dlv", "dlv", nil)
+  dap_check("Python       (debugpy)", "debugpy", "debugpy", nil, "pip install debugpy")
+  dap_check("C/C++/Rust/Zig (codelldb)", nil, "codelldb", nil)
+  dap_check("Go           (delve/dlv)", "dlv", "dlv", nil)
 
   do
     local ok_mason, mason = pcall(require, "core.util.mason")
@@ -280,12 +284,9 @@ function M.check()
     end
   end
 
-  dap_check("Java         (java-debug-adapter)",
-    nil, nil, nil, ":MasonInstall java-debug-adapter")
-  dap_check("Ruby         (rdbg)",
-    "rdbg", nil, nil, "gem install debug OR bundle add debug")
-  dap_check("Elixir       (elixir-ls debugger)",
-    "elixir-ls-debugger", nil, mason_pkg .. "elixir-ls/debugger.sh")
+  dap_check("Java         (java-debug-adapter)", nil, nil, nil, ":MasonInstall java-debug-adapter")
+  dap_check("Ruby         (rdbg)", "rdbg", nil, nil, "gem install debug OR bundle add debug")
+  dap_check("Elixir       (elixir-ls debugger)", "elixir-ls-debugger", nil, mason_pkg .. "elixir-ls/debugger.sh")
 
   if mason_installed("java-test") then
     vim.health.ok("Java         (java-test)")
@@ -296,23 +297,23 @@ function M.check()
   -- ── Language tooling ──────────────────────────────────────────────────────
   vim.health.start("nvim-ide language tooling")
 
-  lang_check("go runtime",            "go",         false, "sudo zypper in go")
-  lang_check("java runtime (17+)",    "java",       false, "sudo zypper in java-17-openjdk")
-  lang_check("ruby runtime",          "ruby",       false, "sudo zypper in ruby")
-  lang_check("elixir runtime",        "elixir",     false, "sudo zypper in elixir")
-  lang_check("mix (Elixir)",          "mix",        false, "sudo zypper in elixir")
-  lang_check("gfortran (Fortran)",    "gfortran",   false, "sudo zypper in gcc-fortran")
-  lang_check("cobc (GnuCOBOL)",       "cobc",       false, "sudo zypper in gnucobol")
-  lang_check("ghdl (VHDL)",           "ghdl",       false, "sudo zypper in ghdl")
-  lang_check("zig compiler",          "zig",        false, "https://ziglang.org/download/")
-  lang_check("curl (REST client)",    "curl",       false, "sudo zypper in curl")
-  lang_check("shellcheck",            "shellcheck", false, "sudo zypper in ShellCheck")
-  lang_check("gtkwave (VHDL waves)",  "gtkwave",    true,  "sudo zypper in gtkwave")
-  lang_check("deno (MD preview)",     "deno",       true,  "cargo install deno OR sudo zypper in deno")
-  lang_check("jq (REST formatting)",  "jq",         true,  "sudo zypper in jq")
-  lang_check("tmux (pane nav)",       "tmux",       true,  "sudo zypper in tmux")
-  lang_check("htmlhint (HTML lint)",  "htmlhint",   true,  "npm i -g htmlhint")
-  lang_check("stylelint (CSS lint)",  "stylelint",  true,  "npm i -g stylelint")
+  lang_check("go runtime", "go", false, "sudo zypper in go")
+  lang_check("java runtime (17+)", "java", false, "sudo zypper in java-17-openjdk")
+  lang_check("ruby runtime", "ruby", false, "sudo zypper in ruby")
+  lang_check("elixir runtime", "elixir", false, "sudo zypper in elixir")
+  lang_check("mix (Elixir)", "mix", false, "sudo zypper in elixir")
+  lang_check("gfortran (Fortran)", "gfortran", false, "sudo zypper in gcc-fortran")
+  lang_check("cobc (GnuCOBOL)", "cobc", false, "sudo zypper in gnucobol")
+  lang_check("ghdl (VHDL)", "ghdl", false, "sudo zypper in ghdl")
+  lang_check("zig compiler", "zig", false, "https://ziglang.org/download/")
+  lang_check("curl (REST client)", "curl", false, "sudo zypper in curl")
+  lang_check("shellcheck", "shellcheck", false, "sudo zypper in ShellCheck")
+  lang_check("gtkwave (VHDL waves)", "gtkwave", true, "sudo zypper in gtkwave")
+  lang_check("deno (MD preview)", "deno", true, "cargo install deno OR sudo zypper in deno")
+  lang_check("jq (REST formatting)", "jq", true, "sudo zypper in jq")
+  lang_check("tmux (pane nav)", "tmux", true, "sudo zypper in tmux")
+  lang_check("htmlhint (HTML lint)", "htmlhint", true, "npm i -g htmlhint")
+  lang_check("stylelint (CSS lint)", "stylelint", true, "npm i -g stylelint")
 
   -- ── Plugin infrastructure ─────────────────────────────────────────────────
   vim.health.start("nvim-ide plugin infrastructure")
@@ -326,13 +327,13 @@ function M.check()
   end
 
   for _, mod in ipairs({
-    { "mason.nvim",        "mason"           },
-    { "nvim-treesitter",   "nvim-treesitter" },
-    { "blink.cmp",         "blink.cmp"       },
-    { "conform.nvim",      "conform"         },
-    { "nvim-lint",         "lint"            },
-    { "nvim-dap",          "dap"             },
-    { "neotest",           "neotest"         },
+    { "mason.nvim", "mason" },
+    { "nvim-treesitter", "nvim-treesitter" },
+    { "blink.cmp", "blink.cmp" },
+    { "conform.nvim", "conform" },
+    { "nvim-lint", "lint" },
+    { "nvim-dap", "dap" },
+    { "neotest", "neotest" },
   }) do
     local label, mod_name = mod[1], mod[2]
     if pcall(require, mod_name) then
@@ -352,7 +353,10 @@ function M.check()
   }
   local fzf_built = false
   for _, candidate in ipairs(fzf_candidates) do
-    if vim.fn.filereadable(candidate) == 1 then fzf_built = true; break end
+    if vim.fn.filereadable(candidate) == 1 then
+      fzf_built = true
+      break
+    end
   end
   if fzf_built then
     vim.health.ok("telescope-fzf-native compiled")
@@ -361,7 +365,6 @@ function M.check()
       "cd " .. plugin_dir .. " && make",
     })
   end
-
 end
 
 return M

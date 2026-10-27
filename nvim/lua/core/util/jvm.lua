@@ -4,7 +4,7 @@
 local M = {}
 
 local GRADLE_BUILD_FILES = { "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts" }
-local MAVEN_BUILD_FILE   = "pom.xml"
+local MAVEN_BUILD_FILE = "pom.xml"
 
 local function is_file(p)
   return vim.fn.filereadable(p) == 1
@@ -46,7 +46,9 @@ function M.filter_test_bundles(jars)
   return vim.tbl_filter(function(jar)
     local base = jar:match("([^/\\]+)$") or jar
     for _, bad in ipairs(NON_BUNDLE) do
-      if base == bad then return false end
+      if base == bad then
+        return false
+      end
     end
     return true
   end, jars)
@@ -61,13 +63,20 @@ end
 function M.detect_tool(root)
   local has_gradle = false
   for _, f in ipairs(GRADLE_BUILD_FILES) do
-    if is_file(root .. "/" .. f) then has_gradle = true; break end
+    if is_file(root .. "/" .. f) then
+      has_gradle = true
+      break
+    end
   end
   local has_maven = is_file(root .. "/" .. MAVEN_BUILD_FILE)
 
   if has_gradle then
-    if is_exec_file(root .. "/gradlew") then return { kind = "gradle", exe = "./gradlew" } end
-    if vim.fn.executable("gradle") == 1 then return { kind = "gradle", exe = "gradle" } end
+    if is_exec_file(root .. "/gradlew") then
+      return { kind = "gradle", exe = "./gradlew" }
+    end
+    if vim.fn.executable("gradle") == 1 then
+      return { kind = "gradle", exe = "gradle" }
+    end
     if not has_maven then
       if is_file(root .. "/gradlew") then
         return nil, "gradlew exists but is not executable\n  fix: chmod +x " .. root .. "/gradlew"
@@ -77,8 +86,12 @@ function M.detect_tool(root)
   end
 
   if has_maven then
-    if is_exec_file(root .. "/mvnw") then return { kind = "maven", exe = "./mvnw" } end
-    if vim.fn.executable("mvn") == 1 then return { kind = "maven", exe = "mvn" } end
+    if is_exec_file(root .. "/mvnw") then
+      return { kind = "maven", exe = "./mvnw" }
+    end
+    if vim.fn.executable("mvn") == 1 then
+      return { kind = "maven", exe = "mvn" }
+    end
     return nil, "pom.xml found, but neither ./mvnw nor mvn is on PATH"
   end
 
@@ -89,21 +102,21 @@ end
 -- Callers speak Gradle. The Maven column is what each Gradle task becomes.
 
 local GRADLE_GOALS = {
-  test    = "test",
-  build   = "build",
-  clean   = "clean",
-  run     = "run",
+  test = "test",
+  build = "build",
+  clean = "clean",
+  run = "run",
   bootRun = "bootRun",
   bootJar = "bootJar",
 }
 
 local MAVEN_GOALS = {
-  test    = "test",
-  build   = "package",       -- Maven has no `build`; package is the closest
-  clean   = "clean",
-  run     = "exec:java",     -- needs exec-maven-plugin configured with mainClass
+  test = "test",
+  build = "package", -- Maven has no `build`; package is the closest
+  clean = "clean",
+  run = "exec:java", -- needs exec-maven-plugin configured with mainClass
   bootRun = "spring-boot:run",
-  bootJar = "package",       -- spring-boot repackage is bound to package
+  bootJar = "package", -- spring-boot repackage is bound to package
 }
 
 local GOALS = { gradle = GRADLE_GOALS, maven = MAVEN_GOALS }
@@ -116,7 +129,9 @@ local GOALS = { gradle = GRADLE_GOALS, maven = MAVEN_GOALS }
 ---@return string|nil reason  set when cmd is nil
 function M.command(root, task, filter)
   local tool, why = M.detect_tool(root)
-  if not tool then return nil, why end
+  if not tool then
+    return nil, why
+  end
 
   local goal = GOALS[tool.kind][task]
   if not goal then
@@ -129,8 +144,7 @@ function M.command(root, task, filter)
       cmd = cmd .. " --tests " .. vim.fn.shellescape("*." .. filter)
     else
       -- surefire filter: -Dtest=Class#method, here with a wildcard class
-      cmd = cmd .. " -Dtest=" .. vim.fn.shellescape("*#" .. filter)
-        .. " -Dsurefire.failIfNoSpecifiedTests=false"
+      cmd = cmd .. " -Dtest=" .. vim.fn.shellescape("*#" .. filter) .. " -Dsurefire.failIfNoSpecifiedTests=false"
     end
   end
   return cmd
