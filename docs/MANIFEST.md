@@ -172,7 +172,7 @@ Plugins are declared in `lua/plugins/specs/` and managed by lazy.nvim. The table
 Pinning:
 
 - After `:Lazy update`, run `:Lazy lock` and commit `lazy-lock.json`. Without a committed lock, an update can introduce breaking changes.
-- The three gated plugins (`tpope/vim-rails`, `elixir-tools/elixir-tools.nvim`, `luckasRanarison/tailwind-tools.nvim`) are locked. Their gates keep them off unless the project needs them.
+- `tpope/vim-rails`, `elixir-tools/elixir-tools.nvim` and `luckasRanarison/tailwind-tools.nvim` are locked. The last two are gated (their `cond` keeps them off unless the project needs them). `vim-rails` has no gate and loads on Ruby filetypes.
 
 ## Configuration
 
