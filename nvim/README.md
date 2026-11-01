@@ -58,7 +58,8 @@ Leader is `Space`. Start with these five:
 | Lua | lua_ls | — | stylua | — | — |
 | Python | basedpyright | debugpy | black + isort | ruff (+ pylint opt-in) | pytest |
 | Rust | rust-analyzer | codelldb | rustfmt | clippy | cargo test |
-| Go | gopls | delve | goimports + gofumpt | staticcheck | go test |
+| Go | gopls | delve | goimports + gofumpt | staticcheck (through gopls) | go
+test |
 | TypeScript / JavaScript | typescript-tools | pwa-node | prettier | eslint_d | vitest / jest |
 | Java | jdtls | java-debug | jdtls built-in | — | JUnit |
 | Kotlin | kotlin_language_server | kotlin-debug-adapter | ktlint | — | JUnit |
