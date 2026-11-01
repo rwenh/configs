@@ -1,4 +1,4 @@
--- lua/plugins/specs/lsp.lua — v2.5.0
+-- lua/plugins/specs/lsp.lua — LSP servers, Mason, formatting (conform) and linting (nvim-lint)
 --
 
 return {
