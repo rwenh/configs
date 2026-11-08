@@ -381,9 +381,6 @@ local function vhdl_run(file)
   if not ghdl then
     return nil, why
   end
-  -- Run from the project root, as the <leader>vh* keys do (vhdl.lua), so the work library and the
-  -- VCD file land in the same place whichever way the run was started.
-  local root = root_of()
   local entity
   local ok, lines = pcall(vim.fn.readfile, file)
   if ok then
@@ -396,9 +393,9 @@ local function vhdl_run(file)
     end
   end
   if not entity then
-    return cd(root, sq(ghdl) .. " -s " .. sq(file)) -- no entity: syntax check only
+    return sq(ghdl) .. " -s " .. sq(file) -- no entity: syntax check only
   end
-  local vcd = root .. "/" .. entity .. "_wave.vcd"
+  local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
   local cmd = ("%s -a %s && %s -e %s && %s -r %s --vcd=%s"):format(
     sq(ghdl),
     sq(file),
@@ -412,7 +409,7 @@ local function vhdl_run(file)
   if gtkwave then
     cmd = cmd .. " && " .. sq(gtkwave) .. " " .. sq(vcd)
   end
-  return cd(root, cmd)
+  return cmd
 end
 
 local RUNNERS = {

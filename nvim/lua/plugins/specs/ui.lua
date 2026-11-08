@@ -545,7 +545,4 @@ do
   end
 end
 
--- lazy.nvim reads the array part of this table as plugin specs. The string keys (set_header, build_header,
--- reload_dashboard) are the header API that other config files reach through require("plugins.specs.ui").
--- Whether lazy.nvim skips the non-array keys is not verified against its source; check with :Lazy after changes.
 return vim.tbl_extend("keep", M, plugin_specs)

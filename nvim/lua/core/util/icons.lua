@@ -91,7 +91,7 @@ M.modes = {
   REPLACE = icon(0xf0c1f) .. " R",
 }
 
--- ── Markdown heading signs (markview.nvim) ──
+-- ── Markdown heading signs (render-markdown) ──────────────────────────────────
 M.headings = {
   icon(0xf0ca1) .. " ", -- H1
   icon(0xf0ca3) .. " ", -- H2

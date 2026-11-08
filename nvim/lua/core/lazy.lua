@@ -5,11 +5,10 @@
 --
 -- The config root is found from this file's own location, not from stdpath("config"), so the
 -- repository works from any checkout. The language spec directory and the docs generator
--- The language spec directory depends on that. The docs generator finds its own root the same way.
+-- (scripts/gen_docs.lua) both depend on that.
 --
--- Setup is explicit: init.lua calls M.setup(). scripts/gen_docs.lua does not use this module. It reads the
--- spec sources directly, so it runs without loading lazy.nvim. M.specs() and M.opts() stay available for
--- callers that need the spec list or options without running setup.
+-- Setup is explicit: init.lua calls M.setup(). The generator calls M.specs() and M.opts() and runs
+-- lazy.setup itself with installs disabled.
 --
 -- Lockfile: after :Lazy update, run :Lazy lock and commit lazy-lock.json. On a new machine, run :Lazy restore.
 
