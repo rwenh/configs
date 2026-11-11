@@ -113,17 +113,28 @@ return {
           end
           run_user_on_attach(server, client, bufnr)
         end
+                local function report_setup(err)
+          vim.notify(("[lsp] %s failed to configure: %s"):format(server, tostring(err)), vim.log.levels.ERROR)
+        end
         if nvim_011 then
-          pcall(function()
+          local ok, err = pcall(function()
             vim.lsp.config(server, config)
             vim.lsp.enable(server)
           end)
+          if not ok then
+            report_setup(err)
+          end
         else
           local ok, lspconfig = pcall(require, "lspconfig")
-          if ok then
-            pcall(function()
-              lspconfig[server].setup(config)
-            end)
+          if not ok then
+            report_setup("lspconfig is not loadable")
+            return
+          end
+          local ok2, err = pcall(function()
+            lspconfig[server].setup(config)
+          end)
+          if not ok2 then
+            report_setup(err)
           end
         end
       end

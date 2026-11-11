@@ -45,6 +45,7 @@ local function java_major()
   if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then
     return _java.major
   end
+
   local major
   if vim.fn.executable("java") == 1 then
     local ok, res = pcall(function()
@@ -56,8 +57,34 @@ local function java_major()
       major = tonumber(text:match('version "1%.(%d+)') or text:match('version "(%d+)'))
     end
   end
+
   _java = { at = os.time(), major = major }
   return major
+end
+
+---@param cb fun(major: integer|nil)  runs on the main loop
+local function java_major_async(cb)
+  if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then
+    return vim.schedule(function()
+      cb(_java.major)
+    end)
+  end
+
+  if vim.fn.executable("java") ~= 1 then
+    _java = { at = os.time(), major = nil }
+    return vim.schedule(function()
+      cb(nil)
+    end)
+  end
+
+  vim.system({ "java", "-version" }, { text = true, timeout = 5000 }, function(res)
+    local text = (res.stderr or "") .. (res.stdout or "")
+    local major = tonumber(text:match('version "1%.(%d+)') or text:match('version "(%d+)'))
+    _java = { at = os.time(), major = major }
+    vim.schedule(function()
+      cb(major)
+    end)
+  end)
 end
 
 ---@return { root: string, launcher: string|nil, config_dir: string }
@@ -77,6 +104,7 @@ local function bundles()
   if _bundles and (os.time() - _bundles.at) < BUNDLE_TTL_S then
     return _bundles
   end
+
   local mason = require("core.util.mason")
   _bundles = {
     at = os.time(),
@@ -90,13 +118,14 @@ local function bundles()
   return _bundles
 end
 
+---@param major integer|nil
 ---@return table
-local function facts()
+local function facts(major)
   local b = bundles()
   return {
     java = vim.fn.executable("java") == 1,
     javac = vim.fn.executable("javac") == 1,
-    major = java_major(),
+    major = major,
     jdtls = jdtls_layout(),
     debug = b.debug,
     test = b.test,
@@ -121,6 +150,7 @@ local function problems(f)
   elseif f.major < MIN_JAVA then
     add(ERROR, string.format("java %d is too old for jdtls (needs %d+). Install a newer JDK.", f.major, MIN_JAVA))
   end
+
   if f.java and not f.javac then
     add(WARN, "javac not found: jdtls needs a JDK, not a JRE. Install java-" .. MIN_JAVA .. "-openjdk-devel")
   end
@@ -141,6 +171,7 @@ local function problems(f)
       "java-test is not installed, so <leader>jvt and <leader>jvn are unavailable. Run: :MasonInstall java-test"
     )
   end
+
   return out
 end
 
@@ -199,6 +230,7 @@ local function ensure_dap(bufnr, jdtls)
   if vim.b[bufnr].jdtls_dap_ready then
     return
   end
+
   local ok, err = pcall(function()
     jdtls.setup_dap({ hotcodereplace = "auto" }) -- idempotent: returns early once the adapter exists
     require("jdtls.dap").setup_dap_main_class_configs()
@@ -386,6 +418,34 @@ local function build_config(f, root, jdtls, has_test, is_spring)
   }
 end
 
+---@param buf   integer
+---@param f     table
+---@param jdtls table
+local function attach(buf, f, jdtls)
+  if report(problems(f)) then
+    return
+  end
+
+  local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":p:h")
+  local root = require("core.util.path").find_up(ROOT_MARKERS, dir) or dir
+  local config = build_config(f, root, jdtls, #f.test > 0, jvm.is_spring_project(root))
+
+  -- The buffer goes in start_opts, the third argument to start_or_attach.
+  local ok, err = pcall(jdtls.start_or_attach, config, nil, { bufnr = buf })
+  if ok then
+    vim.b[buf].jdtls_started = true
+  else
+    vim.notify(
+      string.format(
+        "[java] jdtls failed to start: %s\nIf the workspace is corrupt, remove %s and reopen.",
+        tostring(err),
+        workspace_for(root)
+      ),
+      WARN
+    )
+  end
+end
+
 --- Attach jdtls to one buffer. Idempotent until that buffer's jdtls client detaches.
 ---@param buf integer
 local function start_for_buffer(buf)
@@ -405,35 +465,19 @@ local function start_for_buffer(buf)
     return
   end
 
-  local f = facts()
-  if report(problems(f)) then
-    return
-  end
-
-  local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":p:h")
-  local root = require("core.util.path").find_up(ROOT_MARKERS, dir) or dir
-  local config = build_config(f, root, jdtls, #f.test > 0, jvm.is_spring_project(root))
-
-  -- start_or_attach uses the current buffer unless told otherwise. Pass this one explicitly.
-  local ok, err = pcall(jdtls.start_or_attach, config, nil, { bufnr = buf })
-  if ok then
-    vim.b[buf].jdtls_started = true
-  else
-    vim.notify(
-      string.format(
-        "[java] jdtls failed to start: %s\nIf the workspace is corrupt, remove %s and reopen.",
-        tostring(err),
-        workspace_for(root)
-      ),
-      WARN
-    )
-  end
+  java_major_async(function(major)
+    -- Re-check: a second FileType may have attached this buffer while the probe ran.
+    if not vim.api.nvim_buf_is_valid(buf) or vim.b[buf].jdtls_started then
+      return
+    end
+    attach(buf, facts(major), jdtls)
+  end)
 end
 
 -- ── Doctor ────────────────────────────────────────────────────────────────────
 
 local function doctor()
-  local f = facts()
+  local f = facts(java_major())
   local rows = {}
   local function row(ok, label, detail)
     rows[#rows + 1] = string.format("  %s %-14s %s", ok and "✓" or "✗", label, detail or "")
@@ -456,6 +500,7 @@ local function doctor()
       blocking = true
     end
   end
+
   local out = { "Java doctor" }
   vim.list_extend(out, rows)
   vim.notify(table.concat(out, "\n"), blocking and ERROR or INFO)
@@ -480,6 +525,7 @@ return {
           start_for_buffer(e.buf)
         end,
       })
+
       -- The buffer that triggered lazy-loading may not replay FileType, so cover every loaded Java buffer.
       -- The per-buffer guard makes a double call harmless.
       for _, buf in ipairs(vim.api.nvim_list_bufs()) do

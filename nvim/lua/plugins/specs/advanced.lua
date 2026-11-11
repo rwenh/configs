@@ -64,7 +64,7 @@ return {
       exclude_filetypes = { "lazy", "mason", "lspinfo", "snacks_dashboard" },
     },
     config = function(_, opts)
-      pcall(function()
+      require("core.util.safe_setup").run("nvim-highlight-colors", function()
         require("nvim-highlight-colors").setup(opts)
       end)
     end,
@@ -76,7 +76,7 @@ return {
     event = { "BufReadPre", "BufNewFile" },
     config = function()
       local rd = require("rainbow-delimiters")
-      pcall(function()
+      require("core.util.safe_setup").run("rainbow-delimiters", function()
         require("rainbow-delimiters.setup").setup({
           strategy = { [""] = rd.strategy["global"], vim = rd.strategy["local"] },
           query = { [""] = "rainbow-delimiters", lua = "rainbow-blocks" },

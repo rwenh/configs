@@ -192,7 +192,7 @@ return {
         return table.concat(parts, " │ ")
       end
 
-      pcall(function()
+      require("core.util.safe_setup").run("symbol-usage", function()
         require("symbol-usage").setup({
           hl = { link = "Comment" },
           vt_position = "end_of_line",

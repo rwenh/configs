@@ -58,7 +58,7 @@ return {
       signs = { hunk = { "", "" }, item = { ">", "v" }, section = { ">", "v" } },
     },
     config = function(_, opts)
-      pcall(function()
+      require("core.util.safe_setup").run("neogit", function()
         require("neogit").setup(opts)
       end)
     end,
@@ -79,7 +79,7 @@ return {
       highlights = { incoming = "DiffAdd", current = "DiffText", ancestor = "DiffChange" },
     },
     config = function(_, opts)
-      pcall(function()
+      require("core.util.safe_setup").run("git-conflict", function()
         require("git-conflict").setup(opts)
       end)
     end,
@@ -141,9 +141,11 @@ return {
         opts.timeout = vim.g.octo_timeout_ms or 10000
       end
 
+      require("core.util.safe_setup").run("octo", function()
       pcall(function()
         octo.setup(opts)
       end)
+    end)
     end,
   },
 

@@ -36,7 +36,7 @@ return {
     end,
   },
 
-  -- ── Telescope ──────────────────────────────────────────────────────────────
+    -- ── Telescope ──────────────────────────────────────────────────────────────
   {
     "nvim-telescope/telescope.nvim",
     cmd = "Telescope",
@@ -46,13 +46,20 @@ return {
       "nvim-tree/nvim-web-devicons",
     },
     config = function()
-      local ok = pcall(function()
+      local ok, err = pcall(function()
         require("telescope").setup({
           defaults = {
             layout_strategy = "horizontal",
             layout_config = { height = 0.9, preview_cutoff = 120, prompt_position = "bottom" },
             sorting_strategy = "ascending",
-            file_ignore_patterns = { "node_modules/", "^%.git/", "%.venv/", "__pycache__/", "^dist/", "^build/" },
+            file_ignore_patterns = {
+              "node_modules/",
+              "^%.git/",
+              "%.venv/",
+              "__pycache__/",
+              "^dist/",
+              "^build/",
+            },
           },
           extensions = {
             fzf = {
@@ -63,25 +70,38 @@ return {
             },
           },
         })
-        -- Only load fzf extension if the native library was actually built.
-        local ok_fzf = pcall(function()
+
+        -- Load fzf only if its native library was successfully built.
+        local ok_fzf, err_fzf = pcall(function()
           require("telescope").load_extension("fzf")
         end)
         if not ok_fzf then
           vim.notify(
-            "[telescope] fzf-native extension failed to load.\n"
-              .. "The native library may not have been compiled. Run:\n"
+            "[telescope] fzf-native extension failed to load: "
+              .. tostring(err_fzf)
+              .. "\nThe native library may not have been compiled. Run:\n"
               .. "  cd ~/.local/share/nvim/lazy/telescope-fzf-native.nvim && make\n"
-              .. "Falling back to built-in sorter.",
-            vim.log.levels.DEBUG
+              .. "Falling back to the built-in sorter.",
+            vim.log.levels.WARN
           )
         end
-        pcall(function()
+
+        local ok_wt, err_wt = pcall(function()
           require("telescope").load_extension("git_worktree")
         end)
+        if not ok_wt then
+          vim.notify(
+            "[telescope] git_worktree extension failed: " .. tostring(err_wt),
+            vim.log.levels.WARN
+          )
+        end
       end)
+
       if not ok then
-        vim.notify("telescope setup failed", vim.log.levels.WARN)
+        vim.notify(
+          "[telescope] setup failed: " .. tostring(err),
+          vim.log.levels.WARN
+        )
       end
     end,
   },

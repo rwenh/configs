@@ -19,11 +19,14 @@ local function with_connection(ex_cmd)
 end
 
 local function open_schema_scratch()
+  sync_here()
+
   local url = vim.g.db
   if type(url) ~= "string" or url == "" then
     vim.notify("[database] no connection for this project — open <leader>dbu or set vim.g.db", vim.log.levels.WARN)
     return
   end
+
   local query = dburl.schema_query(url)
   if not query then
     local scheme = url:match("^(%a[%w+.-]*):") or "?"
@@ -33,6 +36,7 @@ local function open_schema_scratch()
     )
     return
   end
+
   local header = ("-- Schema introspection (%s). Run it with :%%DB\n"):format(dburl.dialect(url))
   local buf = vim.api.nvim_create_buf(false, true)
   local ok, err = pcall(function()
@@ -44,11 +48,13 @@ local function open_schema_scratch()
     vim.b[buf].db = url -- :%DB keeps targeting this connection even if g:db changes later
     vim.api.nvim_buf_set_name(buf, ("schema-introspection#%d.sql"):format(buf))
   end)
+
   if not ok then
     pcall(vim.api.nvim_buf_delete, buf, { force = true })
     vim.notify("[database] could not create the schema buffer: " .. tostring(err), vim.log.levels.ERROR)
     return
   end
+
   vim.api.nvim_set_current_buf(buf)
   vim.notify("[database] schema query ready — run it with :%DB", vim.log.levels.INFO)
 end
@@ -59,6 +65,7 @@ local function clear_connection()
     vim.notify("[database] clear failed: " .. tostring(note), vim.log.levels.ERROR)
     return
   end
+
   vim.notify(
     "[database] connection cleared for this project" .. (note and (" — " .. note) or ""),
     vim.log.levels.INFO
@@ -71,16 +78,9 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = { "sql", "mysql", "plsql" },
   callback = function(e)
     vim.bo[e.buf].omnifunc = "vim_dadbod_completion#omni"
+    sync_here()
   end,
   desc = "Use vim-dadbod-completion as the omnifunc for SQL buffers",
-})
-
-vim.api.nvim_create_autocmd("DirChanged", {
-  group = vim.api.nvim_create_augroup("DatabaseUrlSync", { clear = true }),
-  callback = function()
-    vim.schedule(sync_here)
-  end,
-  desc = "Re-resolve the database connection when the working directory changes",
 })
 
 return {
@@ -102,7 +102,6 @@ return {
       vim.g.db_ui_force_echo_notifications = 1
       vim.g.db_ui_win_position = "left"
       vim.g.db_ui_winwidth = 40
-      vim.schedule(sync_here)
     end,
   },
 
