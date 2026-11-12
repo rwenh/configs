@@ -5,6 +5,7 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 ### Unreleased
 
 #### Added
+- `:Theme <name>` switches theme, with completion.
 - `vim.g.large_file_bytes` overrides the 500 KB large-file threshold. Notices state the actual threshold.
 - Single source for size limits (`core/util/limits.lua`).
 - `core/util/cache.lua`: one TTL and file-signature cache for the config. An entry keeps an explicit nil or false, is checked against its file's signature, and clears on `DirChanged`.
@@ -14,6 +15,12 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 - The first install of lazy.nvim checks out the commit that `lazy-lock.json` pins.
 
 #### Changed
+- Themes: `core/theme.lua` maps each theme to its colorscheme per background. A switch loads a lazy plugin before applying it.
+- REST auth tokens stay in the process environment. Requests use `{{$processEnv NVIM_REST_<NAME>}}`. Nothing is written to a buffer.
+- Fortran, COBOL and VHDL run and check through `core.util.runner`, and COBOL flags come from `core.util.cobol`. `<leader>'r`, `<leader>ftb`, `<leader>cob` and `<leader>vhr` now build the same way.
+- `python_has` no longer blocks the editor.
+- `autocmds.lua` owns the large-file flag. Treesitter reads it.
+- The health LSP list is generated from `core/util/packages.lua`.
 - `core/util/packages.lua` is one registry: a row per language server, holding its lspconfig name, Mason package and binary. The three parallel lists and the fuzzy name matching are gone, and `validate()` checks the rows.
 - Project roots: a primary marker (`mix.exs`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `config/application.rb`, …) wins over a nearer `package.json`, `Makefile` or `Gemfile`. Before, the nearest marker of any kind won, so a Phoenix `assets/package.json` became the root. `vim.g.path_prefer_vcs` keeps the VCS-first rule.
 - `.env` (database URL) is read through `vim.secure`: it asks once per content hash, like other project files. It is off with `disable_project_configs`.
@@ -45,6 +52,7 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 - A float terminal's `<Esc>` mapping overrode the full-screen-program exemption.
 
 #### Removed
+- The `NvimIdeReady` bridge (no listener), the which-key group queue in `keymaps.lua` (no caller), and `flags.not_flags` (unused).
 - `tests/`. The repository ships no test suite. `:checkhealth core` and `:MasonInstallAll dry-run` are the checks.
 
 #### Kept
@@ -67,8 +75,7 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 
 ### 2.6.0 — proof
 
-- Escape-hatch registry (`core/flags.lua`) with type checks, generated reference tables, drift and keymap tests, and CI.
-- Language modules for C/C++, Rust, Go, Python, Java, Kotlin, JS/TS, web, Ruby, Elixir, Fortran, Zig, COBOL, VHDL, SQL, REST, and Markdown.
+- Escape-hatch registry (`core/flags.lua`) with type checks, and generated reference tables.
 - Core modules (options, autocmds, keymaps, commands, theme, focus, highlights, util) with headless tests, and fixes for modules that could not work as shipped.
 
 ### 2.5.0 — baseline

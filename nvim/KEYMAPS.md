@@ -465,6 +465,7 @@
 | `<leader>pydm` | Debug test method |
 | `<leader>pydc` | Debug test class |
 | `<leader>pyds` | Debug selection (visual) |
+| `<leader>pydi` | Python debug doctor (verify debugpy wiring) |
 | `<leader>pyrs` | Start REPL |
 | `<leader>pyrr` | Restart REPL |
 | `<leader>pyrc` | Send motion to REPL (operator-pending) |
