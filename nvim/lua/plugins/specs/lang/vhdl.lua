@@ -109,7 +109,7 @@ end)
 
 -- ── ghdl ──────────────────────────────────────────────────────────────────────
 local function ghdl_ready()
-  return exec.require_bin("ghdl", "sudo zypper in ghdl")
+  return exec.require_bin("ghdl", "install ghdl")
 end
 
 ---@param cmd string  shell command, run from the project root
@@ -162,30 +162,12 @@ local function elaborate()
 end
 
 local function simulate()
-  local file = current_file()
-  if not file or not ghdl_ready() or not save_for_run() then
-    return
-  end
-  local entity = ask_entity("Entity to simulate: ")
-  if not entity then
-    return
-  end
-  local vcd = project_root() .. "/" .. entity .. "_wave.vcd"
-  local cmd = vhdl.run_chain(file, entity, vcd)
-  if vim.fn.executable("gtkwave") == 1 then
-    cmd = cmd .. " && gtkwave " .. vim.fn.shellescape(vcd)
-  else
-    cmd = cmd .. " && echo " .. vim.fn.shellescape("VCD written to " .. vcd .. " (gtkwave is not installed)")
-  end
-  ghdl_in_root(cmd)
+  -- analyse, elaborate and run the entity in this buffer, then open the waves if gtkwave is present
+  require("core.util.runner").run_file()
 end
 
 local function syntax_check()
-  local file = current_file()
-  if not file or not ghdl_ready() or not save_for_run() then
-    return
-  end
-  ghdl_in_root("ghdl -s " .. vim.fn.shellescape(file))
+  require("core.util.runner").syntax_check()
 end
 
 -- ── Testbench skeleton ────────────────────────────────────────────────────────

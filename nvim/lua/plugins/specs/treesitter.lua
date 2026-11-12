@@ -55,17 +55,6 @@ end
 local nvim_011 = vim.fn.has("nvim-0.11") == 1
 local nvim_012 = vim.fn.has("nvim-0.12") == 1
 
-vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
-  group = vim.api.nvim_create_augroup("TsSizeCheckInvalidate", { clear = true }),
-  callback = function(e)
-    pcall(function()
-      vim.b[e.buf]._ts_size_checked = nil
-      vim.b[e.buf]._ts_large = nil
-    end)
-  end,
-  desc = "Clear Treesitter size-check cache on buffer reload/write",
-})
-
 return {
   {
     "nvim-treesitter/nvim-treesitter",
@@ -145,18 +134,6 @@ return {
             return true
           end
           if vim.b[buf] and vim.b[buf]["ts_disabled_" .. lang] then
-            return true
-          end
-
-          if vim.b[buf] ~= nil and vim.b[buf]._ts_size_checked then
-            return (vim.b[buf]._ts_large == true) or (not nvim_012 and lang == "vim")
-          end
-
-          local ok, stats = pcall(vim.uv.fs_stat, vim.api.nvim_buf_get_name(buf))
-          local is_large = ok and stats and stats.size > require("core.util.limits").large_file_bytes()
-          vim.b[buf]._ts_size_checked = true
-          vim.b[buf]._ts_large = is_large and true or false
-          if is_large then
             return true
           end
           return not nvim_012 and lang == "vim"

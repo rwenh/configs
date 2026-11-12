@@ -501,16 +501,4 @@ function M.get(name, default)
   return v
 end
 
---- Vim-script variables / plugin settings that the config reads but are not user escape hatches.
---- (The docs test uses this to tell "undocumented flag" from "plugin variable".)
-M.not_flags = {
-  mapleader = true,
-  maplocalleader = true,
-  nvim_ide_version = true,
-  db = true,
-  neovide = true,
-  goneovim = true,
-  auto_cd_root_internal = true,
-}
-
 return M

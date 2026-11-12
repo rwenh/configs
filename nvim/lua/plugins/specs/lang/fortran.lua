@@ -14,7 +14,7 @@ local function notify(msg, level)
 end
 
 local CONFIG_NAME = ".fprettify.rc"
-local DEFAULT_INDENT = 2 -- fprettify's own default is 3; the other languages in this config use 2
+local DEFAULT_INDENT = 2
 
 -- ── Filetypes ─────────────────────────────────────────────────────────────────
 vim.filetype.add({
@@ -99,7 +99,7 @@ end
 
 local function build_and_run()
   local file = current_file()
-  if file == "" or not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
+  if file == "" or not exec.require_bin("gfortran", "install gfortran") then
     return
   end
   local exe = run_dir() .. "/" .. vim.fn.fnamemodify(vim.fn.tempname(), ":t")
@@ -116,7 +116,7 @@ end
 
 local function syntax_check()
   local file = current_file()
-  if file == "" or not exec.require_bin("gfortran", "sudo zypper in gcc-fortran") then
+  if file == "" or not exec.require_bin("gfortran", "install gfortran") then
     return
   end
   term().float(gfortran(file, "-fsyntax-only"))
@@ -224,8 +224,22 @@ return {
   {
     "akinsho/toggleterm.nvim",
     keys = {
-      { "<leader>ftb", build_and_run, desc = "Fortran Build & Run", ft = "fortran" },
-      { "<leader>ftc", syntax_check, desc = "Fortran Check Syntax", ft = "fortran" },
+      {
+        "<leader>ftb",
+        function()
+          require("core.util.runner").run_file()
+        end,
+        desc = "Fortran Build & Run",
+        ft = "fortran",
+      },
+      {
+        "<leader>ftc",
+        function()
+          require("core.util.runner").syntax_check()
+        end,
+        desc = "Fortran Check Syntax",
+        ft = "fortran",
+      },
       {
         "<leader>ftm",
         function()

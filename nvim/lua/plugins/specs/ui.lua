@@ -140,7 +140,6 @@ local plugin_specs = {
     },
     config = function(_, opts)
       require("tokyonight").setup(opts)
-      vim.cmd.colorscheme("tokyonight-moon")
     end,
   }),
   theme_spec("catppuccin/nvim", "catppuccin", {
@@ -171,21 +170,18 @@ local plugin_specs = {
     },
     config = function(_, opts)
       require("catppuccin").setup(opts)
-      vim.cmd.colorscheme("catppuccin-mocha")
     end,
   }),
   theme_spec("rose-pine/neovim", "rose-pine", {
     opts = { dark_variant = "main", disable_background = false, disable_float_background = false },
     config = function(_, opts)
       require("rose-pine").setup(opts)
-      vim.cmd.colorscheme("rose-pine")
     end,
   }),
   theme_spec("rebelot/kanagawa.nvim", "kanagawa", {
     opts = { theme = "dragon", background = { dark = "dragon", light = "lotus" }, transparent = false },
     config = function(_, opts)
       require("kanagawa").setup(opts)
-      vim.cmd.colorscheme("kanagawa-dragon")
     end,
   }),
   theme_spec("sainnhe/gruvbox-material", "gruvbox-material", {
@@ -193,24 +189,18 @@ local plugin_specs = {
       vim.g.gruvbox_material_better_performance = 1
       vim.g.gruvbox_material_background = "hard"
       vim.g.gruvbox_material_foreground = "material"
-      vim.o.background = "dark"
-    end,
-    config = function()
-      vim.cmd.colorscheme("gruvbox-material")
     end,
   }),
   theme_spec("maxmx03/solarized.nvim", "solarized", {
-    opts = { theme = "dark", enable_end_of_buffer = false },
+    opts = { enable_end_of_buffer = false },
     config = function(_, opts)
       require("solarized").setup(opts)
-      vim.cmd.colorscheme("solarized")
     end,
   }),
   theme_spec("craftzdog/solarized-osaka.nvim", "solarized-osaka", {
     opts = { transparent = false, terminal_colors = true },
     config = function(_, opts)
       require("solarized-osaka").setup(opts)
-      vim.cmd.colorscheme("solarized-osaka")
     end,
   }),
 

@@ -146,13 +146,7 @@ return {
       {
         "<leader>csy",
         function()
-          local exec = require("core.util.exec")
-          if not exec.require_bin("gcc", "sudo zypper in gcc") then
-            return
-          end
-          require("core.util.term").float(
-            "gcc -Wall -Wextra -fsyntax-only " .. vim.fn.shellescape(vim.fn.expand("%:p"))
-          )
+          require("core.util.runner").syntax_check()
         end,
         desc = "C Syntax Check",
         ft = "c",

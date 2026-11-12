@@ -7,8 +7,9 @@
 -- repository works from any checkout. The language spec directory and the docs generator
 -- (scripts/gen_docs.lua) both depend on that.
 --
--- Setup is explicit: init.lua calls M.setup(). The generator calls M.specs() and M.opts() and runs
--- lazy.setup itself with installs disabled.
+-- scripts/gen_docs.lua does not use this module: it reads the spec files directly, so the generated tables need no lazy.nvim call.
+--
+-- Setup is explicit: init.lua calls M.setup().
 --
 -- Lockfile: after :Lazy update, run :Lazy lock and commit lazy-lock.json. On a new machine, run :Lazy restore.
 

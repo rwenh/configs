@@ -10,10 +10,6 @@ end
 -- kulala replaces any body larger than ui.max_response_size (32 KB by default) with this note.
 local TRUNCATION_NOTE = "The size of response is >"
 
--- Auth tokens are session-only and seeded from vim.g.rest_auth_tokens.
-local _tokens = type(vim.g.rest_auth_tokens) == "table" and vim.tbl_deep_extend("keep", {}, vim.g.rest_auth_tokens)
-  or {}
-
 -- ── Dispatch ──────────────────────────────────────────────────────────────────
 
 ---@param fn_name string
@@ -36,9 +32,29 @@ local function kulala_call(fn_name, ...)
 end
 
 -- ── Auth tokens ───────────────────────────────────────────────────────────────
+-- A token is never written into a buffer or a file. It lives in this process's environment as
+-- NVIM_REST_<NAME>; the request refers to it with kulala's {{$processEnv ...}} placeholder.
+-- Verify that your kulala version supports $processEnv (see its README).
+local TOKEN_PREFIX = "NVIM_REST_"
+local _token_names = {} -- name -> true
+
+local function token_var(name)
+  return TOKEN_PREFIX .. (name:upper():gsub("[^%w_]", "_"))
+end
+
+local function store_token(name, value)
+  vim.fn.setenv(token_var(name), value)
+  _token_names[name] = true
+end
+
+for name, value in pairs(type(vim.g.rest_auth_tokens) == "table" and vim.g.rest_auth_tokens or {}) do
+  if type(value) == "string" then
+    store_token(name, value)
+  end
+end
 
 local function pick_token(callback)
-  local names = vim.tbl_keys(_tokens)
+  local names = vim.tbl_keys(_token_names)
   if #names == 0 then
     notify("No auth tokens stored. Add one with <leader>reA.", vim.log.levels.INFO)
     return
@@ -46,30 +62,34 @@ local function pick_token(callback)
   table.sort(names)
   vim.ui.select(names, { prompt = "Select auth token:" }, function(choice)
     if choice then
-      callback(_tokens[choice])
+      callback(choice)
     end
   end)
 end
 
 local function add_token()
-  vim.ui.input({ prompt = "Token name: " }, function(name)
-    if not name or name == "" then
+  vim.ui.input({ prompt = "Token name (letters, digits, _): " }, function(name)
+    name = vim.trim(name or "")
+    if not name:match("^[%w_]+$") then
+      if name ~= "" then
+        notify("name must be letters, digits or _")
+      end
       return
     end
-    vim.ui.input({ prompt = "Token value (e.g. Bearer abc123): " }, function(val)
-      if not val or val == "" then
+    vim.ui.input({ prompt = "Token value (e.g. Bearer abc123): " }, function(value)
+      if not value or value == "" then
         return
       end
-      _tokens[name] = val
-      notify("Token '" .. name .. "' stored (this session only)", vim.log.levels.INFO)
+      store_token(name, value)
+      notify("Token '" .. name .. "' stored for this session only", vim.log.levels.INFO)
     end)
   end)
 end
 
 local function insert_token()
-  pick_token(function(token)
+  pick_token(function(name)
     local row = vim.api.nvim_win_get_cursor(0)[1]
-    vim.api.nvim_buf_set_lines(0, row, row, false, { "Authorization: " .. token })
+    vim.api.nvim_buf_set_lines(0, row, row, false, { "Authorization: {{$processEnv " .. token_var(name) .. "}}" })
   end)
 end
 

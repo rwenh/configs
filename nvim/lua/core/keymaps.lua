@@ -9,7 +9,6 @@ local function lazy(mod, tag)
         vim.notify(tag .. " not loaded", vim.log.levels.WARN)
         return
       end
-      -- Errors from the handler used to be swallowed by a bare pcall.
       local ok2, err = pcall(fn, m)
       if not ok2 then
         vim.notify(tag .. " " .. tostring(err), vim.log.levels.WARN)
@@ -27,36 +26,7 @@ local todo_call = lazy("todo-comments", "[todo-comments]")
 local flash_call = lazy("flash", "[flash] not loaded")
 local focus_call = lazy("core.focus", "[focus]")
 
-local _group_queue = {}
-
-local function flush_groups()
-  local ok, wk = pcall(require, "which-key")
-  if not ok or #_group_queue == 0 then
-    return
-  end
-  local specs = {}
-  for _, g in ipairs(_group_queue) do
-    table.insert(specs, { g.prefix, group = g.label })
-  end
-  pcall(function()
-    wk.add(specs)
-  end)
-  _group_queue = {}
-end
-
-local function M_keymaps_register_group(prefix, label)
-  table.insert(_group_queue, { prefix = prefix, label = label })
-end
-
 local M = {}
-M.register_group = M_keymaps_register_group
-
-vim.api.nvim_create_autocmd("User", {
-  pattern = "VeryLazy",
-  once = true,
-  callback = flush_groups,
-  desc = "Flush which-key group registrations queued by lang specs",
-})
 
 -- ── Conflict tracking (registration-time, not a post-hoc scan) ────────────────
 --
@@ -73,10 +43,8 @@ local function record_conflict_if_any(mode, lhs, rhs, desc)
       elseif not existing.callback and type(rhs) ~= "function" then
         is_same = (existing.rhs == tostring(rhs))
       else
-        is_same = false -- one side is a callback, the other a string: always different
+        is_same = false
       end
-      -- Re-registering the same mapping (e.g. :Reload core.keymaps) creates a new
-      -- closure; same description == same mapping, not a conflict.
       if not is_same and desc and existing.desc == desc then
         is_same = true
       end
@@ -120,8 +88,6 @@ end, { desc = "Show keymap conflicts caught at registration time this session" }
 -- ── Basic editing ──────────────────────────────────────────────────────────────
 map("v", "<", "<gv", { noremap = true, silent = true, desc = "Indent left (keep selection)" })
 map("v", ">", ">gv", { noremap = true, silent = true, desc = "Indent right (keep selection)" })
--- Alt+h/j/k/l line/selection moving is owned by mini.move (advanced.lua). The
--- hand-rolled <A-j>/<A-k> maps that lived here were overwritten by it at VeryLazy.
 map("n", "<Esc>", "<cmd>nohlsearch<cr>", { noremap = true, silent = true, desc = "Clear search highlight" })
 
 -- ── Window management ─────────────────────────────────────────────────────────
@@ -385,8 +351,6 @@ map("n", "<leader>'t", function()
   end)
 end, { desc = "Run tests" })
 map("x", "<leader>'s", function()
-  -- Still in visual mode here, so '< and '> point at the PREVIOUS selection.
-  -- line("v") (other end) and line(".") (cursor) are the live selection.
   local s, e = vim.fn.line("v"), vim.fn.line(".")
   if s > e then
     s, e = e, s
@@ -408,11 +372,6 @@ map("n", "<leader>\\f", "<cmd>ToggleTerm direction=float<cr>", { desc = "Float t
 map("n", "<leader>\\h", "<cmd>ToggleTerm direction=horizontal<cr>", { desc = "Horizontal terminal" })
 map("n", "<leader>\\v", "<cmd>ToggleTerm direction=vertical<cr>", { desc = "Vertical terminal" })
 
--- <Esc> leaves terminal mode — but NOT in full-screen TUIs, where <Esc> must reach
--- the program (lazygit, htop, yazi, …). This was a global `t <Esc>` mapping that
--- broke them; it is now buffer-local and skipped for known TUIs. In those, the
--- built-in <C-\><C-n> still leaves terminal mode.
---   Extend the list with vim.g.terminal_tui_programs = { "myTui" }
 local TUI_PROGRAMS = {
   lazygit = true,
   lazydocker = true,
@@ -551,14 +510,13 @@ map("n", "<leader>xc", "<cmd>CopyPath<cr>", { desc = "Copy file path (absolute)"
 map("n", "<leader>xr", "<cmd>CopyRelPath<cr>", { desc = "Copy file path (relative)" })
 map("n", "<leader>xd", "<cmd>cd %:p:h<cr>", { desc = "CD to file directory" })
 map("n", "<leader>xe", function()
-  -- Was `:!chmod +x %` — `%` is not shell-escaped, so spaces/quotes in the path broke it.
   local file = vim.api.nvim_buf_get_name(0)
   local stat = file ~= "" and vim.uv.fs_stat(file) or nil
   if not stat then
     vim.notify("[xe] buffer has no file on disk", vim.log.levels.WARN)
     return
   end
-  local ok, err = vim.uv.fs_chmod(file, bit.bor(stat.mode, 73)) -- 73 == 0o111
+  local ok, err = vim.uv.fs_chmod(file, bit.bor(stat.mode, 73))
   vim.notify(
     ok and ("[xe] +x " .. vim.fn.fnamemodify(file, ":t")) or ("[xe] chmod failed: " .. tostring(err)),
     ok and vim.log.levels.INFO or vim.log.levels.ERROR

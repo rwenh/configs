@@ -16,12 +16,7 @@ local function mason_installed(pkg_name)
   return ok_pkg and pkg and pkg:is_installed()
 end
 
-local _checked_mason_lsp_pkgs = {}
-
 local function lsp_check(label, binary, mason_pkg, advice)
-  if mason_pkg then
-    _checked_mason_lsp_pkgs[mason_pkg] = true
-  end
   local installed = (binary and bin_ok(binary)) or (mason_pkg and mason_installed(mason_pkg))
   if installed then
     vim.health.ok(label)
@@ -83,9 +78,6 @@ local function lang_check(label, binary, optional, advice)
 end
 
 function M.check()
-  -- Reset per-run state — :checkhealth can be invoked more than once per session.
-  _checked_mason_lsp_pkgs = {}
-
   -- ── Core ──────────────────────────────────────────────────────────────────
   vim.health.start("nvim-ide core")
 
@@ -107,17 +99,17 @@ function M.check()
       vim.health.warn("node " .. node_ver .. " — v18+ recommended for LSP servers")
     end
   else
-    vim.health.warn("node not found", { "Install: sudo zypper in nodejs" })
+    vim.health.warn("node not found", { "Install: nodejs" })
   end
 
   for _, entry in ipairs({
     { "git", "git", nil },
-    { "ripgrep", "rg", "sudo zypper in ripgrep" },
-    { "fd", "fd", "sudo zypper in fd" },
-    { "lazygit", "lazygit", "sudo zypper in lazygit" },
-    { "python3", "python3", "sudo zypper in python3" },
-    { "cargo", "cargo", "sudo zypper in cargo" },
-    { "gcc/clang", "gcc", "sudo zypper in gcc" },
+    { "ripgrep", "rg", "Install: ripgrep" },
+    { "fd", "fd", "Install: fd" },
+    { "lazygit", "lazygit", "Install: lazygit" },
+    { "python3", "python3", "Install: python3" },
+    { "cargo", "cargo", "Install: cargo" },
+    { "gcc/clang", "gcc", "Install: gcc" },
   }) do
     local label, binary, advice = entry[1], entry[2], entry[3]
     if bin_ok(binary) then
@@ -183,56 +175,20 @@ function M.check()
   -- ── LSP servers ───────────────────────────────────────────────────────────
   vim.health.start("nvim-ide LSP servers")
 
-  lsp_check("Lua          (lua_ls)", "lua-language-server", "lua-language-server")
-  lsp_check("Python       (basedpyright)", "basedpyright-langserver", "basedpyright")
-  lsp_check("Rust         (rust-analyzer)", "rust-analyzer", nil, "rustup component add rust-analyzer")
-  lsp_check("Go           (gopls)", "gopls", "gopls")
-  lsp_check("C/C++        (clangd)", "clangd", "clangd")
-  lsp_check("Ruby         (solargraph)", "solargraph", "solargraph", "gem install solargraph")
-  lsp_check("Elixir       (elixir-ls)", nil, "elixir-ls")
-  lsp_check("Java         (jdtls)", nil, "jdtls")
-  lsp_check("Kotlin       (kotlin-language-server)", "kotlin-language-server", "kotlin-language-server")
+  -- One row per server in core.util.packages, so this list cannot drift from the registry.
+  local ok_pk, pk = pcall(require, "core.util.packages")
+  if ok_pk then
+    for _, row in ipairs(pk.servers) do
+      if not row.managed_by then
+        lsp_check(row.server, row.bin, row.mason)
+      end
+    end
+  else
+    vim.health.error("core.util.packages not loadable")
+  end
   ts_tools_check()
-  lsp_check("HTML         (html-lsp)", "vscode-html-language-server", "html-lsp")
-  lsp_check("CSS          (cssls)", "vscode-css-language-server", "css-lsp")
-  lsp_check("JSON         (jsonls)", "vscode-json-language-server", "json-lsp")
-  lsp_check("YAML         (yamlls)", "yaml-language-server", "yaml-language-server")
-  lsp_check("Tailwind     (tailwindcss-ls)", "tailwindcss-language-server", "tailwindcss-language-server")
-  lsp_check("Zig          (zls)", "zls", "zls")
-  lsp_check("Fortran      (fortls)", "fortls", "fortls")
-  lsp_check("SQL          (sqls)", "sqls", "sqls")
-  do
-    if bin_ok("cobol-language-support") then
-      vim.health.ok("COBOL        (cobol-language-support)")
-    else
-      vim.health.info(
-        "COBOL        (cobol-language-support) not found — no npm package currently provides "
-          .. "a working standalone binary here (the previously-listed @broadcommfd/cobol-language-support "
-          .. "does not exist on the npm registry). Broadcom/Code4z's COBOL Language Support ships as a "
-          .. "VS Code extension, not a drop-in LSP binary. cobc compile/run (<leader>cob, <leader>coc) "
-          .. "works without it."
-      )
-    end
-  end
-  lsp_check("VHDL         (vhdl_ls)", "vhdl_ls", nil, "cargo install vhdl_ls")
-
-  do
-    local ok_pkgs, packages = pcall(require, "core.util.packages")
-    if ok_pkgs then
-      local missing = {}
-      for _, pkg in ipairs(packages.get("lsp")) do
-        if not _checked_mason_lsp_pkgs[pkg] then
-          table.insert(missing, pkg)
-        end
-      end
-      if #missing > 0 then
-        vim.health.warn(
-          "packages.lua lists Mason LSP package(s) with no matching health check",
-          { "Add an lsp_check() entry in health.lua for: " .. table.concat(missing, ", ") }
-        )
-      end
-    end
-  end
+  vim.health.info("cobol: no language server is provided; cobc compile and check work without one")
+  lsp_check("vhdl_ls", "vhdl_ls", nil, "cargo install vhdl_ls")
 
   -- ── Formatters ────────────────────────────────────────────────────────────
   vim.health.start("nvim-ide formatters")
@@ -297,21 +253,21 @@ function M.check()
   -- ── Language tooling ──────────────────────────────────────────────────────
   vim.health.start("nvim-ide language tooling")
 
-  lang_check("go runtime", "go", false, "sudo zypper in go")
-  lang_check("java runtime (17+)", "java", false, "sudo zypper in java-17-openjdk")
-  lang_check("ruby runtime", "ruby", false, "sudo zypper in ruby")
-  lang_check("elixir runtime", "elixir", false, "sudo zypper in elixir")
-  lang_check("mix (Elixir)", "mix", false, "sudo zypper in elixir")
-  lang_check("gfortran (Fortran)", "gfortran", false, "sudo zypper in gcc-fortran")
-  lang_check("cobc (GnuCOBOL)", "cobc", false, "sudo zypper in gnucobol")
-  lang_check("ghdl (VHDL)", "ghdl", false, "sudo zypper in ghdl")
+  lang_check("go runtime", "go", false, "Install: go")
+  lang_check("java runtime (17+)", "java", false, "Install: openjdk-17")
+  lang_check("ruby runtime", "ruby", false, "Install: ruby")
+  lang_check("elixir runtime", "elixir", false, "Install: elixir")
+  lang_check("mix (Elixir)", "mix", false, "Install: elixir")
+  lang_check("gfortran (Fortran)", "gfortran", false, "Install: gcc-fortran")
+  lang_check("cobc (GnuCOBOL)", "cobc", false, "Install: gnucobol")
+  lang_check("ghdl (VHDL)", "ghdl", false, "Install: ghdl")
   lang_check("zig compiler", "zig", false, "https://ziglang.org/download/")
-  lang_check("curl (REST client)", "curl", false, "sudo zypper in curl")
-  lang_check("shellcheck", "shellcheck", false, "sudo zypper in ShellCheck")
-  lang_check("gtkwave (VHDL waves)", "gtkwave", true, "sudo zypper in gtkwave")
-  lang_check("deno (MD preview)", "deno", true, "cargo install deno OR sudo zypper in deno")
-  lang_check("jq (REST formatting)", "jq", true, "sudo zypper in jq")
-  lang_check("tmux (pane nav)", "tmux", true, "sudo zypper in tmux")
+  lang_check("curl (REST client)", "curl", false, "Install: curl")
+  lang_check("shellcheck", "shellcheck", false, "Install: shellcheck")
+  lang_check("gtkwave (VHDL waves)", "gtkwave", true, "Install: gtkwave")
+  lang_check("deno (MD preview)", "deno", true, "cargo install deno OR install deno")
+  lang_check("jq (REST formatting)", "jq", true, "Install: jq")
+  lang_check("tmux (pane nav)", "tmux", true, "Install: tmux")
   lang_check("htmlhint (HTML lint)", "htmlhint", true, "npm i -g htmlhint")
   lang_check("stylelint (CSS lint)", "stylelint", true, "npm i -g stylelint")
 

@@ -1,10 +1,10 @@
 -- lua/core/util/runner.lua — code execution engine
 --
--- Entry points: run_file, run_tests, run_nearest_function, run_selection, pipe.
+-- Entry points: run_file, run_tests, run_nearest_function, run_selection, pipe, syntax_check.
 --
 -- Contract shared by every table below:
 --   * A runner, test or selection entry returns `cmd` on success, or `nil, reason`.
---     The reason names the missing binary and its install hint, so a notification is
+--     The reason names the missing binary and a short install hint, so a notification is
 --     actionable rather than "no runner found".
 --   * Project overrides (.runner.lua) run before the built-ins. The file is trust-gated
 --     through core.util.projconf and memoised per file signature (core.util.cache).
@@ -70,7 +70,7 @@ local function rel_dir(root, file)
   return dir
 end
 
---- First executable among `names`, or nil plus a reason that carries the install hint.
+--- First executable among `names`, or nil plus a reason that carries a short install hint.
 local function first_bin(names, hint)
   for _, n in ipairs(names) do
     if vim.fn.executable(n) == 1 then
@@ -260,7 +260,7 @@ local function python_bin()
   if venv and venv ~= "" and vim.fn.executable(venv .. "/bin/python") == 1 then
     return venv .. "/bin/python"
   end
-  return first_bin({ "python3", "python", "py" }, "sudo zypper in python3")
+  return first_bin({ "python3", "python", "py" }, "python3")
 end
 
 -- ── Capability probes ─────────────────────────────────────────────────────────
@@ -269,6 +269,10 @@ end
 
 local _probe = cache.new({ name = "runner.probe", ttl = CONFIG_TTL })
 
+local _probing = {} -- key -> true while a background probe is running
+
+-- Never blocks. A cached answer comes back at once. An unknown one starts a background probe and
+-- returns nil, so the caller can still launch the command.
 local function python_has(py, mod)
   local exe = vim.fn.exepath(py)
   if exe == "" then
@@ -279,15 +283,25 @@ local function python_has(py, mod)
   if hit then
     return ok
   end
-  local r = vim.system({ exe, "-c", "import " .. mod }, { text = true }):wait(5000)
-  ok = r.code == 0
-  _probe:set(key, ok)
-  return ok
+  if not _probing[key] then
+    _probing[key] = true
+    local started = pcall(vim.system, { exe, "-c", "import " .. mod }, { text = true, timeout = 5000 }, function(r)
+      vim.schedule(function()
+        _probing[key] = nil
+        _probe:set(key, r.code == 0)
+      end)
+    end)
+    if not started then
+      _probing[key] = nil
+      _probe:set(key, false)
+    end
+  end
+  return nil
 end
 
 -- ── JavaScript / TypeScript runtimes ──────────────────────────────────────────
 
-local JS_HINT = "sudo zypper in nodejs   (TypeScript: npm install -g tsx)"
+local JS_HINT = "nodejs (TypeScript: npm install -g tsx)"
 
 local JS_RUNTIMES = {
   javascript = { "node" },
@@ -296,7 +310,29 @@ local JS_RUNTIMES = {
   typescriptreact = { "tsx", "ts-node" },
 }
 
-local JDK_HINT = "sudo zypper in java-17-openjdk-devel"
+local JDK_HINT = "java / openjdk (e.g. java-17-openjdk-devel or equivalent)"
+
+-- ── Per-tool cache directory ──────────────────────────────────────────────────
+--- Per-tool cache directory, created on demand. Build products go here, never beside the source.
+local function cache_dir(name)
+  local dir = vim.fn.stdpath("cache") .. "/" .. name
+  vim.fn.mkdir(dir, "p")
+  return dir
+end
+
+local function fortran_run(file)
+  local gf, why = first_bin({ "gfortran" }, "gfortran / gcc-fortran")
+  if not gf then
+    return nil, why
+  end
+  local fl, ferr = build_flags("fortran_build_flags", "-Wall")
+  if not fl then
+    return nil, ferr
+  end
+  local dir = cache_dir("fortran-run")
+  local exe = dir .. "/" .. vim.fn.fnamemodify(file, ":t:r")
+  return ("%s %s -J %s -o %s %s && %s"):format(gf, fl, sq(dir), sq(exe), sq(file), sq(exe))
+end
 
 -- ── File runners ──────────────────────────────────────────────────────────────
 -- Each takes the file and returns cmd, or nil plus reason.
@@ -369,42 +405,28 @@ local function kotlin_run(file)
 end
 
 local function cobol_run(file)
-  local cobc, why = first_bin({ "cobc" }, "sudo zypper in gnucobol")
-  if not cobc then
-    return nil, why
+  local cobol = dep("core.util.cobol")
+  if not cobol then
+    return nil, "core.util.cobol is unavailable"
   end
-  return compile_and_run(cobc, "-x", file)
+  return cobol.run_cmd(file)
 end
 
 local function vhdl_run(file)
-  local ghdl, why = first_bin({ "ghdl" }, "sudo zypper in ghdl")
+  local ghdl, why = first_bin({ "ghdl" }, "ghdl")
   if not ghdl then
     return nil, why
   end
-  local entity
+  local vhdl = dep("core.util.vhdl")
   local ok, lines = pcall(vim.fn.readfile, file)
-  if ok then
-    for _, line in ipairs(lines) do
-      local _, _, name = line:lower():find("^%s*entity%s+([%w_]+)%s+is")
-      if name then
-        entity = name
-        break
-      end
-    end
-  end
+  local entity = (vhdl and ok) and vhdl.parse_entity(lines) or nil
   if not entity then
     return sq(ghdl) .. " -s " .. sq(file) -- no entity: syntax check only
   end
-  local vcd = vim.fn.getcwd() .. "/" .. entity .. "_wave.vcd"
-  local cmd = ("%s -a %s && %s -e %s && %s -r %s --vcd=%s"):format(
-    sq(ghdl),
-    sq(file),
-    sq(ghdl),
-    sq(entity),
-    sq(ghdl),
-    sq(entity),
-    sq(vcd)
-  )
+  local dir = vim.fn.fnamemodify(file, ":h")
+  local root = (path and path.find_root(dir)) or dir
+  local vcd = root .. "/" .. entity .. "_wave.vcd"
+  local cmd = "cd " .. sq(root) .. " && " .. vhdl.run_chain(file, entity, vcd)
   local gtkwave = first_bin({ "gtkwave" })
   if gtkwave then
     cmd = cmd .. " && " .. sq(gtkwave) .. " " .. sq(vcd)
@@ -419,21 +441,21 @@ local RUNNERS = {
   javascriptreact = js_run("javascriptreact"),
   typescript = js_run("typescript"),
   typescriptreact = js_run("typescriptreact"),
-  go = interpreted("go", "sudo zypper in go", "run"),
+  go = interpreted("go", "go", "run"),
   rust = rust_run,
-  c = native("gcc", "sudo zypper in gcc", "c_build_flags", "-Wall -Wextra -g"),
-  cpp = native("g++", "sudo zypper in gcc-c++", "cpp_build_flags", "-Wall -std=c++17 -g"),
+  c = native("gcc", "gcc", "c_build_flags", "-Wall -Wextra -g"),
+  cpp = native("g++", "g++ / gcc-c++", "cpp_build_flags", "-Wall -std=c++17 -g"),
   java = java_run,
   kotlin = kotlin_run,
   sh = interpreted("bash", nil),
   bash = interpreted("bash", nil),
-  ruby = interpreted("ruby", "sudo zypper in ruby"),
-  elixir = interpreted("elixir", "sudo zypper in elixir"),
+  ruby = interpreted("ruby", "ruby"),
+  elixir = interpreted("elixir", "elixir"),
   julia = interpreted("julia", "https://julialang.org/downloads/"),
   zig = interpreted("zig", "https://ziglang.org/download/", "run"),
   nim = interpreted("nim", "https://nim-lang.org/install.html", "c -r"),
   cobol = cobol_run,
-  fortran = native("gfortran", "sudo zypper in gcc-fortran", "fortran_build_flags", "-Wall"),
+  fortran = fortran_run,
   vhdl = vhdl_run,
 }
 
@@ -465,8 +487,8 @@ local SELECTION = {
   javascriptreact = sel_bin(JS_RUNTIMES.javascriptreact, JS_HINT),
   typescript = sel_bin(JS_RUNTIMES.typescript, JS_HINT),
   typescriptreact = sel_bin(JS_RUNTIMES.typescriptreact, JS_HINT),
-  ruby = sel_bin({ "ruby" }, "sudo zypper in ruby"),
-  elixir = sel_bin({ "elixir" }, "sudo zypper in elixir"),
+  ruby = sel_bin({ "ruby" }, "ruby"),
+  elixir = sel_bin({ "elixir" }, "elixir"),
   julia = sel_bin({ "julia" }, "https://julialang.org/downloads/"),
   sh = sel_bin({ "bash" }),
   bash = sel_bin({ "bash" }),
@@ -650,7 +672,7 @@ local function test_python(ctx)
   if not py then
     return nil, why
   end
-  if not python_has(py, "pytest") then
+  if python_has(py, "pytest") == false then
     return nil, ("pytest is not importable from %s\n  install: %s -m pip install pytest"):format(py, py)
   end
   local target = ""
@@ -686,7 +708,7 @@ local function test_js(ctx)
 end
 
 local function test_go(ctx)
-  local go, why = first_bin({ "go" }, "sudo zypper in go")
+  local go, why = first_bin({ "go" }, "go")
   if not go then
     return nil, why
   end
@@ -732,7 +754,7 @@ local function test_ruby(ctx)
 end
 
 local function test_mix(ctx)
-  local mix, why = first_bin({ "mix" }, "sudo zypper in elixir")
+  local mix, why = first_bin({ "mix" }, "elixir")
   if not mix then
     return nil, why
   end
@@ -764,7 +786,7 @@ local function test_zig(ctx)
 end
 
 local function test_ctest(ctx)
-  local ctest, why = first_bin({ "ctest" }, "sudo zypper in cmake")
+  local ctest, why = first_bin({ "ctest" }, "cmake")
   if not ctest then
     return nil, why
   end
@@ -859,6 +881,58 @@ function M.run_file()
       vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
       return
     end
+  end
+  launch(cmd)
+end
+
+-- ── Syntax check (<leader>csy, <leader>ftc, <leader>coc, <leader>vhc) ─────────
+local SYNTAX = {
+  c = function(file)
+    local gcc, why = first_bin({ "gcc" }, "gcc")
+    if not gcc then
+      return nil, why
+    end
+    return sq(gcc) .. " -Wall -Wextra -fsyntax-only " .. sq(file)
+  end,
+  fortran = function(file)
+    local gf, why = first_bin({ "gfortran" }, "gfortran / gcc-fortran")
+    if not gf then
+      return nil, why
+    end
+    return ("%s -fsyntax-only -J %s %s"):format(sq(gf), sq(cache_dir("fortran-run")), sq(file))
+  end,
+  cobol = function(file)
+    local cobol = dep("core.util.cobol")
+    if not cobol then
+      return nil, "core.util.cobol is unavailable"
+    end
+    return cobol.syntax_cmd(file)
+  end,
+  vhdl = function(file)
+    local ghdl, why = first_bin({ "ghdl" }, "ghdl")
+    if not ghdl then
+      return nil, why
+    end
+    return sq(ghdl) .. " -s " .. sq(file)
+  end,
+}
+
+function M.syntax_check()
+  local ft = vim.bo.filetype
+  local file = vim.fn.expand("%:p")
+  if file == "" then
+    vim.notify("[runner] save the buffer first", vim.log.levels.WARN)
+    return
+  end
+  local fn = SYNTAX[ft]
+  if not fn then
+    vim.notify("[runner] no syntax check for filetype '" .. ft .. "'", vim.log.levels.WARN)
+    return
+  end
+  local cmd, why = fn(file)
+  if not cmd then
+    vim.notify("[runner] " .. ft .. ": " .. why, vim.log.levels.ERROR)
+    return
   end
   launch(cmd)
 end

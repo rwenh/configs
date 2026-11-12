@@ -1,10 +1,8 @@
 -- lua/core/theme.lua — theme management with auto dark/light switching
 --
--- Fixes vs v2.5.0:
---   * the day/night switch now actually happens at the boundary (a 60 s timer);
---     before, the background was only evaluated at startup
---   * manual override + ready flag live in vim.g, so `:Reload core.theme` keeps state
---   * :ThemeAuto returns to time-based switching after a manual <leader>ut
+-- M.themes maps each theme to the colorscheme it uses for each background. A switch loads the
+-- theme's plugin first (lazy themes are off the runtime path until loaded), sets vim.o.background,
+-- then applies the colorscheme for that background.
 
 local M = {}
 
@@ -15,31 +13,33 @@ M.config = {
   fallback = "default",
 }
 
-M.available = {
-  "catppuccin",
-  "tokyonight",
-  "rose-pine",
-  "kanagawa",
-  "gruvbox-material",
-  "solarized",
-  "solarized-osaka",
+-- plugin: the lazy.nvim name (the `name` field in plugins/specs/ui.lua).
+-- dark / light: the colorscheme applied for each background.
+M.themes = {
+  tokyonight = { plugin = "tokyonight", dark = "tokyonight-moon", light = "tokyonight-day" },
+  catppuccin = { plugin = "catppuccin", dark = "catppuccin-mocha", light = "catppuccin-latte" },
+  ["rose-pine"] = { plugin = "rose-pine", dark = "rose-pine", light = "rose-pine-dawn" },
+  kanagawa = { plugin = "kanagawa", dark = "kanagawa-dragon", light = "kanagawa-lotus" },
+  ["gruvbox-material"] = { plugin = "gruvbox-material", dark = "gruvbox-material", light = "gruvbox-material" },
+  solarized = { plugin = "solarized", dark = "solarized", light = "solarized" },
+  ["solarized-osaka"] = { plugin = "solarized-osaka", dark = "solarized-osaka", light = "solarized-osaka" },
 }
+
+M.available = vim.tbl_keys(M.themes)
+table.sort(M.available)
 
 -- ── Per-theme option patches ──────────────────────────────────────────────────
---   vim.g.theme_option_patches = { tokyonight = { background = "dark" } }
-local _builtin_patches = {
-  tokyonight = {},
-  catppuccin = {},
-  kanagawa = {},
-  ["rose-pine"] = {},
-  ["gruvbox-material"] = {},
-  solarized = {},
-  ["solarized-osaka"] = {},
-}
-
-local function get_patches(theme_name)
-  local user = type(vim.g.theme_option_patches) == "table" and (vim.g.theme_option_patches[theme_name] or {}) or {}
-  return vim.tbl_extend("force", _builtin_patches[theme_name] or {}, user)
+--   vim.g.theme_option_patches = { tokyonight = { ... } }
+local function apply_patches(theme_name)
+  local patches = type(vim.g.theme_option_patches) == "table" and vim.g.theme_option_patches[theme_name]
+  if type(patches) ~= "table" then
+    return
+  end
+  for key, val in pairs(patches) do
+    pcall(function()
+      vim.o[key] = val
+    end)
+  end
 end
 
 -- ── Change hooks ──────────────────────────────────────────────────────────────
@@ -69,9 +69,10 @@ local function get_override()
   end
   return nil
 end
+
 local function set_override(v)
   vim.g[OVERRIDE_KEY] = v
-end -- nil clears
+end
 
 local _cache = { hour = nil, value = nil }
 
@@ -94,21 +95,31 @@ local function resolve_background()
   return bg
 end
 
-local function apply_patches(theme_name)
-  for key, val in pairs(get_patches(theme_name)) do
-    pcall(function()
-      vim.o[key] = val
-    end)
+-- ── Apply ─────────────────────────────────────────────────────────────────────
+-- A lazy theme is not on the runtime path until lazy.nvim loads it, so load it first.
+local function ensure_loaded(plugin)
+  local ok, lazy = pcall(require, "lazy")
+  if ok then
+    pcall(lazy.load, { plugins = { plugin } })
   end
 end
 
 local function apply(bg)
+  local spec = M.themes[M.config.theme]
+  if not spec then
+    vim.notify(string.format("[theme] '%s' is not in M.themes", tostring(M.config.theme)), vim.log.levels.WARN)
+    pcall(vim.cmd.colorscheme, M.config.fallback)
+    return
+  end
+  ensure_loaded(spec.plugin)
   vim.o.background = bg
-  local ok, err = pcall(vim.cmd.colorscheme, M.config.theme)
+  local scheme = spec[bg] or spec.dark
+  local ok, err = pcall(vim.cmd.colorscheme, scheme)
   if not ok then
     vim.notify(
       string.format(
-        "[theme] '%s' unavailable, falling back to '%s'\n%s",
+        "[theme] '%s' (%s) failed; falling back to '%s'\n%s",
+        scheme,
         M.config.theme,
         M.config.fallback,
         tostring(err)
@@ -123,7 +134,6 @@ local function apply(bg)
 end
 
 -- ── Day/night timer ───────────────────────────────────────────────────────────
--- A previous copy of this module (after :Reload) may have left a timer behind.
 local function stop_timer()
   local t = _G._nvim_theme_timer
   if t then
@@ -161,8 +171,8 @@ local function start_timer()
 end
 
 function M.setup()
-  if not vim.tbl_contains(M.available, M.config.theme) then
-    vim.notify(string.format("[theme] config.theme '%s' is not in M.available", M.config.theme), vim.log.levels.WARN)
+  if not M.themes[M.config.theme] then
+    vim.notify(string.format("[theme] config.theme '%s' is not in M.themes", M.config.theme), vim.log.levels.WARN)
   end
   set_override(nil)
   _cache.hour, _cache.value = nil, nil
@@ -179,7 +189,7 @@ function M.toggle()
   set_override(next_bg)
   apply(next_bg)
   vim.notify(
-    string.format("[theme] %s › %s (manual — :ThemeAuto to resume time-based)", M.config.theme, next_bg),
+    string.format("[theme] %s › %s (manual; :ThemeAuto resumes time-based)", M.config.theme, next_bg),
     vim.log.levels.INFO
   )
 end
@@ -193,24 +203,24 @@ function M.auto()
   vim.notify(string.format("[theme] %s › %s (auto)", M.config.theme, bg), vim.log.levels.INFO)
 end
 
----@param theme_name string
-function M.switch(theme_name)
-  if not theme_name or theme_name == "" then
+---@param name string
+function M.switch(name)
+  if not name or name == "" then
     vim.notify("[theme] theme name cannot be empty", vim.log.levels.ERROR)
     return
   end
-  if not vim.tbl_contains(M.available, theme_name) then
+  if not M.themes[name] then
     vim.notify(
-      string.format("[theme] '%s' not in available list: %s", theme_name, table.concat(M.available, ", ")),
+      string.format("[theme] '%s' not in: %s", name, table.concat(M.available, ", ")),
       vim.log.levels.ERROR
     )
     return
   end
-  M.config.theme = theme_name
-  vim.g._nvim_active_theme = theme_name
+  M.config.theme = name
+  vim.g._nvim_active_theme = name
   _cache.hour, _cache.value = nil, nil
   apply(resolve_background())
-  vim.notify(string.format("[theme] switched to %s", theme_name), vim.log.levels.INFO)
+  vim.notify(string.format("[theme] switched to %s", name), vim.log.levels.INFO)
 end
 
 ---@return string
@@ -221,10 +231,13 @@ end
 vim.api.nvim_create_autocmd("ColorScheme", {
   group = vim.api.nvim_create_augroup("ThemeCacheSync", { clear = true }),
   callback = function(e)
-    if not vim.startswith(e.match, M.config.theme) then
-      set_override(nil)
-      _cache.hour, _cache.value = nil, nil
+    -- Our own applies fire this too; only an outside :colorscheme drops the manual override.
+    local spec = M.themes[M.config.theme]
+    if spec and (e.match == spec.dark or e.match == spec.light) then
+      return
     end
+    set_override(nil)
+    _cache.hour, _cache.value = nil, nil
   end,
   desc = "Clear theme override when an external :colorscheme fires",
 })
@@ -238,5 +251,17 @@ vim.api.nvim_create_autocmd("VimLeavePre", {
 vim.api.nvim_create_user_command("ThemeAuto", function()
   M.auto()
 end, { desc = "Resume time-based dark/light switching" })
+
+vim.api.nvim_create_user_command("Theme", function(o)
+  M.switch(vim.trim(o.args))
+end, {
+  nargs = 1,
+  complete = function(lead)
+    return vim.tbl_filter(function(n)
+      return vim.startswith(n, lead)
+    end, M.available)
+  end,
+  desc = "Switch colour theme: :Theme catppuccin",
+})
 
 return M

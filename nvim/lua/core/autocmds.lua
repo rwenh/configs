@@ -82,10 +82,6 @@ au("FileType", {
 })
 
 -- ── Trim trailing whitespace ──────────────────────────────────────────────────
--- Uses :substitute inside nvim_buf_call (one undo step, marks/extmarks/folds/cursor
--- preserved). The old version rewrote the WHOLE buffer with nvim_buf_set_lines and
--- copied every line three times just to measure the size.
--- Opt-out: vim.g.disable_trim_whitespace = true, or per buffer vim.b.disable_trim_whitespace.
 local TRIM_SKIP_FT = {
   markdown = true,
   markdown_inline = true,
@@ -116,7 +112,6 @@ au("BufWritePre", {
       return
     end
 
-    -- O(1) size check — no line copies.
     local last = vim.api.nvim_buf_line_count(e.buf)
     if vim.api.nvim_buf_get_offset(e.buf, last) > limits.large_file_bytes() then
       return
@@ -305,7 +300,7 @@ au("BufWritePost", {
     local was_large = (vim.b[e.buf] and vim.b[e.buf].large_file) or false
     if is_large == was_large then
       return
-    end -- no state change, nothing to do
+    end
 
     if is_large then
       vim.b[e.buf].large_file = true
@@ -328,15 +323,4 @@ au("BufWritePost", {
     end
   end,
   desc = "Re-evaluate the large-file flag on save in both directions",
-})
-
--- ── NvimIdeReady user event (phase 2 fix #1: fires after LazyDone) ───────────
-vim.api.nvim_create_autocmd("User", {
-  pattern = "LazyDone",
-  once = true,
-  group = ag("NvimIdeReadyBridge", { clear = true }),
-  callback = function()
-    vim.api.nvim_exec_autocmds("User", { pattern = "NvimIdeReady", modeline = false })
-  end,
-  desc = "Fire User NvimIdeReady after all lazy.nvim plugins are initialised",
 })
