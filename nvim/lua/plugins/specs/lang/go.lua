@@ -41,8 +41,9 @@ local function check_go_env()
             .. bin_dir
             .. " is not in $PATH.\n"
             .. "goimports / gofumpt may not be found by formatters.\n"
-            .. "Add to your shell profile: export PATH=$PATH:"
-            .. bin_dir,
+            .. "Add "
+            .. bin_dir
+            .. " to PATH in your shell's startup file.",
           vim.log.levels.WARN
         )
         return

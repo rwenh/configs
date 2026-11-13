@@ -113,7 +113,7 @@ local function run_shell_command_interactive()
       overseer
         .new_task({
           name = input,
-          cmd = { "sh", "-c", input },
+          cmd = input, -- RECALIBRATED: Let Neovim/Overseer use the native vim.o.shell (cross-platform)
           cwd = cwd,
           components = { "default" },
         })
@@ -134,7 +134,7 @@ return {
       { "<leader>ot", "<cmd>OverseerToggle<cr>", desc = "Overseer: task list" },
       { "<leader>or", "<cmd>OverseerRun<cr>", desc = "Overseer: run task" },
       { "<leader>oa", "<cmd>OverseerTaskAction<cr>", desc = "Overseer: task action" },
-      { "<leader>oc", "<cmd>OverseerClose<cr>", desc = "Overseer: close task list" }, -- :OverseerClearCache was removed upstream
+      { "<leader>oc", "<cmd>OverseerClose<cr>", desc = "Overseer: close task list" },
       {
         "<leader>ob",
         function()

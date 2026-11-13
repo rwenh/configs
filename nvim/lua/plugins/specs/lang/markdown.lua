@@ -2,6 +2,7 @@
 --
 
 local icons = require("core.util.icons")
+local platform = require("core.util.platform")
 local shared = require("plugins.specs.lang.shared")
 
 local function notify(msg, level)
@@ -105,7 +106,7 @@ end
 -- ── Browser preview (peek.nvim) ───────────────────────────────────────────────
 local function toggle_preview()
   if vim.fn.executable("deno") ~= 1 then
-    notify("deno not found — browser preview unavailable.\nInstall: sudo zypper in deno  (or: cargo install deno)")
+    notify("deno not found — browser preview unavailable.\nInstall: " .. platform.install_hint("deno"))
     return
   end
   local ok, peek = pcall(require, "peek")
@@ -290,7 +291,7 @@ return {
         "<leader>ml",
         function()
           if vim.fn.executable("markdown-link-check") ~= 1 then
-            notify("markdown-link-check not found.\nInstall: npm i -g markdown-link-check")
+            notify("markdown-link-check not found.\nInstall: " .. platform.install_hint("markdown-link-check"))
             return
           end
           require("core.util.term").float("markdown-link-check " .. vim.fn.shellescape(vim.fn.expand("%:p")))

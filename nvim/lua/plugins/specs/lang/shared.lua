@@ -193,6 +193,19 @@ function M.run_make()
   term.float(term.cd_prefix(dir) .. "make")
 end
 
+--- Symlink src at dst, replacing a dangling link as `ln -sf` did. A real file or a live link is kept.
+---@return boolean
+local function link(src, dst)
+  local st = vim.uv.fs_lstat(dst)
+  if st then
+    if st.type ~= "link" or vim.uv.fs_stat(dst) then
+      return true
+    end
+    vim.uv.fs_unlink(dst)
+  end
+  return vim.uv.fs_symlink(src, dst) == true
+end
+
 ---@param prefix string  notification tag, e.g. "c" or "cpp"
 ---@param extra  string[]?  additional candidate paths
 function M.symlink_compile_commands(prefix, extra)
@@ -216,19 +229,8 @@ function M.symlink_compile_commands(prefix, extra)
   for _, src in ipairs(candidates) do
     if vim.fn.filereadable(src) == 1 then
       local shown = vim.fn.fnamemodify(src, ":~:.")
-      if vim.fn.executable("ln") ~= 1 then
-        vim.notify(
-          "["
-            .. prefix
-            .. "] compile_commands.json found at "
-            .. shown
-            .. " but 'ln' is not on PATH — skipping symlink.",
-          vim.log.levels.DEBUG
-        )
-        return
-      end
-      vim.fn.system({ "ln", "-sf", src, dst })
-      if vim.v.shell_error == 0 and vim.fn.filereadable(dst) == 1 then
+
+      if link(src, dst) and vim.fn.filereadable(dst) == 1 then
         vim.notify("[" .. prefix .. "] compile_commands.json linked from " .. shown, vim.log.levels.INFO)
       else
         vim.notify(

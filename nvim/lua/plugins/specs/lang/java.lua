@@ -6,6 +6,7 @@
 
 local bkm = require("core.util.buf_keymap")
 local jvm = require("core.util.jvm")
+local platform = require("core.util.platform")
 local flags = require("core.flags")
 
 local MIN_JAVA = 17
@@ -141,10 +142,7 @@ local function problems(f)
   end
 
   if not f.java then
-    add(
-      ERROR,
-      "java is not on PATH. Install a JDK " .. MIN_JAVA .. "+: sudo zypper in java-" .. MIN_JAVA .. "-openjdk-devel"
-    )
+    add(ERROR, "java is not on PATH. Install a JDK " .. MIN_JAVA .. "+: " .. platform.install_hint("java"))
   elseif not f.major then
     add(WARN, "could not read a version from `java -version`; jdtls may fail to start")
   elseif f.major < MIN_JAVA then
@@ -152,7 +150,7 @@ local function problems(f)
   end
 
   if f.java and not f.javac then
-    add(WARN, "javac not found: jdtls needs a JDK, not a JRE. Install java-" .. MIN_JAVA .. "-openjdk-devel")
+    add(WARN, "javac not found: jdtls needs a JDK, not a JRE. Install: " .. platform.install_hint("javac"))
   end
   if not f.jdtls.launcher then
     add(ERROR, "jdtls is not installed. Run: :MasonInstall jdtls")

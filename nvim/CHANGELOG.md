@@ -5,6 +5,7 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 ### Unreleased
 
 #### Added
+- `core/util/platform.lua` and `core/util/system_pkgs.lua`. Install hints for apt, dnf, zypper, pacman, apk and brew come from one registry, and `:checkhealth core` uses it.
 - `:Theme <name>` switches theme, with completion.
 - `vim.g.large_file_bytes` overrides the 500 KB large-file threshold. Notices state the actual threshold.
 - Single source for size limits (`core/util/limits.lua`).
@@ -15,6 +16,7 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 - The first install of lazy.nvim checks out the commit that `lazy-lock.json` pins.
 
 #### Changed
+- Distribution-specific install commands are removed from the Java, COBOL, REST, Markdown and runner modules. `:checkhealth core` accepts `fdfind` and looks for `debugpy-adapter`. The `compile_commands.json` link replaces a dangling link instead of calling `ln`. Overseer shell commands are passed directly, and the Go PATH notice is no longer shell syntax. The dashboard config action uses `stdpath("config")`.
 - Themes: `core/theme.lua` maps each theme to its colorscheme per background. A switch loads a lazy plugin before applying it.
 - REST auth tokens stay in the process environment. Requests use `{{$processEnv NVIM_REST_<NAME>}}`. Nothing is written to a buffer.
 - Fortran, COBOL and VHDL run and check through `core.util.runner`, and COBOL flags come from `core.util.cobol`. `<leader>'r`, `<leader>ftb`, `<leader>cob` and `<leader>vhr` now build the same way.

@@ -5,6 +5,7 @@
 -- .cobol-copypath, and the form from vim.g.cobol_format. Functions return a command; none launch one.
 
 local path = require("core.util.path")
+local platform = require("core.util.platform")
 
 local M = {}
 local sq = vim.fn.shellescape
@@ -148,7 +149,7 @@ end
 ---@return string|nil reason
 function M.run_cmd(file)
   if vim.fn.executable("cobc") ~= 1 then
-    return nil, "cobc not found\n  install: sudo zypper in gnucobol"
+    return nil, "cobc not found\n  install: " .. platform.install_hint("gnucobol")
   end
   local dir = vim.fn.stdpath("cache") .. "/cobol-run"
   vim.fn.mkdir(dir, "p")
@@ -161,7 +162,7 @@ end
 ---@return string|nil reason
 function M.syntax_cmd(file)
   if vim.fn.executable("cobc") ~= 1 then
-    return nil, "cobc not found\n  install: sudo zypper in gnucobol"
+    return nil, "cobc not found\n  install: " .. platform.install_hint("gnucobol")
   end
   return ("cobc -Wall -fsyntax-only %s %s"):format(M.compile_flags(M.root_of(file)), sq(file))
 end

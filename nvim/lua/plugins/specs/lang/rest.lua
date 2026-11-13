@@ -2,6 +2,7 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
+local platform = require("core.util.platform")
 
 local function notify(msg, level)
   vim.notify("[rest] " .. msg, level or vim.log.levels.WARN)
@@ -215,13 +216,14 @@ return {
         group = vim.api.nvim_create_augroup("KulalaPrereqs", { clear = true }),
         callback = function()
           if vim.fn.executable("curl") ~= 1 then
-            notify("curl not found — kulala.nvim will not function.\nInstall: sudo zypper in curl")
+            notify("curl not found — kulala.nvim will not function.\nInstall: " .. platform.install_hint("curl"))
           end
           if vim.fn.executable("tree-sitter") ~= 1 then
             notify(
               "tree-sitter CLI not found — kulala.nvim builds its HTTP parser with it "
                 .. "(treesitter.cli_path), so .http buffers may fail to load.\n"
-                .. "Install: sudo zypper in tree-sitter  (or: npm install -g tree-sitter-cli)"
+                .. "Install: "
+                .. platform.install_hint("tree-sitter")
             )
           end
         end,

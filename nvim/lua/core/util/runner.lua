@@ -35,6 +35,7 @@ local cache = require("core.util.cache")
 local flags = require("core.flags")
 local projconf = require("core.util.projconf")
 local jvm = dep("core.util.jvm")
+local platform = require("core.util.platform")
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,8 @@ local function rel_dir(root, file)
   return dir
 end
 
---- First executable among `names`, or nil plus a reason that carries a short install hint.
-local function first_bin(names, hint)
+--- First executable among `names`, or nil plus a reason. The install hint is resolved from names[1].
+local function first_bin(names)
   for _, n in ipairs(names) do
     if vim.fn.executable(n) == 1 then
       return n
@@ -79,10 +80,7 @@ local function first_bin(names, hint)
   end
   local msg = (#names == 1) and ("'%s' not found on PATH"):format(names[1])
     or ("none of %s found on PATH"):format(table.concat(names, ", "))
-  if hint then
-    msg = msg .. "\n  install: " .. hint
-  end
-  return nil, msg
+  return nil, msg .. "\n  install: " .. platform.install_hint(names[1])
 end
 
 -- ── Memoised file reads ───────────────────────────────────────────────────────
@@ -301,16 +299,12 @@ end
 
 -- ── JavaScript / TypeScript runtimes ──────────────────────────────────────────
 
-local JS_HINT = "nodejs (TypeScript: npm install -g tsx)"
-
 local JS_RUNTIMES = {
   javascript = { "node" },
   javascriptreact = { "tsx", "node" },
   typescript = { "tsx", "ts-node" },
   typescriptreact = { "tsx", "ts-node" },
 }
-
-local JDK_HINT = "java / openjdk (e.g. java-17-openjdk-devel or equivalent)"
 
 -- ── Per-tool cache directory ──────────────────────────────────────────────────
 --- Per-tool cache directory, created on demand. Build products go here, never beside the source.
@@ -347,7 +341,7 @@ end
 
 local function js_run(ft)
   return function(file)
-    local bin, why = first_bin(JS_RUNTIMES[ft], JS_HINT)
+    local bin, why = first_bin(JS_RUNTIMES[ft])
     if not bin then
       return nil, why
     end
@@ -363,13 +357,13 @@ end
 local function rust_run(file)
   local crate = path and path.find_up({ "Cargo.toml" }, vim.fn.fnamemodify(file, ":h"))
   if crate then
-    local cargo, why = first_bin({ "cargo" }, "https://rustup.rs")
+    local cargo, why = first_bin({ "cargo" }, "[https://rustup.rs](https://rustup.rs)")
     if not cargo then
       return nil, why
     end
     return cd(crate, "cargo run")
   end
-  local rustc, why = first_bin({ "rustc" }, "https://rustup.rs")
+  local rustc, why = first_bin({ "rustc" }, "[https://rustup.rs](https://rustup.rs)")
   if not rustc then
     return nil, why
   end
@@ -377,11 +371,11 @@ local function rust_run(file)
 end
 
 local function java_run(file)
-  local javac, why = first_bin({ "javac" }, JDK_HINT)
+  local javac, why = first_bin({ "javac" })
   if not javac then
     return nil, why
   end
-  local java, why2 = first_bin({ "java" }, JDK_HINT)
+  local java, why2 = first_bin({ "java" })
   if not java then
     return nil, why2
   end
@@ -391,11 +385,11 @@ local function java_run(file)
 end
 
 local function kotlin_run(file)
-  local kc, why = first_bin({ "kotlinc" }, "https://kotlinlang.org/docs/command-line.html")
+  local kc, why = first_bin({ "kotlinc" }, "[https://kotlinlang.org/docs/command-line.html](https://kotlinlang.org/docs/command-line.html)")
   if not kc then
     return nil, why
   end
-  local java, why2 = first_bin({ "java" }, JDK_HINT)
+  local java, why2 = first_bin({ "java" })
   if not java then
     return nil, why2
   end
@@ -451,9 +445,9 @@ local RUNNERS = {
   bash = interpreted("bash", nil),
   ruby = interpreted("ruby", "ruby"),
   elixir = interpreted("elixir", "elixir"),
-  julia = interpreted("julia", "https://julialang.org/downloads/"),
-  zig = interpreted("zig", "https://ziglang.org/download/", "run"),
-  nim = interpreted("nim", "https://nim-lang.org/install.html", "c -r"),
+  julia = interpreted("julia", "[https://julialang.org/downloads/](https://julialang.org/downloads/)"),
+  zig = interpreted("zig", "[https://ziglang.org/download/](https://ziglang.org/download/)", "run"),
+  nim = interpreted("nim", "[https://nim-lang.org/install.html](https://nim-lang.org/install.html)", "c -r"),
   cobol = cobol_run,
   fortran = fortran_run,
   vhdl = vhdl_run,
@@ -483,13 +477,13 @@ local SELECTION = {
   lua = function()
     return sq(vim.v.progpath) .. " -l"
   end,
-  javascript = sel_bin(JS_RUNTIMES.javascript, JS_HINT),
-  javascriptreact = sel_bin(JS_RUNTIMES.javascriptreact, JS_HINT),
-  typescript = sel_bin(JS_RUNTIMES.typescript, JS_HINT),
-  typescriptreact = sel_bin(JS_RUNTIMES.typescriptreact, JS_HINT),
+  javascript = sel_bin(JS_RUNTIMES.javascript),
+  javascriptreact = sel_bin(JS_RUNTIMES.javascriptreact),
+  typescript = sel_bin(JS_RUNTIMES.typescript),
+  typescriptreact = sel_bin(JS_RUNTIMES.typescriptreact),
   ruby = sel_bin({ "ruby" }, "ruby"),
   elixir = sel_bin({ "elixir" }, "elixir"),
-  julia = sel_bin({ "julia" }, "https://julialang.org/downloads/"),
+  julia = sel_bin({ "julia" }, "[https://julialang.org/downloads/](https://julialang.org/downloads/)"),
   sh = sel_bin({ "bash" }),
   bash = sel_bin({ "bash" }),
 }
@@ -723,7 +717,7 @@ local function test_go(ctx)
 end
 
 local function test_rust(ctx)
-  local cargo, why = first_bin({ "cargo" }, "https://rustup.rs")
+  local cargo, why = first_bin({ "cargo" }, "[https://rustup.rs](https://rustup.rs)")
   if not cargo then
     return nil, why
   end
@@ -775,7 +769,7 @@ local function test_jvm(ctx)
 end
 
 local function test_zig(ctx)
-  local zig, why = first_bin({ "zig" }, "https://ziglang.org/download/")
+  local zig, why = first_bin({ "zig" }, "[https://ziglang.org/download/](https://ziglang.org/download/)")
   if not zig then
     return nil, why
   end

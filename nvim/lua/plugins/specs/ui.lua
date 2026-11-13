@@ -471,7 +471,7 @@ local plugin_specs = {
               { icon = " ", key = "g", desc = "Live Search", action = ":Telescope live_grep" },
               { icon = " ", key = "s", desc = "Restore Session", action = ":lua require('persistence').load()" },
               { icon = " ", key = "G", desc = "Git Status", action = ":LazyGit" },
-              { icon = " ", key = "c", desc = "Config", action = ":edit ~/.config/nvim/init.lua" },
+              { icon = " ", key = "c", desc = "Config", action = ":edit " .. vim.fn.fnameescape(vim.fn.stdpath("config") .. "/init.lua") },
               { icon = " ", key = "m", desc = "Mason", action = ":Mason" },
               { icon = " ", key = "l", desc = "Lazy", action = ":Lazy" },
               { icon = " ", key = "h", desc = "Health", action = ":checkhealth" },
