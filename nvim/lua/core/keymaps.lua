@@ -345,11 +345,6 @@ map("n", "<leader>'r", function()
     require("core.util.runner").run_file()
   end)
 end, { desc = "Run file" })
-map("n", "<leader>'t", function()
-  pcall(function()
-    require("core.util.runner").run_tests()
-  end)
-end, { desc = "Run tests" })
 map("x", "<leader>'s", function()
   local s, e = vim.fn.line("v"), vim.fn.line(".")
   if s > e then
@@ -360,11 +355,6 @@ map("x", "<leader>'s", function()
     require("core.util.runner").run_selection(s, e)
   end)
 end, { desc = "Run selection" })
-map("n", "<leader>'F", function()
-  pcall(function()
-    require("core.util.runner").run_nearest_function()
-  end)
-end, { desc = "Run nearest function (treesitter)" })
 
 -- ── Terminal ──────────────────────────────────────────────────────────────────
 map("n", "<leader>\\t", "<cmd>ToggleTerm<cr>", { desc = "Terminal" })
@@ -547,9 +537,6 @@ map(
   end),
   { desc = "Previous TODO" }
 )
-
--- ── Oil ───────────────────────────────────────────────────────────────────────
-map("n", "-", "<cmd>Oil<cr>", { desc = "Open parent directory (Oil)" })
 
 -- ── Noice ─────────────────────────────────────────────────────────────────────
 map("n", "<leader>un", "<cmd>Noice dismiss<cr>", { desc = "Dismiss notifications" })

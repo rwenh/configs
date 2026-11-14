@@ -236,13 +236,6 @@ M.list = {
   },
   {
     group = "Task runner & workflow",
-    name = "term_max_runs",
-    type = "number",
-    default = "3",
-    effect = "Finished one-shot run terminals kept before older ones are shut down",
-  },
-  {
-    group = "Task runner & workflow",
     name = "terminal_tui_programs",
     type = "table",
     default = "nil",
