@@ -5,14 +5,6 @@ local shared = require("plugins.specs.lang.shared")
 local exec = require("core.util.exec")
 local path = require("core.util.path")
 
-local function term()
-  return require("core.util.term")
-end
-
-local function notify(msg, level)
-  vim.notify("[fortran] " .. msg, level or vim.log.levels.INFO)
-end
-
 local CONFIG_NAME = ".fprettify.rc"
 local DEFAULT_INDENT = 2
 
@@ -62,66 +54,7 @@ local function fprettify_args(file)
   return args
 end
 
--- ── Build and check ───────────────────────────────────────────────────────────
----@return string  cache directory for objects and modules (created on demand)
-local function run_dir()
-  local dir = vim.fn.stdpath("cache") .. "/fortran-run"
-  vim.fn.mkdir(dir, "p")
-  return dir
-end
-
---- gfortran invocation with the user's build flags (sanitised), modules sent to run_dir().
----@param file string
----@param extra string  extra arguments, already shell-escaped
----@return string
-local function gfortran(file, extra)
-  local raw = vim.g.fortran_build_flags or "-Wall"
-  local flags, changed = shared.sanitize_build_flags(raw)
-  if changed then
-    notify(
-      ("fortran_build_flags contained unsafe characters, stripped.\n  original : %s\n  sanitised: %s"):format(
-        raw,
-        flags
-      ),
-      vim.log.levels.WARN
-    )
-  end
-  return ("gfortran %s -J %s %s %s"):format(flags, vim.fn.shellescape(run_dir()), extra, vim.fn.shellescape(file))
-end
-
-local function current_file()
-  local file = vim.fn.expand("%:p")
-  if file == "" then
-    notify("this buffer has no file on disk", vim.log.levels.WARN)
-  end
-  return file
-end
-
-local function build_and_run()
-  local file = current_file()
-  if file == "" or not exec.require_bin("gfortran", "install gfortran") then
-    return
-  end
-  local exe = run_dir() .. "/" .. vim.fn.fnamemodify(vim.fn.tempname(), ":t")
-  local q = vim.fn.shellescape
-  term().float(
-    string.format(
-      "if %s; then %s; EC=$?; else EC=$?; fi; rm -f %s; exit $EC",
-      gfortran(file, "-o " .. q(exe)),
-      q(exe),
-      q(exe)
-    )
-  )
-end
-
-local function syntax_check()
-  local file = current_file()
-  if file == "" or not exec.require_bin("gfortran", "install gfortran") then
-    return
-  end
-  term().float(gfortran(file, "-fsyntax-only"))
-end
-
+-- ── Format buffer ─────────────────────────────────────────────────────────────
 local function format_buffer()
   if not exec.require_bin("fprettify", "pip install fprettify") then
     return

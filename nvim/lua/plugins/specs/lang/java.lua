@@ -240,16 +240,21 @@ local function ensure_dap(bufnr, jdtls)
   end
 end
 
----@param root string
----@param task JvmTask
----@param opts table|nil
-local function build_in_terminal(root, task, opts)
+---@param root     string
+---@param task     JvmTask
+---@param interactive boolean
+---@param opts     table|nil
+local function run_jvm_task(root, task, interactive, opts)
   local cmd, err = jvm.command(root, task)
   if not cmd then
     vim.notify("[java] " .. err, WARN)
     return
   end
-  require("core.util.term").float(cmd, opts)
+  if interactive then
+    require("core.util.term").float(cmd, opts)
+  else
+    require("core.util.task").run({ cmd = cmd, interactive = false })
+  end
 end
 
 ---@param bufnr    integer
@@ -331,7 +336,7 @@ local function keymap_specs(bufnr, jdtls, root, has_test, is_spring)
         "n",
         "<leader>jvs",
         function()
-          build_in_terminal(root, "bootRun", { close_on_exit = false })
+          run_jvm_task(root, "bootRun", true, { close_on_exit = false })
         end,
         "Java Spring Boot run",
       },
@@ -339,7 +344,7 @@ local function keymap_specs(bufnr, jdtls, root, has_test, is_spring)
         "n",
         "<leader>jvS",
         function()
-          build_in_terminal(root, "bootJar", nil)
+          run_jvm_task(root, "bootJar", false, nil)
         end,
         "Java Spring Boot package",
       },

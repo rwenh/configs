@@ -85,10 +85,10 @@ end
 
 --- Run a logical task for the current project. Without a Gradle or Maven build, `fallback` (if given)
 --- builds the current file instead.
----@param task     JvmTask
----@param opts     table|nil
----@param fallback (fun(file: string): string)|nil
-local function dispatch(task, opts, fallback)
+---@param task        JvmTask
+---@param interactive boolean
+---@param fallback    (fun(file: string): string)|nil
+local function dispatch(task, interactive, fallback)
   local cmd, err = jvm.command(project_root(), task)
   if not cmd and fallback then
     local file = vim.api.nvim_buf_get_name(0)
@@ -100,18 +100,18 @@ local function dispatch(task, opts, fallback)
     vim.notify("[kotlin] " .. tostring(err) .. ". kotlinc is needed for single-file builds.", WARN)
     return
   end
-  require("core.util.term").float(cmd, opts)
+  require("core.util.task").run({ cmd = cmd, interactive = interactive })
 end
 
 ---@param task JvmTask
----@param opts table|nil
-local function spring(task, opts)
+---@param interactive boolean
+local function spring(task, interactive)
   local root = project_root()
   if not is_spring(root) then
     vim.notify("[kotlin] no Spring Boot dependency declared in " .. vim.fn.fnamemodify(root, ":~"), WARN)
     return
   end
-  dispatch(task, opts, nil)
+  dispatch(task, interactive, nil)
 end
 
 ---@param kind "func"|"class"
@@ -168,19 +168,16 @@ end
 local function keys()
   return {
     kt("<leader>ktb", function()
-      dispatch("build", nil, compile_only)
+      dispatch("build", false, compile_only)
     end, "Kotlin build"),
-    kt("<leader>ktt", function()
-      dispatch("test", nil, nil)
-    end, "Kotlin test"),
     kt("<leader>ktr", function()
-      dispatch("run", nil, compile_and_run)
+      dispatch("run", true, compile_and_run)
     end, "Kotlin run"),
     kt("<leader>kts", function()
-      spring("bootRun", { close_on_exit = false })
+      spring("bootRun", true)
     end, "Kotlin Spring Boot run"),
     kt("<leader>ktS", function()
-      spring("bootJar", nil)
+      spring("bootJar", false)
     end, "Kotlin Spring Boot package"),
     kt("<leader>ktd", kdoc("func"), "Kotlin generate KDoc (function)"),
     kt("<leader>ktD", kdoc("class"), "Kotlin generate KDoc (class)"),

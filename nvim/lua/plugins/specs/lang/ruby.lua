@@ -1,9 +1,8 @@
--- lua/plugins/specs/lang/ruby.lua — Ruby and Rails: vim-test, vim-rails, generator keymaps, bundler checks
+-- lua/plugins/specs/lang/ruby.lua — Ruby and Rails: vim-rails, generator keymaps, bundler checks
 --
 
 local shared = require("plugins.specs.lang.shared")
 local bkm = require("core.util.buf_keymap")
-local term = require("core.util.term")
 
 local TTL = 30
 local FLAG = "ruby_rails_keymaps"
@@ -67,8 +66,8 @@ local function rails_prefix(root)
   return nil, "no Rails launcher: expected bin/rails, bundler with a Gemfile, or rails on PATH"
 end
 
---- Run `rails <args>` from the Rails root of `buf` in a float terminal.
-local function rails(buf, args)
+--- Run `rails <args>` from the Rails root of `buf` in a float terminal or task runner.
+local function rails(buf, args, interactive)
   local root = rails_root(buf)
   if not root then
     vim.notify("[ruby] not inside a Rails app (no config/application.rb above this file)", vim.log.levels.WARN)
@@ -83,7 +82,8 @@ local function rails(buf, args)
   for _, a in ipairs(args) do
     escaped[#escaped + 1] = vim.fn.shellescape(a)
   end
-  term.float(term.cd_prefix(root) .. prefix .. " " .. table.concat(escaped, " "))
+  local full_cmd = "cd " .. vim.fn.shellescape(root) .. " && " .. prefix .. " " .. table.concat(escaped, " ")
+  require("core.util.task").run({ cmd = full_cmd, interactive = interactive })
 end
 
 local function ask_generate(buf, kind)
@@ -92,7 +92,7 @@ local function ask_generate(buf, kind)
     if #args == 0 then
       return
     end
-    rails(buf, vim.list_extend({ "generate", kind }, args))
+    rails(buf, vim.list_extend({ "generate", kind }, args), true)
   end)
 end
 
@@ -120,7 +120,7 @@ local function rails_maps(buf)
     "n",
     "<leader>rgS",
     function()
-      rails(buf, { "server" })
+      rails(buf, { "server" }, true)
     end,
     "Rails server",
   }
@@ -128,7 +128,7 @@ local function rails_maps(buf)
     "n",
     "<leader>rgd",
     function()
-      rails(buf, { "db:migrate" })
+      rails(buf, { "db:migrate" }, false)
     end,
     "Rails db:migrate",
   }
@@ -136,7 +136,7 @@ local function rails_maps(buf)
     "n",
     "<leader>rgr",
     function()
-      rails(buf, { "console" })
+      rails(buf, { "console" }, true)
     end,
     "Rails console",
   }
@@ -244,16 +244,6 @@ local function check_project(buf)
   report(root, bundler_status(root).issues)
 end
 
--- ── vim-test ───────────────────────────────────────────────────────────────
-
-local function run_in_terminal(cmd)
-  term.float(cmd)
-end
-
-local function rkey(lhs, cmd, desc)
-  return { lhs, "<cmd>" .. cmd .. "<cr>", desc = desc, ft = "ruby" }
-end
-
 -- ── Autocmds (file scope: registered once when the spec loads) ─────────────
 
 local group = vim.api.nvim_create_augroup("RubyProjectState", { clear = true })
@@ -289,24 +279,6 @@ for _, b in ipairs(vim.api.nvim_list_bufs()) do -- buffers that already exist wh
 end
 
 return {
-  {
-    "vim-test/vim-test",
-    ft = "ruby",
-    init = function()
-      vim.g["test#strategy"] = "toggleterm"
-      local custom = vim.g["test#custom_strategies"]
-      vim.g["test#custom_strategies"] =
-        vim.tbl_extend("force", type(custom) == "table" and custom or {}, { toggleterm = run_in_terminal })
-    end,
-    keys = {
-      rkey("<leader>rbn", "TestNearest", "Ruby Test Nearest"),
-      rkey("<leader>rbf", "TestFile", "Ruby Test File"),
-      rkey("<leader>rbs", "TestSuite", "Ruby Test Suite"),
-      rkey("<leader>rbl", "TestLast", "Ruby Test Last"),
-      rkey("<leader>rbv", "TestVisit", "Ruby Test Visit"),
-    },
-  },
-
   -- No startup cond: vim-rails detects Rails per buffer (b:rails_root) and is a no-op elsewhere.
   { "tpope/vim-rails", ft = { "ruby", "eruby" } },
 

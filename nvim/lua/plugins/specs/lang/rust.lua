@@ -157,12 +157,7 @@ return {
           if word and word ~= "" then
             cmd = cmd .. " " .. vim.fn.shellescape(word)
           end
-          local ok_term, term = pcall(require, "core.util.term")
-          if ok_term then
-            term.float(cmd)
-          else
-            vim.cmd("split | terminal " .. cmd)
-          end
+          require("core.util.task").run({ cmd = cmd, interactive = false })
         end,
         desc = "Rust cargo expand (macro viewer)",
         ft = "rust",

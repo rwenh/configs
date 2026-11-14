@@ -166,9 +166,10 @@ return {
             vim.notify("[c] build/ not found — run <leader>ccb (CMake Build) first", vim.log.levels.WARN)
             return
           end
-          require("core.util.term").float(
-            "cd " .. vim.fn.shellescape(root) .. " && ctest --test-dir " .. build_dir .. " --output-on-failure"
-          )
+          require("core.util.task").run({
+            cmd = "cd " .. vim.fn.shellescape(root) .. " && ctest --test-dir " .. build_dir .. " --output-on-failure",
+            interactive = false,
+          })
         end,
         desc = "C CTest Run",
         ft = "c",
@@ -183,8 +184,8 @@ return {
           local ok_path, path = pcall(require, "core.util.path")
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
           local build_dir = vim.g.cmake_build_dir or "build"
-          require("core.util.term").float(
-            "cd "
+          require("core.util.task").run({
+            cmd = "cd "
               .. vim.fn.shellescape(root)
               .. " && cmake -B "
               .. build_dir
@@ -193,8 +194,9 @@ return {
               .. build_dir
               .. " && ctest --test-dir "
               .. build_dir
-              .. " --output-on-failure"
-          )
+              .. " --output-on-failure",
+            interactive = false,
+          })
         end,
         desc = "C CMake Build + CTest",
         ft = "c",

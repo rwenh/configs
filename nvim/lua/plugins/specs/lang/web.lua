@@ -51,8 +51,8 @@ local function is_vite_project(root)
 end
 
 ---@param script string
----@param opts   table?  forwarded to core.util.term.float
-local function run_script(script, opts)
+---@param interactive boolean
+local function run_script(script, interactive)
   local root = shared.project_root()
   local ok_runner, runner = pcall(require, "core.util.runner")
   local pm = (ok_runner and runner.detect_pkg_manager(root)) or "npm"
@@ -60,7 +60,8 @@ local function run_script(script, opts)
     vim.notify("[web] " .. pm .. " not found on PATH — cannot run '" .. script .. "'", vim.log.levels.ERROR)
     return
   end
-  require("core.util.term").float("cd " .. vim.fn.shellescape(root) .. " && " .. PM_RUN_PREFIX[pm] .. script, opts)
+  local cmd = "cd " .. vim.fn.shellescape(root) .. " && " .. PM_RUN_PREFIX[pm] .. script
+  require("core.util.task").run({ cmd = cmd, interactive = interactive })
 end
 
 local function install_emmet(buf)
@@ -131,7 +132,7 @@ return {
             )
             return
           end
-          run_script("dev", { close_on_exit = false })
+          run_script("dev", true)
         end,
         desc = "Web: Vite dev server",
         ft = shared.WEB_FT,
@@ -139,7 +140,7 @@ return {
       {
         "<leader>wb",
         function()
-          run_script("build")
+          run_script("build", false)
         end,
         desc = "Web: build (package manager run build)",
         ft = shared.WEB_FT,

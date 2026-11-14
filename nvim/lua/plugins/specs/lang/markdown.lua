@@ -294,7 +294,10 @@ return {
             notify("markdown-link-check not found.\nInstall: " .. platform.install_hint("markdown-link-check"))
             return
           end
-          require("core.util.term").float("markdown-link-check " .. vim.fn.shellescape(vim.fn.expand("%:p")))
+          require("core.util.task").run({
+            cmd = "markdown-link-check " .. vim.fn.shellescape(vim.fn.expand("%:p")),
+            interactive = false,
+          })
         end,
         desc = "Markdown check links",
         ft = "markdown",

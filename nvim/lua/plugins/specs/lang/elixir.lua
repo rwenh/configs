@@ -42,6 +42,7 @@ local function toolchain()
   end
   _toolchain = { at = now, value = v }
   return v
+
 end
 
 --- Only NextLS is checked here, because its binary is a per-user setting rather than part of the toolchain.
@@ -85,10 +86,10 @@ end
 local ACTIONS = {
   { lhs = "<leader>ext", args = { "test" }, desc = "Elixir mix test" },
   { lhs = "<leader>exC", args = { "test", "--cover" }, desc = "Elixir mix test --cover" },
-  { lhs = "<leader>exw", args = { "test", "--listen-on-stdin", "--stale" }, desc = "Elixir mix test --stale (watch)" },
+  { lhs = "<leader>exw", args = { "test", "--listen-on-stdin", "--stale" }, desc = "Elixir mix test --stale (watch)", interactive = true },
   { lhs = "<leader>exf", args = { "format" }, desc = "Elixir mix format" },
-  { lhs = "<leader>exp", args = { "phx.server" }, desc = "Elixir Phoenix server" },
-  { lhs = "<leader>exi", raw = "iex -S mix", desc = "Elixir IEx session" },
+  { lhs = "<leader>exp", args = { "phx.server" }, desc = "Elixir Phoenix server", interactive = true },
+  { lhs = "<leader>exi", raw = "iex -S mix", desc = "Elixir IEx session", interactive = true },
   { lhs = "<leader>exd", args = { "deps.get" }, desc = "Elixir mix deps.get" },
   { lhs = "<leader>exc", args = { "compile" }, desc = "Elixir mix compile" },
 }
@@ -111,7 +112,14 @@ local function run_action(buf, action)
     end
     cmd = table.concat(parts, " ")
   end
-  term.float(term.cd_prefix(root) .. cmd)
+
+  local full_cmd = term.cd_prefix(root) .. cmd
+
+  if action.interactive then
+    term.float(full_cmd)
+  else
+    require("core.util.task").run({ cmd = full_cmd, interactive = false })
+  end
 end
 
 local function build_keys()

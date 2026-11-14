@@ -6,10 +6,6 @@ local exec = require("core.util.exec")
 local path = require("core.util.path")
 local vhdl = require("core.util.vhdl")
 
-local function term()
-  return require("core.util.term")
-end
-
 local function notify(msg, level)
   vim.notify("[vhdl] " .. msg, level or vim.log.levels.INFO)
 end
@@ -53,7 +49,7 @@ vim.api.nvim_create_autocmd("FileType", {
         "no vhdl_ls.toml in "
           .. root
           .. ": vhdl_ls will analyse without library paths. "
-          .. "See https://github.com/VHDL-LS/rust_hdl#configuration"
+          .. "See [https://github.com/VHDL-LS/rust_hdl#configuration](https://github.com/VHDL-LS/rust_hdl#configuration)"
       )
     end
   end,
@@ -114,7 +110,8 @@ end
 
 ---@param cmd string  shell command, run from the project root
 local function ghdl_in_root(cmd)
-  term().float(term().cd_prefix(project_root()) .. cmd)
+  local full_cmd = "cd " .. vim.fn.shellescape(project_root()) .. " && " .. cmd
+  require("core.util.task").run({ cmd = full_cmd, interactive = false })
 end
 
 ---@return boolean  false when the save failed and the command must not run

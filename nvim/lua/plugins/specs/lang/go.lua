@@ -90,9 +90,6 @@ return {
       })
     end,
     keys = {
-      { "<leader>got", "<cmd>GoTest<cr>", desc = "Go Test", ft = GO_FT },
-      { "<leader>gof", "<cmd>GoTestFunc<cr>", desc = "Go Test Function", ft = GO_FT },
-      { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go Coverage", ft = GO_FT },
       { "<leader>gor", "<cmd>GoRun<cr>", desc = "Go Run", ft = GO_FT },
       { "<leader>gob", "<cmd>GoBuild<cr>", desc = "Go Build", ft = GO_FT },
       { "<leader>goi", "<cmd>GoImpl<cr>", desc = "Go Impl", ft = GO_FT },
@@ -114,7 +111,7 @@ return {
       {
         "<leader>gog",
         function()
-          require("core.util.term").float_at_root("go generate ./...")
+          require("core.util.task").run({ cmd = "go generate ./...", interactive = false })
         end,
         desc = "Go Generate",
         ft = GO_FT,
@@ -123,7 +120,7 @@ return {
         "<leader>goe",
         function()
           local ok_t = pcall(function()
-            require("core.util.term").float_at_root("go env")
+            require("core.util.task").run({ cmd = "go env", interactive = false })
           end)
           if not ok_t then
             vim.notify(vim.fn.system("go env 2>/dev/null"), vim.log.levels.INFO)
@@ -135,7 +132,7 @@ return {
       {
         "<leader>gov",
         function()
-          require("core.util.term").float_at_root("go vet ./...")
+          require("core.util.task").run({ cmd = "go vet ./...", interactive = false })
         end,
         desc = "Go Vet",
         ft = GO_FT,

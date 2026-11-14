@@ -24,17 +24,6 @@ M.WEB_FT = {
   "svelte",
 }
 
-M.TAILWIND_FT = {
-  "html",
-  "css",
-  "javascript",
-  "javascriptreact",
-  "typescript",
-  "typescriptreact",
-  "vue",
-  "svelte",
-}
-
 -- ── Spec helpers ──────────────────────────────────────────────────────────────
 
 ---@param parsers string[]
@@ -58,15 +47,6 @@ function M.treesitter(parsers)
       end
     end,
   }
-end
-
--- ── Build flags ───────────────────────────────────────────────────────────────
-
----@param flags string?
----@return string sanitized
----@return boolean changed  true if any characters were stripped
-function M.sanitize_build_flags(flags)
-  return require("core.util.exec").sanitize_build_flags(flags)
 end
 
 -- ── Project root ──────────────────────────────────────────────────────────────
@@ -189,8 +169,7 @@ function M.run_make()
     vim.notify("[make] no Makefile found above the current file", vim.log.levels.WARN)
     return
   end
-  local term = require("core.util.term")
-  term.float(term.cd_prefix(dir) .. "make")
+  require("core.util.task").run({ cmd = "cd " .. vim.fn.shellescape(dir) .. " && make", interactive = false })
 end
 
 --- Symlink src at dst, replacing a dangling link as `ln -sf` did. A real file or a live link is kept.

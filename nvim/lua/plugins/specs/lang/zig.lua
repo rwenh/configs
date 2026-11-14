@@ -191,13 +191,19 @@ local function zig_ready()
 end
 
 ---@param cmd string  shell command, run from the directory holding build.zig
-local function run_in_build_root(cmd)
+---@param interactive boolean
+local function run_in_build_root(cmd, interactive)
   local root = build_root()
   if not root then
     notify("build.zig not found above this file", vim.log.levels.WARN)
     return
   end
-  term().float(term().cd_prefix(root) .. cmd)
+  local full_cmd = term().cd_prefix(root) .. cmd
+  if interactive then
+    term().float(full_cmd)
+  else
+    require("core.util.task").run({ cmd = full_cmd, interactive = false })
+  end
 end
 
 local function run_file()
@@ -225,7 +231,7 @@ local function fetch_dependency()
     if url == "" then
       return
     end
-    run_in_build_root("zig fetch --save " .. vim.fn.shellescape(url))
+    run_in_build_root("zig fetch --save " .. vim.fn.shellescape(url), false)
   end)
 end
 
@@ -290,7 +296,7 @@ return {
         "<leader>zb",
         function()
           if zig_ready() then
-            run_in_build_root("zig build run")
+            run_in_build_root("zig build run", true)
           end
         end,
         desc = "Zig Build Run",
@@ -300,7 +306,7 @@ return {
         "<leader>zt",
         function()
           if zig_ready() then
-            run_in_build_root("zig build test")
+            run_in_build_root("zig build test", false)
           end
         end,
         desc = "Zig Build Test",
