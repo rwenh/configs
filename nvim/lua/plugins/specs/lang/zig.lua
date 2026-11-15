@@ -7,8 +7,8 @@ local exec = require("core.util.exec")
 local function path()
   return require("core.util.path")
 end
-local function term()
-  return require("core.util.term")
+local function task()
+  return require("core.util.task")
 end
 
 local function notify(msg, level)
@@ -198,11 +198,11 @@ local function run_in_build_root(cmd, interactive)
     notify("build.zig not found above this file", vim.log.levels.WARN)
     return
   end
-  local full_cmd = term().cd_prefix(root) .. cmd
+  local full_cmd = "cd " .. vim.fn.shellescape(root) .. " && " .. cmd
   if interactive then
-    term().float(full_cmd)
+    task().run({ cmd = full_cmd, interactive = true })
   else
-    require("core.util.task").run({ cmd = full_cmd, interactive = false })
+    task().run({ cmd = full_cmd, interactive = false })
   end
 end
 
@@ -215,7 +215,7 @@ local function run_file()
   if not zig_ready() then
     return
   end
-  term().float("zig run " .. vim.fn.shellescape(file))
+  task().run({ cmd = "zig run " .. vim.fn.shellescape(file), interactive = true })
 end
 
 local function fetch_dependency()

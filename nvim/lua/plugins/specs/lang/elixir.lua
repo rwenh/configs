@@ -2,7 +2,7 @@
 --
 
 local shared = require("plugins.specs.lang.shared")
-local term = require("core.util.term")
+local task = require("core.util.task")
 
 local TTL = 60
 local _toolchain = nil -- { at, value }; global, because Hex lives under MIX_HOME
@@ -113,12 +113,12 @@ local function run_action(buf, action)
     cmd = table.concat(parts, " ")
   end
 
-  local full_cmd = term.cd_prefix(root) .. cmd
+  local full_cmd = "cd " .. vim.fn.shellescape(root) .. " && " .. cmd
 
   if action.interactive then
-    term.float(full_cmd)
+    task.run({ cmd = full_cmd, interactive = true })
   else
-    require("core.util.task").run({ cmd = full_cmd, interactive = false })
+    task.run({ cmd = full_cmd, interactive = false })
   end
 end
 

@@ -251,7 +251,7 @@ local function run_jvm_task(root, task, interactive, opts)
     return
   end
   if interactive then
-    require("core.util.term").float(cmd, opts)
+    require("core.util.task").run(vim.tbl_extend("force", { cmd = cmd, interactive = true }, opts or {}))
   else
     require("core.util.task").run({ cmd = cmd, interactive = false })
   end
