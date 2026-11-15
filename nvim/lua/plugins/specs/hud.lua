@@ -233,25 +233,6 @@ return {
   },
 
   {
-    "stevearc/oil.nvim",
-    cmd = "Oil",
-    keys = { { "<leader>eo", "<cmd>Oil<cr>", desc = "Oil file editor" } },
-    opts = {
-      default_file_explorer = false,
-      view_options = { show_hidden = true },
-      float = { padding = 2, border = "rounded", win_options = { winblend = 5 } },
-      keymaps = {
-        ["<CR>"] = "actions.select",
-        ["<C-s>"] = "actions.select_vsplit",
-        ["<C-p>"] = "actions.preview",
-        ["-"] = "actions.parent",
-        ["_"] = "actions.open_cwd",
-        ["g."] = "actions.toggle_hidden",
-      },
-    },
-  },
-
-  {
     "folke/zen-mode.nvim",
     cmd = "ZenMode",
     keys = { { "<leader>uz", "<cmd>ZenMode<cr>", desc = "Zen mode" } },

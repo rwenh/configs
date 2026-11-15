@@ -89,46 +89,6 @@ vim.api.nvim_create_autocmd("LspAttach", {
   desc = "Register the CSS variable jump keymap when cssls attaches",
 })
 
--- ── Tailwind ──────────────────────────────────────────────────────────────────
-local TAILWIND_CONFIGS = {
-  "tailwind.config.js",
-  "tailwind.config.ts",
-  "tailwind.config.cjs",
-  "tailwind.config.mjs",
-  "tailwind.config.cts",
-  "tailwind.config.mts",
-}
-
 return {
-  {
-    "luckasRanarison/tailwind-tools.nvim",
-    cond = function()
-      for _, name in ipairs(TAILWIND_CONFIGS) do
-        if vim.fn.findfile(name, ".;") ~= "" then
-          return true
-        end
-      end
-      return false
-    end,
-    ft = shared.WEB_FT,
-    dependencies = { "nvim-treesitter/nvim-treesitter" },
-    opts = {
-      document_color = { enabled = true, kind = "inline" },
-      conceal = { enabled = false },
-      server = { override = false },
-    },
-    config = function(_, opts)
-      local ok, tt = pcall(require, "tailwind-tools")
-      if not ok then
-        vim.notify("[css] tailwind-tools.nvim did not load — run :Lazy install", vim.log.levels.WARN)
-        return
-      end
-      local ok_setup, err = pcall(tt.setup, opts)
-      if not ok_setup then
-        vim.notify("[css] tailwind-tools.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
-      end
-    end,
-  },
-
   shared.treesitter({ "css", "scss" }),
 }

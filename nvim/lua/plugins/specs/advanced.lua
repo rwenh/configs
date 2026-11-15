@@ -61,7 +61,7 @@ return {
       render = "background",
       enable_named_colors = true,
       enable_tailwind = true,
-      exclude_filetypes = { "lazy", "mason", "lspinfo", "snacks_dashboard" },
+      exclude_filetypes = { "lazy", "mason", "lspinfo", "snacks_dashboard", "markdown", "text", "gitcommit" },
     },
     config = function(_, opts)
       require("core.util.safe_setup").run("nvim-highlight-colors", function()
@@ -100,9 +100,6 @@ return {
   { "gbprod/stay-in-place.nvim", event = "VeryLazy", opts = {} },
 
   -- ── mini.nvim — SINGLE owner of every mini.* setup ───────────────────────────
-  -- lazy.nvim keeps one `config` per plugin (last spec wins). Previously a second
-  -- spec (mini.files) overwrote this one, so comment/surround/align/move/pairs/
-  -- visits were never set up. Other specs (editor.lua) may only contribute `keys`.
   {
     "echasnovski/mini.nvim",
     event = "VeryLazy",
@@ -122,32 +119,6 @@ return {
       { "<A-j>", mode = { "n", "v" } },
       { "<A-k>", mode = { "n", "v" } },
       { "<A-l>", mode = { "n", "v" } },
-      {
-        "<leader>em",
-        function()
-          local ok, mf = pcall(require, "mini.files")
-          if not ok then
-            vim.notify("[mini.files] not available", vim.log.levels.WARN)
-            return
-          end
-          mf.open(vim.fn.expand("%:p:h"), true)
-        end,
-        desc = "mini.files (current dir)",
-      },
-      {
-        "<leader>eM",
-        function()
-          local ok, mf = pcall(require, "mini.files")
-          if not ok then
-            vim.notify("[mini.files] not available", vim.log.levels.WARN)
-            return
-          end
-          local ok_path, path = pcall(require, "core.util.path")
-          local root = (ok_path and path.find_root()) or vim.fn.getcwd()
-          mf.open(root, true)
-        end,
-        desc = "mini.files (project root)",
-      },
     },
     config = function()
       local function setup(mod, opts)
@@ -163,8 +134,6 @@ return {
       setup("comment")
       setup("move")
       setup("splitjoin")
-      -- Documented keys are gs*; mini.surround's default prefix is `s*`, which
-      -- would shadow flash's `s`.
       setup("surround", {
         mappings = {
           add = "gsa",
@@ -195,10 +164,6 @@ return {
       end
 
       setup("visits", { store = { path = vim.fn.stdpath("data") .. "/mini-visits.json" } })
-      setup("files", {
-        windows = { preview = true, width_focus = 50, width_preview = 70 },
-        options = { use_as_default_explorer = false },
-      })
     end,
   },
 
@@ -293,7 +258,6 @@ return {
   },
 
   -- ── mini.animate ──────────────────────────────────────────────────────────
-  --
   {
     "echasnovski/mini.animate",
     event = "VeryLazy",
@@ -316,10 +280,8 @@ return {
         end, { expr = true })
       end
 
-      -- Build scroll config: disable if neoscroll owns those keymaps.
       local scroll_cfg
       if neoscroll_active and vim.g.force_mini_animate_scroll ~= true then
-        -- Disable mini.animate scroll to avoid double-animation with neoscroll.
         scroll_cfg = { enable = false }
         vim.notify(
           "[advanced] mini.animate scroll disabled — neoscroll.nvim is active.\n"
@@ -349,7 +311,6 @@ return {
         open = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
         close = { timing = animate.gen_timing.linear({ duration = 40, unit = "total" }) },
         scroll = scroll_cfg,
-        -- smear-cursor.nvim owns cursor motion; two cursor animators fight.
         cursor = { enable = vim.g.disable_smear_cursor == true },
       })
     end,

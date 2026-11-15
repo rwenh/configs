@@ -28,6 +28,7 @@ return {
         map("n", "<leader>.p", gs.preview_hunk, { buffer = bufnr, desc = "Preview hunk" })
         map("n", "<leader>.r", gs.reset_hunk, { buffer = bufnr, desc = "Reset hunk" })
         map("n", "<leader>.S", gs.stage_hunk, { buffer = bufnr, desc = "Stage hunk" })
+        map("n", "<leader>.B", gs.toggle_current_line_blame, { buffer = bufnr, desc = "Toggle git blame" })
         map("v", "<leader>.r", function()
           gs.reset_hunk(visual_lines())
         end, { buffer = bufnr, desc = "Reset hunk (visual)" })
@@ -38,31 +39,8 @@ return {
     },
   },
 
-  { "tpope/vim-fugitive", cmd = { "Git", "Gdiffsplit", "Gread", "Gwrite", "GMove", "GDelete" } },
   { "kdheepak/lazygit.nvim", cmd = "LazyGit", dependencies = "nvim-lua/plenary.nvim" },
   { "sindrets/diffview.nvim", cmd = { "DiffviewOpen", "DiffviewFileHistory" }, opts = {} },
-
-  {
-    "NeogitOrg/neogit",
-    cmd = "Neogit",
-    dependencies = { "nvim-lua/plenary.nvim", "nvim-telescope/telescope.nvim", "sindrets/diffview.nvim" },
-    keys = {
-      { "<leader>.N", "<cmd>Neogit<cr>", desc = "Neogit UI" },
-      { "<leader>.C", "<cmd>Neogit commit<cr>", desc = "Git commit" },
-    },
-    opts = {
-      disable_line_numbers = false,
-      auto_refresh = true,
-      auto_show_console = false,
-      integrations = { diffview = true, telescope = true },
-      signs = { hunk = { "", "" }, item = { ">", "v" }, section = { ">", "v" } },
-    },
-    config = function(_, opts)
-      require("core.util.safe_setup").run("neogit", function()
-        require("neogit").setup(opts)
-      end)
-    end,
-  },
 
   {
     "akinsho/git-conflict.nvim",
@@ -83,13 +61,6 @@ return {
         require("git-conflict").setup(opts)
       end)
     end,
-  },
-
-  {
-    "junegunn/gv.vim",
-    cmd = "GV",
-    dependencies = "tpope/vim-fugitive",
-    keys = { { "<leader>.v", "<cmd>GV<cr>", desc = "Git history (graph)" } },
   },
 
   {
@@ -147,68 +118,6 @@ return {
       end)
     end)
     end,
-  },
-
-  {
-    "FabijanZulj/blame.nvim",
-    cmd = "BlameToggle",
-    keys = { { "<leader>.B", "<cmd>BlameToggle<cr>", desc = "Toggle git blame" } },
-    opts = {
-      date_format = "%Y-%m-%d",
-      virtual_style = "right_align",
-      focus_blame = true,
-      merge_consecutive = false,
-      max_summary_width = 30,
-    },
-  },
-
-  {
-    "tpope/vim-fugitive",
-    keys = {
-      {
-        "<leader>.zz",
-        function()
-          vim.ui.input({ prompt = "Stash message (optional): " }, function(msg)
-            if msg == nil then
-              return
-            end
-
-            local cmd = { "git", "stash", "push" }
-            if msg ~= "" then
-              table.insert(cmd, "-m")
-              table.insert(cmd, msg)
-            end
-
-            local buf_dir = vim.fn.expand("%:p:h")
-            vim.system(cmd, { text = true, cwd = (buf_dir ~= "" and buf_dir or nil) }, function(result)
-              vim.schedule(function()
-                local out = vim.trim((result.stderr or "") .. (result.stdout or ""))
-                if result.code == 0 then
-                  vim.notify("[git] " .. (out ~= "" and out or "Stash pushed"), vim.log.levels.INFO)
-                else
-                  vim.notify("[git] stash push failed: " .. out, vim.log.levels.ERROR)
-                end
-              end)
-            end)
-          end)
-        end,
-        desc = "Git stash push",
-      },
-      { "<leader>.zp", "<cmd>Git stash pop<cr>", desc = "Git stash pop" },
-      { "<leader>.zl", "<cmd>Telescope git_stash<cr>", desc = "Git stash list (Telescope)" },
-      {
-        "<leader>.zh",
-        function()
-          local file = vim.fn.expand("%:p")
-          if file == "" then
-            vim.notify("[git] no file in current buffer", vim.log.levels.WARN)
-            return
-          end
-          pcall(vim.cmd, "DiffviewFileHistory --follow " .. vim.fn.fnameescape(file))
-        end,
-        desc = "Git file history --follow (rename-tracking)",
-      },
-    },
   },
 
   -- ── git-worktree ────────────────────────────────────────────────────────────
@@ -281,4 +190,63 @@ return {
       }
     end)(),
   },
+
+  -- Standalone Git Keymaps
+  {
+    "sindrets/diffview.nvim",
+    keys = {
+      {
+        "<leader>.zz",
+        function()
+          vim.ui.input({ prompt = "Stash message (optional): " }, function(msg)
+            if msg == nil then return end
+            local cmd = { "git", "stash", "push" }
+            if msg ~= "" then table.insert(cmd, "-m"); table.insert(cmd, msg) end
+            local buf_dir = vim.fn.expand("%:p:h")
+            vim.system(cmd, { text = true, cwd = (buf_dir ~= "" and buf_dir or nil) }, function(result)
+              vim.schedule(function()
+                local out = vim.trim((result.stderr or "") .. (result.stdout or ""))
+                if result.code == 0 then
+                  vim.notify("[git] " .. (out ~= "" and out or "Stash pushed"), vim.log.levels.INFO)
+                else
+                  vim.notify("[git] stash push failed: " .. out, vim.log.levels.ERROR)
+                end
+              end)
+            end)
+          end)
+        end,
+        desc = "Git stash push",
+      },
+      {
+        "<leader>.zp",
+        function()
+          local buf_dir = vim.fn.expand("%:p:h")
+          vim.system({ "git", "stash", "pop" }, { text = true, cwd = (buf_dir ~= "" and buf_dir or nil) }, function(result)
+            vim.schedule(function()
+              local out = vim.trim((result.stderr or "") .. (result.stdout or ""))
+              if result.code == 0 then
+                vim.notify("[git] " .. (out ~= "" and out or "Stash popped"), vim.log.levels.INFO)
+              else
+                vim.notify("[git] stash pop failed: " .. out, vim.log.levels.ERROR)
+              end
+            end)
+          end)
+        end,
+        desc = "Git stash pop",
+      },
+      { "<leader>.zl", "<cmd>Telescope git_stash<cr>", desc = "Git stash list (Telescope)" },
+      {
+        "<leader>.zh",
+        function()
+          local file = vim.fn.expand("%:p")
+          if file == "" then
+            vim.notify("[git] no file in current buffer", vim.log.levels.WARN)
+            return
+          end
+          pcall(vim.cmd, "DiffviewFileHistory --follow " .. vim.fn.fnameescape(file))
+        end,
+        desc = "Git file history --follow (rename-tracking)",
+      },
+    }
+  }
 }

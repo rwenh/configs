@@ -215,7 +215,7 @@ local plugin_specs = {
         globalstatus = true,
         component_separators = { left = "|", right = "|" },
         section_separators = { left = "", right = "" },
-        disabled_filetypes = { statusline = { "dashboard", "alpha", "neo-tree", "oil", "snacks_dashboard" } },
+        disabled_filetypes = { statusline = { "dashboard", "alpha", "neo-tree", "snacks_dashboard" } },
         refresh = { statusline = 1000, tabline = 1000, winbar = 1000 },
       },
       sections = {
@@ -397,7 +397,6 @@ local plugin_specs = {
         { "<leader>js", group = "js-tools" },
         { "<leader>db", group = "database" },
         { "<leader>re", group = "rest" },
-        { "<leader>tc", group = "test-coverage" },
         { "<leader>r", group = "rust" },
         { "<leader>c", group = "c/code" },
         { "<leader>gc", group = "git-conflict" },

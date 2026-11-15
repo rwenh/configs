@@ -192,7 +192,6 @@ return {
       end
 
       local function lazy_knows_plugin(plugin_name)
-        -- Check whether lazy.nvim has the plugin in its spec registry.
         local ok, lazy_config = pcall(require, "lazy.core.config")
         if not ok then
           return false
@@ -211,7 +210,6 @@ return {
 
       local adapters = {}
       local function load_adapter(name, loader)
-        -- Probe 1: runtime path.
         local mod = name:gsub("%-", "/")
         local in_rtp = #vim.api.nvim_get_runtime_file("lua/" .. name .. ".lua", false) > 0
           or #vim.api.nvim_get_runtime_file("lua/" .. name .. "/init.lua", false) > 0
@@ -291,10 +289,5 @@ return {
     dependencies = "nvim-lua/plenary.nvim",
     cmd = "Coverage",
     opts = {},
-    keys = {
-      { "<leader>tcv", "<cmd>Coverage<cr>", desc = "Coverage Load (alias)" },
-      { "<leader>tcs", "<cmd>CoverageSummary<cr>", desc = "Coverage Summary (alias)" },
-      { "<leader>tct", "<cmd>CoverageToggle<cr>", desc = "Coverage Toggle (alias)" },
-    },
   },
 }
