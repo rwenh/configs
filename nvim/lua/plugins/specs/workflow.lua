@@ -7,22 +7,16 @@ local projconf = require("core.util.projconf")
 local WIN_OPTS = { border = "rounded", win_opts = { winblend = 5 } }
 
 -- Templates are registered once per (root, file signature). projconf does the trust gate and caching.
-local _applied = {} -- root -> file signature last registered
+local _applied = {}
 
 local function load_project_templates()
   local ok_path, path_util = pcall(require, "core.util.path")
-  if not ok_path then
-    return
-  end
+  if not ok_path then return end
   local root = path_util.find_root()
-  if not root or root == "" then
-    return
-  end
+  if not root or root == "" then return end
 
   local sig = cache.file_sig(root .. "/.overseer.lua")
-  if _applied[root] == sig then
-    return
-  end
+  if _applied[root] == sig then return end
   _applied[root] = sig
 
   local res = projconf.load(root, ".overseer.lua")
@@ -34,35 +28,24 @@ local function load_project_templates()
   end
 
   local ok_ov, overseer = pcall(require, "overseer")
-  if not ok_ov then
-    return
-  end
+  if not ok_ov then return end
 
   local registered = 0
   for _, tmpl in ipairs(res.value) do
     if type(tmpl) == "table" and type(tmpl.name) == "string" then
-      local ok_reg = pcall(function()
-        overseer.register_template(tmpl)
-      end)
-      if ok_reg then
-        registered = registered + 1
-      end
+      local ok_reg = pcall(function() overseer.register_template(tmpl) end)
+      if ok_reg then registered = registered + 1 end
     end
   end
   if registered > 0 then
-    vim.notify(
-      string.format("[workflow] loaded %d project template(s) from .overseer.lua", registered),
-      vim.log.levels.INFO
-    )
+    vim.notify(string.format("[workflow] loaded %d project template(s)", registered), vim.log.levels.INFO)
   end
 end
 
 -- ── Debounced BufEnter loader ─────────────────────────────────────────────
---
 local _buf_enter_timer = nil
 local DEBOUNCE_MS = (type(vim.g.workflow_template_debounce_ms) == "number" and vim.g.workflow_template_debounce_ms > 0)
-    and vim.g.workflow_template_debounce_ms
-  or 300
+    and vim.g.workflow_template_debounce_ms or 300
 
 local function schedule_template_load()
   if _buf_enter_timer then
@@ -76,53 +59,26 @@ local function schedule_template_load()
   local t = vim.uv.new_timer()
   _buf_enter_timer = t
 
-  t:start(
-    DEBOUNCE_MS,
-    0,
-    vim.schedule_wrap(function()
-      if _buf_enter_timer ~= t then
-        return
-      end
-      pcall(function()
-        t:stop()
-        t:close()
-      end)
-      _buf_enter_timer = nil
-      load_project_templates()
-    end)
-  )
+  t:start(DEBOUNCE_MS, 0, vim.schedule_wrap(function()
+    if _buf_enter_timer ~= t then return end
+    pcall(function() t:stop(); t:close() end)
+    _buf_enter_timer = nil
+    load_project_templates()
+  end))
 end
 
 -- ── Inline shell-command runner ────────────────────────────────────────────
 local function run_shell_command_interactive()
-  local ok_ov, overseer = pcall(require, "overseer")
-  if not ok_ov then
-    vim.notify("[workflow] overseer not loaded", vim.log.levels.WARN)
-    return
-  end
-
   vim.ui.input({ prompt = "Shell command: ", completion = "shellcmd" }, function(input)
-    if not input or vim.trim(input) == "" then
+    if not input or vim.trim(input) == "" then return end
+
+    local ok_task, task = pcall(require, "core.util.task")
+    if not ok_task then
+      vim.notify("[workflow] core.util.task not loaded", vim.log.levels.WARN)
       return
     end
 
-    local ok_path, path_util = pcall(require, "core.util.path")
-    local cwd = (ok_path and path_util.find_root()) or vim.fn.getcwd()
-
-    local ok_task, err = pcall(function()
-      overseer
-        .new_task({
-          name = input,
-          cmd = input, -- RECALIBRATED: Let Neovim/Overseer use the native vim.o.shell (cross-platform)
-          cwd = cwd,
-          components = { "default" },
-        })
-        :start()
-    end)
-
-    if not ok_task then
-      vim.notify("[workflow] failed to run shell command: " .. tostring(err), vim.log.levels.ERROR)
-    end
+    task.run({ cmd = input, interactive = false })
   end)
 end
 
@@ -139,10 +95,7 @@ return {
         "<leader>ob",
         function()
           local ok_ov, overseer = pcall(require, "overseer")
-          if not ok_ov then
-            vim.notify("[overseer] plugin not loaded", vim.log.levels.WARN)
-            return
-          end
+          if not ok_ov then return end
 
           local function open_picker_fallback()
             vim.notify("[overseer] no 'build' template — opening task picker", vim.log.levels.INFO)
@@ -151,32 +104,24 @@ return {
 
           local ok = pcall(function()
             overseer.run_template({ name = "build" }, function(task)
-              if not task then
-                vim.schedule(open_picker_fallback)
-              end
+              if not task then vim.schedule(open_picker_fallback) end
             end)
           end)
-          if not ok then
-            open_picker_fallback()
-          end
+          if not ok then open_picker_fallback() end
         end,
         desc = "Overseer: build",
       },
       {
         "<leader>os",
-        function()
-          run_shell_command_interactive()
-        end,
+        run_shell_command_interactive,
         desc = "Overseer: shell command (prompted)",
       },
     },
 
     opts = function()
       return {
-
         templates = { "builtin" },
         auto_scroll = vim.g.overseer_auto_scroll ~= false,
-
         task_list = {
           direction = "bottom",
           min_height = 10,
@@ -193,26 +138,45 @@ return {
             ["<leader>ot"] = "Close",
           },
         },
-
         form = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
         confirm = vim.tbl_extend("keep", { min_width = 80, zindex = 40 }, WIN_OPTS),
         task_win = vim.tbl_extend("keep", { padding = 2 }, WIN_OPTS),
-
         log = { { type = "echo", level = vim.log.levels.WARN } },
       }
     end,
 
     config = function(_, opts)
-      local ok, err = pcall(function()
-        require("overseer").setup(opts)
-      end)
+      local overseer = require("overseer")
+      local ok, err = pcall(function() overseer.setup(opts) end)
       if not ok then
-        vim.notify(
-          "overseer.nvim setup failed: " .. tostring(err) .. "\nRun :Lazy update overseer.nvim",
-          vim.log.levels.WARN
-        )
+        vim.notify("overseer.nvim setup failed: " .. tostring(err), vim.log.levels.WARN)
         return
       end
+
+      -- Register built-in template for running the current file
+      overseer.register_template({
+        name = "run current file",
+        builder = function()
+          local file = vim.fn.expand("%:p")
+          local runner = require("core.util.runner")
+          local cmd, _ = runner.resolve_run(file)
+          return {
+            cmd = cmd,
+            name = "Run: " .. vim.fn.fnamemodify(file, ":t"),
+            components = { "default" }
+          }
+        end,
+        condition = {
+          callback = function()
+            local file = vim.fn.expand("%:p")
+            if file == "" then return false end
+            local ok_r, runner = pcall(require, "core.util.runner")
+            if not ok_r then return false end
+            local cmd, _ = runner.resolve_run(file)
+            return cmd ~= nil
+          end
+        }
+      })
 
       load_project_templates()
 
@@ -222,17 +186,13 @@ return {
           _applied = {}
           load_project_templates()
         end,
-        desc = "Reload .overseer.lua templates on directory change",
       })
 
       vim.api.nvim_create_autocmd("BufEnter", {
         group = vim.api.nvim_create_augroup("OverseerBufEnter", { clear = true }),
         callback = function()
-          if vim.bo.buftype == "" then
-            schedule_template_load()
-          end
+          if vim.bo.buftype == "" then schedule_template_load() end
         end,
-        desc = "Debounced .overseer.lua template load on buffer enter",
       })
 
       vim.api.nvim_create_autocmd("VimLeavePre", {
@@ -240,14 +200,10 @@ return {
         once = true,
         callback = function()
           if _buf_enter_timer then
-            pcall(function()
-              _buf_enter_timer:stop()
-              _buf_enter_timer:close()
-            end)
+            pcall(function() _buf_enter_timer:stop(); _buf_enter_timer:close() end)
             _buf_enter_timer = nil
           end
         end,
-        desc = "Stop pending workflow debounce timer on Vim exit",
       })
     end,
   },
