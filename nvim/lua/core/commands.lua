@@ -107,11 +107,47 @@ cmd("CopyPath", copy_path("%:p", "CopyPath"), { desc = "Copy absolute file path"
 cmd("CopyRelPath", copy_path("%:.", "CopyRelPath"), { desc = "Copy relative file path" })
 
 -- ── :BufOnly ──────────────────────────────────────────────────────────────────
--- The user is prompted (y/n/c) for each unsaved buffer:
---   y — save and delete
---   n — delete without saving (force)
---   c — cancel the entire BufOnly operation
---
+-- Asks (y/n/c) about each modified buffer:
+--   y — save, then delete
+--   n — delete without saving
+--   c — cancel the rest of the operation
+
+--- Handle one buffer. Returns "deleted", "skipped" (kept; the operation goes on) or "cancel".
+---@param buf integer
+---@return "deleted"|"skipped"|"cancel"
+local function bufonly_one(buf)
+  if not vim.bo[buf].modified then
+    pcall(vim.api.nvim_buf_delete, buf, { force = false })
+    return "deleted"
+  end
+
+  local name = vim.api.nvim_buf_get_name(buf)
+  local label = name ~= "" and vim.fn.fnamemodify(name, ":~:.") or ("[buf " .. buf .. "]")
+  local answer =
+    vim.fn.input("BufOnly: '" .. label .. "' has unsaved changes. Save? [y]es / [n]o (discard) / [c]ancel: ")
+  vim.cmd("redraw") -- clear the cmdline
+
+  if answer == "y" or answer == "Y" then
+    local save_ok, save_err = pcall(vim.api.nvim_buf_call, buf, function()
+      vim.cmd("write")
+    end)
+    if not save_ok then
+      vim.notify("[BufOnly] Could not save '" .. label .. "': " .. tostring(save_err), vim.log.levels.WARN)
+      return "skipped"
+    end
+    pcall(vim.api.nvim_buf_delete, buf, { force = false })
+    return "deleted"
+  end
+
+  if answer == "n" or answer == "N" then
+    pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    return "deleted"
+  end
+
+  -- 'c', empty, or any other input cancels the operation.
+  return "cancel"
+end
+
 cmd("BufOnly", function()
   local current = vim.api.nvim_get_current_buf()
   local ok, buffers = pcall(vim.api.nvim_list_bufs)
@@ -121,54 +157,20 @@ cmd("BufOnly", function()
   end
 
   local deleted = 0
-  local cancelled = false
-
   for _, buf in ipairs(buffers) do
-    if cancelled then
-      break
-    end
-    if buf == current or not vim.api.nvim_buf_is_loaded(buf) then
-      goto continue
-    end
-
-    local modified = vim.bo[buf].modified
-    if not modified then
-      pcall(vim.api.nvim_buf_delete, buf, { force = false })
-      deleted = deleted + 1
-    else
-      local name = vim.api.nvim_buf_get_name(buf)
-      local label = name ~= "" and vim.fn.fnamemodify(name, ":~:.") or ("[buf " .. buf .. "]")
-
-      local answer =
-        vim.fn.input("BufOnly: '" .. label .. "' has unsaved changes. Save? [y]es / [n]o (discard) / [c]ancel: ")
-      vim.cmd("redraw") -- clear the cmdline
-
-      if answer == "y" or answer == "Y" then
-        local save_ok, save_err = pcall(vim.api.nvim_buf_call, buf, function()
-          vim.cmd("write")
-        end)
-        if not save_ok then
-          vim.notify("[BufOnly] Could not save '" .. label .. "': " .. tostring(save_err), vim.log.levels.WARN)
-          goto continue
-        end
-        pcall(vim.api.nvim_buf_delete, buf, { force = false })
-        deleted = deleted + 1
-      elseif answer == "n" or answer == "N" then
-        pcall(vim.api.nvim_buf_delete, buf, { force = true })
-        deleted = deleted + 1
-      else
-        -- 'c', empty, or any other input cancels the entire operation.
+    if buf ~= current and vim.api.nvim_buf_is_loaded(buf) then
+      local result = bufonly_one(buf)
+      if result == "cancel" then
         vim.notify(string.format("[BufOnly] Cancelled. %d buffer(s) deleted so far.", deleted))
-        cancelled = true
-        goto continue
+        return
+      end
+      if result == "deleted" then
+        deleted = deleted + 1
       end
     end
-    ::continue::
   end
 
-  if not cancelled then
-    vim.notify(string.format("[BufOnly] Deleted %d buffer(s).", deleted))
-  end
+  vim.notify(string.format("[BufOnly] Deleted %d buffer(s).", deleted))
 end, { desc = "Delete all other buffers (prompts for unsaved)" })
 
 cmd("CleanUp", function()
