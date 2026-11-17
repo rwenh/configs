@@ -42,7 +42,9 @@ function M.filter_test_bundles(jars)
   return vim.tbl_filter(function(jar)
     local base = jar:match("([^/\\]+)$") or jar
     for _, bad in ipairs(NON_BUNDLE) do
-      if base == bad then return false end
+      if base == bad then
+        return false
+      end
     end
     return true
   end, jars)
@@ -61,8 +63,12 @@ function M.detect_tool(root)
   local has_maven = is_file(root .. "/" .. MAVEN_BUILD_FILE)
 
   if has_gradle then
-    if is_exec_file(root .. "/gradlew") then return { kind = "gradle", exe = "./gradlew" } end
-    if vim.fn.executable("gradle") == 1 then return { kind = "gradle", exe = "gradle" } end
+    if is_exec_file(root .. "/gradlew") then
+      return { kind = "gradle", exe = "./gradlew" }
+    end
+    if vim.fn.executable("gradle") == 1 then
+      return { kind = "gradle", exe = "gradle" }
+    end
     if not has_maven then
       if is_file(root .. "/gradlew") then
         return nil, "gradlew exists but is not executable\n  fix: chmod +x " .. root .. "/gradlew"
@@ -72,8 +78,12 @@ function M.detect_tool(root)
   end
 
   if has_maven then
-    if is_exec_file(root .. "/mvnw") then return { kind = "maven", exe = "./mvnw" } end
-    if vim.fn.executable("mvn") == 1 then return { kind = "maven", exe = "mvn" } end
+    if is_exec_file(root .. "/mvnw") then
+      return { kind = "maven", exe = "./mvnw" }
+    end
+    if vim.fn.executable("mvn") == 1 then
+      return { kind = "maven", exe = "mvn" }
+    end
     return nil, "pom.xml found, but neither ./mvnw nor mvn is on PATH"
   end
 

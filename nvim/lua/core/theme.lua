@@ -210,10 +210,7 @@ function M.switch(name)
     return
   end
   if not M.themes[name] then
-    vim.notify(
-      string.format("[theme] '%s' not in: %s", name, table.concat(M.available, ", ")),
-      vim.log.levels.ERROR
-    )
+    vim.notify(string.format("[theme] '%s' not in: %s", name, table.concat(M.available, ", ")), vim.log.levels.ERROR)
     return
   end
   M.config.theme = name

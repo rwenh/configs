@@ -62,7 +62,8 @@ M.node = { apt = "nodejs", dnf = "nodejs", zypper = "nodejs", pacman = "nodejs",
 M.npm = { apt = "npm", dnf = "npm", zypper = "npm", pacman = "npm", apk = "npm", brew = "node" }
 M.tsx = npm("tsx")
 M["ts-node"] = npm("ts-node")
-M.python3 = { apt = "python3", dnf = "python3", zypper = "python3", pacman = "python", apk = "python3", brew = "python" }
+M.python3 =
+  { apt = "python3", dnf = "python3", zypper = "python3", pacman = "python", apk = "python3", brew = "python" }
 M.python = M.python3
 M.cargo = cargo_row
 M.rustc = cargo_row
@@ -76,7 +77,8 @@ M.kotlinc = with({}, { pacman = "kotlin", brew = "kotlin", fallback = "https://k
 
 M.gcc = with(std("gcc"), { fallback = "xcode-select --install (macOS)" })
 M["g++"] = with(std("gcc"), { apt = "g++", dnf = "gcc-c++", zypper = "gcc-c++" })
-M.gfortran = with(std("gcc"), { apt = "gfortran", dnf = "gcc-gfortran", zypper = "gcc-fortran", pacman = "gcc-fortran" })
+M.gfortran =
+  with(std("gcc"), { apt = "gfortran", dnf = "gcc-gfortran", zypper = "gcc-fortran", pacman = "gcc-fortran" })
 M.make = std("make")
 M.cmake = std("cmake")
 M.ctest = M.cmake

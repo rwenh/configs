@@ -229,7 +229,11 @@ function M.symlink_compile_commands(prefix, extra)
         vim.notify("[" .. prefix .. "] compile_commands.json linked from " .. shown, vim.log.levels.INFO)
       else
         vim.notify(
-          "[" .. prefix .. "] found " .. shown .. " but could not link it into the project root — check write permissions.",
+          "["
+            .. prefix
+            .. "] found "
+            .. shown
+            .. " but could not link it into the project root — check write permissions.",
           vim.log.levels.WARN
         )
       end

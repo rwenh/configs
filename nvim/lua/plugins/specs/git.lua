@@ -229,7 +229,11 @@ return {
     dependencies = { "nvim-telescope/telescope.nvim" },
     event = "VeryLazy",
     keys = {
-      { "<leader>.wl", worktree_action("git_worktrees", "Git worktree list / switch"), desc = "Git worktree list / switch" },
+      {
+        "<leader>.wl",
+        worktree_action("git_worktrees", "Git worktree list / switch"),
+        desc = "Git worktree list / switch",
+      },
       { "<leader>.wc", worktree_action("create_git_worktree", "Git worktree create"), desc = "Git worktree create" },
     },
     config = function()

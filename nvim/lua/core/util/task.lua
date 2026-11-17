@@ -14,7 +14,11 @@ local STRATEGY = {
 ---@return string?   reason
 function M.run(opts)
   opts = opts or {}
-  if not opts.cmd or (type(opts.cmd) == "string" and opts.cmd == "") or (type(opts.cmd) == "table" and #opts.cmd == 0) then
+  if
+    not opts.cmd
+    or (type(opts.cmd) == "string" and opts.cmd == "")
+    or (type(opts.cmd) == "table" and #opts.cmd == 0)
+  then
     return nil, "task.run: cmd must be a non-empty string or table"
   end
 

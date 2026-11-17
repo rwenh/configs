@@ -152,10 +152,14 @@ local function collect_plugins()
   local deps = {}
   for name, repo in pairs(dep_repo) do
     if not top[name] then
-      table.insert(
-        deps,
-        { name = name, repo = repo, phase = "dep", spec = "—", triggers = { ["on-require"] = true }, gated = false }
-      )
+      table.insert(deps, {
+        name = name,
+        repo = repo,
+        phase = "dep",
+        spec = "—",
+        triggers = { ["on-require"] = true },
+        gated = false,
+      })
     end
   end
   return top, deps

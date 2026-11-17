@@ -517,21 +517,55 @@ return {
       end
 
       local deferred = {
-        { pattern = "java", suffix = "Java", fn = function() setup_java(dap) end },
-        { pattern = "kotlin", suffix = "Kotlin", fn = function() setup_kotlin(dap, mason) end },
+        {
+          pattern = "java",
+          suffix = "Java",
+          fn = function()
+            setup_java(dap)
+          end,
+        },
+        {
+          pattern = "kotlin",
+          suffix = "Kotlin",
+          fn = function()
+            setup_kotlin(dap, mason)
+          end,
+        },
         {
           pattern = { "c", "cpp", "rust", "zig" },
           suffix = "Codelldb",
-          fn = function() setup_codelldb(dap, mason) end,
+          fn = function()
+            setup_codelldb(dap, mason)
+          end,
         },
-        { pattern = "go", suffix = "Go", fn = function() setup_go(dap, mason) end },
+        {
+          pattern = "go",
+          suffix = "Go",
+          fn = function()
+            setup_go(dap, mason)
+          end,
+        },
         {
           pattern = { "javascript", "typescript", "javascriptreact", "typescriptreact" },
           suffix = "Js",
-          fn = function() setup_js(dap, mason) end,
+          fn = function()
+            setup_js(dap, mason)
+          end,
         },
-        { pattern = "ruby", suffix = "Ruby", fn = function() setup_ruby(dap, mason) end },
-        { pattern = "elixir", suffix = "Elixir", fn = function() setup_elixir(dap, mason) end },
+        {
+          pattern = "ruby",
+          suffix = "Ruby",
+          fn = function()
+            setup_ruby(dap, mason)
+          end,
+        },
+        {
+          pattern = "elixir",
+          suffix = "Elixir",
+          fn = function()
+            setup_elixir(dap, mason)
+          end,
+        },
       }
 
       for _, entry in ipairs(deferred) do

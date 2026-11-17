@@ -42,7 +42,6 @@ local function toolchain()
   end
   _toolchain = { at = now, value = v }
   return v
-
 end
 
 --- Only NextLS is checked here, because its binary is a per-user setting rather than part of the toolchain.
@@ -86,7 +85,12 @@ end
 local ACTIONS = {
   { lhs = "<leader>ext", args = { "test" }, desc = "Elixir mix test" },
   { lhs = "<leader>exC", args = { "test", "--cover" }, desc = "Elixir mix test --cover" },
-  { lhs = "<leader>exw", args = { "test", "--listen-on-stdin", "--stale" }, desc = "Elixir mix test --stale (watch)", interactive = true },
+  {
+    lhs = "<leader>exw",
+    args = { "test", "--listen-on-stdin", "--stale" },
+    desc = "Elixir mix test --stale (watch)",
+    interactive = true,
+  },
   { lhs = "<leader>exf", args = { "format" }, desc = "Elixir mix format" },
   { lhs = "<leader>exp", args = { "phx.server" }, desc = "Elixir Phoenix server", interactive = true },
   { lhs = "<leader>exi", raw = "iex -S mix", desc = "Elixir IEx session", interactive = true },

@@ -36,7 +36,7 @@ return {
     end,
   },
 
-    -- ── Telescope ──────────────────────────────────────────────────────────────
+  -- ── Telescope ──────────────────────────────────────────────────────────────
   {
     "nvim-telescope/telescope.nvim",
     cmd = "Telescope",
@@ -90,18 +90,12 @@ return {
           require("telescope").load_extension("git_worktree")
         end)
         if not ok_wt then
-          vim.notify(
-            "[telescope] git_worktree extension failed: " .. tostring(err_wt),
-            vim.log.levels.WARN
-          )
+          vim.notify("[telescope] git_worktree extension failed: " .. tostring(err_wt), vim.log.levels.WARN)
         end
       end)
 
       if not ok then
-        vim.notify(
-          "[telescope] setup failed: " .. tostring(err),
-          vim.log.levels.WARN
-        )
+        vim.notify("[telescope] setup failed: " .. tostring(err), vim.log.levels.WARN)
       end
     end,
   },
