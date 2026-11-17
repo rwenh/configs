@@ -1,6 +1,7 @@
 -- lua/plugins/specs/lang/css.lua — CSS, CSS modules and Tailwind
 --
 
+local lspreg = require("core.util.lspreg")
 local shared = require("plugins.specs.lang.shared")
 
 -- stylelint lints only projects that configure it.
@@ -20,30 +21,20 @@ shared.gate_linter({ "css", "scss", "less" }, "stylelint", {
 })
 
 -- ── CSS modules LSP ───────────────────────────────────────────────────────────
-local _cssmodules_enabled = false
-local _cssmodules_missing_reported = false
+-- Optional: a missing binary is not reported, because completion for modules is a nicety.
+local _cssmodules_started = false
 
 local function enable_cssmodules_lsp()
-  if _cssmodules_enabled then
+  if _cssmodules_started then
     return
   end
-  if vim.fn.executable("cssmodules-language-server") ~= 1 then
-    if not _cssmodules_missing_reported then
-      _cssmodules_missing_reported = true
-      vim.notify(
-        "[css] cssmodules-language-server not found — CSS module completion unavailable.\n"
-          .. "Install: npm i -g cssmodules-language-server",
-        vim.log.levels.DEBUG
-      )
-    end
-    return
-  end
-  vim.lsp.config("cssmodules_ls", {
+  _cssmodules_started = true
+  lspreg.register("cssmodules_ls", {
+    cmd = { "cssmodules-language-server" },
+    optional = true,
     init_options = { isCSSModules = true },
     filetypes = { "css", "scss", "less", "typescriptreact", "javascriptreact" },
   })
-  vim.lsp.enable("cssmodules_ls")
-  _cssmodules_enabled = true
 end
 
 vim.api.nvim_create_autocmd("BufReadPost", {

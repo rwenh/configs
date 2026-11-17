@@ -1,18 +1,24 @@
 -- ~/.config/nvim/init.lua — v2.6.1 entry point
 --
 -- Load order: bootstrap → options → autocmds → keymaps → commands → lazy/plugins → theme → highlights
+--
+-- Each step is guarded. A failure is reported by module name and startup carries on, so one broken
+-- module cannot leave the editor without keymaps or plugins.
 
--- 0. Byte-compile + cache Lua modules (Neovim 0.9+). Must be first. lazy.nvim
---    detects it and stands down its own cache.
+-- Leader keys first: keymaps stay correct even if core.bootstrap fails. bootstrap sets them again.
+vim.g.mapleader = " "
+vim.g.maplocalleader = " "
+
+-- 0. Byte-compile and cache Lua modules (Neovim 0.9+). lazy.nvim stands down its own cache when this is on.
 if vim.loader then
   vim.loader.enable()
 end
 
 -- ── Poison-proof require ──────────────────────────────────────────────────────
--- LuaJIT leaves a sentinel in package.loaded after a FAILED require, so the next
--- require of that module reports "loop or previous error loading module 'X'" and
--- hides the real error. safe_require() clears sentinels under the given prefixes,
--- retries once, and returns the real error (with a traceback) if it still fails.
+-- LuaJIT leaves a sentinel in package.loaded after a FAILED require, so the next require of that module
+-- reports "loop or previous error loading module 'X'" and hides the real error. safe_require() clears the
+-- sentinels under the given prefixes, retries once, and returns the real error (with a traceback) if it
+-- still fails.
 local function clear_poison(prefixes)
   local cleared = {}
   for name, v in pairs(package.loaded) do
@@ -50,50 +56,54 @@ local function safe_require(mod, prefixes)
   return false, err
 end
 
--- 1. Bootstrap lazy.nvim + leader keys + version stamp (must be first)
-require("core.bootstrap")
+-- ── Steps ─────────────────────────────────────────────────────────────────────
 
--- 2. Vim options (no plugins needed)
-require("core.options")
+--- Require one module. A failure is reported by name, and startup carries on.
+---@param mod      string
+---@param prefixes string[]?
+---@return boolean ok
+local function step(mod, prefixes)
+  local ok, err = safe_require(mod, prefixes)
+  if not ok then
+    vim.notify(("[init] %s failed to load:\n%s"):format(mod, tostring(err)), vim.log.levels.ERROR)
+  end
+  return ok
+end
 
--- 3. Autocommands
-require("core.autocmds")
+-- 1–5. Core modules
+step("core.bootstrap")
+step("core.options")
+step("core.autocmds")
+step("core.keymaps")
+step("core.commands")
 
--- 4. Global keymaps
-require("core.keymaps")
-
--- 5. User commands
-require("core.commands")
-
--- 6. Plugin manager + all plugin specs (core.lazy; was lua/plugins/init.lua)
-local _plugins_ok, _plugins_err = safe_require("core.lazy", { "core.lazy", "plugins" })
-if _plugins_ok then
+-- 6. Plugin manager and every plugin spec (core.lazy)
+local plugins_ok = step("core.lazy", { "core.lazy", "plugins" })
+if plugins_ok then
   local ok_setup, setup_err = pcall(function()
     require("core.lazy").setup()
   end)
   if not ok_setup then
-    _plugins_ok, _plugins_err = false, setup_err
+    plugins_ok = false
+    vim.notify(
+      "[init] lazy.nvim setup failed:\n"
+        .. tostring(setup_err)
+        .. "\n\nTroubleshooting:\n"
+        .. "  1. Delete ~/.local/share/nvim and ~/.cache/nvim\n"
+        .. "  2. Restart Neovim — lazy.nvim will reinstall\n"
+        .. "  3. Run :MasonInstallAll\n",
+      vim.log.levels.ERROR
+    )
   end
 end
-if not _plugins_ok then
-  vim.notify(
-    "[init.lua] core.lazy failed to load:\n"
-      .. tostring(_plugins_err)
-      .. "\n\nTroubleshooting:\n"
-      .. "  1. Delete ~/.local/share/nvim and ~/.cache/nvim\n"
-      .. "  2. Restart Neovim — lazy.nvim will reinstall\n"
-      .. "  3. Run :MasonInstallAll\n",
-    vim.log.levels.ERROR
-  )
-end
 
--- 7. Theme (after plugins so colorscheme plugins are available)
+-- 7. Theme (after plugins, so colorscheme plugins exist)
 local ok_theme, theme_err = pcall(function()
   require("core.theme").setup()
 end)
 if not ok_theme then
   vim.notify(
-    "[init.lua] theme.setup() failed: " .. tostring(theme_err) .. "\nFalling back to built-in 'default' colorscheme.",
+    "[init] theme.setup() failed: " .. tostring(theme_err) .. "\nFalling back to built-in 'default' colorscheme.",
     vim.log.levels.WARN
   )
   pcall(vim.cmd.colorscheme, "default")
@@ -104,16 +114,16 @@ local ok_hl, hl_err = pcall(function()
   require("core.highlights").apply()
 end)
 if not ok_hl then
-  vim.notify("[init.lua] highlights.apply() failed: " .. tostring(hl_err), vim.log.levels.WARN)
+  vim.notify("[init] highlights.apply() failed: " .. tostring(hl_err), vim.log.levels.WARN)
 end
 
--- 9. Startup stats (only when plugins loaded successfully)
-if _plugins_ok then
+-- 9. Startup checks and stats (only when plugins loaded)
+if plugins_ok then
   vim.api.nvim_create_autocmd("User", {
     pattern = "LazyDone",
     once = true,
     callback = function()
-      -- Cross-check lspconfig ↔ Mason naming drift (logs at DEBUG level only)
+      -- Naming drift between lspconfig and Mason (logged at DEBUG only)
       pcall(function()
         require("core.util.packages").validate()
       end)
@@ -121,7 +131,7 @@ if _plugins_ok then
         require("core.util.packages").validate_dap()
       end)
 
-      -- Flag names, types and defaults live in lua/core/flags.lua (single source of truth).
+      -- Flag names, types and defaults live in lua/core/flags.lua
       local ok_flags, flags = pcall(require, "core.flags")
       local flag_issues = ok_flags and flags.type_issues() or {}
       if #flag_issues > 0 then

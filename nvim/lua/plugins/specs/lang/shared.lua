@@ -1,4 +1,5 @@
--- lua/plugins/specs/lang/shared.lua — shared constants, spec helpers and per-project linter gating
+-- lua/plugins/specs/lang/shared.lua — filetype lists, spec helpers, project-config detection,
+-- per-project linter gates and build helpers
 --
 
 local M = {}
@@ -110,18 +111,21 @@ function M.has_project_config(root, spec)
   return hit
 end
 
--- ── Per-project linter gating ─────────────────────────────────────────────────
+-- ── Per-project linter gates ──────────────────────────────────────────────────
+--
+-- A gate keeps one nvim-lint linter in a filetype's list only while the current project configures
+-- it, and its binary exists. Registering a gate does nothing else: nvim-lint is not required here,
+-- because requiring it at spec load ran before it was on the runtime path.
+-- apply_gates() runs when nvim-lint configures itself, and on every BufEnter and DirChanged.
+
+local _gates = {} -- linter name -> { fts = string[], spec = ProjectConfigSpec }
+local _autocmd_set = false
 
 ---@param fts    string[]
----@param linter string   nvim-lint linter name
+---@param linter string
 ---@param spec   ProjectConfigSpec
----@return boolean wanted
-function M.sync_linter(fts, linter, spec)
-  local ok, lint = pcall(require, "lint")
-  if not ok or type(lint) ~= "table" then
-    return false
-  end
-
+---@param lint   table  the nvim-lint module
+local function sync_one(fts, linter, spec, lint)
   local wanted = M.has_project_config(M.project_root(), spec)
   if wanted and spec.bin and vim.fn.executable(spec.bin) ~= 1 then
     wanted = false
@@ -144,21 +148,34 @@ function M.sync_linter(fts, linter, spec)
     end
     lint.linters_by_ft[ft] = list
   end
-  return wanted
+end
+
+--- Bring every registered gate in line with the current buffer's project. Does nothing until nvim-lint is loaded.
+function M.apply_gates()
+  local lint = package.loaded["lint"]
+  if type(lint) ~= "table" then
+    return
+  end
+  for linter, g in pairs(_gates) do
+    sync_one(g.fts, linter, g.spec, lint)
+  end
 end
 
 ---@param fts    string[]
 ---@param linter string
 ---@param spec   ProjectConfigSpec
 function M.gate_linter(fts, linter, spec)
-  M.sync_linter(fts, linter, spec)
-  vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "FileType", "DirChanged" }, {
-    group = vim.api.nvim_create_augroup("LinterGate_" .. linter, { clear = true }),
-    callback = function()
-      M.sync_linter(fts, linter, spec)
-    end,
-    desc = "Keep " .. linter .. " in step with the project's configuration",
-  })
+  _gates[linter] = { fts = fts, spec = spec }
+  if not _autocmd_set then
+    _autocmd_set = true
+    vim.api.nvim_create_autocmd({ "BufEnter", "DirChanged" }, {
+      group = vim.api.nvim_create_augroup("LinterGate", { clear = true }),
+      callback = function()
+        M.apply_gates()
+      end,
+      desc = "Keep gated nvim-lint linters in step with the project",
+    })
+  end
 end
 
 -- ── Build helpers ─────────────────────────────────────────────────────────────
@@ -185,8 +202,8 @@ local function link(src, dst)
   return vim.uv.fs_symlink(src, dst) == true
 end
 
----@param prefix string  notification tag, e.g. "c" or "cpp"
----@param extra  string[]?  additional candidate paths
+---@param prefix string       notification tag, e.g. "c" or "cpp"
+---@param extra  string[]?    additional candidate paths
 function M.symlink_compile_commands(prefix, extra)
   local root = M.project_root()
   local dst = root .. "/compile_commands.json"
@@ -208,17 +225,11 @@ function M.symlink_compile_commands(prefix, extra)
   for _, src in ipairs(candidates) do
     if vim.fn.filereadable(src) == 1 then
       local shown = vim.fn.fnamemodify(src, ":~:.")
-
       if link(src, dst) and vim.fn.filereadable(dst) == 1 then
         vim.notify("[" .. prefix .. "] compile_commands.json linked from " .. shown, vim.log.levels.INFO)
       else
         vim.notify(
-          "["
-            .. prefix
-            .. "] found "
-            .. shown
-            .. " but could not link it into the project root"
-            .. " — check write permissions.",
+          "[" .. prefix .. "] found " .. shown .. " but could not link it into the project root — check write permissions.",
           vim.log.levels.WARN
         )
       end
