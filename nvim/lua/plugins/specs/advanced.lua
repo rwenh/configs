@@ -1,6 +1,8 @@
 -- lua/plugins/specs/advanced.lua — editing enhancements
 --
 
+local flags = require("core.flags")
+
 return {
 
   {
@@ -119,6 +121,20 @@ return {
       { "<A-j>", mode = { "n", "v" } },
       { "<A-k>", mode = { "n", "v" } },
       { "<A-l>", mode = { "n", "v" } },
+      {
+        "<leader>em",
+        function()
+          require("mini.files").open(vim.api.nvim_buf_get_name(0))
+        end,
+        desc = "Files: current file's directory",
+      },
+      {
+        "<leader>eM",
+        function()
+          require("mini.files").open(require("core.util.path").find_root() or vim.fn.getcwd())
+        end,
+        desc = "Files: project root",
+      },
     },
     config = function()
       local function setup(mod, opts)
@@ -132,6 +148,7 @@ return {
 
       setup("align")
       setup("comment")
+      setup("files")
       setup("move")
       setup("splitjoin")
       setup("surround", {
@@ -219,13 +236,10 @@ return {
       }
     end,
     config = function(_, opts)
-      local ok, ufo = pcall(require, "ufo")
-      if not ok then
-        return
-      end
-      pcall(function()
+      local ufo = require("ufo")
+      require("core.util.safe_setup").run("nvim-ufo", function()
         ufo.setup(opts)
-      end)
+      end, "run :Lazy update nvim-ufo")
       vim.keymap.set("n", "zR", ufo.openAllFolds)
       vim.keymap.set("n", "zM", ufo.closeAllFolds)
       vim.keymap.set("n", "zr", ufo.openFoldsExceptKinds)
@@ -267,28 +281,23 @@ return {
         return
       end
 
-      local neoscroll_active = package.loaded["neoscroll"]
-        or #vim.api.nvim_get_runtime_file("lua/neoscroll.lua", false) > 0
-        or #vim.api.nvim_get_runtime_file("lua/neoscroll/init.lua", false) > 0
+      -- neoscroll owns scrolling (hud.lua). mini.animate scrolling is opt-in, so there is one scroll owner and
+      -- no load-order race between the two plugins.
+      local mini_scrolls = flags.get("force_mini_animate_scroll", false) == true
 
       local mouse_scrolled = false
-      for _, dir in ipairs({ "Up", "Down" }) do
-        local key = "<ScrollWheel" .. dir .. ">"
-        vim.keymap.set({ "", "i" }, key, function()
-          mouse_scrolled = true
-          return key
-        end, { expr = true })
+      if mini_scrolls then
+        for _, dir in ipairs({ "Up", "Down" }) do
+          local key = "<ScrollWheel" .. dir .. ">"
+          vim.keymap.set({ "", "i" }, key, function()
+            mouse_scrolled = true
+            return key
+          end, { expr = true })
+        end
       end
 
-      local scroll_cfg
-      if neoscroll_active and vim.g.force_mini_animate_scroll ~= true then
-        scroll_cfg = { enable = false }
-        vim.notify(
-          "[advanced] mini.animate scroll disabled — neoscroll.nvim is active.\n"
-            .. "Set vim.g.force_mini_animate_scroll = true to override.",
-          vim.log.levels.DEBUG
-        )
-      else
+      local scroll_cfg = { enable = false }
+      if mini_scrolls then
         scroll_cfg = {
           timing = animate.gen_timing.linear({ duration = 80, unit = "total" }),
           subscroll = animate.gen_subscroll.equal({

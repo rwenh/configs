@@ -3,9 +3,10 @@
 --   write: nvim --headless -u NONE "+luafile scripts/gen_docs.lua"
 --   check: GEN_DOCS=check nvim --headless -u NONE "+luafile scripts/gen_docs.lua"   (exit 1 if stale)
 --
--- Reads the sources directly: lua/core/flags.lua for escape hatches and the plugin spec files for
--- plugins. Nothing is installed, loaded by lazy.nvim or checked for updates, so it runs on a fresh
--- checkout. Versions come from lazy-lock.json and are not part of these tables.
+-- Reads lua/core/flags.lua for escape hatches and loads the spec modules named in plugins/specs/init.lua
+-- for plugins. It does not call lazy.nvim, install anything, or touch the network. Loading a spec module runs
+-- its file-scope code, so that code must not depend on editor state (buffers, loaded plugins).
+-- Versions come from lazy-lock.json and are not part of these tables.
 --
 -- Regions in MANIFEST.md, between <!-- BEGIN GENERATED:name --> and <!-- END GENERATED:name -->:
 --   flags    every escape hatch in lua/core/flags.lua
@@ -50,31 +51,17 @@ end
 
 -- ── Plugins (from the spec sources) ───────────────────────────────────────────
 
--- Every module that declares plugin specs: the registry's imports, plus any language spec file the
--- registry does not import (the same rule lazy.nvim's loader applies in core/lazy.lua).
+-- Every module the plugin registry imports, in registry order.
 local function spec_modules()
-  local mods, seen = {}, {}
-  local function add(m)
-    if not seen[m] then
-      seen[m] = true
-      table.insert(mods, m)
-    end
-  end
   local ok, registry = pcall(require, "plugins.specs")
   if not ok then
     fail("cannot load the spec registry: " .. tostring(registry))
   end
+  local mods, seen = {}, {}
   for _, e in ipairs(registry) do
-    if type(e) == "table" and type(e.import) == "string" then
-      add(e.import)
-    end
-  end
-  local files = vim.fn.readdir(root .. "/lua/plugins/specs/lang")
-  table.sort(files)
-  for _, f in ipairs(files) do
-    local stem = f:match("^(.-)%.lua$")
-    if stem and stem ~= "shared" then
-      add("plugins.specs.lang." .. stem)
+    if type(e) == "table" and type(e.import) == "string" and not seen[e.import] then
+      seen[e.import] = true
+      table.insert(mods, e.import)
     end
   end
   return mods

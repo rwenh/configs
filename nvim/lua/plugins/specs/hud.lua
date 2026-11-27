@@ -128,9 +128,9 @@ return {
       if not ok then
         return
       end
-      pcall(function()
+      require("core.util.safe_setup").run("barbecue", function()
         barbecue.setup(opts)
-      end)
+      end, "run :Lazy update barbecue.nvim")
 
       vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
         group = vim.api.nvim_create_augroup("WinbarFallback", { clear = true }),

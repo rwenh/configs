@@ -4,6 +4,52 @@ Versions follow `lua/core/bootstrap.lua`. Newest first. Unreleased changes are l
 
 ### Unreleased
 
+#### Verification
+- `sh scripts/check.sh` is the single gate: pinned StyLua, luacheck, parse, unit tests, structure and docs checks, and the generated tables. It exits 0 on this tree.
+- `tests/run.lua`: 27 unit tests for the pure modules. No plugins are needed.
+- `scripts/check_graph.lua`: every local require resolves; every spec file is imported by the registry; every `vim.g` read is registered; every registered flag is read.
+- `scripts/check_docs.lua`: every KEYMAPS.md key is bound; every lazy-lock.json entry is used; every declared repository is pinned.
+- `.stylua-version` pins StyLua 2.6.0. `.luacheckrc` configures luacheck.
+
+#### Fixed
+- Java `<leader>'r` failed on packaged files (javac, then `java` by bare class name). It now runs the JDK 11+ source launcher.
+- C, Kotlin and VHDL build products go to the cache, not beside the source or into the project root.
+- Rust `<leader>'r` runs the file's own bin or example. The feature toggle restores the cargo default when emptied.
+- `:MasonInstallAll` times out on a stall (no package finished within the limit), not on total duration. The flag documentation now says so.
+- `:checkhealth core` checks lspconfig entries and Mason packages. Its previous "no drift detected" message checked only row shape.
+- The lazy.nvim pin is read from `lazy-lock.json`. An offline cache must be the pinned commit. Startup runs no git subprocess.
+- mini.animate has one scroll owner (neoscroll). Its scrolling is opt-in, so there is no load-order race.
+- `<leader>fv` no longer matches sibling directories (`/a/proj` against `/a/proj-old`).
+- A missing formatter is reported on manual `:Format`. It was silent.
+- The workflow "run current file" template condition no longer resolves commands or creates directories when listed.
+- The Java `close_on_exit` option was ignored; removed. The selection interpreter path is shell-quoted.
+- README: copy-paste debris from the source bundle removed.
+
+#### Changed
+- Nine hand-rolled TTL caches (ruby, javascript, kotlin, java, elixir, shared, python, test, theme) use `core.util.cache`.
+- Root detection stops at the first VCS root. A stray primary marker above a repository no longer captures it.
+- Declined project files (`.lspconfig.lua`, `.nvim-dap.lua`, `.overseer.lua`, and `.env` URLs) stay declined until the file changes or the new `:ProjConfRecheck` runs.
+- Core keymaps are checked for replacement once plugins load. `:KeymapHealth` reports replaced maps as well as registration conflicts. The four deliberate rebinds of Neovim defaults (`]b`, `[b`, `]t`, `[t`) are not reported.
+- Neovim 0.11 API only: `vim.hl` and `vim.uv` without fallbacks; `unpack` without the table shim.
+- EDITS.md sections 1–9 applied. A failed registry load in `lazy.lua` is now fatal, not an empty plugin list.
+- `:checkhealth core` shows the Mason LSP check's real result (see Fixed).
+
+#### Added
+- oil.nvim (`-`, `<leader>eo`), mini.files (`<leader>em`, `<leader>eM`), neogit (`<leader>.N`, `<leader>.C`), gv.vim (`<leader>.v`), vim-fugitive, tailwind-tools.nvim (loads on markup and style files; sets up in Tailwind projects).
+- `<leader>got`, `<leader>gof`, `<leader>goc` (Go); `<leader>ktt` (Kotlin test, with the `test` goal for Gradle and Maven).
+- `:ProjConfRecheck`.
+
+#### Removed
+- blame.nvim and vim-test. No keys were in use (gitsigns owns `.B`; neotest owns test keys). Their lock entries are gone.
+- KEYMAPS rows with no binding: `<leader>'t`, `<leader>'F`, and the `<leader>tcv/tcs/tct` aliases.
+- `vim.g.term_max_runs` from MANIFEST. It was documented but never registered or read.
+
+#### Deferred
+- Language manifest: one registration per language, instead of about twelve touchpoints.
+- Layering: move `cobol`, `vhdl` and `jvm` from `core/util` into `lang/`.
+- Route every `vim.g` read through `flags.get`. `check_graph.lua` enforces registration for now.
+- Generate KEYMAPS.md from a keymap registry. `check_docs.lua` enforces agreement for now.
+
 #### Added
 - `core/util/platform.lua` and `core/util/system_pkgs.lua`. Install hints for apt, dnf, zypper, pacman, apk and brew come from one registry, and `:checkhealth core` uses it.
 - `:Theme <name>` switches theme, with completion.

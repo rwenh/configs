@@ -61,7 +61,7 @@ local function toggle_cargo_features()
       table.insert(new_list, f)
     end
     table.sort(new_list)
-    vim.g.rustaceanvim_features = new_list
+    vim.g.rustaceanvim_features = #new_list > 0 and new_list or nil
 
     -- rustaceanvim re-evaluates `server.settings`
     pcall(vim.cmd, "RustAnalyzer reloadSettings")
@@ -97,7 +97,7 @@ return {
               { default_settings = default_settings }
             )
             local feats = vim.g.rustaceanvim_features
-            if type(feats) == "table" then
+            if type(feats) == "table" and #feats > 0 then
               local ra = settings["rust-analyzer"]
               ra.cargo = vim.tbl_extend("force", ra.cargo or {}, { features = feats })
             end

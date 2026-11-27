@@ -176,25 +176,17 @@ function M.version_async(bin, cmd, callback, pattern)
     return
   end
 
-  if vim.system then
-    vim.system(cmd, { text = true }, function(result)
-      local ver = "installed"
-      if result.code == 0 and result.stdout and result.stdout ~= "" then
-        local first = vim.trim(result.stdout:match("([^\n]+)") or "")
-        ver = first:match(pattern or "%d+%.%d+%.?%d*") or "installed"
-      end
-      _version_cache[key] = ver
-      vim.schedule(function()
-        callback(ver)
-      end)
-    end)
-  else
-    -- Synchronous fallback for Neovim < 0.10 (no vim.system).
-    local ver = M.version(bin, table.concat(cmd, " "), pattern)
+  vim.system(cmd, { text = true }, function(result)
+    local ver = "installed"
+    if result.code == 0 and result.stdout and result.stdout ~= "" then
+      local first = vim.trim(result.stdout:match("([^\n]+)") or "")
+      ver = first:match(pattern or "%d+%.%d+%.?%d*") or "installed"
+    end
+    _version_cache[key] = ver
     vim.schedule(function()
       callback(ver)
     end)
-  end
+  end)
 end
 
 -- ── Build-flag sanitiser ──────────────────────────────────────────────────────

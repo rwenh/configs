@@ -69,7 +69,7 @@ end
 -- ── Project configuration detection ───────────────────────────────────────────
 
 local CONFIG_TTL = 30
-local _config_cache = {}
+local _config_cache = require("core.util.cache").new({ name = "shared.project_config", ttl = CONFIG_TTL })
 
 ---@class ProjectConfigSpec
 ---@field files   string[]?  config files that count, looked up at the project root
@@ -83,10 +83,9 @@ local _config_cache = {}
 function M.has_project_config(root, spec)
   local files = spec.files or {}
   local key = table.concat({ root, table.concat(files, ","), spec.pkg_key or "" }, "\0")
-  local now = os.time()
-  local cached = _config_cache[key]
-  if cached and (now - cached.at) < CONFIG_TTL then
-    return cached.hit
+  local hit_cached, cached = _config_cache:lookup(key)
+  if hit_cached then
+    return cached
   end
 
   local hit = false
@@ -107,7 +106,7 @@ function M.has_project_config(root, spec)
     end
   end
 
-  _config_cache[key] = { at = now, hit = hit }
+  _config_cache:set(key, hit)
   return hit
 end
 

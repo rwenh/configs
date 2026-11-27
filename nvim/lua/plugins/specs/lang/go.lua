@@ -109,6 +109,20 @@ return {
         ft = GO_FT,
       },
       {
+        "<leader>got",
+        function()
+          local root = require("core.util.path").find_root() or vim.fn.getcwd()
+          require("core.util.task").run({
+            cmd = "cd " .. vim.fn.shellescape(root) .. " && go test ./...",
+            interactive = false,
+          })
+        end,
+        desc = "Go test all",
+        ft = GO_FT,
+      },
+      { "<leader>gof", "<cmd>GoTestFunc<cr>", desc = "Go test function", ft = GO_FT },
+      { "<leader>goc", "<cmd>GoCoverage<cr>", desc = "Go coverage", ft = GO_FT },
+      {
         "<leader>gog",
         function()
           require("core.util.task").run({ cmd = "go generate ./...", interactive = false })

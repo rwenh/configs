@@ -5,7 +5,7 @@ local shared = require("plugins.specs.lang.shared")
 local task = require("core.util.task")
 
 local TTL = 60
-local _toolchain = nil -- { at, value }; global, because Hex lives under MIX_HOME
+local _toolchain = require("core.util.cache").new({ name = "elixir.toolchain", ttl = TTL }) -- Hex lives under MIX_HOME
 local _warned = {} -- code -> true (one notice per session)
 
 local function issue(list, code, msg, fix)
@@ -22,9 +22,9 @@ end
 
 --- Toolchain readiness, cached for TTL seconds.
 local function toolchain()
-  local now = os.time()
-  if _toolchain and (now - _toolchain.at) < TTL then
-    return _toolchain.value
+  local hit, cached = _toolchain:lookup("toolchain")
+  if hit then
+    return cached
   end
   local v = { mix = vim.fn.executable("mix") == 1, hex = false, issues = {} }
   if not v.mix then
@@ -40,7 +40,7 @@ local function toolchain()
       issue(v.issues, "no-hex", "Hex is not installed under " .. mix_home(), "mix local.hex --force")
     end
   end
-  _toolchain = { at = now, value = v }
+  _toolchain:set("toolchain", v)
   return v
 end
 

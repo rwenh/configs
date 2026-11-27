@@ -5,6 +5,8 @@
 --      The nearest primary marker is the root.
 --   2. Otherwise the nearest SECONDARY marker (package.json, Makefile, Gemfile, a VCS
 --      directory) is the root.
+--   The walk stops at the first VCS root (.git, .hg, .svn). Markers above a repository belong to
+--   other projects, so a stray ~/go.mod does not capture the repositories beneath it.
 -- So a Phoenix assets/package.json or a Rails app's nested package.json no longer becomes the
 -- root above the mix.exs or config/application.rb that owns it. The earlier rule took the
 -- nearest marker of any kind.
@@ -19,7 +21,7 @@ local cache = require("core.util.cache")
 local flags = require("core.flags")
 
 local M = {}
-local uv = vim.uv or vim.loop
+local uv = vim.uv
 
 local function positive(name, default)
   local v = flags.get(name, default)
@@ -150,6 +152,10 @@ local function scan(start_key)
       end
       if not secondary and has_any(current, SECONDARY) then
         secondary = current
+      end
+      -- A VCS root bounds the search: markers above a repository belong to other projects.
+      if has_any(current, VCS) then
+        return nil, secondary
       end
     end
     local parent = vim.fn.fnamemodify(current, ":h")

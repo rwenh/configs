@@ -1,6 +1,6 @@
 -- lua/core/util/secure.lua — trusted loading of per-project Lua config files
 --
--- Project files (.lspconfig.lua, .runner.lua, .nvim-dap.lua, .overseer.lua) are
+-- Project files (.lspconfig.lua, .nvim-dap.lua, .overseer.lua) are
 -- arbitrary Lua executed with your privileges. Loading them with dofile() means
 -- merely opening a cloned repo can run its code. This goes through Neovim's trust
 -- database instead: you are prompted once per file+content-hash, and any change

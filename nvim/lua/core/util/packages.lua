@@ -207,4 +207,41 @@ function M.validate_dap()
   return { ok = (#issues == 0), issues = issues }
 end
 
+-- ── M.validate_lsp ────────────────────────────────────────────────────────────
+-- Checks each server row against what is really present: an lspconfig entry in the runtime, and a Mason
+-- package in the registry. Used by :checkhealth core. If Mason's registry has never been downloaded, every
+-- package will be listed; run :MasonUpdate and check again.
+---@return { ok: boolean, issues: string[] }
+function M.validate_lsp()
+  local issues = {}
+  local ok_reg, registry = pcall(require, "mason-registry")
+  -- nvim-lspconfig is lazy-loaded, so it is usually off the runtime path when health runs. Its directory
+  -- comes from lazy's own plugin table, which is available once lazy is set up.
+  local lspconfig_dir
+  local ok_cfg, lazy_cfg = pcall(require, "lazy.core.config")
+  if ok_cfg and lazy_cfg.plugins and lazy_cfg.plugins["nvim-lspconfig"] then
+    lspconfig_dir = lazy_cfg.plugins["nvim-lspconfig"].dir
+  end
+  local function has_config(server)
+    if lspconfig_dir and vim.uv.fs_stat(lspconfig_dir .. "/lsp/" .. server .. ".lua") then
+      return true
+    end
+    return #vim.api.nvim_get_runtime_file("lsp/" .. server .. ".lua", false) > 0
+  end
+  for _, row in ipairs(M.servers) do
+    if not row.managed_by then
+      if not has_config(row.server) then
+        issues[#issues + 1] = ("  %s: no lsp/%s.lua in nvim-lspconfig"):format(row.server, row.server)
+      end
+      if ok_reg and not pcall(registry.get_package, row.mason) then
+        issues[#issues + 1] = ("  %s: Mason package '%s' is not in the registry"):format(row.server, row.mason)
+      end
+    end
+  end
+  if not ok_reg then
+    issues[#issues + 1] = "  mason-registry is not loadable, so Mason package names were not checked"
+  end
+  return { ok = (#issues == 0), issues = issues }
+end
+
 return M

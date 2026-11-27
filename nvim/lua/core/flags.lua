@@ -121,7 +121,7 @@ M.list = {
     name = "disable_project_configs",
     type = "boolean",
     default = "false",
-    effect = "Never load per-project Lua files (`.lspconfig.lua`, `.runner.lua`, `.nvim-dap.lua`, `.overseer.lua`); otherwise they load only after you `:trust` them",
+    effect = "Never load per-project Lua files (`.lspconfig.lua`, `.nvim-dap.lua`, `.overseer.lua`); otherwise they load only after you `:trust` them",
   },
   {
     group = "Core display & behaviour",
@@ -211,7 +211,7 @@ M.list = {
     name = "mason_install_timeout_ms",
     type = "number",
     default = "120000",
-    effect = "Per-install timeout for `:MasonInstallAll` (ms)",
+    effect = "Stall limit for `:MasonInstallAll` (ms): reported when no package finishes for this long",
   },
   {
     group = "Task runner & workflow",
@@ -306,7 +306,7 @@ M.list = {
     name = "force_mini_animate_scroll",
     type = "boolean",
     default = "false",
-    effect = "Force mini.animate scroll even when neoscroll is active",
+    effect = "Let mini.animate animate scrolling (neoscroll owns scrolling by default)",
   },
   {
     group = "UI extras",

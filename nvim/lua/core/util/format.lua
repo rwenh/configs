@@ -79,7 +79,7 @@ function M.run(opts)
   local ft = vim.bo[bufnr].filetype
   local timeout_ms = M.timeout_ms(bufnr)
 
-  local copts = { bufnr = bufnr, timeout_ms = timeout_ms, lsp_format = "fallback", quiet = true }
+  local copts = { bufnr = bufnr, timeout_ms = timeout_ms, lsp_format = "fallback", quiet = false }
   if opts.line1 and opts.line2 then
     local l1, l2 = math.min(opts.line1, opts.line2), math.max(opts.line1, opts.line2)
     local last = vim.api.nvim_buf_get_lines(bufnr, l2 - 1, l2, false)[1] or ""

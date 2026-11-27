@@ -3,7 +3,6 @@
 
 local icons = require("core.util.icons")
 local platform = require("core.util.platform")
-local shared = require("plugins.specs.lang.shared")
 
 local function notify(msg, level)
   vim.notify("[markdown] " .. msg, level or vim.log.levels.WARN)

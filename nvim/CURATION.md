@@ -15,6 +15,7 @@ Each file has one job. Other files link to it instead of repeating it. README, K
 - Regenerate after changing a spec or a flag: `nvim --headless -u NONE "+luafile scripts/gen_docs.lua"`.
 - Check without writing: `GEN_DOCS=check nvim --headless -u NONE "+luafile scripts/gen_docs.lua"` (exit 1 if stale).
 - README, KEYMAPS and CHANGELOG are still maintained by hand. The generator never writes them.
+- `scripts/check_docs.lua` checks KEYMAPS.md against the bindings and lazy-lock.json against the specs. `scripts/check_graph.lua` checks requires, spec registration and escape hatches. Both run in `scripts/check.sh`.
 
 ## Open
 

@@ -3,11 +3,12 @@
 
 local shared = require("plugins.specs.lang.shared")
 local bkm = require("core.util.buf_keymap")
+local cache = require("core.util.cache")
 
 local TTL = 30
 local FLAG = "ruby_rails_keymaps"
 
-local _status = {} -- root -> { at, key, value }
+local _status = cache.new({ name = "ruby.bundler", ttl = TTL })
 local _warned = {} -- root .. "\0" .. code -> true (one notice per session)
 
 -- ── Detection (filesystem only; no subprocess) ─────────────────────────────
@@ -173,10 +174,9 @@ end
 local function bundler_status(root)
   local lock = root .. "/Gemfile.lock"
   local key = stat_key(lock)
-  local now = os.time()
-  local hit = _status[root]
-  if hit and hit.key == key and (now - hit.at) < TTL then
-    return hit.value
+  local hit, cached = _status:lookup(root, key)
+  if hit then
+    return cached
   end
 
   local v = {
@@ -225,7 +225,7 @@ local function bundler_status(root)
     end
   end
 
-  _status[root] = { at = now, key = key, value = v }
+  _status:set(root, v, key)
   return v
 end
 
@@ -272,15 +272,20 @@ vim.api.nvim_create_autocmd("DirChanged", {
   desc = "Reconcile Rails keymaps for every open Ruby buffer",
 })
 
-for _, b in ipairs(vim.api.nvim_list_bufs()) do -- buffers that already exist when this spec loads
-  if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].filetype == "ruby" then
-    sync_rails_keymaps(b)
-  end
-end
-
 return {
   -- No startup cond: vim-rails detects Rails per buffer (b:rails_root) and is a no-op elsewhere.
-  { "tpope/vim-rails", ft = { "ruby", "eruby" } },
+  {
+    "tpope/vim-rails",
+    ft = { "ruby", "eruby" },
+    config = function()
+      -- Ruby buffers opened before this plugin loaded get their Rails keymaps now.
+      for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].filetype == "ruby" then
+          sync_rails_keymaps(b)
+        end
+      end
+    end,
+  },
 
   {
     "RRethy/nvim-treesitter-endwise",

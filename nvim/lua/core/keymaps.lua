@@ -32,7 +32,13 @@ local M = {}
 --
 local _conflict_log = {}
 
+-- Neovim maps these by default; this config rebinds them on purpose (see KEYMAPS.md), so they are not conflicts.
+local INTENDED_REBINDS = { ["]b"] = true, ["[b"] = true, ["]t"] = true, ["[t"] = true }
+
 local function record_conflict_if_any(mode, lhs, rhs, desc)
+  if INTENDED_REBINDS[lhs] then
+    return
+  end
   local modes = type(mode) == "table" and mode or { mode }
   for _, m in ipairs(modes) do
     local existing = vim.fn.maparg(lhs, m, false, true)
@@ -60,34 +66,68 @@ local function record_conflict_if_any(mode, lhs, rhs, desc)
   end
 end
 
+local _registered = {} -- { mode, lhs, desc } for every global map this module sets
+
 local function map(mode, lhs, rhs, opts)
   record_conflict_if_any(mode, lhs, rhs, opts and opts.desc)
   vim.keymap.set(mode, lhs, rhs, opts)
+  local desc = opts and opts.desc
+  for _, m in ipairs(type(mode) == "table" and mode or { mode }) do
+    _registered[#_registered + 1] = { mode = m, lhs = lhs, desc = desc }
+  end
+end
+
+--- Core maps that something else has replaced since this module set them. Run after plugins load, so
+--- plugin keys are included; the registration-time log above cannot see them.
+---@return { mode: string, lhs: string, desc: string?, now: string }[]
+local function overwritten()
+  local out = {}
+  for _, r in ipairs(_registered) do
+    local now = vim.fn.maparg(r.lhs, r.mode, false, true)
+    if now and now.lhs and now.buffer == 0 and now.desc ~= r.desc then
+      out[#out + 1] = { mode = r.mode, lhs = r.lhs, desc = r.desc, now = now.desc or "(no description)" }
+    end
+  end
+  return out
 end
 
 vim.api.nvim_create_user_command("KeymapHealth", function()
-  if #_conflict_log == 0 then
-    vim.notify(
-      "[keymaps] No conflicts detected while registering global keymaps this session.\n"
-        .. "(This reflects conflicts caught at registration time, not a live re-scan —\n"
-        .. "Neovim's keymap table can't retroactively reveal an already-resolved overwrite.)",
-      vim.log.levels.INFO
-    )
+  local lines = {}
+  if #_conflict_log > 0 then
+    lines[#lines + 1] = string.format("[keymaps] %d conflict(s) seen while registering core keymaps:", #_conflict_log)
+    for _, c in ipairs(_conflict_log) do
+      lines[#lines + 1] =
+        string.format("  mode=%-2s lhs=%-15s %q overwrote %q", c.mode, c.lhs, c.new_desc, c.existing_desc)
+    end
+  end
+  local replaced = overwritten()
+  if #replaced > 0 then
+    lines[#lines + 1] = string.format("[keymaps] %d core keymap(s) replaced after registration:", #replaced)
+    for _, o in ipairs(replaced) do
+      lines[#lines + 1] = string.format("  mode=%-2s lhs=%-15s core %q, now %q", o.mode, o.lhs, o.desc or "", o.now)
+    end
+  end
+  if #lines == 0 then
+    vim.notify("[keymaps] No conflicts: every core keymap is still the one this config set.", vim.log.levels.INFO)
     return
   end
-  local lines = { string.format("[keymaps] %d conflict(s) detected during registration:", #_conflict_log) }
-  for _, c in ipairs(_conflict_log) do
-    table.insert(
-      lines,
-      string.format("  mode=%-2s lhs=%-15s %q overwrote %q", c.mode, c.lhs, c.new_desc, c.existing_desc)
-    )
-  end
   vim.notify(table.concat(lines, "\n"), vim.log.levels.WARN)
-end, { desc = "Show keymap conflicts caught at registration time this session" })
+end, { desc = "Show core keymaps that conflicted or were replaced" })
+
+-- Once plugins have loaded, say so if a plugin replaced a core map. Silent when there is none.
+vim.api.nvim_create_autocmd("User", {
+  pattern = "LazyDone",
+  once = true,
+  callback = function()
+    local n = #overwritten()
+    if n > 0 then
+      vim.notify(("[keymaps] %d core keymap(s) replaced by plugins; run :KeymapHealth"):format(n), vim.log.levels.WARN)
+    end
+  end,
+  desc = "Report core keymaps that a plugin replaced",
+})
 
 -- ── Basic editing ──────────────────────────────────────────────────────────────
-map("v", "<", "<gv", { noremap = true, silent = true, desc = "Indent left (keep selection)" })
-map("v", ">", ">gv", { noremap = true, silent = true, desc = "Indent right (keep selection)" })
 map("n", "<Esc>", "<cmd>nohlsearch<cr>", { noremap = true, silent = true, desc = "Clear search highlight" })
 
 -- ── Window management ─────────────────────────────────────────────────────────

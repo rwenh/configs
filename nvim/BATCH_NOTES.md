@@ -42,8 +42,10 @@ and the docs. There is no `tests/` directory in this tree. Formatting follows `s
 
 ## Still open
 
+- Language manifest: a language's registrations are spread over about twelve files (see CHANGELOG, Deferred).
+- Move `cobol`, `vhdl` and `jvm` from `core/util` into `lang/`.
+- Route every `vim.g` read through `flags.get`. `check_graph.lua` enforces registration; the reads are not routed yet.
+- Generate KEYMAPS.md from a keymap registry. `check_docs.lua` enforces agreement for now.
 - Duplicated Python interpreter resolvers (`runner.python_bin` and the candidates in `python.lua`).
-- Structure: split `lsp.lua`, extract `ui.lua`, per-language DAP ownership.
-- Tool registry for formatters, DAP adapters and runtimes (language servers only so far).
-- `shared.lua` still has its own cache for linter gating.
-- README and KEYMAPS prose, which the generator does not cover.
+- Diagnostics configuration lives in the nvim-lspconfig spec; it belongs in core.
+- Per-language DAP ownership: Java configurations are split between `dap.lua` and `java.lua`.

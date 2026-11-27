@@ -127,18 +127,15 @@ end
 function M.project_root(buf)
   local ok_name, name = pcall(vim.api.nvim_buf_get_name, buf or 0)
   local dir = (ok_name and name ~= "") and vim.fn.fnamemodify(name, ":p:h") or vim.fn.getcwd()
-  local ok, path = pcall(require, "core.util.path")
-  local found = ok and path.find_up({ ".git", ".env", ".env.local", ".env.development" }, dir) or nil
-  return found or dir
+  return require("core.util.path").find_root(dir) or dir
 end
 
 -- ── Dotenv reads ───────────────────────────────────────────────────────────
 -- A .env file is read only through vim.secure: the first time it appears, you are asked (once per
--- content hash), like every other project file. A refusal is asked again after DECLINE_TTL seconds.
+-- content hash), like every other project file. A refusal stands until the file changes or :ProjConfRecheck runs.
 -- Off entirely with vim.g.disable_project_configs. Results are cached against the file signature.
 
-local DECLINE_TTL = 60
-local _dotenv = cache.new({ name = "dburl.dotenv", ttl = DECLINE_TTL })
+local _dotenv = cache.new({ name = "dburl.dotenv", ttl = math.huge, on_dirchange = false })
 
 local function dotenv_lookup(file, names)
   local wanted = {}
@@ -161,11 +158,7 @@ local function dotenv_lookup(file, names)
       end
     end
     return nil, nil
-  end, {
-    ttl_for = function(k, u)
-      return (k and u) and math.huge or DECLINE_TTL
-    end,
-  })
+  end)
   return key, url
 end
 
@@ -307,6 +300,11 @@ function M.status()
     return { set = set, source = set and "manual" or nil }
   end
   return { set = true, source = s.kind, label = s.label, dialect = M.dialect(s.url) }
+end
+
+--- Forget the cached .env decisions (see :ProjConfRecheck).
+function M.recheck()
+  _dotenv:clear_all()
 end
 
 return M

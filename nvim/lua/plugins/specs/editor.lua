@@ -162,7 +162,7 @@ return {
           local root = (ok_path and path.find_root()) or vim.fn.getcwd()
 
           local paths = vim.tbl_filter(function(p)
-            return vim.startswith(p, root)
+            return p == root or vim.startswith(p, root .. "/")
           end, visits.list_paths() or {})
 
           if #paths == 0 then
@@ -270,15 +270,26 @@ return {
     },
   },
 
+  -- ── Oil: edit the filesystem as a buffer ──────────────────────────────────
+  {
+    "stevearc/oil.nvim",
+    cmd = "Oil",
+    keys = {
+      { "-", "<cmd>Oil<cr>", desc = "Oil: parent directory" },
+      { "<leader>eo", "<cmd>Oil<cr>", desc = "Open Oil" },
+    },
+    opts = {},
+  },
+
   -- ── Flash ──────────────────────────────────────────────────────────────────
   {
     "folke/flash.nvim",
     event = "VeryLazy",
     opts = { modes = { search = { enabled = false }, char = { enabled = false } } },
     config = function(_, opts)
-      pcall(function()
+      require("core.util.safe_setup").run("flash", function()
         require("flash").setup(opts)
-      end)
+      end, "run :Lazy update flash.nvim")
     end,
   },
 
@@ -375,7 +386,7 @@ return {
         local val = vim.fn.system("git config " .. key):gsub("\n", "")
         return (val ~= "" and not val:find("^fatal")) and val or nil
       end
-      pcall(function()
+      require("core.util.safe_setup").run("template", function()
         template.setup({
           temp_dir = vim.fn.stdpath("config") .. "/templates",
           auto_name = false,
@@ -383,7 +394,7 @@ return {
           author_email = git_cfg("user.email") or "your.email@example.com",
           web_devicons = true,
         })
-      end)
+      end, "run :Lazy update template.nvim")
     end,
   },
 }

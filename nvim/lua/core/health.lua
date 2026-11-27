@@ -179,9 +179,18 @@ function M.check()
     if not ok_v1 then
       vim.health.warn("packages.validate() raised an error", { tostring(result1) })
     elseif result1.ok then
-      vim.health.ok("lspconfig ↔ Mason naming: no drift detected")
+      vim.health.ok("tool registry: rows are well-formed")
     else
-      vim.health.warn("lspconfig ↔ Mason naming drift detected", result1.issues)
+      vim.health.warn("tool registry: malformed rows", result1.issues)
+    end
+
+    local ok_v3, result3 = pcall(packages.validate_lsp)
+    if not ok_v3 then
+      vim.health.warn("packages.validate_lsp() raised an error", { tostring(result3) })
+    elseif result3.ok then
+      vim.health.ok("lspconfig and Mason agree for every registered server")
+    else
+      vim.health.warn("lspconfig / Mason mismatch", result3.issues)
     end
 
     local ok_v2, result2 = pcall(packages.validate_dap)

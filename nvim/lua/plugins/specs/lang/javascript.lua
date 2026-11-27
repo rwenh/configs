@@ -5,7 +5,7 @@ local shared = require("plugins.specs.lang.shared")
 
 -- ── Module system (ESM / CJS) ─────────────────────────────────────────────────
 local MODULE_TTL = 30
-local _module_cache = {}
+local _module_cache = require("core.util.cache").new({ name = "javascript.module", ttl = MODULE_TTL })
 
 local function read_package_type(root)
   local pkg = root .. "/package.json"
@@ -27,13 +27,14 @@ end
 ---@return "esm"|"cjs"|nil  nil when there is no package.json
 local function module_kind(root)
   root = root or shared.project_root()
-  local now = os.time()
-  local cached = _module_cache[root]
-  if cached and (now - cached.at) < MODULE_TTL then
-    return cached.kind or nil
+  local pkg = root .. "/package.json"
+  local sig = require("core.util.cache").file_sig(pkg)
+  local hit, cached = _module_cache:lookup(root, sig)
+  if hit then
+    return cached or nil
   end
   local kind = read_package_type(root)
-  _module_cache[root] = { at = now, kind = kind or false }
+  _module_cache:set(root, kind or false, sig)
   return kind
 end
 

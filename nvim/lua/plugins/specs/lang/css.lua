@@ -80,6 +80,29 @@ vim.api.nvim_create_autocmd("LspAttach", {
   desc = "Register the CSS variable jump keymap when cssls attaches",
 })
 
+--- True when the current buffer's project has a Tailwind configuration file.
+local function tailwind_project()
+  return #vim.fs.find(
+    { "tailwind.config.js", "tailwind.config.cjs", "tailwind.config.mjs", "tailwind.config.ts" },
+    { upward = true, limit = 1, path = vim.fn.expand("%:p:h"), stop = vim.uv.os_homedir() }
+  ) > 0
+end
+
 return {
   shared.treesitter({ "css", "scss" }),
+
+  -- Loads on markup and style filetypes; sets up only in a project with a Tailwind config.
+  {
+    "luckasRanarison/tailwind-tools.nvim",
+    ft = { "html", "css", "scss", "javascriptreact", "typescriptreact", "vue", "svelte" },
+    dependencies = { "nvim-treesitter/nvim-treesitter" },
+    config = function(_, opts)
+      if tailwind_project() then
+        require("core.util.safe_setup").run("tailwind-tools", function()
+          require("tailwind-tools").setup(opts)
+        end, "run :Lazy update tailwind-tools.nvim")
+      end
+    end,
+    opts = {},
+  },
 }

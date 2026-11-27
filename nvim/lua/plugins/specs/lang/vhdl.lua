@@ -145,7 +145,12 @@ local function analyse()
   if not file or not ghdl_ready() or not save_for_run() then
     return
   end
-  ghdl_in_root("ghdl -a " .. vim.fn.shellescape(file))
+  ghdl_in_root(
+    "ghdl -a --workdir="
+      .. vim.fn.shellescape(require("core.util.runner").vhdl_workdir())
+      .. " "
+      .. vim.fn.shellescape(file)
+  )
 end
 
 local function elaborate()
@@ -154,7 +159,12 @@ local function elaborate()
   end
   local entity = ask_entity("Entity to elaborate: ")
   if entity then
-    ghdl_in_root("ghdl -e " .. vim.fn.shellescape(entity))
+    ghdl_in_root(
+      "ghdl -e --workdir="
+        .. vim.fn.shellescape(require("core.util.runner").vhdl_workdir())
+        .. " "
+        .. vim.fn.shellescape(entity)
+    )
   end
 end
 

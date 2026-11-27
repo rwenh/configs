@@ -12,7 +12,7 @@
 | `<Esc>` | Normal | Clear search highlight |
 | `<Esc>` | Terminal | Exit terminal mode (see note below) |
 | `Alt+j` / `Alt+k` | Normal, Visual | Move line / selection down / up |
-| `<` / `>` | Visual | Indent left / right, keep selection |
+| `<` / `>` | Normal, Visual | Indent left / right; the cursor stays in place (stay-in-place.nvim) |
 
 > `<Esc>` leaves terminal mode in every terminal except full-screen programs listed in
 > `vim.g.terminal_tui_programs` (built in: lazygit, htop, yazi, and others). `<C-\><C-n>` always works.
@@ -253,8 +253,6 @@
 |-----|------|--------|
 | `<leader>'r` | Normal | Run current file |
 | `<leader>'s` | Visual | Run selected lines |
-| `<leader>'t` | Normal | Run project test suite |
-| `<leader>'F` | Normal | Run nearest function (Treesitter detection) |
 
 ### Neotest
 
@@ -277,9 +275,6 @@
 | `<leader>'cv` | Load coverage and show |
 | `<leader>'cs` | Coverage summary |
 | `<leader>'ct` | Toggle coverage highlights |
-| `<leader>tcv` | Load coverage (alias) |
-| `<leader>tcs` | Coverage summary (alias) |
-| `<leader>tct` | Toggle highlights (alias) |
 
 ---
 
@@ -586,16 +581,6 @@
 | `<leader>rgS` | Rails server (`bundle exec rails server`) |
 | `<leader>rgd` | Rails db:migrate |
 | `<leader>rgr` | Rails console |
-
-### vim-test
-
-| Key | Action |
-|-----|--------|
-| `<leader>rbn` | Test nearest |
-| `<leader>rbf` | Test file |
-| `<leader>rbs` | Test suite |
-| `<leader>rbl` | Re-run last test |
-| `<leader>rbv` | Open last test file |
 
 ---
 

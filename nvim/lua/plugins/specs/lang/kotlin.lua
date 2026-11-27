@@ -8,6 +8,7 @@
 local shared = require("plugins.specs.lang.shared")
 local jvm = require("core.util.jvm")
 local flags = require("core.flags")
+local cache = require("core.util.cache")
 
 local WARN, INFO = vim.log.levels.WARN, vim.log.levels.INFO
 
@@ -31,19 +32,21 @@ local function project_root()
   return (ok and path.find_root()) or vim.fn.getcwd()
 end
 
----@type table<string, { at: integer, value: boolean }>
-local _spring = {}
+local _spring = cache.new({ name = "kotlin.spring", ttl = 300 })
 
 ---@param root string
 ---@return boolean
 local function is_spring(root)
   local ttl = int_flag("kotlin_spring_cache_ttl", 300, 0)
-  local entry = _spring[root]
-  if ttl > 0 and entry and (os.time() - entry.at) < ttl then
-    return entry.value
+  if ttl == 0 then
+    return jvm.is_spring_project(root)
   end
-  local value = jvm.is_spring_project(root)
-  _spring[root] = { at = os.time(), value = value }
+  local hit, value = _spring:lookup(root)
+  if hit then
+    return value
+  end
+  value = jvm.is_spring_project(root)
+  _spring:set(root, value, nil, ttl)
   return value
 end
 
@@ -170,6 +173,9 @@ local function keys()
     kt("<leader>ktb", function()
       dispatch("build", false, compile_only)
     end, "Kotlin build"),
+    kt("<leader>ktt", function()
+      dispatch("test", false, nil)
+    end, "Kotlin test"),
     kt("<leader>ktr", function()
       dispatch("run", true, compile_and_run)
     end, "Kotlin run"),

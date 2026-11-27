@@ -3,71 +3,32 @@
 -- Why this lives under core.lazy: the module name `plugins` is a require-cycle and poisoned-require
 -- magnet. This module builds the spec list; lua/plugins/ holds only spec files, imported by name.
 --
--- The config root is found from this file's own location, not from stdpath("config"), so the
--- repository works from any checkout. The language spec directory and the docs generator
--- (scripts/gen_docs.lua) both depend on that.
+-- The spec list is plugins/specs/init.lua, the registry. A language spec file the registry does not
+-- import is never loaded. scripts/check_graph.lua reports such orphans, and scripts/gen_docs.lua reads
+-- the same registry without calling lazy.nvim.
 --
--- scripts/gen_docs.lua does not use this module: it reads the spec files directly, so the generated tables need no lazy.nvim call.
+-- A failed registry load is fatal: M.setup() raises and init.lua reports it.
 --
 -- Setup is explicit: init.lua calls M.setup().
 --
 -- Lockfile: after :Lazy update, run :Lazy lock and commit lazy-lock.json. On a new machine, run :Lazy restore.
 
-local ROOT = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 vim.opt.rtp:prepend(lazypath)
 
 local M = {}
 
-local function safe_spec(mod)
-  local ok, result = pcall(require, mod)
-  if not ok then
-    vim.notify(string.format("[lazy] failed to load spec '%s':\n%s", mod, tostring(result)), vim.log.levels.WARN)
-    return {}
-  end
-  if type(result) ~= "table" then
-    vim.notify(string.format("[lazy] spec '%s' returned %s (expected table)", mod, type(result)), vim.log.levels.WARN)
-    return {}
-  end
-  return result
-end
-
--- Lang stems already imported explicitly by plugins.specs (avoid double-loading).
-local function already_imported_lang_stems(core_specs)
-  local stems = {}
-  for _, entry in ipairs(core_specs) do
-    if type(entry) == "table" and type(entry.import) == "string" then
-      local stem = entry.import:match("^plugins%.specs%.lang%.([%w_]+)$")
-      if stem then
-        stems[stem] = true
-      end
-    end
-  end
-  return stems
-end
-
+--- The complete spec list: the plugin registry (plugins/specs/init.lua). A registry that fails to load is
+--- fatal. Failures inside individual language files are reported by lazy.nvim when it imports them.
 local function collect_specs()
-  local specs = {}
-
-  local core_specs = safe_spec("plugins.specs")
-  vim.list_extend(specs, core_specs)
-
-  local already = already_imported_lang_stems(core_specs)
-  local lang_path = ROOT .. "/lua/plugins/specs/lang"
-  local ok_scan, entries = pcall(vim.fn.readdir, lang_path)
-  if ok_scan then
-    table.sort(entries)
-    for _, entry in ipairs(entries) do
-      local stem = entry:match("^(.-)%.lua$")
-      if stem and stem ~= "shared" and not already[stem] then
-        vim.list_extend(specs, safe_spec("plugins.specs.lang." .. stem))
-      end
-    end
-  else
-    vim.notify("[lazy] could not read lang spec directory: " .. lang_path, vim.log.levels.WARN)
+  local ok, registry = pcall(require, "plugins.specs")
+  if not ok then
+    error("cannot load the plugin registry (plugins.specs): " .. tostring(registry), 0)
   end
-
-  return specs
+  if type(registry) ~= "table" then
+    error("plugins.specs returned " .. type(registry) .. " (expected a table)", 0)
+  end
+  return registry
 end
 
 --- The complete spec list: every core spec plus any language spec not imported explicitly.

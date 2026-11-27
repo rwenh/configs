@@ -1,11 +1,10 @@
 -- lua/core/util/projconf.lua — trust-gated loader for per-project Lua files
 --
--- One loader for .runner.lua, .lspconfig.lua, .nvim-dap.lua and .overseer.lua, which were
--- four copies with four caches. Each file runs through vim.secure, so the user is asked once
--- per content hash, and the result must pass a shape check. The outcome is cached against the
--- file signature:
---   * a trusted, valid file is kept until the file or the working directory changes;
---   * a declined or invalid file is re-checked after FAIL_TTL seconds, so a later :trust is seen.
+-- One loader for the per-project Lua files (.lspconfig.lua, .nvim-dap.lua, .overseer.lua). Each file runs
+-- through vim.secure, so the user is asked once per content hash, and the result must pass a shape check.
+-- The outcome is cached against the file signature:
+--   * a valid file, trusted or declined, is kept until the file changes or :ProjConfRecheck runs;
+--   * a declined file is not asked about again on every :cd, which was the old behaviour.
 -- Nothing is read when vim.g.disable_project_configs is set.
 --
 -- The cache is keyed by file path, so each file is always loaded with the same validator.
@@ -17,9 +16,8 @@ local secure = require("core.util.secure")
 local M = {}
 
 local OK_TTL = math.huge
-local FAIL_TTL = 30
 
-local _store = cache.new({ name = "projconf", ttl = FAIL_TTL })
+local _store = cache.new({ name = "projconf", ttl = OK_TTL, on_dirchange = false })
 
 ---@class ProjConf
 ---@field ok     boolean  true when `value` is set and passed validation
@@ -74,7 +72,7 @@ function M.load(root, name, validate)
     return res
   end
   res = evaluate(file, validate or must_be_table)
-  _store:set(file, res, sig, res.ok and OK_TTL or FAIL_TTL)
+  _store:set(file, res, sig)
   return res
 end
 
@@ -83,6 +81,11 @@ end
 ---@param name string
 function M.forget(root, name)
   _store:clear(root .. "/" .. name)
+end
+
+--- Forget every decision, so each project file is checked again on next use (run :trust first if needed).
+function M.recheck()
+  _store:clear_all()
 end
 
 return M

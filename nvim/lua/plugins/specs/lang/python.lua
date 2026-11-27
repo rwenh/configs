@@ -186,7 +186,7 @@ end
 ---@field at      integer  os.time() at verification
 
 ---@type table<string, { hit: PyResolution|nil, tried: string[], at: integer }>
-local _verdicts = {}
+local _verdicts = require("core.util.cache").new({ name = "python.probe", ttl = DEFAULT_PROBE_TTL_S })
 
 -- Concurrent requests for one root share a single probe run.
 ---@type table<string, fun(hit: PyResolution|nil, tried: string[])[]>
@@ -196,8 +196,8 @@ local _inflight = {}
 ---@param done fun(hit: PyResolution|nil, tried: string[])
 local function resolve(root, done)
   local key = root .. "\0" .. (vim.env.VIRTUAL_ENV or "")
-  local v = _verdicts[key]
-  if v and (os.time() - v.at) < int_flag("python_probe_ttl", DEFAULT_PROBE_TTL_S, 1) then
+  local known, v = _verdicts:lookup(key)
+  if known then
     vim.schedule(function()
       done(v.hit, v.tried)
     end)
@@ -210,7 +210,7 @@ local function resolve(root, done)
   _inflight[key] = { done }
 
   local function finish(hit, tried)
-    _verdicts[key] = { hit = hit, tried = tried, at = os.time() }
+    _verdicts:set(key, { hit = hit, tried = tried }, nil, int_flag("python_probe_ttl", DEFAULT_PROBE_TTL_S, 1))
     local waiters = _inflight[key] or {}
     _inflight[key] = nil
     for _, w in ipairs(waiters) do
@@ -370,11 +370,7 @@ local function doctor()
   )
 
   -- Verify afresh: drop this root's cached answer so the report reflects the machine now.
-  for key in pairs(_verdicts) do
-    if vim.startswith(key, root .. "\0") then
-      _verdicts[key] = nil
-    end
-  end
+  _verdicts:clear_all()
   _reported[root] = nil
   resolve(root, function(hit, tried)
     row(

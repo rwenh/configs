@@ -10,8 +10,21 @@
 
 local VERSION = "2.6.1"
 local LAZY_URL = "https://github.com/folke/lazy.nvim.git"
--- Must equal the lazy.nvim entry in lazy-lock.json (branch main). Moved only together with the lock.
-local LAZY_COMMIT = "306a05526ada86a7b30af95c5cc81ffba93fef97"
+-- The pin is read from lazy-lock.json, the one place it is written. A missing or malformed lock stops the
+-- bootstrap with an error instead of guessing a commit.
+local LAZY_COMMIT = (function()
+  local root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h")
+  local ok, lines = pcall(vim.fn.readfile, root .. "/lazy-lock.json")
+  local ok_json, lock = false, nil
+  if ok then
+    ok_json, lock = pcall(vim.json.decode, table.concat(lines, "\n"))
+  end
+  local entry = ok_json and type(lock) == "table" and lock["lazy.nvim"] or nil
+  if type(entry) ~= "table" or type(entry.commit) ~= "string" then
+    error("bootstrap: no lazy.nvim commit in " .. root .. "/lazy-lock.json", 0)
+  end
+  return entry.commit
+end)()
 
 vim.g.nvim_ide_version = VERSION
 
@@ -30,13 +43,9 @@ local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 local cachepath = vim.fn.stdpath("data") .. "/lazy-cache/lazy.nvim"
 
 -- ── Checkout validity ────────────────────────────────────────────────────────
--- Checks that the path is a git checkout with a resolvable HEAD. It does not check the pin.
+-- Checks the files, not git, so startup runs no subprocess. The pin is checked where a commit is chosen.
 local function clone_looks_valid(path)
-  if vim.fn.isdirectory(path) ~= 1 then
-    return false
-  end
-  local head = vim.fn.system({ "git", "-C", path, "rev-parse", "HEAD" })
-  return vim.v.shell_error == 0 and vim.trim(head) ~= ""
+  return vim.uv.fs_stat(path .. "/.git") ~= nil and vim.fn.filereadable(path .. "/lua/lazy/init.lua") == 1
 end
 
 local function head_commit(path)
@@ -49,6 +58,13 @@ end
 local function try_offline_fallback()
   local cache = vim.g.lazy_cache_path or cachepath
   if vim.fn.isdirectory(cache) == 1 and clone_looks_valid(cache) then
+    if head_commit(cache) ~= LAZY_COMMIT then
+      vim.notify(
+        "Offline lazy.nvim cache is not the pinned commit, so it is not restored: " .. cache,
+        vim.log.levels.WARN
+      )
+      return false
+    end
     vim.notify("No network — restoring lazy.nvim from offline cache: " .. cache, vim.log.levels.WARN)
     local ok_cp = (vim.fn.system({ "cp", "-r", cache, lazypath }) and vim.v.shell_error == 0)
     if ok_cp and clone_looks_valid(lazypath) then

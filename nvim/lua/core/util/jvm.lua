@@ -98,6 +98,7 @@ local GRADLE_GOALS = {
   run = "run",
   bootRun = "bootRun",
   bootJar = "bootJar",
+  test = "test",
 }
 
 local MAVEN_GOALS = {
@@ -106,6 +107,7 @@ local MAVEN_GOALS = {
   run = "exec:java",
   bootRun = "spring-boot:run",
   bootJar = "package",
+  test = "test",
 }
 
 local GOALS = { gradle = GRADLE_GOALS, maven = MAVEN_GOALS }

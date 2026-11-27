@@ -1,7 +1,7 @@
 -- lua/plugins/specs/test.lua — neotest + coverage
 --
 
-local _vitest_cache = {}
+local _vitest_cache = require("core.util.cache").new({ name = "test.vitest", ttl = math.huge })
 
 return {
   {
@@ -150,13 +150,7 @@ return {
         vim.notify("[neotest] setup failed: " .. tostring(err) .. "\nRun :checkhealth neotest", vim.log.levels.ERROR)
       end
 
-      vim.api.nvim_create_autocmd("DirChanged", {
-        group = vim.api.nvim_create_augroup("NeotestVitestCacheInvalidate", { clear = true }),
-        callback = function()
-          _vitest_cache = {}
-        end,
-        desc = "Invalidate vitest config-detection cache on directory change",
-      })
+      -- The vitest detection cache clears on DirChanged by itself (core.util.cache).
     end,
 
     opts = function()
@@ -178,16 +172,17 @@ return {
         { "vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.config.mjs", "vitest.config.cjs" }
 
       local function is_vitest_root(root)
-        if _vitest_cache[root] ~= nil then
-          return _vitest_cache[root]
+        local hit, cached = _vitest_cache:lookup(root)
+        if hit then
+          return cached
         end
         for _, pat in ipairs(VITEST_CONFIGS) do
           if vim.fn.findfile(pat, root .. ";") ~= "" then
-            _vitest_cache[root] = true
+            _vitest_cache:set(root, true)
             return true
           end
         end
-        _vitest_cache[root] = false
+        _vitest_cache:set(root, false)
         return false
       end
 

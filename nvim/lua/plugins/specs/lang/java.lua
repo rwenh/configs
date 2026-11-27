@@ -5,6 +5,7 @@
 --
 
 local bkm = require("core.util.buf_keymap")
+local cache = require("core.util.cache")
 local jvm = require("core.util.jvm")
 local platform = require("core.util.platform")
 local flags = require("core.flags")
@@ -12,16 +13,6 @@ local flags = require("core.flags")
 local MIN_JAVA = 17
 local JAVA_TTL_S = 600
 local BUNDLE_TTL_S = 60
-local ROOT_MARKERS = {
-  ".git",
-  "mvnw",
-  "gradlew",
-  "pom.xml",
-  "build.gradle",
-  "build.gradle.kts",
-  "settings.gradle",
-  "settings.gradle.kts",
-}
 local ERROR, WARN, INFO = vim.log.levels.ERROR, vim.log.levels.WARN, vim.log.levels.INFO
 
 ---@param name    string
@@ -38,16 +29,15 @@ end
 
 -- ── Facts ─────────────────────────────────────────────────────────────────────
 
----@type { at: integer, major: integer|nil }
-local _java = { at = 0, major = nil }
+local _java = cache.new({ name = "java.version", ttl = JAVA_TTL_S })
 
 ---@return integer|nil
 local function java_major()
-  if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then
-    return _java.major
+  local hit, major = _java:lookup("major")
+  if hit then
+    return major
   end
 
-  local major
   if vim.fn.executable("java") == 1 then
     local ok, res = pcall(function()
       return vim.system({ "java", "-version" }, { text = true, timeout = 5000 }):wait()
@@ -59,20 +49,21 @@ local function java_major()
     end
   end
 
-  _java = { at = os.time(), major = major }
+  _java:set("major", major)
   return major
 end
 
 ---@param cb fun(major: integer|nil)  runs on the main loop
 local function java_major_async(cb)
-  if _java.at > 0 and (os.time() - _java.at) < JAVA_TTL_S then
+  local hit, major = _java:lookup("major")
+  if hit then
     return vim.schedule(function()
-      cb(_java.major)
+      cb(major)
     end)
   end
 
   if vim.fn.executable("java") ~= 1 then
-    _java = { at = os.time(), major = nil }
+    _java:set("major", nil)
     return vim.schedule(function()
       cb(nil)
     end)
@@ -80,10 +71,10 @@ local function java_major_async(cb)
 
   vim.system({ "java", "-version" }, { text = true, timeout = 5000 }, function(res)
     local text = (res.stderr or "") .. (res.stdout or "")
-    local major = tonumber(text:match('version "1%.(%d+)') or text:match('version "(%d+)'))
-    _java = { at = os.time(), major = major }
+    local found = tonumber(text:match('version "1%.(%d+)') or text:match('version "(%d+)'))
+    _java:set("major", found)
     vim.schedule(function()
-      cb(major)
+      cb(found)
     end)
   end)
 end
@@ -97,18 +88,17 @@ local function jdtls_layout()
   return { root = root, launcher = launcher, config_dir = root .. "/" .. flavour }
 end
 
----@type { at: integer, debug: string[], test: string[] }|nil
-local _bundles = nil
+local _bundles = cache.new({ name = "java.bundles", ttl = BUNDLE_TTL_S })
 
 ---@return { debug: string[], test: string[] }
 local function bundles()
-  if _bundles and (os.time() - _bundles.at) < BUNDLE_TTL_S then
-    return _bundles
+  local hit, cached = _bundles:lookup("bundles")
+  if hit then
+    return cached
   end
 
   local mason = require("core.util.mason")
-  _bundles = {
-    at = os.time(),
+  local value = {
     debug = vim.fn.glob(
       mason.pkg("java-debug-adapter") .. "/extension/server/com.microsoft.java.debug.plugin-*.jar",
       false,
@@ -116,7 +106,8 @@ local function bundles()
     ),
     test = jvm.filter_test_bundles(vim.fn.glob(mason.pkg("java-test") .. "/extension/server/*.jar", false, true)),
   }
-  return _bundles
+  _bundles:set("bundles", value)
+  return value
 end
 
 ---@param major integer|nil
@@ -336,7 +327,7 @@ local function keymap_specs(bufnr, jdtls, root, has_test, is_spring)
         "n",
         "<leader>jvs",
         function()
-          run_jvm_task(root, "bootRun", true, { close_on_exit = false })
+          run_jvm_task(root, "bootRun", true, nil)
         end,
         "Java Spring Boot run",
       },
@@ -430,7 +421,7 @@ local function attach(buf, f, jdtls)
   end
 
   local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":p:h")
-  local root = require("core.util.path").find_up(ROOT_MARKERS, dir) or dir
+  local root = require("core.util.path").find_root(dir) or dir
   local config = build_config(f, root, jdtls, #f.test > 0, jvm.is_spring_project(root))
 
   -- The buffer goes in start_opts, the third argument to start_or_attach.

@@ -12,7 +12,7 @@
 local M = {}
 
 -- Neovim embeds LuaJIT, which has neither table.pack nor table.unpack.
-local unpack = unpack or table.unpack
+local unpack = unpack -- LuaJIT and PUC Lua 5.1, the only runtimes Neovim 0.11 embeds, both provide it
 local function pack(...)
   local t = { ... }
   t.n = select("#", ...)

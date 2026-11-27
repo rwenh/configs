@@ -1,43 +1,44 @@
-# nvim-ide[cite: 17]
+# nvim-ide
 
-A modular Neovim IDE: lazy-loaded, LSP-first, 20+ languages.[cite: 17]
+A modular Neovim IDE: lazy-loaded, LSP-first, 20+ languages.
 
 **Neovim 0.11+** · Linux and macOS · **v2.6.1**
 
-- [MANIFEST.md](MANIFEST.md): identity, requirements, plugin dependencies, configuration flags[cite: 17]
-- [KEYMAPS.md](KEYMAPS.md): every key, by context[cite: 17]
-- [CHANGELOG.md](CHANGELOG.md): what changed in each release[cite: 17]
+- [MANIFEST.md](MANIFEST.md): identity, requirements, plugin dependencies, configuration flags
+- [KEYMAPS.md](KEYMAPS.md): every key, by context
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release
 
-## What you get[cite: 17]
+## What you get
 
-- Per-language LSP, DAP, formatting, linting, tests, and a task runner.[cite: 17]
-- Lazy loading: a plugin loads on the event, command, filetype, or key that needs it.[cite: 17]
-- Guarded: missing tools are reported once, project configs need `:trust`, and multi-step changes roll back on failure.[cite: 17]
+- Per-language LSP, DAP, formatting, linting, tests, and a task runner.
+- Lazy loading: a plugin loads on the event, command, filetype, or key that needs it.
+- Guarded: missing tools are reported once, project configs need `:trust`, and multi-step changes roll back on failure.
 
-## Install[cite: 17]
+## Install
 
-Requirements are listed in [MANIFEST.md](MANIFEST.md#external-tools). There is no build step.[cite: 17]
+Requirements are listed in [MANIFEST.md](MANIFEST.md#external-tools). There is no build step.
 
 ```bash
-git clone [https://github.com/rwenh/configs.git](https://github.com/rwenh/configs.git) ~/dotfiles
+git clone https://github.com/rwenh/configs.git ~/dotfiles
 ln -sfn ~/dotfiles/nvim ~/.config/nvim     # move any existing ~/.config/nvim aside first
 nvim                                        # lazy.nvim installs the plugins; wait for 100%
-```[cite: 17]
+```
 
-Then, inside Neovim:[cite: 17]
+Then, inside Neovim:
 
 ```vim
 :MasonInstallAll     " LSP servers, DAP adapters, formatters, linters
 :TSUpdate            " treesitter parsers
 :checkhealth core    " expect no ERROR
+:Lazy restore        " check out the locked commits (fresh clones)
 :Lazy lock           " pin the plugin commits, then commit lazy-lock.json
-```[cite: 17]
+```
 
-On a slow network, raise `vim.g.mason_install_timeout_ms` in `init.lua` before the first launch.[cite: 17]
+On a slow network, raise `vim.g.mason_install_timeout_ms` in `init.lua` before the first launch.
 
-## Use[cite: 17]
+## Use
 
-Leader is `Space`. Start with these five:[cite: 17]
+Leader is `Space`. Start with these five:
 
 | Key | Action |
 |-----|--------|
@@ -45,13 +46,13 @@ Leader is `Space`. Start with these five:[cite: 17]
 | `<leader>fw` | live grep |
 | `<leader>ee` | file explorer |
 | `<leader>.g` | LazyGit |
-| `F5` | debug, in a supported filetype |[cite: 17]
+| `F5` | debug, in a supported filetype |
 
-- Commands: `:Health`, `:Format`, `:Reload core.util.runner`, `:ThemeAuto`, `:MasonInstallAll dry-run`, `:KeymapHealth`.[cite: 17]
-- Theme: `lua/core/theme.lua`; `<leader>ut` toggles dark and light.[cite: 17]
-- Per-project overrides: `.lspconfig.lua`, `.runner.lua`, `.nvim-dap.lua`, `.overseer.lua`. They load after `:trust`.[cite: 17]
+- Commands: `:Health`, `:Format`, `:Reload core.util.runner`, `:ThemeAuto`, `:MasonInstallAll dry-run`, `:KeymapHealth`.
+- Theme: `lua/core/theme.lua`; `<leader>ut` toggles dark and light.
+- Per-project overrides: `.lspconfig.lua`, `.nvim-dap.lua`, `.overseer.lua`. They load after `:trust`.
 
-## Languages[cite: 17]
+## Languages
 
 | Language | LSP | DAP | Format | Lint | Test |
 |----------|-----|-----|--------|------|------|
@@ -72,14 +73,14 @@ Leader is `Space`. Start with these five:[cite: 17]
 | Zig | zls | codelldb | zig fmt | — | zig build test |
 | Fortran | fortls | — | fprettify | — | — |
 | COBOL | cobol-language-support² | — | — | — | — |
-| VHDL | vhdl_ls³ | — | vsg⁴ | — | ghdl |[cite: 17]
+| VHDL | vhdl_ls³ | — | vsg⁴ | — | ghdl |
 
-¹ Only when a config file is found in the project root.[cite: 17]
-² Not provided by a package manager. Compile and run with `cobc` (`<leader>cob`); a `cobol-language-support` binary on `PATH` is used if present.[cite: 17]
-³ Not in Mason: `cargo install vhdl_ls`.[cite: 17]
-⁴ Formats a temporary copy with `vsg --fix -f`.[cite: 17]
+¹ Only when a config file is found in the project root.
+² Not provided by a package manager. Compile and run with `cobc` (`<leader>cob`); a `cobol-language-support` binary on `PATH` is used if present.
+³ Not in Mason: `cargo install vhdl_ls`.
+⁴ Formats a temporary copy with `vsg --fix -f`.
 
-## Layout[cite: 17]
+## Layout
 
 
 ```
@@ -91,30 +92,36 @@ lua/plugins/specs/        ui, editor, lsp, completion, treesitter, git, dap, tes
 lua/plugins/specs/lang/   one file per language, plus shared helpers
 lazy-lock.json            pinned plugin commits
 scripts/gen_docs.lua      regenerates the flags and plugins tables in MANIFEST.md from the sources
+scripts/check.sh          runs every repository check; check_graph.lua and check_docs.lua hold the structure and docs checks
+tests/run.lua            unit tests for the pure modules
 
-```[cite: 17]
+```
 
-## Verify[cite: 17]
+## Verify
 
-There is no test suite in the repository. Check a change with:[cite: 17]
+`sh scripts/check.sh` runs every check that needs no plugin install and no network:
 
-- `:checkhealth core`, then `:Health` for a one-screen summary.[cite: 17]
-- `:MasonInstallAll dry-run` to see which tools are missing.[cite: 17]
-- Open a file in each language you touched and run its build, run and test keys from KEYMAPS.md.[cite: 17]
+- StyLua at the version pinned in `.stylua-version`, and luacheck (`.luacheckrc`) for undefined globals and unused variables
+- unit tests for the pure modules (`tests/run.lua`)
+- `scripts/check_graph.lua`: every local require resolves, every spec file is registered, every `vim.g` read is registered
+- `scripts/check_docs.lua`: every KEYMAPS.md key is bound, every lock entry is used, every declared repository is pinned
+- the generated MANIFEST tables are current
 
-## Design[cite: 17]
+In the editor, `:checkhealth core` reports the tools this config uses. Then open a file in each language you touched and run its build, run and test keys from KEYMAPS.md.
 
-- One source per concern: `core/flags.lua` for escape hatches (read them with `flags.get`), `core/util/packages.lua` for the language-server registry (one row per server: lspconfig name, Mason package, binary), `core/util/cache.lua` for every TTL and file-signature cache, `core/util/projconf.lua` for the trust-gated per-project Lua files, `core/util/limits.lua` for size limits, `core/util/exec.lua` for version detection.[cite: 17]
-- Project roots: a primary marker (`mix.exs`, `Cargo.toml`, `pyproject.toml`, `config/application.rb`, …) wins over a nearer `package.json` or `Makefile`. See the header of `core/util/path.lua`.[cite: 17]
-- Large files (over 500 KB by default) drop treesitter, folds, syntax, and extra features.[cite: 17]
-- DAP adapters register on the first matching filetype.[cite: 17]
+## Design
 
-## Troubleshooting[cite: 17]
+- One source per concern: `core/flags.lua` for escape hatches (read them with `flags.get`), `core/util/packages.lua` for the language-server registry (one row per server: lspconfig name, Mason package, binary), `core/util/cache.lua` for every TTL and file-signature cache, `core/util/projconf.lua` for the trust-gated per-project Lua files, `core/util/limits.lua` for size limits, `core/util/exec.lua` for version detection.
+- Project roots: a primary marker (`mix.exs`, `Cargo.toml`, `pyproject.toml`, `config/application.rb`, …) wins over a nearer `package.json` or `Makefile`. See the header of `core/util/path.lua`.
+- Large files (over 500 KB by default) drop treesitter, folds, syntax, and extra features.
+- DAP adapters register on the first matching filetype.
+
+## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | LSP does not attach; `gd` does nothing | `:MasonInstallAll`, then `:checkhealth lsp` and `:LspInfo`. A server missing from `PATH` is named once in a notice. |
-| `:MasonInstallAll` times out | raise `vim.g.mason_install_timeout_ms` |
+| `:MasonInstallAll` stalls | raise `vim.g.mason_install_timeout_ms` (stall limit: time with no package finished) |
 | Treesitter highlighting broken | `:TSUpdate` |
 | Plugins drift after `:Lazy update` | `:Lazy lock`, then commit `lazy-lock.json` |
 | Plugins do not load | remove `~/.local/share/nvim`, `~/.cache/nvim`, and `~/.local/state/nvim`; restart; then `:MasonInstallAll`, `:TSUpdate`, `:Lazy lock` |
@@ -123,4 +130,4 @@ There is no test suite in the repository. Check a change with:[cite: 17]
 | Java workspace is stale | delete `~/.local/share/nvim/jdtls-workspace/` and restart |
 | `.http` files fail to load | install the tree-sitter CLI (`:checkhealth core` prints the command for your system) |
 | Format silently does nothing | read the WARN notice; raise `vim.g.format_timeout_ms` or `vim.g.format_timeout_by_ft` |
-| Neovim older than 0.11 | install 0.11+ from your package manager, the release tarball or an AppImage; check with `nvim --version` |[cite: 17]
+| Neovim older than 0.11 | install 0.11+ from your package manager, the release tarball or an AppImage; check with `nvim --version` |

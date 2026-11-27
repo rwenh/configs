@@ -74,7 +74,7 @@ local function set_override(v)
   vim.g[OVERRIDE_KEY] = v
 end
 
-local _cache = { hour = nil, value = nil }
+local _bg = require("core.util.cache").new({ name = "theme.background", ttl = 60 })
 
 local function resolve_background()
   local o = get_override()
@@ -87,11 +87,12 @@ local function resolve_background()
   if not ok or not h then
     return "dark"
   end
-  if _cache.hour == h and _cache.value then
-    return _cache.value
+  local hit, cached = _bg:lookup(tostring(h))
+  if hit then
+    return cached
   end
   local bg = (h >= M.config.day_start and h < M.config.day_end) and "light" or "dark"
-  _cache.hour, _cache.value = h, bg
+  _bg:set(tostring(h), bg)
   return bg
 end
 
@@ -175,7 +176,7 @@ function M.setup()
     vim.notify(string.format("[theme] config.theme '%s' is not in M.themes", M.config.theme), vim.log.levels.WARN)
   end
   set_override(nil)
-  _cache.hour, _cache.value = nil, nil
+  _bg:clear_all()
   vim.g[READY_KEY] = true
   apply(resolve_background())
   start_timer()
@@ -197,7 +198,7 @@ end
 --- Drop the manual override and follow the clock again.
 function M.auto()
   set_override(nil)
-  _cache.hour, _cache.value = nil, nil
+  _bg:clear_all()
   local bg = resolve_background()
   apply(bg)
   vim.notify(string.format("[theme] %s › %s (auto)", M.config.theme, bg), vim.log.levels.INFO)
@@ -215,7 +216,7 @@ function M.switch(name)
   end
   M.config.theme = name
   vim.g._nvim_active_theme = name
-  _cache.hour, _cache.value = nil, nil
+  _bg:clear_all()
   apply(resolve_background())
   vim.notify(string.format("[theme] switched to %s", name), vim.log.levels.INFO)
 end
@@ -234,7 +235,7 @@ vim.api.nvim_create_autocmd("ColorScheme", {
       return
     end
     set_override(nil)
-    _cache.hour, _cache.value = nil, nil
+    _bg:clear_all()
   end,
   desc = "Clear theme override when an external :colorscheme fires",
 })

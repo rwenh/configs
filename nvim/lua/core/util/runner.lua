@@ -108,12 +108,15 @@ end
 
 -- ── Command builders ──────────────────────────────────────────────────────────
 
---- `compiler flags -o exe file && exe`. A source with no extension gets `.out`, so it never overwrites itself.
+--- Build product for `file`: a per-tool cache directory. The hash keeps two sources with one stem apart.
+local function exe_for(file)
+  local stem = vim.fn.fnamemodify(file, ":t:r")
+  return cache_dir("native-run") .. "/" .. stem .. "-" .. vim.fn.sha256(file):sub(1, 8)
+end
+
+--- `compiler flags -o exe file && exe`. The executable goes to the cache, never beside the source.
 local function compile_and_run(compiler, fl, file)
-  local exe = vim.fn.fnamemodify(file, ":r")
-  if exe == file then
-    exe = file .. ".out"
-  end
+  local exe = exe_for(file)
   return ("%s %s -o %s %s && %s"):format(compiler, fl, sq(exe), sq(file), sq(exe))
 end
 
@@ -190,7 +193,12 @@ local function rust_run(file)
     if not cargo then
       return nil, why
     end
-    return cd(crate, "cargo run")
+    -- A file under src/bin or examples runs as its own target. Anything else runs the crate's default binary.
+    local rel = file:sub(#crate + 2)
+    local bin = rel:match("^src/bin/([^/]+)%.rs$")
+    local example = rel:match("^examples/([^/]+)%.rs$")
+    local target = bin and (" --bin " .. sq(bin)) or (example and (" --example " .. sq(example)) or "")
+    return cd(crate, cargo .. " run" .. target)
   end
   local rustc, why = first_bin({ "rustc" }, "https://rustup.rs")
   if not rustc then
@@ -200,17 +208,13 @@ local function rust_run(file)
 end
 
 local function java_run(file)
-  local javac, why = first_bin({ "javac" }, JDK_HINT)
-  if not javac then
+  -- Single-file source launcher (JDK 11+): compiles in memory, so no class files are written beside the
+  -- source. The launcher also accepts a package declaration, which the old javac-then-java path did not.
+  local java, why = first_bin({ "java" }, JDK_HINT)
+  if not java then
     return nil, why
   end
-  local java, why2 = first_bin({ "java" }, JDK_HINT)
-  if not java then
-    return nil, why2
-  end
-  local dir = vim.fn.fnamemodify(file, ":h")
-  local name = vim.fn.fnamemodify(file, ":t:r")
-  return ("cd %s && %s %s && %s %s"):format(sq(dir), javac, sq(file), java, sq(name))
+  return sq(java) .. " " .. sq(file)
 end
 
 local function kotlin_run(file)
@@ -222,9 +226,13 @@ local function kotlin_run(file)
   if not java then
     return nil, why2
   end
-  local dir = vim.fn.fnamemodify(file, ":h")
-  local jar = sq(vim.fn.fnamemodify(file, ":t:r") .. ".jar")
-  return ("cd %s && %s %s -include-runtime -d %s && %s -jar %s"):format(sq(dir), kc, sq(file), jar, java, jar)
+  local jar = cache_dir("kotlin-run")
+    .. "/"
+    .. vim.fn.fnamemodify(file, ":t:r")
+    .. "-"
+    .. vim.fn.sha256(file):sub(1, 8)
+    .. ".jar"
+  return ("%s %s -include-runtime -d %s && %s -jar %s"):format(kc, sq(file), sq(jar), java, sq(jar))
 end
 
 local function cobol_run(file)
@@ -258,10 +266,21 @@ local function vhdl_run(file)
   if not entity then
     return sq(ghdl) .. " -s " .. sq(file) -- no entity: syntax check only
   end
-  local dir = vim.fn.fnamemodify(file, ":h")
-  local root = path.find_root(dir) or dir
-  local vcd = root .. "/" .. entity .. "_wave.vcd"
-  local cmd = cd(root, vhdl.run_chain(file, entity, vcd))
+  -- Work library and waveform live in the cache, so nothing is written into the project tree.
+  local wd = M.vhdl_workdir()
+  local vcd = wd .. "/" .. entity .. ".vcd"
+  local cmd = ("%s -a --workdir=%s %s && %s -e --workdir=%s %s && %s -r --workdir=%s %s --vcd=%s"):format(
+    sq(ghdl),
+    sq(wd),
+    sq(file),
+    sq(ghdl),
+    sq(wd),
+    sq(entity),
+    sq(ghdl),
+    sq(wd),
+    sq(entity),
+    sq(vcd)
+  )
   local gtkwave = first_bin({ "gtkwave" })
   if gtkwave then
     cmd = cmd .. " && " .. sq(gtkwave) .. " " .. sq(vcd)
@@ -302,7 +321,7 @@ local function sel_bin(names, hint, args)
     if not b then
       return nil, why
     end
-    return b .. (args and (" " .. args) or "")
+    return sq(b) .. (args and (" " .. args) or "")
   end
 end
 
@@ -379,6 +398,20 @@ local function launch(cmd, interactive)
 end
 
 -- ── Public ────────────────────────────────────────────────────────────────────
+
+--- True when this filetype has a file runner. Pure: resolves no command and writes nothing, so it is safe
+--- to call from overseer template conditions on every listing.
+---@param ft string
+---@return boolean
+function M.supports(ft)
+  return RUNNERS[ft] ~= nil
+end
+
+--- Work library and waveform directory for ghdl. Kept in the cache, out of the project tree.
+---@return string
+function M.vhdl_workdir()
+  return cache_dir("vhdl-work")
+end
 
 --- Resolve the command to run the given file, returning cmd or nil, reason.
 function M.resolve_run(file)

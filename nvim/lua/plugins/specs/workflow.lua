@@ -215,16 +215,11 @@ return {
         end,
         condition = {
           callback = function()
-            local file = vim.fn.expand("%:p")
-            if file == "" then
+            if vim.fn.expand("%:p") == "" then
               return false
             end
-            local ok_r, runner = pcall(require, "core.util.runner")
-            if not ok_r then
-              return false
-            end
-            local cmd = runner.resolve_run(file)
-            return cmd ~= nil
+            -- Filetype only: no command is resolved here, so listing templates has no side effects.
+            return require("core.util.runner").supports(vim.bo.filetype)
           end,
         },
       })

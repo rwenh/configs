@@ -27,7 +27,7 @@ local EPHEMERAL_FT = {
 au("TextYankPost", {
   group = ag("HighlightYank", { clear = true }),
   callback = function()
-    pcall((vim.hl or vim.highlight).on_yank, { timeout = 200 })
+    pcall(vim.hl.on_yank, { timeout = 200 })
   end,
 })
 

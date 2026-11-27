@@ -5,7 +5,7 @@
 
 local M = {}
 
-local unpack = unpack or table.unpack
+local unpack = unpack -- LuaJIT and PUC Lua 5.1 both provide it
 
 local NATIVE = { "zypper", "dnf", "apt-get", "pacman", "apk" }
 local PM_CMD = {

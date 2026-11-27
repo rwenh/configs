@@ -1,2 +1,11 @@
 tags
 /README.md
+# OS and editor debris
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Compiled spell files are rebuilt from the .add wordlist in spell/
+spell/*.spl

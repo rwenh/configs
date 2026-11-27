@@ -106,6 +106,13 @@ end, { desc = "LCD to project root (window-local)" })
 cmd("CopyPath", copy_path("%:p", "CopyPath"), { desc = "Copy absolute file path" })
 cmd("CopyRelPath", copy_path("%:.", "CopyRelPath"), { desc = "Copy relative file path" })
 
+-- ── :ProjConfRecheck ──────────────────────────────────────────────────────────
+cmd("ProjConfRecheck", function()
+  require("core.util.projconf").recheck()
+  require("core.util.dburl").recheck()
+  vim.notify("[projconf] project files will be checked again on next use (run :trust first if you changed one)")
+end, { desc = "Re-check declined project files (after :trust)" })
+
 -- ── :BufOnly ──────────────────────────────────────────────────────────────────
 -- Asks (y/n/c) about each modified buffer:
 --   y — save, then delete
@@ -335,34 +342,44 @@ cmd("MasonInstallAll", function(opts)
     end
   end
 
-  timer = vim.uv.new_timer()
-  timer:start(
-    TIMEOUT_MS,
-    0,
-    vim.schedule_wrap(function()
-      vim.notify(
-        string.format(
-          "MasonInstallAll: timed out after %ds (%d pending).\n"
-            .. "Pending installs may still complete in the background.\n"
-            .. "Increase timeout: vim.g.mason_install_timeout_ms = %d",
-          math.floor(TIMEOUT_MS / 1000),
-          pending,
-          TIMEOUT_MS * 2
-        ),
-        vim.log.levels.WARN
-      )
-      if timer then
-        pcall(function()
-          timer:stop()
-          timer:close()
-        end)
-        timer = nil
-      end
-      -- Always release the lock: if a callback never fires, the mutex used to stay
-      -- locked until restart. Mason serialises duplicate installs itself.
-      vim.g._mason_install_running = false
-    end)
-  )
+  -- A stall timer. It is re-armed each time a package finishes, so a long batch that keeps making progress
+  -- never times out. It fires only when nothing has finished for TIMEOUT_MS.
+  local function arm()
+    if timer then
+      pcall(function()
+        timer:stop()
+        timer:close()
+      end)
+    end
+    timer = vim.uv.new_timer()
+    timer:start(
+      TIMEOUT_MS,
+      0,
+      vim.schedule_wrap(function()
+        vim.notify(
+          string.format(
+            "MasonInstallAll: no package finished for %.1fs (%d pending).\n"
+              .. "Pending installs may still complete in the background.\n"
+              .. "Raise the stall limit: vim.g.mason_install_timeout_ms = %d",
+            TIMEOUT_MS / 1000,
+            pending,
+            TIMEOUT_MS * 2
+          ),
+          vim.log.levels.WARN
+        )
+        if timer then
+          pcall(function()
+            timer:stop()
+            timer:close()
+          end)
+          timer = nil
+        end
+        -- Release the lock: Mason serialises duplicate installs itself.
+        vim.g._mason_install_running = false
+      end)
+    )
+  end
+  arm()
 
   for _, pkg_name in ipairs(pkgs) do
     local ok_pkg, pkg = pcall(function()
@@ -391,6 +408,7 @@ cmd("MasonInstallAll", function(opts)
           installer:once(
             "closed",
             vim.schedule_wrap(function()
+              arm()
               pending = pending - 1
               done = done + 1
               if pkg:is_installed() then

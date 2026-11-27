@@ -223,6 +223,25 @@ return {
     end,
   },
 
+  -- ── Neogit, commit graph and fugitive ─────────────────────────────────────
+  {
+    "NeogitOrg/neogit",
+    cmd = "Neogit",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    keys = {
+      { "<leader>.N", "<cmd>Neogit<cr>", desc = "Neogit status" },
+      { "<leader>.C", "<cmd>Neogit commit<cr>", desc = "Neogit commit" },
+    },
+    opts = {},
+  },
+  { "tpope/vim-fugitive", cmd = { "Git", "G" } },
+  {
+    "junegunn/gv.vim",
+    cmd = "GV",
+    dependencies = { "tpope/vim-fugitive" },
+    keys = { { "<leader>.v", "<cmd>GV<cr>", desc = "Commit graph (GV)" } },
+  },
+
   -- ── Worktrees ──────────────────────────────────────────────────────────────
   {
     "ThePrimeagen/git-worktree.nvim",
